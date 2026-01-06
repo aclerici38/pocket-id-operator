@@ -87,16 +87,12 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	if instance.Spec.Route.Enabled {
-		if err := r.reconcileRoute(ctx, instance); err != nil {
-			return ctrl.Result{}, err
-		}
+	if err := r.reconcileRoute(ctx, instance); err != nil {
+		return ctrl.Result{}, err
 	}
 
-	if instance.Spec.Persistence.Enabled {
-		if err := r.reconcileVolume(ctx, instance); err != nil {
-			return ctrl.Result{}, err
-		}
+	if err := r.reconcileVolume(ctx, instance); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	if err := r.updateStatus(ctx, instance); err != nil {
@@ -347,6 +343,19 @@ func (r *InstanceReconciler) reconcileService(ctx context.Context, instance *poc
 }
 
 func (r *InstanceReconciler) reconcileRoute(ctx context.Context, instance *pocketidinternalv1alpha1.Instance) error {
+	route := &gwapiv1.HTTPRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      instance.Name,
+			Namespace: instance.Namespace,
+		},
+	}
+
+	// If route is disabled, delete it
+	if !instance.Spec.Route.Enabled {
+		err := r.Delete(ctx, route)
+		return client.IgnoreNotFound(err)
+	}
+
 	port := gwapiv1.PortNumber(1411)
 
 	var hostnames []gwapiv1.Hostname
@@ -358,29 +367,23 @@ func (r *InstanceReconciler) reconcileRoute(ctx context.Context, instance *pocke
 		hostnames = []gwapiv1.Hostname{gwapiv1.Hostname(parsedURL.Hostname())}
 	}
 
-	route := &gwapiv1.HTTPRoute{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "gateway.networking.k8s.io/v1",
-			Kind:       "HTTPRoute",
+	route.TypeMeta = metav1.TypeMeta{
+		APIVersion: "gateway.networking.k8s.io/v1",
+		Kind:       "HTTPRoute",
+	}
+	route.Spec = gwapiv1.HTTPRouteSpec{
+		CommonRouteSpec: gwapiv1.CommonRouteSpec{
+			ParentRefs: instance.Spec.Route.ParentRefs,
 		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      instance.Name,
-			Namespace: instance.Namespace,
-		},
-		Spec: gwapiv1.HTTPRouteSpec{
-			CommonRouteSpec: gwapiv1.CommonRouteSpec{
-				ParentRefs: instance.Spec.Route.ParentRefs,
-			},
-			Hostnames: hostnames,
-			Rules: []gwapiv1.HTTPRouteRule{
-				{
-					BackendRefs: []gwapiv1.HTTPBackendRef{
-						{
-							BackendRef: gwapiv1.BackendRef{
-								BackendObjectReference: gwapiv1.BackendObjectReference{
-									Name: gwapiv1.ObjectName(instance.Name),
-									Port: &port,
-								},
+		Hostnames: hostnames,
+		Rules: []gwapiv1.HTTPRouteRule{
+			{
+				BackendRefs: []gwapiv1.HTTPBackendRef{
+					{
+						BackendRef: gwapiv1.BackendRef{
+							BackendObjectReference: gwapiv1.BackendObjectReference{
+								Name: gwapiv1.ObjectName(instance.Name),
+								Port: &port,
 							},
 						},
 					},
@@ -399,9 +402,17 @@ func (r *InstanceReconciler) reconcileRoute(ctx context.Context, instance *pocke
 }
 
 func (r *InstanceReconciler) reconcileVolume(ctx context.Context, instance *pocketidinternalv1alpha1.Instance) error {
-	// If using an existing claim, no need to create a PVC
-	if instance.Spec.Persistence.ExistingClaim != "" || instance.Spec.DeploymentType == deploymentTypeStatefulSet {
-		return nil
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      instance.Name + "-data",
+			Namespace: instance.Namespace,
+		},
+	}
+
+	// Delete PVC if persistence is disabled, using existing claim, or using StatefulSet
+	if !instance.Spec.Persistence.Enabled || instance.Spec.Persistence.ExistingClaim != "" || instance.Spec.DeploymentType == deploymentTypeStatefulSet {
+		err := r.Delete(ctx, pvc)
+		return client.IgnoreNotFound(err)
 	}
 
 	// Ensure storageClass gets set to nil if empty
@@ -409,13 +420,6 @@ func (r *InstanceReconciler) reconcileVolume(ctx context.Context, instance *pock
 	if instance.Spec.Persistence.StorageClass != "" {
 		sc := instance.Spec.Persistence.StorageClass
 		scn = &sc
-	}
-
-	pvc := &corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      instance.Name + "-data",
-			Namespace: instance.Namespace,
-		},
 	}
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, pvc, func() error {

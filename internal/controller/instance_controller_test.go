@@ -1043,4 +1043,180 @@ var _ = Describe("Instance Controller", func() {
 			}, timeout, interval).ShouldNot(Succeed())
 		})
 	})
+
+	Context("When disabling route after it was enabled", func() {
+		const instanceName = "test-disable-route"
+
+		var instance *pocketidinternalv1alpha1.Instance
+		var secret *corev1.Secret
+
+		BeforeEach(func() {
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName + "-secret",
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"encryption-key": []byte("test-encryption-key-value"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			gatewayName := gwapiv1.ObjectName("my-gateway")
+			instance = &pocketidinternalv1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.InstanceSpec{
+					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
+						ValueFrom: &corev1.EnvVarSource{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: secret.Name,
+								},
+								Key: "encryption-key",
+							},
+						},
+					},
+					Route: pocketidinternalv1alpha1.HttpRouteConfig{
+						Enabled: true,
+						ParentRefs: []gwapiv1.ParentReference{
+							{
+								Name: gatewayName,
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			// Wait for HTTPRoute to be created
+			httpRoute := &gwapiv1.HTTPRoute{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName,
+					Namespace: namespace,
+				}, httpRoute)
+			}, timeout, interval).Should(Succeed())
+		})
+
+		AfterEach(func() {
+			if instance != nil {
+				_ = k8sClient.Delete(ctx, instance)
+			}
+			if secret != nil {
+				_ = k8sClient.Delete(ctx, secret)
+			}
+		})
+
+		It("Should delete the HTTPRoute when route is disabled", func() {
+			// Disable the route
+			Eventually(func() error {
+				if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(instance), instance); err != nil {
+					return err
+				}
+				instance.Spec.Route.Enabled = false
+				return k8sClient.Update(ctx, instance)
+			}, timeout, interval).Should(Succeed())
+
+			// Verify HTTPRoute is deleted
+			httpRoute := &gwapiv1.HTTPRoute{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName,
+					Namespace: namespace,
+				}, httpRoute)
+			}, timeout, interval).ShouldNot(Succeed())
+		})
+	})
+
+	Context("When disabling persistence after it was enabled", func() {
+		const instanceName = "test-disable-persistence"
+
+		var instance *pocketidinternalv1alpha1.Instance
+		var secret *corev1.Secret
+
+		BeforeEach(func() {
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName + "-secret",
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"encryption-key": []byte("test-encryption-key-value"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			instance = &pocketidinternalv1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.InstanceSpec{
+					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
+						ValueFrom: &corev1.EnvVarSource{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: secret.Name,
+								},
+								Key: "encryption-key",
+							},
+						},
+					},
+					Persistence: pocketidinternalv1alpha1.PersistenceConfig{
+						Enabled:     true,
+						Size:        resource.MustParse("1Gi"),
+						AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			// Wait for PVC to be created
+			pvc := &corev1.PersistentVolumeClaim{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName + "-data",
+					Namespace: namespace,
+				}, pvc)
+			}, timeout, interval).Should(Succeed())
+		})
+
+		AfterEach(func() {
+			if instance != nil {
+				_ = k8sClient.Delete(ctx, instance)
+			}
+			if secret != nil {
+				_ = k8sClient.Delete(ctx, secret)
+			}
+		})
+
+		It("Should delete the PVC when persistence is disabled", func() {
+			// Disable persistence
+			Eventually(func() error {
+				if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(instance), instance); err != nil {
+					return err
+				}
+				instance.Spec.Persistence.Enabled = false
+				return k8sClient.Update(ctx, instance)
+			}, timeout, interval).Should(Succeed())
+
+			// Verify PVC is marked for deletion (has deletion timestamp)
+			pvc := &corev1.PersistentVolumeClaim{}
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName + "-data",
+					Namespace: namespace,
+				}, pvc)
+				if err != nil {
+					// PVC is gone
+					return true
+				}
+				// PVC has deletion timestamp
+				return !pvc.DeletionTimestamp.IsZero()
+			}, timeout, interval).Should(BeTrue())
+		})
+	})
 })
