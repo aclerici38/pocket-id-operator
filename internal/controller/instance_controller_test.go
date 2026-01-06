@@ -598,6 +598,186 @@ var _ = Describe("Instance Controller", func() {
 		})
 	})
 
+	Context("When creating a StatefulSet with persistence enabled", func() {
+		const instanceName = "test-sts-persistence-instance"
+
+		var instance *pocketidinternalv1alpha1.Instance
+		var secret *corev1.Secret
+
+		BeforeEach(func() {
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName + "-secret",
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"encryption-key": []byte("test-encryption-key-value"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			instance = &pocketidinternalv1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.InstanceSpec{
+					DeploymentType: "StatefulSet",
+					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
+						ValueFrom: &corev1.EnvVarSource{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: secret.Name,
+								},
+								Key: "encryption-key",
+							},
+						},
+					},
+					Persistence: pocketidinternalv1alpha1.PersistenceConfig{
+						Enabled:     true,
+						Size:        resource.MustParse("3Gi"),
+						AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if instance != nil {
+				_ = k8sClient.Delete(ctx, instance)
+			}
+			if secret != nil {
+				_ = k8sClient.Delete(ctx, secret)
+			}
+		})
+
+		It("Should create a StatefulSet with volumeClaimTemplates", func() {
+			sts := &appsv1.StatefulSet{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName,
+					Namespace: namespace,
+				}, sts)
+			}, timeout, interval).Should(Succeed())
+
+			// Verify volumeClaimTemplates is configured
+			Expect(sts.Spec.VolumeClaimTemplates).To(HaveLen(1))
+			Expect(sts.Spec.VolumeClaimTemplates[0].Name).To(Equal("data"))
+			Expect(sts.Spec.VolumeClaimTemplates[0].Spec.AccessModes).To(Equal([]corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}))
+			Expect(sts.Spec.VolumeClaimTemplates[0].Spec.Resources.Requests[corev1.ResourceStorage]).To(Equal(resource.MustParse("3Gi")))
+
+			// Verify volume mount is configured
+			volumeMounts := sts.Spec.Template.Spec.Containers[0].VolumeMounts
+			Expect(volumeMounts).To(HaveLen(1))
+			Expect(volumeMounts[0].Name).To(Equal("data"))
+			Expect(volumeMounts[0].MountPath).To(Equal("/app/data"))
+
+			// Verify NO volumes in pod template (because volumeClaimTemplates handles it)
+			volumes := sts.Spec.Template.Spec.Volumes
+			Expect(volumes).To(BeEmpty())
+		})
+
+		It("Should NOT create a separate PersistentVolumeClaim", func() {
+			// StatefulSets manage their own PVCs via volumeClaimTemplates
+			pvc := &corev1.PersistentVolumeClaim{}
+			Consistently(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName + "-data",
+					Namespace: namespace,
+				}, pvc)
+			}, time.Second*2, interval).ShouldNot(Succeed())
+		})
+	})
+
+	Context("When creating a StatefulSet with persistence disabled", func() {
+		const instanceName = "test-sts-no-persistence-instance"
+
+		var instance *pocketidinternalv1alpha1.Instance
+		var secret *corev1.Secret
+
+		BeforeEach(func() {
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName + "-secret",
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"encryption-key": []byte("test-encryption-key-value"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			instance = &pocketidinternalv1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.InstanceSpec{
+					DeploymentType: "StatefulSet",
+					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
+						ValueFrom: &corev1.EnvVarSource{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: secret.Name,
+								},
+								Key: "encryption-key",
+							},
+						},
+					},
+					Persistence: pocketidinternalv1alpha1.PersistenceConfig{
+						Enabled: false,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if instance != nil {
+				_ = k8sClient.Delete(ctx, instance)
+			}
+			if secret != nil {
+				_ = k8sClient.Delete(ctx, secret)
+			}
+		})
+
+		It("Should use an emptyDir volume in StatefulSet", func() {
+			sts := &appsv1.StatefulSet{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName,
+					Namespace: namespace,
+				}, sts)
+			}, timeout, interval).Should(Succeed())
+
+			// Verify emptyDir volume is configured
+			volumes := sts.Spec.Template.Spec.Volumes
+			Expect(volumes).To(HaveLen(1))
+			Expect(volumes[0].Name).To(Equal("data"))
+			Expect(volumes[0].VolumeSource.EmptyDir).NotTo(BeNil())
+
+			// Verify volume mount
+			volumeMounts := sts.Spec.Template.Spec.Containers[0].VolumeMounts
+			Expect(volumeMounts).To(HaveLen(1))
+			Expect(volumeMounts[0].Name).To(Equal("data"))
+			Expect(volumeMounts[0].MountPath).To(Equal("/app/data"))
+
+			// Verify NO volumeClaimTemplates
+			Expect(sts.Spec.VolumeClaimTemplates).To(BeEmpty())
+		})
+
+		It("Should NOT create any PersistentVolumeClaim", func() {
+			pvc := &corev1.PersistentVolumeClaim{}
+			Consistently(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName + "-data",
+					Namespace: namespace,
+				}, pvc)
+			}, time.Second*2, interval).ShouldNot(Succeed())
+		})
+	})
+
 	Context("When using plaintext environment variables", func() {
 		const instanceName = "test-plaintext-env"
 
