@@ -211,18 +211,18 @@ func (r *InstanceReconciler) buildPodTemplate(instance *pocketidinternalv1alpha1
 
 func (r *InstanceReconciler) reconcileDeployment(ctx context.Context, instance *pocketidinternalv1alpha1.Instance, podTemplate corev1.PodTemplateSpec) error {
 	replicas := int32(1)
-	
+
 	selector := map[string]string{
 		"app.kubernetes.io/name":     "pocket-id",
-    	"app.kubernetes.io/instance": instance.Name,
+		"app.kubernetes.io/instance": instance.Name,
 	}
-	
+
 	deployment := &appsv1.Deployment{
 		// Add type meta for SSA patching
 		TypeMeta: metav1.TypeMeta{
-		    APIVersion: "apps/v1",
-		    Kind:       "Deployment",
-	 	},
+			APIVersion: "apps/v1",
+			Kind:       "Deployment",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      instance.Name,
 			Namespace: instance.Namespace,
@@ -238,37 +238,34 @@ func (r *InstanceReconciler) reconcileDeployment(ctx context.Context, instance *
 		return err
 	}
 
-	return r.Patch(ctx, deployment,
-	    client.Apply,
-	    client.FieldOwner("pocket-id-operator"),
-  	)
+	return r.Patch(ctx, deployment, client.Apply, client.FieldOwner("pocket-id-operator"))
 }
 
 func (r *InstanceReconciler) reconcileStatefulSet(ctx context.Context, instance *pocketidinternalv1alpha1.Instance, podTemplate corev1.PodTemplateSpec) error {
 	replicas := int32(1)
-	
+
 	selector := map[string]string{
 		"app.kubernetes.io/name":     "pocket-id",
-    	"app.kubernetes.io/instance": instance.Name,
+		"app.kubernetes.io/instance": instance.Name,
 	}
-	
+
 	sts := &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
-		    APIVersion: "apps/v1",
-		    Kind:       "StatefulSet",
-	 	},
+			APIVersion: "apps/v1",
+			Kind:       "StatefulSet",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      instance.Name,
 			Namespace: instance.Namespace,
 		},
 		Spec: appsv1.StatefulSetSpec{
-			Replicas: &replicas,
+			Replicas:    &replicas,
 			ServiceName: instance.Name,
-			Selector: &metav1.LabelSelector{MatchLabels: selector},
-			Template: podTemplate,
+			Selector:    &metav1.LabelSelector{MatchLabels: selector},
+			Template:    podTemplate,
 		},
 	}
-	
+
 	if err := controllerutil.SetControllerReference(instance, sts, r.Scheme); err != nil {
 		return err
 	}
@@ -287,12 +284,12 @@ func (r *InstanceReconciler) reconcileService(ctx context.Context, instance *poc
 		if err := controllerutil.SetControllerReference(instance, service, r.Scheme); err != nil {
 			return err
 		}
-		
+
 		service.Spec.Selector = map[string]string{
 			"app.kubernetes.io/name":     "pocket-id",
 			"app.kubernetes.io/instance": instance.Name,
 		}
-		
+
 		service.Spec.Ports = []corev1.ServicePort{
 			{
 				Name:       "http",
@@ -308,28 +305,26 @@ func (r *InstanceReconciler) reconcileService(ctx context.Context, instance *poc
 
 func (r *InstanceReconciler) reconcileRoute(ctx context.Context, instance *pocketidinternalv1alpha1.Instance) error {
 	port := gwapiv1.PortNumber(1411)
+
+	var hostnames []gwapiv1.Hostname
+	if instance.Spec.AppURL != "" {
+		parsedURL, err := url.Parse(instance.Spec.AppURL)
+		if err != nil {
+			return err
+		}
+		hostnames = []gwapiv1.Hostname{gwapiv1.Hostname(parsedURL.Hostname())}
+	}
+
 	route := &gwapiv1.HTTPRoute{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "gateway.networking.k8s.io/v1",
+			Kind:       "HTTPRoute",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      instance.Name,
 			Namespace: instance.Namespace,
 		},
-	}
-
-	var hostnames []gwapiv1.Hostname
-	if instance.Spec.AppURL != "" {
-		parsedUrl, err := url.Parse(instance.Spec.AppURL)
-		if err != nil {
-			return err
-		}
-		hostnames = []gwapiv1.Hostname{gwapiv1.Hostname(parsedUrl.Host)}
-	}
-
-	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, route, func() error {
-		if err := controllerutil.SetControllerReference(instance, route, r.Scheme); err != nil {
-			return err
-		}
-
-		route.Spec = gwapiv1.HTTPRouteSpec{
+		Spec: gwapiv1.HTTPRouteSpec{
 			CommonRouteSpec: gwapiv1.CommonRouteSpec{
 				ParentRefs: instance.Spec.Route.ParentRefs,
 			},
@@ -348,10 +343,16 @@ func (r *InstanceReconciler) reconcileRoute(ctx context.Context, instance *pocke
 					},
 				},
 			},
-		}
-		return nil
-	})
-	return err
+		},
+	}
+
+	if err := controllerutil.SetControllerReference(instance, route, r.Scheme); err != nil {
+		return err
+	}
+
+	return r.Patch(ctx, route, client.Apply,
+		client.FieldOwner("pocket-id-operator"),
+	)
 }
 
 func (r *InstanceReconciler) reconcileVolume(ctx context.Context, instance *pocketidinternalv1alpha1.Instance) error {
