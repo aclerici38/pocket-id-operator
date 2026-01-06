@@ -39,8 +39,9 @@ type HttpRouteConfig struct {
 
 // Environment variable value that can be either a plain value or from a Kubernetes resource
 type EnvValue struct {
-	// Plain text value
+	// Plain text value 16 byte minimum
 	// +optional
+	// +kubebuilder:validation:MinLength=16
 	Value string `json:"value,omitempty"`
 
 	// Source for the environment variable's value

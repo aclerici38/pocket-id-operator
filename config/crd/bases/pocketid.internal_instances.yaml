@@ -52,7 +52,8 @@ spec:
                   Uses application default if empty
                 properties:
                   value:
-                    description: Plain text value
+                    description: Plain text value 16 byte minimum
+                    minLength: 16
                     type: string
                   valueFrom:
                     description: Source for the environment variable's value
@@ -200,7 +201,8 @@ spec:
                   See the official documentation for ENCRYPTION_KEY
                 properties:
                   value:
-                    description: Plain text value
+                    description: Plain text value 16 byte minimum
+                    minLength: 16
                     type: string
                   valueFrom:
                     description: Source for the environment variable's value

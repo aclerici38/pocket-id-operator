@@ -865,7 +865,7 @@ var _ = Describe("Instance Controller", func() {
 				},
 				Spec: pocketidinternalv1alpha1.InstanceSpec{
 					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
-						Value: "plaintext-key",
+						Value: "plaintext-key-with-16-chars",
 					},
 					DatabaseUrl: &pocketidinternalv1alpha1.EnvValue{
 						ValueFrom: &corev1.EnvVarSource{
@@ -915,7 +915,7 @@ var _ = Describe("Instance Controller", func() {
 
 			// EncryptionKey should be plaintext
 			Expect(encKeyEnv).NotTo(BeNil())
-			Expect(encKeyEnv.Value).To(Equal("plaintext-key"))
+			Expect(encKeyEnv.Value).To(Equal("plaintext-key-with-16-chars"))
 			Expect(encKeyEnv.ValueFrom).To(BeNil())
 
 			// DatabaseUrl should be from secret
@@ -925,6 +925,29 @@ var _ = Describe("Instance Controller", func() {
 			Expect(dbUrlEnv.ValueFrom.SecretKeyRef.Name).To(Equal(secret.Name))
 			Expect(dbUrlEnv.ValueFrom.SecretKeyRef.Key).To(Equal("db-password"))
 			Expect(dbUrlEnv.Value).To(BeEmpty())
+		})
+	})
+
+	Context("When creating an Instance with encryption key shorter than 16 bytes", func() {
+		const instanceName = "test-short-key"
+
+		It("Should reject the Instance with validation error", func() {
+			instance := &pocketidinternalv1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.InstanceSpec{
+					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
+						Value: "short-key",
+					},
+				},
+			}
+
+			err := k8sClient.Create(ctx, instance)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("spec.encryptionKey.value"))
+			Expect(err.Error()).To(ContainSubstring("should be at least 16 chars long"))
 		})
 	})
 
