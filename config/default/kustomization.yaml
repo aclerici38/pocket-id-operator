@@ -6,7 +6,7 @@ namespace: pocket-id-operator-system
 # "wordpress" becomes "alices-wordpress".
 # Note that it should also match with the prefix (text before '-') of the namespace
 # field above.
-namePrefix: pocket-id-operator-
+# namePrefix: pocket-id-operator-
 
 # Labels to add to all resources and selectors.
 #labels:
