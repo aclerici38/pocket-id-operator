@@ -124,6 +124,20 @@ type InstanceSpec struct {
 	// Pocket-ID can be run statelessly if using Postgres as a file and db backend
 	// If not enabled mounts an emptydir instead
 	Persistence PersistenceConfig `json:"persistence,omitempty"`
+
+	// Pod security context
+	// +optional
+	PodSecurityContext *corev1.PodSecurityContext `json:"podSecurityContext,omitempty"`
+
+	// Container security context
+	// +optional
+	ContainerSecurityContext *corev1.SecurityContext `json:"containerSecurityContext,omitempty"`
+
+	// HostUsers controls whether the container's user namespace is separate from the host
+	// Defaults to true
+	// +optional
+	// +kubebuilder:default=true
+	HostUsers *bool `json:"hostUsers,omitempty"`
 }
 
 // InstanceStatus defines the observed state of Instance.

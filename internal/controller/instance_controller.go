@@ -176,17 +176,92 @@ func (r *InstanceReconciler) buildPodTemplate(instance *pocketidinternalv1alpha1
 			Labels: labels,
 		},
 		Spec: corev1.PodSpec{
+			SecurityContext: buildPodSecurityContext(instance),
+			HostUsers:       instance.Spec.HostUsers,
 			Containers: []corev1.Container{
 				{
-					Name:         "pocket-id",
-					Image:        instance.Spec.Image,
-					Env:          env,
-					VolumeMounts: volumeMounts,
+					Name:            "pocket-id",
+					Image:           instance.Spec.Image,
+					Env:             env,
+					VolumeMounts:    volumeMounts,
+					SecurityContext: buildContainerSecurityContext(instance),
 				},
 			},
 			Volumes: volumes,
 		},
 	}
+}
+
+func buildPodSecurityContext(instance *pocketidinternalv1alpha1.Instance) *corev1.PodSecurityContext {
+	runAsNonRoot := true
+	runAsUser := int64(65534)
+	fsGroup := int64(65534)
+
+	defaults := &corev1.PodSecurityContext{
+		RunAsNonRoot: &runAsNonRoot,
+		RunAsUser:    &runAsUser,
+		FSGroup:      &fsGroup,
+		SeccompProfile: &corev1.SeccompProfile{
+			Type: corev1.SeccompProfileTypeRuntimeDefault,
+		},
+	}
+
+	if instance.Spec.PodSecurityContext == nil {
+		return defaults
+	}
+
+	// Allow overriding the defaults
+	merged := instance.Spec.PodSecurityContext.DeepCopy()
+	if merged.RunAsNonRoot == nil {
+		merged.RunAsNonRoot = defaults.RunAsNonRoot
+	}
+	if merged.RunAsUser == nil {
+		merged.RunAsUser = defaults.RunAsUser
+	}
+	if merged.FSGroup == nil {
+		merged.FSGroup = defaults.FSGroup
+	}
+	if merged.SeccompProfile == nil {
+		merged.SeccompProfile = defaults.SeccompProfile
+	}
+
+	return merged
+}
+
+func buildContainerSecurityContext(instance *pocketidinternalv1alpha1.Instance) *corev1.SecurityContext {
+	allowPrivilegeEscalation := false
+	runAsNonRoot := true
+	runAsUser := int64(65534)
+
+	defaults := &corev1.SecurityContext{
+		AllowPrivilegeEscalation: &allowPrivilegeEscalation,
+		RunAsNonRoot:             &runAsNonRoot,
+		RunAsUser:                &runAsUser,
+		Capabilities: &corev1.Capabilities{
+			Drop: []corev1.Capability{"ALL"},
+		},
+	}
+
+	if instance.Spec.ContainerSecurityContext == nil {
+		return defaults
+	}
+
+	// Allow overriding the defaults
+	merged := instance.Spec.ContainerSecurityContext.DeepCopy()
+	if merged.AllowPrivilegeEscalation == nil {
+		merged.AllowPrivilegeEscalation = defaults.AllowPrivilegeEscalation
+	}
+	if merged.RunAsNonRoot == nil {
+		merged.RunAsNonRoot = defaults.RunAsNonRoot
+	}
+	if merged.RunAsUser == nil {
+		merged.RunAsUser = defaults.RunAsUser
+	}
+	if merged.Capabilities == nil {
+		merged.Capabilities = defaults.Capabilities
+	}
+
+	return merged
 }
 
 func (r *InstanceReconciler) reconcileDeployment(ctx context.Context, instance *pocketidinternalv1alpha1.Instance, podTemplate corev1.PodTemplateSpec) error {

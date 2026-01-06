@@ -1219,4 +1219,172 @@ var _ = Describe("Instance Controller", func() {
 			}, timeout, interval).Should(BeTrue())
 		})
 	})
+
+	Context("When creating an Instance with default security contexts", func() {
+		const instanceName = "test-security-defaults"
+
+		var instance *pocketidinternalv1alpha1.Instance
+		var secret *corev1.Secret
+
+		BeforeEach(func() {
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName + "-secret",
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"encryption-key": []byte("test-encryption-key-value"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			instance = &pocketidinternalv1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.InstanceSpec{
+					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
+						ValueFrom: &corev1.EnvVarSource{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: secret.Name,
+								},
+								Key: "encryption-key",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if instance != nil {
+				_ = k8sClient.Delete(ctx, instance)
+			}
+			if secret != nil {
+				_ = k8sClient.Delete(ctx, secret)
+			}
+		})
+
+		It("Should apply secure default security contexts", func() {
+			deployment := &appsv1.Deployment{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName,
+					Namespace: namespace,
+				}, deployment)
+			}, timeout, interval).Should(Succeed())
+
+			// Verify pod security context defaults
+			podSecCtx := deployment.Spec.Template.Spec.SecurityContext
+			Expect(podSecCtx).NotTo(BeNil())
+			Expect(podSecCtx.RunAsNonRoot).NotTo(BeNil())
+			Expect(*podSecCtx.RunAsNonRoot).To(BeTrue())
+			Expect(podSecCtx.RunAsUser).NotTo(BeNil())
+			Expect(*podSecCtx.RunAsUser).To(Equal(int64(65534)))
+			Expect(podSecCtx.FSGroup).NotTo(BeNil())
+			Expect(*podSecCtx.FSGroup).To(Equal(int64(65534)))
+			Expect(podSecCtx.SeccompProfile).NotTo(BeNil())
+			Expect(podSecCtx.SeccompProfile.Type).To(Equal(corev1.SeccompProfileTypeRuntimeDefault))
+
+			// Verify container security context defaults
+			containerSecCtx := deployment.Spec.Template.Spec.Containers[0].SecurityContext
+			Expect(containerSecCtx).NotTo(BeNil())
+			Expect(containerSecCtx.AllowPrivilegeEscalation).NotTo(BeNil())
+			Expect(*containerSecCtx.AllowPrivilegeEscalation).To(BeFalse())
+			Expect(containerSecCtx.RunAsNonRoot).NotTo(BeNil())
+			Expect(*containerSecCtx.RunAsNonRoot).To(BeTrue())
+			Expect(containerSecCtx.RunAsUser).NotTo(BeNil())
+			Expect(*containerSecCtx.RunAsUser).To(Equal(int64(65534)))
+			Expect(containerSecCtx.Capabilities).NotTo(BeNil())
+			Expect(containerSecCtx.Capabilities.Drop).To(ContainElement(corev1.Capability("ALL")))
+		})
+	})
+
+	Context("When creating an Instance with custom security contexts", func() {
+		const instanceName = "test-security-custom"
+
+		var instance *pocketidinternalv1alpha1.Instance
+		var secret *corev1.Secret
+
+		BeforeEach(func() {
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName + "-secret",
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"encryption-key": []byte("test-encryption-key-value"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			customRunAsUser := int64(1000)
+			customFSGroup := int64(2000)
+			readOnlyRootFS := true
+
+			instance = &pocketidinternalv1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.InstanceSpec{
+					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
+						ValueFrom: &corev1.EnvVarSource{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: secret.Name,
+								},
+								Key: "encryption-key",
+							},
+						},
+					},
+					PodSecurityContext: &corev1.PodSecurityContext{
+						FSGroup: &customFSGroup,
+					},
+					ContainerSecurityContext: &corev1.SecurityContext{
+						RunAsUser:              &customRunAsUser,
+						ReadOnlyRootFilesystem: &readOnlyRootFS,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if instance != nil {
+				_ = k8sClient.Delete(ctx, instance)
+			}
+			if secret != nil {
+				_ = k8sClient.Delete(ctx, secret)
+			}
+		})
+
+		It("Should merge custom values with defaults", func() {
+			deployment := &appsv1.Deployment{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName,
+					Namespace: namespace,
+				}, deployment)
+			}, timeout, interval).Should(Succeed())
+
+			// Verify pod security context - custom FSGroup, default RunAsUser
+			podSecCtx := deployment.Spec.Template.Spec.SecurityContext
+			Expect(podSecCtx).NotTo(BeNil())
+			Expect(*podSecCtx.FSGroup).To(Equal(int64(2000)))    // Custom value
+			Expect(*podSecCtx.RunAsUser).To(Equal(int64(65534))) // Default value
+			Expect(*podSecCtx.RunAsNonRoot).To(BeTrue())         // Default value
+
+			// Verify container security context - custom RunAsUser and ReadOnlyRootFilesystem, default AllowPrivilegeEscalation
+			containerSecCtx := deployment.Spec.Template.Spec.Containers[0].SecurityContext
+			Expect(containerSecCtx).NotTo(BeNil())
+			Expect(*containerSecCtx.RunAsUser).To(Equal(int64(1000)))                              // Custom value
+			Expect(*containerSecCtx.ReadOnlyRootFilesystem).To(BeTrue())                           // Custom value
+			Expect(*containerSecCtx.AllowPrivilegeEscalation).To(BeFalse())                        // Default value
+			Expect(containerSecCtx.Capabilities.Drop).To(ContainElement(corev1.Capability("ALL"))) // Default value
+		})
+	})
 })
