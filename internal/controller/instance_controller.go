@@ -189,6 +189,42 @@ func (r *InstanceReconciler) buildPodTemplate(instance *pocketidinternalv1alpha1
 					Env:             env,
 					VolumeMounts:    volumeMounts,
 					SecurityContext: buildContainerSecurityContext(instance),
+					ReadinessProbe: func() *corev1.Probe {
+						if instance.Spec.ReadinessProbe != nil {
+							return instance.Spec.ReadinessProbe
+						}
+						return &corev1.Probe{
+							ProbeHandler: corev1.ProbeHandler{
+								HTTPGet: &corev1.HTTPGetAction{
+									Path: "/readyz",
+									Port: intstr.FromInt(1411),
+								},
+							},
+							InitialDelaySeconds: 10,
+							PeriodSeconds:       10,
+							TimeoutSeconds:      5,
+							SuccessThreshold:    1,
+							FailureThreshold:    3,
+						}
+					}(),
+					LivenessProbe: func() *corev1.Probe {
+						if instance.Spec.LivenessProbe != nil {
+							return instance.Spec.LivenessProbe
+						}
+						return &corev1.Probe{
+							ProbeHandler: corev1.ProbeHandler{
+								HTTPGet: &corev1.HTTPGetAction{
+									Path: "/readyz",
+									Port: intstr.FromInt(1411),
+								},
+							},
+							InitialDelaySeconds: 30,
+							PeriodSeconds:       30,
+							TimeoutSeconds:      10,
+							SuccessThreshold:    1,
+							FailureThreshold:    5,
+						}
+					}(),
 				},
 			},
 			Volumes: volumes,
@@ -315,6 +351,10 @@ func (r *InstanceReconciler) reconcileDeployment(ctx context.Context, instance *
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
 			Selector: &metav1.LabelSelector{MatchLabels: selector},
+			// Pocket-ID uses locking so only 1 process can hold the DB
+			Strategy: appsv1.DeploymentStrategy{
+				Type: appsv1.RecreateDeploymentStrategyType,
+			},
 			Template: podTemplate,
 		},
 	}

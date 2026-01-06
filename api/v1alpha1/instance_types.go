@@ -146,6 +146,14 @@ type InstanceSpec struct {
 	// Additional annotations to add to the workload and pod
 	// +optional
 	Annotations map[string]string `json:"annotations,omitempty"`
+
+	// Readiness probe configuration (merged with defaults)
+	// +optional
+	ReadinessProbe *corev1.Probe `json:"readinessProbe,omitempty"`
+
+	// Liveness probe configuration (merged with defaults)
+	// +optional
+	LivenessProbe *corev1.Probe `json:"livenessProbe,omitempty"`
 }
 
 // InstanceStatus defines the observed state of Instance.
