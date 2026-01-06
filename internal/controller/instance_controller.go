@@ -360,6 +360,13 @@ func (r *InstanceReconciler) reconcileVolume(ctx context.Context, instance *pock
 	if instance.Spec.Persistence.ExistingClaim != "" {
 		return nil
 	}
+	
+	// Ensure storageClass gets set to nil if empty
+	var scn *string
+	if instance.Spec.Persistence.StorageClass != "" {
+		sc := instance.Spec.Persistence.StorageClass
+		scn = &sc
+	}
 
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
@@ -382,7 +389,7 @@ func (r *InstanceReconciler) reconcileVolume(ctx context.Context, instance *pock
 
 			pvc.Spec = corev1.PersistentVolumeClaimSpec{
 				AccessModes:      accessModes,
-				StorageClassName: &instance.Spec.Persistence.StorageClass,
+				StorageClassName: scn,
 				Resources: corev1.VolumeResourceRequirements{
 					Requests: corev1.ResourceList{
 						corev1.ResourceStorage: instance.Spec.Persistence.Size,
