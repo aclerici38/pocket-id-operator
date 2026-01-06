@@ -35,6 +35,13 @@ import (
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 )
 
+const (
+	// Environment variable mapping
+	envEncryptionKey      = "ENCRYPTION_KEY"
+	envDBConnectionString = "DB_CONNECTION_STRING"
+	envAppURL             = "APP_URL"
+)
+
 // InstanceReconciler reconciles a Instance object
 type InstanceReconciler struct {
 	client.Client
@@ -114,19 +121,19 @@ func (r *InstanceReconciler) buildPodTemplate(instance *pocketidinternalv1alpha1
 	}
 
 	encryptionKeyEnv := instance.Spec.EncryptionKey
-	encryptionKeyEnv.Name = "ENCRYPTION_KEY"
+	encryptionKeyEnv.Name = envEncryptionKey
 
 	env := []corev1.EnvVar{encryptionKeyEnv}
 
 	if instance.Spec.DatabaseUrl != nil {
 		dbUrlEnv := *instance.Spec.DatabaseUrl
-		dbUrlEnv.Name = "DB_CONNECTION_STRING"
+		dbUrlEnv.Name = envDBConnectionString
 		env = append(env, dbUrlEnv)
 	}
 
 	if instance.Spec.AppURL != "" {
 		env = append(env, corev1.EnvVar{
-			Name:  "APP_URL",
+			Name:  envAppURL,
 			Value: instance.Spec.AppURL,
 		})
 	}

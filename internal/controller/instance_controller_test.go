@@ -155,10 +155,10 @@ var _ = Describe("Instance Controller", func() {
 			var encryptionKeyEnv *corev1.EnvVar
 			var appURLEnv *corev1.EnvVar
 			for i := range envVars {
-				if envVars[i].Name == "ENCRYPTION_KEY" {
+				if envVars[i].Name == envEncryptionKey {
 					encryptionKeyEnv = &envVars[i]
 				}
-				if envVars[i].Name == "APP_URL" {
+				if envVars[i].Name == envAppURL {
 					appURLEnv = &envVars[i]
 				}
 			}
@@ -642,10 +642,10 @@ var _ = Describe("Instance Controller", func() {
 			var encKeyEnv *corev1.EnvVar
 			var dbUrlEnv *corev1.EnvVar
 			for i := range envVars {
-				if envVars[i].Name == "ENCRYPTION_KEY" {
+				if envVars[i].Name == envEncryptionKey {
 					encKeyEnv = &envVars[i]
 				}
-				if envVars[i].Name == "DB_CONNECTION_STRING" {
+				if envVars[i].Name == envDBConnectionString {
 					dbUrlEnv = &envVars[i]
 				}
 			}
@@ -725,10 +725,10 @@ var _ = Describe("Instance Controller", func() {
 			var encKeyEnv *corev1.EnvVar
 			var dbUrlEnv *corev1.EnvVar
 			for i := range envVars {
-				if envVars[i].Name == "ENCRYPTION_KEY" {
+				if envVars[i].Name == envEncryptionKey {
 					encKeyEnv = &envVars[i]
 				}
-				if envVars[i].Name == "DB_CONNECTION_STRING" {
+				if envVars[i].Name == envDBConnectionString {
 					dbUrlEnv = &envVars[i]
 				}
 			}
