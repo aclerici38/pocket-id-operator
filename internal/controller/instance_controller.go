@@ -210,55 +210,69 @@ func (r *InstanceReconciler) buildPodTemplate(instance *pocketidinternalv1alpha1
 }
 
 func (r *InstanceReconciler) reconcileDeployment(ctx context.Context, instance *pocketidinternalv1alpha1.Instance, podTemplate corev1.PodTemplateSpec) error {
+	replicas := int32(1)
+	
+	selector := map[string]string{
+		"app.kubernetes.io/name":     "pocket-id",
+    	"app.kubernetes.io/instance": instance.Name,
+	}
+	
 	deployment := &appsv1.Deployment{
+		// Add type meta for SSA patching
+		TypeMeta: metav1.TypeMeta{
+		    APIVersion: "apps/v1",
+		    Kind:       "Deployment",
+	 	},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      instance.Name,
 			Namespace: instance.Namespace,
 		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{MatchLabels: selector},
+			Template: podTemplate,
+		},
 	}
 
-	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, deployment, func() error {
-		if err := controllerutil.SetControllerReference(instance, deployment, r.Scheme); err != nil {
-			return err
-		}
+	if err := controllerutil.SetControllerReference(instance, deployment, r.Scheme); err != nil {
+		return err
+	}
 
-		replicas := int32(1)
-		deployment.Spec = appsv1.DeploymentSpec{
-			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{
-				MatchLabels: podTemplate.Labels,
-			},
-			Template: podTemplate,
-		}
-		return nil
-	})
-	return err
+	return r.Patch(ctx, deployment,
+	    client.Apply,
+	    client.FieldOwner("pocket-id-operator"),
+  	)
 }
 
 func (r *InstanceReconciler) reconcileStatefulSet(ctx context.Context, instance *pocketidinternalv1alpha1.Instance, podTemplate corev1.PodTemplateSpec) error {
+	replicas := int32(1)
+	
+	selector := map[string]string{
+		"app.kubernetes.io/name":     "pocket-id",
+    	"app.kubernetes.io/instance": instance.Name,
+	}
+	
 	sts := &appsv1.StatefulSet{
+		TypeMeta: metav1.TypeMeta{
+		    APIVersion: "apps/v1",
+		    Kind:       "StatefulSet",
+	 	},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      instance.Name,
 			Namespace: instance.Namespace,
 		},
-	}
-
-	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, sts, func() error {
-		if err := controllerutil.SetControllerReference(instance, sts, r.Scheme); err != nil {
-			return err
-		}
-
-		replicas := int32(1)
-		sts.Spec = appsv1.StatefulSetSpec{
+		Spec: appsv1.StatefulSetSpec{
 			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{
-				MatchLabels: podTemplate.Labels,
-			},
+			ServiceName: instance.Name,
+			Selector: &metav1.LabelSelector{MatchLabels: selector},
 			Template: podTemplate,
-		}
-		return nil
-	})
-	return err
+		},
+	}
+	
+	if err := controllerutil.SetControllerReference(instance, sts, r.Scheme); err != nil {
+		return err
+	}
+	return r.Patch(ctx, sts, client.Apply, client.FieldOwner("pocket-id-operator"))
 }
 
 func (r *InstanceReconciler) reconcileService(ctx context.Context, instance *pocketidinternalv1alpha1.Instance) error {
