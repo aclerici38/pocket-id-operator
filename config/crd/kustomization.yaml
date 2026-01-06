@@ -3,8 +3,6 @@
 # It should be run by config/default
 resources:
   - bases/pocketid.internal_instances.yaml
-  # Gateway API CRDs
-  - gateway-api-v1.4.1.yaml
   # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

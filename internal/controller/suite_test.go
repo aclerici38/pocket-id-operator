@@ -74,11 +74,7 @@ var _ = BeforeSuite(func() {
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "..", "config", "crd", "bases"),
-		},
-		CRDInstallOptions: envtest.CRDInstallOptions{
-			Paths: []string{
-				filepath.Join("..", "..", "config", "crd"),
-			},
+			filepath.Join("..", "..", "config", "crd", "gateway-api.yaml"),
 		},
 		ErrorIfCRDPathMissing: true,
 	}

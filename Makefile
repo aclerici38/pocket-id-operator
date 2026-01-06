@@ -48,9 +48,8 @@ GATEWAY_API_VERSION ?= v1.4.1
 update-gateway-api-crds: ## Update Gateway API CRDs to the version specified by GATEWAY_API_VERSION
 	@echo "Downloading Gateway API CRDs version $(GATEWAY_API_VERSION)..."
 	@curl -fsSL https://github.com/kubernetes-sigs/gateway-api/releases/download/$(GATEWAY_API_VERSION)/standard-install.yaml \
-		-o config/crd/gateway-api-$(GATEWAY_API_VERSION).yaml
+		-o config/crd/gateway-api.yaml
 	@echo "Gateway API CRDs updated successfully."
-	@echo "Note: Update config/crd/kustomization.yaml if the version changed."
 
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
