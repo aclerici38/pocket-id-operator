@@ -40,6 +40,9 @@ const (
 	envEncryptionKey      = "ENCRYPTION_KEY"
 	envDBConnectionString = "DB_CONNECTION_STRING"
 	envAppURL             = "APP_URL"
+
+	deploymentTypeDeployment  = "Deployment"
+	deploymentTypeStatefulSet = "StatefulSet"
 )
 
 // InstanceReconciler reconciles a Instance object
@@ -107,7 +110,7 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 func (r *InstanceReconciler) reconcileWorkload(ctx context.Context, instance *pocketidinternalv1alpha1.Instance) error {
 	podTemplate := r.buildPodTemplate(instance)
 
-	if instance.Spec.DeploymentType == "StatefulSet" {
+	if instance.Spec.DeploymentType == deploymentTypeStatefulSet {
 		return r.reconcileStatefulSet(ctx, instance, podTemplate)
 	}
 	return r.reconcileDeployment(ctx, instance, podTemplate)
@@ -157,26 +160,7 @@ func (r *InstanceReconciler) buildPodTemplate(instance *pocketidinternalv1alpha1
 	var volumes []corev1.Volume
 	var volumeMounts []corev1.VolumeMount
 
-	if instance.Spec.Persistence.Enabled {
-		claimName := instance.Spec.Persistence.ExistingClaim
-		if claimName == "" {
-			claimName = instance.Name + "-data"
-		}
-
-		volumes = append(volumes, corev1.Volume{
-			Name: "data",
-			VolumeSource: corev1.VolumeSource{
-				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-					ClaimName: claimName,
-				},
-			},
-		})
-
-		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      "data",
-			MountPath: "/app/data",
-		})
-	} else {
+	if !instance.Spec.Persistence.Enabled {
 		// Use emptyDir if persistence is not enabled
 		volumes = append(volumes, corev1.Volume{
 			Name: "data",
@@ -211,6 +195,30 @@ func (r *InstanceReconciler) buildPodTemplate(instance *pocketidinternalv1alpha1
 
 func (r *InstanceReconciler) reconcileDeployment(ctx context.Context, instance *pocketidinternalv1alpha1.Instance, podTemplate corev1.PodTemplateSpec) error {
 	replicas := int32(1)
+
+	if instance.Spec.Persistence.Enabled {
+		claimName := instance.Spec.Persistence.ExistingClaim
+		if claimName == "" {
+			claimName = instance.Name + "-data"
+		}
+
+		podTemplate.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
+			{
+				Name:      "data",
+				MountPath: "/app/data",
+			},
+		}
+		podTemplate.Spec.Volumes = []corev1.Volume{
+			{
+				Name: "data",
+				VolumeSource: corev1.VolumeSource{
+					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+						ClaimName: claimName,
+					},
+				},
+			},
+		}
+	}
 
 	selector := map[string]string{
 		"app.kubernetes.io/name":     "pocket-id",
@@ -249,6 +257,46 @@ func (r *InstanceReconciler) reconcileStatefulSet(ctx context.Context, instance 
 		"app.kubernetes.io/instance": instance.Name,
 	}
 
+	stsSpec := &appsv1.StatefulSetSpec{
+		Replicas:    &replicas,
+		ServiceName: instance.Name,
+		Selector:    &metav1.LabelSelector{MatchLabels: selector},
+		Template:    podTemplate,
+	}
+
+	if instance.Spec.Persistence.Enabled {
+		stsSpec.Template.Spec.Volumes = nil
+		stsSpec.Template.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
+			{
+				Name:      "data",
+				MountPath: "/app/data",
+			},
+		}
+
+		var scn *string
+		if instance.Spec.Persistence.StorageClass != "" {
+			sc := instance.Spec.Persistence.StorageClass
+			scn = &sc
+		}
+
+		stsSpec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "data",
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					AccessModes:      instance.Spec.Persistence.AccessModes,
+					StorageClassName: scn,
+					Resources: corev1.VolumeResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceStorage: instance.Spec.Persistence.Size,
+						},
+					},
+				},
+			},
+		}
+	}
+
 	sts := &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "apps/v1",
@@ -258,12 +306,7 @@ func (r *InstanceReconciler) reconcileStatefulSet(ctx context.Context, instance 
 			Name:      instance.Name,
 			Namespace: instance.Namespace,
 		},
-		Spec: appsv1.StatefulSetSpec{
-			Replicas:    &replicas,
-			ServiceName: instance.Name,
-			Selector:    &metav1.LabelSelector{MatchLabels: selector},
-			Template:    podTemplate,
-		},
+		Spec: *stsSpec,
 	}
 
 	if err := controllerutil.SetControllerReference(instance, sts, r.Scheme); err != nil {
@@ -357,10 +400,10 @@ func (r *InstanceReconciler) reconcileRoute(ctx context.Context, instance *pocke
 
 func (r *InstanceReconciler) reconcileVolume(ctx context.Context, instance *pocketidinternalv1alpha1.Instance) error {
 	// If using an existing claim, no need to create a PVC
-	if instance.Spec.Persistence.ExistingClaim != "" {
+	if instance.Spec.Persistence.ExistingClaim != "" || instance.Spec.DeploymentType == deploymentTypeStatefulSet {
 		return nil
 	}
-	
+
 	// Ensure storageClass gets set to nil if empty
 	var scn *string
 	if instance.Spec.Persistence.StorageClass != "" {
@@ -408,7 +451,7 @@ func (r *InstanceReconciler) updateStatus(ctx context.Context, instance *pocketi
 	reason := "Progressing"
 	message := "Workload is starting up"
 
-	if instance.Spec.DeploymentType == "StatefulSet" {
+	if instance.Spec.DeploymentType == deploymentTypeStatefulSet {
 		sts := &appsv1.StatefulSet{}
 		if err := r.Get(ctx, client.ObjectKeyFromObject(instance), sts); err == nil {
 			if sts.Status.ReadyReplicas > 0 {
