@@ -13,9 +13,6 @@ jobs:
   test:
     uses: ./.github/workflows/test.yml
 
-  test-e2e:
-    uses: ./.github/workflows/test-e2e.yml
-
   lint:
     uses: ./.github/workflows/lint.yml
 
@@ -50,3 +47,6 @@ jobs:
 
       - name: Build and push :commit-main tag
         run: make docker-build docker-push IMG=ghcr.io/${{ steps.meta.outputs.repo_owner }}/pocket-id-operator:${{ steps.meta.outputs.short_sha }}-main
+        
+  test-e2e:
+    uses: ./.github/workflows/test-e2e.yml
