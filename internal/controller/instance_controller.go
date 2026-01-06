@@ -273,19 +273,18 @@ func (r *InstanceReconciler) reconcileService(ctx context.Context, instance *poc
 		if err := controllerutil.SetControllerReference(instance, service, r.Scheme); err != nil {
 			return err
 		}
-
-		service.Spec = corev1.ServiceSpec{
-			Selector: map[string]string{
-				"app.kubernetes.io/name":     "pocket-id",
-				"app.kubernetes.io/instance": instance.Name,
-			},
-			Ports: []corev1.ServicePort{
-				{
-					Name:       "http",
-					Port:       1411,
-					TargetPort: intstr.FromInt(1411),
-					Protocol:   corev1.ProtocolTCP,
-				},
+		
+		service.Spec.Selector = map[string]string{
+			"app.kubernetes.io/name":     "pocket-id",
+			"app.kubernetes.io/instance": instance.Name,
+		}
+		
+		service.Spec.Ports = []corev1.ServicePort{
+			{
+				Name:       "http",
+				Port:       1411,
+				TargetPort: intstr.FromInt(1411),
+				Protocol:   corev1.ProtocolTCP,
 			},
 		}
 		return nil
