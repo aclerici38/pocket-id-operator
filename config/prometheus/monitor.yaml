@@ -3,10 +3,10 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   labels:
-    control-plane: pocket-id-operator
+    control-plane: controller-manager
     app.kubernetes.io/name: pocket-id-operator
     app.kubernetes.io/managed-by: kustomize
-  name: pocket-id-operator-metrics-monitor
+  name: controller-manager-metrics-monitor
   namespace: system
 spec:
   endpoints:
@@ -23,5 +23,5 @@ spec:
         insecureSkipVerify: true
   selector:
     matchLabels:
-      control-plane: pocket-id-operator
+      control-plane: controller-manager
       app.kubernetes.io/name: pocket-id-operator

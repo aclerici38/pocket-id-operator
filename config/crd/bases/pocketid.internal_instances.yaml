@@ -706,7 +706,7 @@ spec:
                 description: Additional labels to add to the workload and pod
                 type: object
               livenessProbe:
-                description: Liveness probe configuration
+                description: Liveness probe configuration (merged with defaults)
                 properties:
                   exec:
                     description: Exec specifies a command to execute in the container.
@@ -1123,7 +1123,7 @@ spec:
                     type: object
                 type: object
               readinessProbe:
-                description: Readiness probe configuration
+                description: Readiness probe configuration (merged with defaults)
                 properties:
                   exec:
                     description: Exec specifies a command to execute in the container.

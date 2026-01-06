@@ -12,16 +12,16 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      control-plane: pocket-id-operator
+      control-plane: controller-manager
       app.kubernetes.io/name: pocket-id-operator
   policyTypes:
     - Ingress
   ingress:
     # This allows ingress traffic from any namespace with the label metrics: enabled
     - from:
-        - namespaceSelector:
-            matchLabels:
-              metrics: enabled # Only from namespaces with this label
+      - namespaceSelector:
+          matchLabels:
+            metrics: enabled  # Only from namespaces with this label
       ports:
         - port: 8443
           protocol: TCP
