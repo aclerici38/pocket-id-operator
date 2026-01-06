@@ -5,13 +5,13 @@ metadata:
     control-plane: controller-manager
     app.kubernetes.io/name: pocket-id-operator
     app.kubernetes.io/managed-by: kustomize
-  name: system
+  name: pocket-id-operator-system
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: controller-manager
-  namespace: system
+  name: pocket-id-operator
+  namespace: pocket-id-operator-system
   labels:
     control-plane: controller-manager
     app.kubernetes.io/name: pocket-id-operator
@@ -95,5 +95,5 @@ spec:
             memory: 64Mi
         volumeMounts: []
       volumes: []
-      serviceAccountName: controller-manager
+      serviceAccountName: pocket-id-operator
       terminationGracePeriodSeconds: 10

@@ -11,7 +11,7 @@ metadata:
   labels:
     app.kubernetes.io/name: pocket-id-operator
     app.kubernetes.io/managed-by: kustomize
-  name: instance-viewer-role
+  name: pocket-id-operator-instance-viewer-role
 rules:
 - apiGroups:
   - pocketid.internal

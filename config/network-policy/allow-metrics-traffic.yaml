@@ -8,7 +8,7 @@ metadata:
     app.kubernetes.io/name: pocket-id-operator
     app.kubernetes.io/managed-by: kustomize
   name: allow-metrics-traffic
-  namespace: system
+  namespace: pocket-id-operator-system
 spec:
   podSelector:
     matchLabels:

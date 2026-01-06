@@ -37,10 +37,10 @@ import (
 const namespace = "pocket-id-operator-system"
 
 // serviceAccountName created for the project
-const serviceAccountName = "pocket-id-operator-controller-manager"
+const serviceAccountName = "pocket-id-operator"
 
 // metricsServiceName is the name of the metrics service of the project
-const metricsServiceName = "pocket-id-operator-controller-manager-metrics-service"
+const metricsServiceName = "pocket-id-operator-metrics-service"
 
 // metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
 const metricsRoleBindingName = "pocket-id-operator-metrics-binding"
@@ -159,7 +159,7 @@ var _ = Describe("Manager", Ordered, func() {
 				podNames := utils.GetNonEmptyLines(podOutput)
 				g.Expect(podNames).To(HaveLen(1), "expected 1 controller pod running")
 				controllerPodName = podNames[0]
-				g.Expect(controllerPodName).To(ContainSubstring("controller-manager"))
+				g.Expect(controllerPodName).To(ContainSubstring("pocket-id-operator"))
 
 				// Validate the pod's status
 				cmd = exec.Command("kubectl", "get",
