@@ -1031,5 +1031,16 @@ var _ = Describe("Instance Controller", func() {
 				return deployment.Spec.Template.Spec.Containers[0].Image
 			}, timeout, interval).Should(Equal("ghcr.io/pocket-id/pocket-id:v2.0.0"))
 		})
+
+		It("Should reject changes to deploymentType", func() {
+			// Attempt to change deploymentType from Deployment to StatefulSet
+			Eventually(func() error {
+				if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(instance), instance); err != nil {
+					return err
+				}
+				instance.Spec.DeploymentType = "StatefulSet"
+				return k8sClient.Update(ctx, instance)
+			}, timeout, interval).ShouldNot(Succeed())
+		})
 	})
 })

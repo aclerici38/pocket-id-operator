@@ -189,7 +189,7 @@ spec:
                 default: Deployment
                 description: |-
                   Kind of workload to create, Deployment or StatefulSet
-                  Defaults to Deployment
+                  Defaults to Deployment (immutable after creation)
                 enum:
                 - Deployment
                 - StatefulSet
@@ -696,6 +696,9 @@ spec:
             required:
             - encryptionKey
             type: object
+            x-kubernetes-validations:
+            - message: deploymentType is immutable
+              rule: self.deploymentType == oldSelf.deploymentType
           status:
             description: status defines the observed state of Instance
             properties:

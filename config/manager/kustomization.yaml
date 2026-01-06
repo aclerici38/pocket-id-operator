@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: ghcr.io/aclerici38/pocket-id-operator
-  newTag: 0ed4bf6-main
+  newTag: 409c3cb-main

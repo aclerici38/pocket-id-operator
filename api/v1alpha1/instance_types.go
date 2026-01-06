@@ -75,6 +75,7 @@ type PersistenceConfig struct {
 }
 
 // InstanceSpec defines the desired state of Instance
+// +kubebuilder:validation:XValidation:rule="self.deploymentType == oldSelf.deploymentType",message="deploymentType is immutable"
 type InstanceSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
@@ -82,7 +83,7 @@ type InstanceSpec struct {
 	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
 
 	// Kind of workload to create, Deployment or StatefulSet
-	// Defaults to Deployment
+	// Defaults to Deployment (immutable after creation)
 	// +kubebuilder:validation:Enum=Deployment;StatefulSet
 	// +kubebuilder:default=Deployment
 	DeploymentType string `json:"deploymentType,omitempty"`
