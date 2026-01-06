@@ -45,7 +45,7 @@ rules:
 - apiGroups:
   - pocketid.internal
   resources:
-  - instances
+  - pocketidinstances
   verbs:
   - create
   - delete
@@ -57,13 +57,13 @@ rules:
 - apiGroups:
   - pocketid.internal
   resources:
-  - instances/finalizers
+  - pocketidinstances/finalizers
   verbs:
   - update
 - apiGroups:
   - pocketid.internal
   resources:
-  - instances/status
+  - pocketidinstances/status
   verbs:
   - get
   - patch

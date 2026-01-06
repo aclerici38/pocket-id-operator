@@ -47,15 +47,15 @@ const (
 	deploymentTypeStatefulSet = "StatefulSet"
 )
 
-// InstanceReconciler reconciles a Instance object
-type InstanceReconciler struct {
+// PocketIDInstanceReconciler reconciles a PocketIDInstance object
+type PocketIDInstanceReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=pocketid.internal,resources=instances,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=pocketid.internal,resources=instances/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=pocketid.internal,resources=instances/finalizers,verbs=update
+// +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidinstances,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidinstances/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidinstances/finalizers,verbs=update
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
@@ -65,21 +65,21 @@ type InstanceReconciler struct {
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 // TODO(user): Modify the Reconcile function to compare the state specified by
-// the Instance object against the actual cluster state, and then
+// the PocketIDInstance object against the actual cluster state, and then
 // perform operations to make the cluster state reflect the state specified by
 // the user.
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.22.4/pkg/reconcile
-func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *PocketIDInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	instance := &pocketidinternalv1alpha1.Instance{}
+	instance := &pocketidinternalv1alpha1.PocketIDInstance{}
 	if err := r.Get(ctx, req.NamespacedName, instance); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	log.Info("Reconciling Instance", "name", instance.Name)
+	log.Info("Reconciling PocketIDInstance", "name", instance.Name)
 
 	if err := r.reconcileWorkload(ctx, instance); err != nil {
 		return ctrl.Result{}, err
@@ -105,7 +105,7 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 }
 
 // Helpers
-func (r *InstanceReconciler) reconcileWorkload(ctx context.Context, instance *pocketidinternalv1alpha1.Instance) error {
+func (r *PocketIDInstanceReconciler) reconcileWorkload(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
 	podTemplate := r.buildPodTemplate(instance)
 
 	if instance.Spec.DeploymentType == deploymentTypeStatefulSet {
@@ -114,7 +114,7 @@ func (r *InstanceReconciler) reconcileWorkload(ctx context.Context, instance *po
 	return r.reconcileDeployment(ctx, instance, podTemplate)
 }
 
-func (r *InstanceReconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.Instance) corev1.PodTemplateSpec {
+func (r *PocketIDInstanceReconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketIDInstance) corev1.PodTemplateSpec {
 	labels := make(map[string]string)
 	maps.Copy(labels, instance.Spec.Labels)
 	labels["app.kubernetes.io/name"] = "pocket-id"
@@ -234,7 +234,7 @@ func (r *InstanceReconciler) buildPodTemplate(instance *pocketidinternalv1alpha1
 	}
 }
 
-func buildResources(instance *pocketidinternalv1alpha1.Instance) corev1.ResourceRequirements {
+func buildResources(instance *pocketidinternalv1alpha1.PocketIDInstance) corev1.ResourceRequirements {
 	defaults := corev1.ResourceRequirements{
 		Requests: corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("50m"),
@@ -261,7 +261,7 @@ func buildResources(instance *pocketidinternalv1alpha1.Instance) corev1.Resource
 	}
 }
 
-func buildPodSecurityContext(instance *pocketidinternalv1alpha1.Instance) *corev1.PodSecurityContext {
+func buildPodSecurityContext(instance *pocketidinternalv1alpha1.PocketIDInstance) *corev1.PodSecurityContext {
 	runAsNonRoot := true
 	runAsUser := int64(65534)
 	fsGroup := int64(65534)
@@ -297,7 +297,7 @@ func buildPodSecurityContext(instance *pocketidinternalv1alpha1.Instance) *corev
 	return merged
 }
 
-func buildContainerSecurityContext(instance *pocketidinternalv1alpha1.Instance) *corev1.SecurityContext {
+func buildContainerSecurityContext(instance *pocketidinternalv1alpha1.PocketIDInstance) *corev1.SecurityContext {
 	allowPrivilegeEscalation := false
 	runAsNonRoot := true
 	runAsUser := int64(65534)
@@ -333,7 +333,7 @@ func buildContainerSecurityContext(instance *pocketidinternalv1alpha1.Instance) 
 	return merged
 }
 
-func (r *InstanceReconciler) reconcileDeployment(ctx context.Context, instance *pocketidinternalv1alpha1.Instance, podTemplate corev1.PodTemplateSpec) error {
+func (r *PocketIDInstanceReconciler) reconcileDeployment(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, podTemplate corev1.PodTemplateSpec) error {
 	replicas := int32(1)
 
 	if instance.Spec.Persistence.Enabled {
@@ -395,7 +395,7 @@ func (r *InstanceReconciler) reconcileDeployment(ctx context.Context, instance *
 	return r.Patch(ctx, deployment, client.Apply, client.FieldOwner("pocket-id-operator"))
 }
 
-func (r *InstanceReconciler) reconcileStatefulSet(ctx context.Context, instance *pocketidinternalv1alpha1.Instance, podTemplate corev1.PodTemplateSpec) error {
+func (r *PocketIDInstanceReconciler) reconcileStatefulSet(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, podTemplate corev1.PodTemplateSpec) error {
 	replicas := int32(1)
 
 	selector := map[string]string{
@@ -463,7 +463,7 @@ func (r *InstanceReconciler) reconcileStatefulSet(ctx context.Context, instance 
 	return r.Patch(ctx, sts, client.Apply, client.FieldOwner("pocket-id-operator"))
 }
 
-func (r *InstanceReconciler) reconcileService(ctx context.Context, instance *pocketidinternalv1alpha1.Instance) error {
+func (r *PocketIDInstanceReconciler) reconcileService(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      instance.Name,
@@ -494,7 +494,7 @@ func (r *InstanceReconciler) reconcileService(ctx context.Context, instance *poc
 	return err
 }
 
-func (r *InstanceReconciler) reconcileRoute(ctx context.Context, instance *pocketidinternalv1alpha1.Instance) error {
+func (r *PocketIDInstanceReconciler) reconcileRoute(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
 	route := &gwapiv1.HTTPRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      instance.Name,
@@ -553,7 +553,7 @@ func (r *InstanceReconciler) reconcileRoute(ctx context.Context, instance *pocke
 	)
 }
 
-func (r *InstanceReconciler) reconcileVolume(ctx context.Context, instance *pocketidinternalv1alpha1.Instance) error {
+func (r *PocketIDInstanceReconciler) reconcileVolume(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      instance.Name + "-data",
@@ -601,7 +601,7 @@ func (r *InstanceReconciler) reconcileVolume(ctx context.Context, instance *pock
 	return err
 }
 
-func (r *InstanceReconciler) updateStatus(ctx context.Context, instance *pocketidinternalv1alpha1.Instance) error {
+func (r *PocketIDInstanceReconciler) updateStatus(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
 	base := instance.DeepCopy()
 	available := metav1.ConditionFalse
 	reason := "Progressing"
@@ -639,14 +639,14 @@ func (r *InstanceReconciler) updateStatus(ctx context.Context, instance *pocketi
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *InstanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *PocketIDInstanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&pocketidinternalv1alpha1.Instance{}).
+		For(&pocketidinternalv1alpha1.PocketIDInstance{}).
 		Owns(&appsv1.Deployment{}).
 		Owns(&appsv1.StatefulSet{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Owns(&gwapiv1.HTTPRoute{}).
-		Named("instance").
+		Named("pocketidinstance").
 		Complete(r)
 }

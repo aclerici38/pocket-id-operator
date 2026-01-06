@@ -1,4 +1,4 @@
 ## Append samples of your project ##
 resources:
-- v1alpha1_instance.yaml
+  - v1alpha1_pocketidinstance.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

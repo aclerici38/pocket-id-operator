@@ -74,9 +74,9 @@ type PersistenceConfig struct {
 	AccessModes []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
 }
 
-// InstanceSpec defines the desired state of Instance
+// PocketIDInstanceSpec defines the desired state of PocketIDInstance
 // +kubebuilder:validation:XValidation:rule="self.deploymentType == oldSelf.deploymentType",message="deploymentType is immutable"
-type InstanceSpec struct {
+type PocketIDInstanceSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 	// The following markers will use OpenAPI v3 schema to validate the value
@@ -160,8 +160,8 @@ type InstanceSpec struct {
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 }
 
-// InstanceStatus defines the observed state of Instance.
-type InstanceStatus struct {
+// PocketIDInstanceStatus defines the observed state of PocketIDInstance.
+type PocketIDInstanceStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
@@ -186,32 +186,32 @@ type InstanceStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
-// Instance is the Schema for the instances API
-type Instance struct {
+// PocketIDInstance is the Schema for the pocketidinstances API
+type PocketIDInstance struct {
 	metav1.TypeMeta `json:",inline"`
 
 	// metadata is a standard object metadata
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitzero"`
 
-	// spec defines the desired state of Instance
+	// spec defines the desired state of PocketIDInstance
 	// +required
-	Spec InstanceSpec `json:"spec"`
+	Spec PocketIDInstanceSpec `json:"spec"`
 
-	// status defines the observed state of Instance
+	// status defines the observed state of PocketIDInstance
 	// +optional
-	Status InstanceStatus `json:"status,omitzero"`
+	Status PocketIDInstanceStatus `json:"status,omitzero"`
 }
 
 // +kubebuilder:object:root=true
 
-// InstanceList contains a list of Instance
-type InstanceList struct {
+// PocketIDInstanceList contains a list of PocketIDInstance
+type PocketIDInstanceList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitzero"`
-	Items           []Instance `json:"items"`
+	Items           []PocketIDInstance `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&Instance{}, &InstanceList{})
+	SchemeBuilder.Register(&PocketIDInstance{}, &PocketIDInstanceList{})
 }

@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: instances.pocketid.internal
+  name: pocketidinstances.pocketid.internal
 spec:
   group: pocketid.internal
   names:
-    kind: Instance
-    listKind: InstanceList
-    plural: instances
-    singular: instance
+    kind: PocketIDInstance
+    listKind: PocketIDInstanceList
+    plural: pocketidinstances
+    singular: pocketidinstance
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Instance is the Schema for the instances API
+        description: PocketIDInstance is the Schema for the pocketidinstances API
         properties:
           apiVersion:
             description: |-
@@ -37,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of Instance
+            description: spec defines the desired state of PocketIDInstance
             properties:
               annotations:
                 additionalProperties:
@@ -1499,7 +1499,7 @@ spec:
             - message: deploymentType is immutable
               rule: self.deploymentType == oldSelf.deploymentType
           status:
-            description: status defines the observed state of Instance
+            description: status defines the observed state of PocketIDInstance
             properties:
               conditions:
                 description: |-

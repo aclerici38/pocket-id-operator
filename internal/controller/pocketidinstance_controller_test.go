@@ -33,7 +33,7 @@ import (
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 )
 
-var _ = Describe("Instance Controller", func() {
+var _ = Describe("PocketIDInstance Controller", func() {
 	const (
 		timeout  = time.Second * 10
 		interval = time.Millisecond * 250
@@ -49,10 +49,10 @@ var _ = Describe("Instance Controller", func() {
 		namespace = "default"
 	})
 
-	Context("When creating an Instance with Deployment type", func() {
+	Context("When creating a PocketIDInstance with Deployment type", func() {
 		const instanceName = "test-deployment-instance"
 
-		var instance *pocketidinternalv1alpha1.Instance
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
 		var secret *corev1.Secret
 
 		BeforeEach(func() {
@@ -69,12 +69,12 @@ var _ = Describe("Instance Controller", func() {
 			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
 			// Create the Instance
-			instance = &pocketidinternalv1alpha1.Instance{
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      instanceName,
 					Namespace: namespace,
 				},
-				Spec: pocketidinternalv1alpha1.InstanceSpec{
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					DeploymentType: "Deployment",
 					Image:          "ghcr.io/pocket-id/pocket-id:v1.0.0",
 					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
@@ -172,10 +172,10 @@ var _ = Describe("Instance Controller", func() {
 		})
 	})
 
-	Context("When creating an Instance with StatefulSet type", func() {
+	Context("When creating a PocketIDInstance with StatefulSet type", func() {
 		const instanceName = "test-statefulset-instance"
 
-		var instance *pocketidinternalv1alpha1.Instance
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
 		var secret *corev1.Secret
 
 		BeforeEach(func() {
@@ -192,12 +192,12 @@ var _ = Describe("Instance Controller", func() {
 			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
 			// Create the Instance with StatefulSet type
-			instance = &pocketidinternalv1alpha1.Instance{
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      instanceName,
 					Namespace: namespace,
 				},
-				Spec: pocketidinternalv1alpha1.InstanceSpec{
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					DeploymentType: "StatefulSet",
 					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
 						ValueFrom: &corev1.EnvVarSource{
@@ -246,10 +246,10 @@ var _ = Describe("Instance Controller", func() {
 		})
 	})
 
-	Context("When creating an Instance with HTTPRoute enabled", func() {
+	Context("When creating a PocketIDInstance with HTTPRoute enabled", func() {
 		const instanceName = "test-route-instance"
 
-		var instance *pocketidinternalv1alpha1.Instance
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
 		var secret *corev1.Secret
 
 		BeforeEach(func() {
@@ -265,12 +265,12 @@ var _ = Describe("Instance Controller", func() {
 			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
 			gatewayName := gwapiv1.ObjectName("my-gateway")
-			instance = &pocketidinternalv1alpha1.Instance{
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      instanceName,
 					Namespace: namespace,
 				},
-				Spec: pocketidinternalv1alpha1.InstanceSpec{
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
@@ -320,10 +320,10 @@ var _ = Describe("Instance Controller", func() {
 		})
 	})
 
-	Context("When creating an Instance with persistence enabled", func() {
+	Context("When creating a PocketIDInstance with persistence enabled", func() {
 		const instanceName = "test-persistence-instance"
 
-		var instance *pocketidinternalv1alpha1.Instance
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
 		var secret *corev1.Secret
 
 		BeforeEach(func() {
@@ -338,12 +338,12 @@ var _ = Describe("Instance Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
-			instance = &pocketidinternalv1alpha1.Instance{
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      instanceName,
 					Namespace: namespace,
 				},
-				Spec: pocketidinternalv1alpha1.InstanceSpec{
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
@@ -413,10 +413,10 @@ var _ = Describe("Instance Controller", func() {
 		})
 	})
 
-	Context("When creating an Instance with persistence disabled", func() {
+	Context("When creating a PocketIDInstance with persistence disabled", func() {
 		const instanceName = "test-no-persistence-instance"
 
-		var instance *pocketidinternalv1alpha1.Instance
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
 		var secret *corev1.Secret
 
 		BeforeEach(func() {
@@ -431,12 +431,12 @@ var _ = Describe("Instance Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
-			instance = &pocketidinternalv1alpha1.Instance{
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      instanceName,
 					Namespace: namespace,
 				},
-				Spec: pocketidinternalv1alpha1.InstanceSpec{
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
@@ -494,11 +494,11 @@ var _ = Describe("Instance Controller", func() {
 		})
 	})
 
-	Context("When creating an Instance with existing PVC", func() {
+	Context("When creating a PocketIDInstance with existing PVC", func() {
 		var instanceName string
 		var existingPVCName string
 
-		var instance *pocketidinternalv1alpha1.Instance
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
 		var secret *corev1.Secret
 		var existingPVC *corev1.PersistentVolumeClaim
 
@@ -535,12 +535,12 @@ var _ = Describe("Instance Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
-			instance = &pocketidinternalv1alpha1.Instance{
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      instanceName,
 					Namespace: namespace,
 				},
-				Spec: pocketidinternalv1alpha1.InstanceSpec{
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
@@ -601,7 +601,7 @@ var _ = Describe("Instance Controller", func() {
 	Context("When creating a StatefulSet with persistence enabled", func() {
 		const instanceName = "test-sts-persistence-instance"
 
-		var instance *pocketidinternalv1alpha1.Instance
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
 		var secret *corev1.Secret
 
 		BeforeEach(func() {
@@ -616,12 +616,12 @@ var _ = Describe("Instance Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
-			instance = &pocketidinternalv1alpha1.Instance{
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      instanceName,
 					Namespace: namespace,
 				},
-				Spec: pocketidinternalv1alpha1.InstanceSpec{
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					DeploymentType: "StatefulSet",
 					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
 						ValueFrom: &corev1.EnvVarSource{
@@ -693,7 +693,7 @@ var _ = Describe("Instance Controller", func() {
 	Context("When creating a StatefulSet with persistence disabled", func() {
 		const instanceName = "test-sts-no-persistence-instance"
 
-		var instance *pocketidinternalv1alpha1.Instance
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
 		var secret *corev1.Secret
 
 		BeforeEach(func() {
@@ -708,12 +708,12 @@ var _ = Describe("Instance Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
-			instance = &pocketidinternalv1alpha1.Instance{
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      instanceName,
 					Namespace: namespace,
 				},
-				Spec: pocketidinternalv1alpha1.InstanceSpec{
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					DeploymentType: "StatefulSet",
 					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
 						ValueFrom: &corev1.EnvVarSource{
@@ -781,15 +781,15 @@ var _ = Describe("Instance Controller", func() {
 	Context("When using plaintext environment variables", func() {
 		const instanceName = "test-plaintext-env"
 
-		var instance *pocketidinternalv1alpha1.Instance
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
 
 		BeforeEach(func() {
-			instance = &pocketidinternalv1alpha1.Instance{
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      instanceName,
 					Namespace: namespace,
 				},
-				Spec: pocketidinternalv1alpha1.InstanceSpec{
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
 						Value: "my-plaintext-encryption-key",
 					},
@@ -843,7 +843,7 @@ var _ = Describe("Instance Controller", func() {
 	Context("When mixing plaintext and secret references", func() {
 		const instanceName = "test-mixed-env"
 
-		var instance *pocketidinternalv1alpha1.Instance
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
 		var secret *corev1.Secret
 
 		BeforeEach(func() {
@@ -858,12 +858,12 @@ var _ = Describe("Instance Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
-			instance = &pocketidinternalv1alpha1.Instance{
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      instanceName,
 					Namespace: namespace,
 				},
-				Spec: pocketidinternalv1alpha1.InstanceSpec{
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
 						Value: "plaintext-key-with-16-chars",
 					},
@@ -928,16 +928,16 @@ var _ = Describe("Instance Controller", func() {
 		})
 	})
 
-	Context("When creating an Instance with encryption key shorter than 16 bytes", func() {
+	Context("When creating a PocketIDInstance with encryption key shorter than 16 bytes", func() {
 		const instanceName = "test-short-key"
 
-		It("Should reject the Instance with validation error", func() {
-			instance := &pocketidinternalv1alpha1.Instance{
+		It("Should reject the PocketIDInstance with validation error", func() {
+			instance := &pocketidinternalv1alpha1.PocketIDInstance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      instanceName,
 					Namespace: namespace,
 				},
-				Spec: pocketidinternalv1alpha1.InstanceSpec{
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
 						Value: "short-key",
 					},
@@ -951,10 +951,10 @@ var _ = Describe("Instance Controller", func() {
 		})
 	})
 
-	Context("When updating an Instance", func() {
+	Context("When updating a PocketIDInstance", func() {
 		const instanceName = "test-update-instance"
 
-		var instance *pocketidinternalv1alpha1.Instance
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
 		var secret *corev1.Secret
 
 		BeforeEach(func() {
@@ -969,12 +969,12 @@ var _ = Describe("Instance Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
-			instance = &pocketidinternalv1alpha1.Instance{
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      instanceName,
 					Namespace: namespace,
 				},
-				Spec: pocketidinternalv1alpha1.InstanceSpec{
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					Image: "ghcr.io/pocket-id/pocket-id:v1.0.0",
 					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
 						ValueFrom: &corev1.EnvVarSource{
@@ -1047,7 +1047,7 @@ var _ = Describe("Instance Controller", func() {
 	Context("When disabling route after it was enabled", func() {
 		const instanceName = "test-disable-route"
 
-		var instance *pocketidinternalv1alpha1.Instance
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
 		var secret *corev1.Secret
 
 		BeforeEach(func() {
@@ -1063,12 +1063,12 @@ var _ = Describe("Instance Controller", func() {
 			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
 			gatewayName := gwapiv1.ObjectName("my-gateway")
-			instance = &pocketidinternalv1alpha1.Instance{
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      instanceName,
 					Namespace: namespace,
 				},
-				Spec: pocketidinternalv1alpha1.InstanceSpec{
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
@@ -1134,7 +1134,7 @@ var _ = Describe("Instance Controller", func() {
 	Context("When disabling persistence after it was enabled", func() {
 		const instanceName = "test-disable-persistence"
 
-		var instance *pocketidinternalv1alpha1.Instance
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
 		var secret *corev1.Secret
 
 		BeforeEach(func() {
@@ -1149,12 +1149,12 @@ var _ = Describe("Instance Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
-			instance = &pocketidinternalv1alpha1.Instance{
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      instanceName,
 					Namespace: namespace,
 				},
-				Spec: pocketidinternalv1alpha1.InstanceSpec{
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
@@ -1220,10 +1220,10 @@ var _ = Describe("Instance Controller", func() {
 		})
 	})
 
-	Context("When creating an Instance with default security contexts", func() {
+	Context("When creating a PocketIDInstance with default security contexts", func() {
 		const instanceName = "test-security-defaults"
 
-		var instance *pocketidinternalv1alpha1.Instance
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
 		var secret *corev1.Secret
 
 		BeforeEach(func() {
@@ -1238,12 +1238,12 @@ var _ = Describe("Instance Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
-			instance = &pocketidinternalv1alpha1.Instance{
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      instanceName,
 					Namespace: namespace,
 				},
-				Spec: pocketidinternalv1alpha1.InstanceSpec{
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
@@ -1303,10 +1303,10 @@ var _ = Describe("Instance Controller", func() {
 		})
 	})
 
-	Context("When creating an Instance with custom security contexts", func() {
+	Context("When creating a PocketIDInstance with custom security contexts", func() {
 		const instanceName = "test-security-custom"
 
-		var instance *pocketidinternalv1alpha1.Instance
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
 		var secret *corev1.Secret
 
 		BeforeEach(func() {
@@ -1325,12 +1325,12 @@ var _ = Describe("Instance Controller", func() {
 			customFSGroup := int64(2000)
 			readOnlyRootFS := true
 
-			instance = &pocketidinternalv1alpha1.Instance{
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      instanceName,
 					Namespace: namespace,
 				},
-				Spec: pocketidinternalv1alpha1.InstanceSpec{
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
@@ -1388,10 +1388,10 @@ var _ = Describe("Instance Controller", func() {
 		})
 	})
 
-	Context("When creating an Instance with custom labels and annotations", func() {
+	Context("When creating a PocketIDInstance with custom labels and annotations", func() {
 		const instanceName = "test-labels-annotations"
 
-		var instance *pocketidinternalv1alpha1.Instance
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
 		var secret *corev1.Secret
 
 		BeforeEach(func() {
@@ -1406,12 +1406,12 @@ var _ = Describe("Instance Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
-			instance = &pocketidinternalv1alpha1.Instance{
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      instanceName,
 					Namespace: namespace,
 				},
-				Spec: pocketidinternalv1alpha1.InstanceSpec{
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{

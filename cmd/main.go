@@ -180,11 +180,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := (&controller.InstanceReconciler{
+	if err := (&controller.PocketIDInstanceReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Instance")
+		setupLog.Error(err, "unable to create controller", "controller", "PocketIDInstance")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
