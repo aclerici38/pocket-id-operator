@@ -396,6 +396,7 @@ func (r *InstanceReconciler) reconcileVolume(ctx context.Context, instance *pock
 }
 
 func (r *InstanceReconciler) updateStatus(ctx context.Context, instance *pocketidinternalv1alpha1.Instance) error {
+	base := instance.DeepCopy()
 	available := metav1.ConditionFalse
 	reason := "Progressing"
 	message := "Workload is starting up"
@@ -428,7 +429,7 @@ func (r *InstanceReconciler) updateStatus(ctx context.Context, instance *pocketi
 		ObservedGeneration: instance.Generation,
 	})
 
-	return r.Status().Update(ctx, instance)
+	return r.Status().Patch(ctx, instance, client.MergeFrom(base))
 }
 
 // SetupWithManager sets up the controller with the Manager.
