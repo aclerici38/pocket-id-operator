@@ -120,14 +120,27 @@ func (r *InstanceReconciler) buildPodTemplate(instance *pocketidinternalv1alpha1
 		"app.kubernetes.io/managed-by": "pocket-id-operator",
 	}
 
-	encryptionKeyEnv := instance.Spec.EncryptionKey
-	encryptionKeyEnv.Name = envEncryptionKey
+	// Set ENCRYPTION_KEY from the spec
+	encryptionKeyEnv := corev1.EnvVar{
+		Name: envEncryptionKey,
+	}
+	if instance.Spec.EncryptionKey.Value != "" {
+		encryptionKeyEnv.Value = instance.Spec.EncryptionKey.Value
+	} else if instance.Spec.EncryptionKey.ValueFrom != nil {
+		encryptionKeyEnv.ValueFrom = instance.Spec.EncryptionKey.ValueFrom
+	}
 
 	env := []corev1.EnvVar{encryptionKeyEnv}
 
 	if instance.Spec.DatabaseUrl != nil {
-		dbUrlEnv := *instance.Spec.DatabaseUrl
-		dbUrlEnv.Name = envDBConnectionString
+		dbUrlEnv := corev1.EnvVar{
+			Name: envDBConnectionString,
+		}
+		if instance.Spec.DatabaseUrl.Value != "" {
+			dbUrlEnv.Value = instance.Spec.DatabaseUrl.Value
+		} else if instance.Spec.DatabaseUrl.ValueFrom != nil {
+			dbUrlEnv.ValueFrom = instance.Spec.DatabaseUrl.ValueFrom
+		}
 		env = append(env, dbUrlEnv)
 	}
 

@@ -37,6 +37,17 @@ type HttpRouteConfig struct {
 	ParentRefs []gwapiv1.ParentReference `json:"parentRefs,omitempty"`
 }
 
+// Environment variable value that can be either a plain value or from a Kubernetes resource
+type EnvValue struct {
+	// Plain text value
+	// +optional
+	Value string `json:"value,omitempty"`
+
+	// Source for the environment variable's value
+	// +optional
+	ValueFrom *corev1.EnvVarSource `json:"valueFrom,omitempty"`
+}
+
 // Persistence config. Mounts a volume at /app/Data
 type PersistenceConfig struct {
 	// Enables mounting a persistent volume
@@ -84,14 +95,14 @@ type InstanceSpec struct {
 	// Required since Pocket-ID v2
 	// See the official documentation for ENCRYPTION_KEY
 	// +kubebuilder:validation:Required
-	EncryptionKey corev1.EnvVar `json:"encryptionKey"`
+	EncryptionKey EnvValue `json:"encryptionKey"`
 
 	// URL to access database at
 	// See the official documentation for DB_CONNECTION_STRING
 	// For sqlite only add the filepath e.g. "data/pocket-id.db"
 	// Uses application default if empty
 	// +optional
-	DatabaseUrl *corev1.EnvVar `json:"databaseUrl,omitempty"`
+	DatabaseUrl *EnvValue `json:"databaseUrl,omitempty"`
 
 	// External URL Pocket-id can be reached at
 	// See the official documentation for APP_URL
