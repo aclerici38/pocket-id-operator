@@ -24,6 +24,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -189,6 +190,7 @@ func (r *InstanceReconciler) buildPodTemplate(instance *pocketidinternalv1alpha1
 					Env:             env,
 					VolumeMounts:    volumeMounts,
 					SecurityContext: buildContainerSecurityContext(instance),
+					Resources:       buildResources(instance),
 					ReadinessProbe: func() *corev1.Probe {
 						if instance.Spec.ReadinessProbe != nil {
 							return instance.Spec.ReadinessProbe
@@ -229,6 +231,33 @@ func (r *InstanceReconciler) buildPodTemplate(instance *pocketidinternalv1alpha1
 			},
 			Volumes: volumes,
 		},
+	}
+}
+
+func buildResources(instance *pocketidinternalv1alpha1.Instance) corev1.ResourceRequirements {
+	defaults := corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("50m"),
+			corev1.ResourceMemory: resource.MustParse("128Mi"),
+		},
+		Limits: corev1.ResourceList{
+			corev1.ResourceMemory: resource.MustParse("512Mi"),
+		},
+	}
+
+	userSpec := instance.Spec.Resources
+
+	mergedRequests := make(corev1.ResourceList)
+	maps.Copy(mergedRequests, defaults.Requests)
+	maps.Copy(mergedRequests, userSpec.Requests)
+
+	mergedLimits := make(corev1.ResourceList)
+	maps.Copy(mergedLimits, defaults.Limits)
+	maps.Copy(mergedLimits, userSpec.Limits)
+
+	return corev1.ResourceRequirements{
+		Requests: mergedRequests,
+		Limits:   mergedLimits,
 	}
 }
 

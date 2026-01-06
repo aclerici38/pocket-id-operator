@@ -154,6 +154,10 @@ type InstanceSpec struct {
 	// Liveness probe configuration
 	// +optional
 	LivenessProbe *corev1.Probe `json:"livenessProbe,omitempty"`
+
+	// Resource requests and limits for the container
+	// +optional
+	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 }
 
 // InstanceStatus defines the observed state of Instance.
