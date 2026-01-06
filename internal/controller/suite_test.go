@@ -155,9 +155,6 @@ func getFirstFoundEnvTestBinaryDir() string {
 // downloadGatewayAPICRDs downloads the Gateway API CRDs to a temporary file
 func downloadGatewayAPICRDs() (string, error) {
 	gatewayAPIVersion := os.Getenv("GATEWAY_API_VERSION")
-	if gatewayAPIVersion == "" {
-		gatewayAPIVersion = "latest"
-	}
 
 	url := fmt.Sprintf("https://github.com/kubernetes-sigs/gateway-api/releases/download/%s/standard-install.yaml", gatewayAPIVersion)
 
@@ -165,7 +162,7 @@ func downloadGatewayAPICRDs() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to download Gateway API CRDs: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("failed to download Gateway API CRDs: status %d", resp.StatusCode)
@@ -175,11 +172,11 @@ func downloadGatewayAPICRDs() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp file: %w", err)
 	}
-	defer tmpFile.Close()
+	defer func() { _ = tmpFile.Close() }()
 
 	_, err = io.Copy(tmpFile, resp.Body)
 	if err != nil {
-		os.Remove(tmpFile.Name())
+		_ = os.Remove(tmpFile.Name())
 		return "", fmt.Errorf("failed to write Gateway API CRDs: %w", err)
 	}
 
