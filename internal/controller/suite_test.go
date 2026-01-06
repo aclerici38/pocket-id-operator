@@ -18,6 +18,9 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -70,11 +73,15 @@ var _ = BeforeSuite(func() {
 
 	// +kubebuilder:scaffold:scheme
 
+	By("downloading Gateway API CRDs")
+	gatewayAPICRDPath, err := downloadGatewayAPICRDs()
+	Expect(err).NotTo(HaveOccurred())
+
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "..", "config", "crd", "bases"),
-			filepath.Join("..", "..", "config", "crd", "gateway-api.yaml"),
+			gatewayAPICRDPath,
 		},
 		ErrorIfCRDPathMissing: true,
 	}
@@ -143,4 +150,38 @@ func getFirstFoundEnvTestBinaryDir() string {
 		}
 	}
 	return ""
+}
+
+// downloadGatewayAPICRDs downloads the Gateway API CRDs to a temporary file
+func downloadGatewayAPICRDs() (string, error) {
+	gatewayAPIVersion := os.Getenv("GATEWAY_API_VERSION")
+	if gatewayAPIVersion == "" {
+		gatewayAPIVersion = "latest"
+	}
+
+	url := fmt.Sprintf("https://github.com/kubernetes-sigs/gateway-api/releases/download/%s/standard-install.yaml", gatewayAPIVersion)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("failed to download Gateway API CRDs: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to download Gateway API CRDs: status %d", resp.StatusCode)
+	}
+
+	tmpFile, err := os.CreateTemp("", "gateway-api-*.yaml")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer tmpFile.Close()
+
+	_, err = io.Copy(tmpFile, resp.Body)
+	if err != nil {
+		os.Remove(tmpFile.Name())
+		return "", fmt.Errorf("failed to write Gateway API CRDs: %w", err)
+	}
+
+	return tmpFile.Name(), nil
 }
