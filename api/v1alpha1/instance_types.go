@@ -147,11 +147,11 @@ type InstanceSpec struct {
 	// +optional
 	Annotations map[string]string `json:"annotations,omitempty"`
 
-	// Readiness probe configuration (merged with defaults)
+	// Readiness probe configuration
 	// +optional
 	ReadinessProbe *corev1.Probe `json:"readinessProbe,omitempty"`
 
-	// Liveness probe configuration (merged with defaults)
+	// Liveness probe configuration
 	// +optional
 	LivenessProbe *corev1.Probe `json:"livenessProbe,omitempty"`
 }
