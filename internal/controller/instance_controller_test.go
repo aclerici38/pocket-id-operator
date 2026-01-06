@@ -1387,4 +1387,93 @@ var _ = Describe("Instance Controller", func() {
 			Expect(containerSecCtx.Capabilities.Drop).To(ContainElement(corev1.Capability("ALL"))) // Default value
 		})
 	})
+
+	Context("When creating an Instance with custom labels and annotations", func() {
+		const instanceName = "test-labels-annotations"
+
+		var instance *pocketidinternalv1alpha1.Instance
+		var secret *corev1.Secret
+
+		BeforeEach(func() {
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName + "-secret",
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"encryption-key": []byte("test-encryption-key-value"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			instance = &pocketidinternalv1alpha1.Instance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.InstanceSpec{
+					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
+						ValueFrom: &corev1.EnvVarSource{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: secret.Name,
+								},
+								Key: "encryption-key",
+							},
+						},
+					},
+					Labels: map[string]string{
+						"custom-label":  "custom-value",
+						"another-label": "another-value",
+						"team":          "platform",
+					},
+					Annotations: map[string]string{
+						"custom-annotation":    "custom-annotation-value",
+						"prometheus.io/scrape": "true",
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if instance != nil {
+				_ = k8sClient.Delete(ctx, instance)
+			}
+			if secret != nil {
+				_ = k8sClient.Delete(ctx, secret)
+			}
+		})
+
+		It("Should apply labels and annotations to Deployment and pod template", func() {
+			deployment := &appsv1.Deployment{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName,
+					Namespace: namespace,
+				}, deployment)
+			}, timeout, interval).Should(Succeed())
+
+			// Verify labels on Deployment
+			Expect(deployment.Labels).To(HaveKeyWithValue("custom-label", "custom-value"))
+			Expect(deployment.Labels).To(HaveKeyWithValue("another-label", "another-value"))
+			Expect(deployment.Labels).To(HaveKeyWithValue("team", "platform"))
+
+			// Verify annotations on Deployment
+			Expect(deployment.Annotations).To(HaveKeyWithValue("custom-annotation", "custom-annotation-value"))
+			Expect(deployment.Annotations).To(HaveKeyWithValue("prometheus.io/scrape", "true"))
+
+			// Verify labels on pod template (should include both default and custom)
+			podLabels := deployment.Spec.Template.Labels
+			Expect(podLabels).To(HaveKeyWithValue("app.kubernetes.io/name", "pocket-id"))
+			Expect(podLabels).To(HaveKeyWithValue("app.kubernetes.io/instance", instanceName))
+			Expect(podLabels).To(HaveKeyWithValue("custom-label", "custom-value"))
+			Expect(podLabels).To(HaveKeyWithValue("team", "platform"))
+
+			// Verify annotations on pod template
+			podAnnotations := deployment.Spec.Template.Annotations
+			Expect(podAnnotations).To(HaveKeyWithValue("custom-annotation", "custom-annotation-value"))
+			Expect(podAnnotations).To(HaveKeyWithValue("prometheus.io/scrape", "true"))
+		})
+	})
 })

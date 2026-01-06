@@ -138,6 +138,14 @@ type InstanceSpec struct {
 	// +optional
 	// +kubebuilder:default=true
 	HostUsers *bool `json:"hostUsers,omitempty"`
+
+	// Additional labels to add to the workload and pod
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
+
+	// Additional annotations to add to the workload and pod
+	// +optional
+	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
 // InstanceStatus defines the observed state of Instance.

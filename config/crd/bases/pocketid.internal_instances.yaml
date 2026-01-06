@@ -39,6 +39,11 @@ spec:
           spec:
             description: spec defines the desired state of Instance
             properties:
+              annotations:
+                additionalProperties:
+                  type: string
+                description: Additional annotations to add to the workload and pod
+                type: object
               appUrl:
                 description: |-
                   External URL Pocket-id can be reached at
@@ -695,6 +700,11 @@ spec:
                   Container image to run. It is highly recommended to specify a tag
                   Defaults to ghcr.io/pocket-id/pocket-id:latest
                 type: string
+              labels:
+                additionalProperties:
+                  type: string
+                description: Additional labels to add to the workload and pod
+                type: object
               persistence:
                 description: |-
                   Configures persistence for Pocket-ID

@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"maps"
 	"net/url"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -113,13 +114,15 @@ func (r *InstanceReconciler) reconcileWorkload(ctx context.Context, instance *po
 }
 
 func (r *InstanceReconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.Instance) corev1.PodTemplateSpec {
-	labels := map[string]string{
-		"app.kubernetes.io/name":       "pocket-id",
-		"app.kubernetes.io/instance":   instance.Name,
-		"app.kubernetes.io/managed-by": "pocket-id-operator",
-	}
+	labels := make(map[string]string)
+	maps.Copy(labels, instance.Spec.Labels)
+	labels["app.kubernetes.io/name"] = "pocket-id"
+	labels["app.kubernetes.io/instance"] = instance.Name
+	labels["app.kubernetes.io/managed-by"] = "pocket-id-operator"
 
-	// Set ENCRYPTION_KEY from the spec
+	annotations := make(map[string]string)
+	maps.Copy(annotations, instance.Spec.Annotations)
+
 	encryptionKeyEnv := corev1.EnvVar{
 		Name: envEncryptionKey,
 	}
@@ -173,7 +176,8 @@ func (r *InstanceReconciler) buildPodTemplate(instance *pocketidinternalv1alpha1
 
 	return corev1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
-			Labels: labels,
+			Labels:      labels,
+			Annotations: annotations,
 		},
 		Spec: corev1.PodSpec{
 			SecurityContext: buildPodSecurityContext(instance),
@@ -303,8 +307,10 @@ func (r *InstanceReconciler) reconcileDeployment(ctx context.Context, instance *
 			Kind:       "Deployment",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      instance.Name,
-			Namespace: instance.Namespace,
+			Name:        instance.Name,
+			Namespace:   instance.Namespace,
+			Labels:      instance.Spec.Labels,
+			Annotations: instance.Spec.Annotations,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
@@ -374,8 +380,10 @@ func (r *InstanceReconciler) reconcileStatefulSet(ctx context.Context, instance 
 			Kind:       "StatefulSet",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      instance.Name,
-			Namespace: instance.Namespace,
+			Name:        instance.Name,
+			Namespace:   instance.Namespace,
+			Labels:      instance.Spec.Labels,
+			Annotations: instance.Spec.Annotations,
 		},
 		Spec: *stsSpec,
 	}
