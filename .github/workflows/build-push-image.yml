@@ -49,4 +49,5 @@ jobs:
         run: make docker-build docker-push IMG=ghcr.io/${{ steps.meta.outputs.repo_owner }}/pocket-id-operator:${{ steps.meta.outputs.short_sha }}-main
         
   test-e2e:
+    needs: [build-push]
     uses: ./.github/workflows/test-e2e.yml
