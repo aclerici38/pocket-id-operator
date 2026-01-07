@@ -533,10 +533,12 @@ func (r *PocketIDInstanceReconciler) reconcileRoute(ctx context.Context, instanc
 		},
 	}
 
-	// If route is disabled, delete it
+	// If route is disabled, delete it if it exists
 	if !instance.Spec.Route.Enabled {
-		err := r.Delete(ctx, route)
-		return client.IgnoreNotFound(err)
+		if err := r.Delete(ctx, route); err != nil && !errors.IsNotFound(err) {
+			return err
+		}
+		return nil
 	}
 
 	port := gwapiv1.PortNumber(1411)
@@ -912,7 +914,7 @@ func (r *PocketIDInstanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&appsv1.StatefulSet{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
-		Owns(&gwapiv1.HTTPRoute{}).
+		// HTTPRoute is not watched so the operator doesn't have to depend on CRDs
 		Owns(&pocketidinternalv1alpha1.PocketIDUser{}).
 		Named("pocketidinstance").
 		Complete(r)
