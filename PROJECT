@@ -17,4 +17,12 @@ resources:
   kind: Instance
   path: github.com/aclerici38/pocket-id-operator/api/v1alpha1
   version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: pocketid.internal
+  kind: PocketIDUser
+  path: github.com/aclerici38/pocket-id-operator/api/v1alpha1
+  version: v1alpha1
 version: "3"

@@ -74,6 +74,20 @@ type PersistenceConfig struct {
 	AccessModes []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
 }
 
+// AuthConfig specifies how the operator authenticates with the instance
+type AuthConfig struct {
+	// UserRef is the name of the PocketIDUser CR to use for authentication
+	// Defaults to "pocket-id-operator" which will be created if it does not exist
+	// +kubebuilder:default="pocket-id-operator"
+	UserRef string `json:"userRef"`
+
+	// APIKeyName is the name of the API key to use from the referenced user
+	// If the key exists in PocketIDUser.status.apiKeys, that key will be used
+	// Otherwise the operator will attempt to bootstrap the instance and create a new key
+	// +kubebuilder:default="pocket-id-operator"
+	APIKeyName string `json:"apiKeyName"`
+}
+
 // PocketIDInstanceSpec defines the desired state of PocketIDInstance
 // +kubebuilder:validation:XValidation:rule="self.deploymentType == oldSelf.deploymentType",message="deploymentType is immutable"
 type PocketIDInstanceSpec struct {
@@ -135,7 +149,6 @@ type PocketIDInstanceSpec struct {
 
 	// HostUsers controls whether the container's user namespace is separate from the host
 	// Defaults to true
-	// +optional
 	// +kubebuilder:default=true
 	HostUsers *bool `json:"hostUsers,omitempty"`
 
@@ -158,25 +171,32 @@ type PocketIDInstanceSpec struct {
 	// Resource requests and limits for the container
 	// +optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	// How the operator authenticates with the instance
+	// +optional
+	Auth *AuthConfig `json:"auth,omitempty"`
 }
 
 // PocketIDInstanceStatus defines the observed state of PocketIDInstance.
 type PocketIDInstanceStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Bootstrapped indicates whether the instance has been bootstrapped
+	// (initial admin user and API key created)
+	// +optional
+	Bootstrapped bool `json:"bootstrapped,omitempty"`
 
-	// For Kubernetes API conventions, see:
-	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
+	// BootstrappedAt is the timestamp when bootstrap completed
+	// +optional
+	BootstrappedAt string `json:"bootstrappedAt,omitempty"`
 
-	// conditions represent the current state of the Instance resource.
-	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
-	//
-	// Standard condition types include:
-	// - "Available": the resource is fully functional
-	// - "Progressing": the resource is being created or updated
-	// - "Degraded": the resource failed to reach or maintain its desired state
-	//
-	// The status of each condition is one of True, False, or Unknown.
+	// AuthUserRef is the name of the PocketIDUser CR being used for authentication
+	// +optional
+	AuthUserRef string `json:"authUserRef,omitempty"`
+
+	// AuthAPIKeyName is the name of the API key being used for authentication
+	// +optional
+	AuthAPIKeyName string `json:"authApiKeyName,omitempty"`
+
+	// Conditions represent the current state of the Instance resource.
 	// +listType=map
 	// +listMapKey=type
 	// +optional
