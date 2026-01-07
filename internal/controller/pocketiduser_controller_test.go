@@ -18,67 +18,534 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 )
 
 var _ = Describe("PocketIDUser Controller", func() {
-	Context("When reconciling a resource", func() {
-		const resourceName = "test-resource"
+	const (
+		timeout  = time.Second * 10
+		interval = time.Millisecond * 250
+	)
 
-		ctx := context.Background()
+	var (
+		ctx       context.Context
+		namespace string
+	)
 
-		typeNamespacedName := types.NamespacedName{
-			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
-		}
-		pocketiduser := &pocketidinternalv1alpha1.PocketIDUser{}
+	BeforeEach(func() {
+		ctx = context.Background()
+		namespace = "default"
+	})
+
+	Context("When creating a PocketIDUser with plain values", func() {
+		const userName = "test-user-plain"
+
+		var user *pocketidinternalv1alpha1.PocketIDUser
 
 		BeforeEach(func() {
-			By("creating the custom resource for the Kind PocketIDUser")
-			err := k8sClient.Get(ctx, typeNamespacedName, pocketiduser)
-			if err != nil && errors.IsNotFound(err) {
-				resource := &pocketidinternalv1alpha1.PocketIDUser{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					// TODO(user): Specify other spec details if needed.
-				}
-				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			user = &pocketidinternalv1alpha1.PocketIDUser{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      userName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDUserSpec{
+					Username:  pocketidinternalv1alpha1.StringValue{Value: "testuser"},
+					FirstName: pocketidinternalv1alpha1.StringValue{Value: "Test"},
+					LastName:  pocketidinternalv1alpha1.StringValue{Value: "User"},
+					Email:     pocketidinternalv1alpha1.StringValue{Value: "test@example.com"},
+					Admin:     false,
+				},
 			}
+			Expect(k8sClient.Create(ctx, user)).To(Succeed())
 		})
 
 		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &pocketidinternalv1alpha1.PocketIDUser{}
-			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Cleanup the specific resource instance PocketIDUser")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-		})
-		It("should successfully reconcile the resource", func() {
-			By("Reconciling the created resource")
-			controllerReconciler := &PocketIDUserReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+			if user != nil {
+				_ = k8sClient.Delete(ctx, user)
 			}
+		})
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+		It("Should create the PocketIDUser resource", func() {
+			createdUser := &pocketidinternalv1alpha1.PocketIDUser{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      userName,
+					Namespace: namespace,
+				}, createdUser)
+			}, timeout, interval).Should(Succeed())
+
+			Expect(createdUser.Spec.Username.Value).To(Equal("testuser"))
+			Expect(createdUser.Spec.FirstName.Value).To(Equal("Test"))
+			Expect(createdUser.Spec.LastName.Value).To(Equal("User"))
+			Expect(createdUser.Spec.Email.Value).To(Equal("test@example.com"))
+			Expect(createdUser.Spec.Admin).To(BeFalse())
+		})
+	})
+
+	Context("When creating a PocketIDUser with secret references", func() {
+		const userName = "test-user-secret-refs"
+		const secretName = "user-credentials"
+
+		var user *pocketidinternalv1alpha1.PocketIDUser
+		var secret *corev1.Secret
+
+		BeforeEach(func() {
+			// Create secret with user data
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      secretName,
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"username":   []byte("secretuser"),
+					"first-name": []byte("Secret"),
+					"last-name":  []byte("User"),
+					"email":      []byte("secret@example.com"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			user = &pocketidinternalv1alpha1.PocketIDUser{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      userName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDUserSpec{
+					Username: pocketidinternalv1alpha1.StringValue{
+						ValueFrom: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+							Key:                  "username",
+						},
+					},
+					FirstName: pocketidinternalv1alpha1.StringValue{
+						ValueFrom: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+							Key:                  "first-name",
+						},
+					},
+					LastName: pocketidinternalv1alpha1.StringValue{
+						ValueFrom: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+							Key:                  "last-name",
+						},
+					},
+					Email: pocketidinternalv1alpha1.StringValue{
+						ValueFrom: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+							Key:                  "email",
+						},
+					},
+					Admin: true,
+				},
+			}
+			Expect(k8sClient.Create(ctx, user)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if user != nil {
+				_ = k8sClient.Delete(ctx, user)
+			}
+			if secret != nil {
+				_ = k8sClient.Delete(ctx, secret)
+			}
+		})
+
+		It("Should create the PocketIDUser with secret references", func() {
+			createdUser := &pocketidinternalv1alpha1.PocketIDUser{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      userName,
+					Namespace: namespace,
+				}, createdUser)
+			}, timeout, interval).Should(Succeed())
+
+			Expect(createdUser.Spec.Username.ValueFrom).NotTo(BeNil())
+			Expect(createdUser.Spec.Username.ValueFrom.Name).To(Equal(secretName))
+			Expect(createdUser.Spec.Username.ValueFrom.Key).To(Equal("username"))
+
+			Expect(createdUser.Spec.FirstName.ValueFrom).NotTo(BeNil())
+			Expect(createdUser.Spec.FirstName.ValueFrom.Name).To(Equal(secretName))
+			Expect(createdUser.Spec.FirstName.ValueFrom.Key).To(Equal("first-name"))
+
+			Expect(createdUser.Spec.Admin).To(BeTrue())
+		})
+	})
+
+	Context("When creating a PocketIDUser with API keys using SecretRef", func() {
+		const userName = "test-user-apikey-ref"
+		const apiKeySecretName = "existing-api-key"
+
+		var user *pocketidinternalv1alpha1.PocketIDUser
+		var apiKeySecret *corev1.Secret
+
+		BeforeEach(func() {
+			// Create secret with existing API key token
+			apiKeySecret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      apiKeySecretName,
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"token": []byte("existing-api-key-token-value"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, apiKeySecret)).To(Succeed())
+
+			user = &pocketidinternalv1alpha1.PocketIDUser{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      userName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDUserSpec{
+					Username:  pocketidinternalv1alpha1.StringValue{Value: "apikey-user"},
+					FirstName: pocketidinternalv1alpha1.StringValue{Value: "API"},
+					LastName:  pocketidinternalv1alpha1.StringValue{Value: "Key"},
+					Admin:     false,
+					APIKeys: []pocketidinternalv1alpha1.APIKeySpec{
+						{
+							Name:        "existing-key",
+							Description: "Pre-existing API key",
+							SecretRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{Name: apiKeySecretName},
+								Key:                  "token",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, user)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if user != nil {
+				_ = k8sClient.Delete(ctx, user)
+			}
+			if apiKeySecret != nil {
+				_ = k8sClient.Delete(ctx, apiKeySecret)
+			}
+		})
+
+		It("Should create the PocketIDUser with API key secret reference", func() {
+			createdUser := &pocketidinternalv1alpha1.PocketIDUser{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      userName,
+					Namespace: namespace,
+				}, createdUser)
+			}, timeout, interval).Should(Succeed())
+
+			Expect(createdUser.Spec.APIKeys).To(HaveLen(1))
+			Expect(createdUser.Spec.APIKeys[0].Name).To(Equal("existing-key"))
+			Expect(createdUser.Spec.APIKeys[0].SecretRef).NotTo(BeNil())
+			Expect(createdUser.Spec.APIKeys[0].SecretRef.Name).To(Equal(apiKeySecretName))
+			Expect(createdUser.Spec.APIKeys[0].SecretRef.Key).To(Equal("token"))
+		})
+	})
+
+	Context("When creating a PocketIDUser with default username", func() {
+		const userName = "test-user-default-username"
+
+		var user *pocketidinternalv1alpha1.PocketIDUser
+
+		BeforeEach(func() {
+			// Create user without specifying username - should default to metadata.name
+			user = &pocketidinternalv1alpha1.PocketIDUser{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      userName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDUserSpec{
+					FirstName: pocketidinternalv1alpha1.StringValue{Value: "Default"},
+					LastName:  pocketidinternalv1alpha1.StringValue{Value: "User"},
+					Admin:     false,
+				},
+			}
+			Expect(k8sClient.Create(ctx, user)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if user != nil {
+				_ = k8sClient.Delete(ctx, user)
+			}
+		})
+
+		It("Should create the PocketIDUser with empty username in spec", func() {
+			createdUser := &pocketidinternalv1alpha1.PocketIDUser{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      userName,
+					Namespace: namespace,
+				}, createdUser)
+			}, timeout, interval).Should(Succeed())
+
+			// Username should be empty in spec (controller resolves to metadata.name)
+			Expect(createdUser.Spec.Username.Value).To(BeEmpty())
+			Expect(createdUser.Spec.Username.ValueFrom).To(BeNil())
+		})
+	})
+
+	Context("When creating a PocketIDUser with mixed plain and secret values", func() {
+		const userName = "test-user-mixed"
+		const secretName = "partial-user-secret"
+
+		var user *pocketidinternalv1alpha1.PocketIDUser
+		var secret *corev1.Secret
+
+		BeforeEach(func() {
+			// Create secret with partial user data
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      secretName,
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"email": []byte("mixed@example.com"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			user = &pocketidinternalv1alpha1.PocketIDUser{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      userName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDUserSpec{
+					Username:  pocketidinternalv1alpha1.StringValue{Value: "mixeduser"},
+					FirstName: pocketidinternalv1alpha1.StringValue{Value: "Mixed"},
+					LastName:  pocketidinternalv1alpha1.StringValue{Value: "Values"},
+					Email: pocketidinternalv1alpha1.StringValue{
+						ValueFrom: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+							Key:                  "email",
+						},
+					},
+					Admin: false,
+				},
+			}
+			Expect(k8sClient.Create(ctx, user)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if user != nil {
+				_ = k8sClient.Delete(ctx, user)
+			}
+			if secret != nil {
+				_ = k8sClient.Delete(ctx, secret)
+			}
+		})
+
+		It("Should create the PocketIDUser with mixed plain and secret values", func() {
+			createdUser := &pocketidinternalv1alpha1.PocketIDUser{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      userName,
+					Namespace: namespace,
+				}, createdUser)
+			}, timeout, interval).Should(Succeed())
+
+			// Plain values
+			Expect(createdUser.Spec.Username.Value).To(Equal("mixeduser"))
+			Expect(createdUser.Spec.FirstName.Value).To(Equal("Mixed"))
+			Expect(createdUser.Spec.LastName.Value).To(Equal("Values"))
+
+			// Secret reference
+			Expect(createdUser.Spec.Email.ValueFrom).NotTo(BeNil())
+			Expect(createdUser.Spec.Email.ValueFrom.Name).To(Equal(secretName))
+		})
+	})
+
+	Context("When creating a PocketIDUser with multiple API keys", func() {
+		const userName = "test-user-multi-keys"
+		const apiKeySecretName = "multi-api-keys"
+
+		var user *pocketidinternalv1alpha1.PocketIDUser
+		var apiKeySecret *corev1.Secret
+
+		BeforeEach(func() {
+			apiKeySecret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      apiKeySecretName,
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"key1": []byte("api-key-token-1"),
+					"key2": []byte("api-key-token-2"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, apiKeySecret)).To(Succeed())
+
+			user = &pocketidinternalv1alpha1.PocketIDUser{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      userName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDUserSpec{
+					Username:  pocketidinternalv1alpha1.StringValue{Value: "multikey-user"},
+					FirstName: pocketidinternalv1alpha1.StringValue{Value: "Multi"},
+					Admin:     true,
+					APIKeys: []pocketidinternalv1alpha1.APIKeySpec{
+						{
+							Name:        "key-from-secret",
+							Description: "API key from existing secret",
+							SecretRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{Name: apiKeySecretName},
+								Key:                  "key1",
+							},
+						},
+						{
+							Name:        "key-to-create",
+							Description: "API key to be created by operator",
+							ExpiresAt:   "2030-01-01T00:00:00Z",
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, user)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if user != nil {
+				_ = k8sClient.Delete(ctx, user)
+			}
+			if apiKeySecret != nil {
+				_ = k8sClient.Delete(ctx, apiKeySecret)
+			}
+		})
+
+		It("Should create the PocketIDUser with multiple API key specs", func() {
+			createdUser := &pocketidinternalv1alpha1.PocketIDUser{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      userName,
+					Namespace: namespace,
+				}, createdUser)
+			}, timeout, interval).Should(Succeed())
+
+			Expect(createdUser.Spec.APIKeys).To(HaveLen(2))
+
+			// First key with secret reference
+			Expect(createdUser.Spec.APIKeys[0].Name).To(Equal("key-from-secret"))
+			Expect(createdUser.Spec.APIKeys[0].SecretRef).NotTo(BeNil())
+
+			// Second key without secret reference (to be created)
+			Expect(createdUser.Spec.APIKeys[1].Name).To(Equal("key-to-create"))
+			Expect(createdUser.Spec.APIKeys[1].SecretRef).To(BeNil())
+			Expect(createdUser.Spec.APIKeys[1].ExpiresAt).To(Equal("2030-01-01T00:00:00Z"))
+		})
+	})
+
+	Context("When deleting a PocketIDUser", func() {
+		const userName = "test-user-delete"
+
+		var user *pocketidinternalv1alpha1.PocketIDUser
+
+		BeforeEach(func() {
+			user = &pocketidinternalv1alpha1.PocketIDUser{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      userName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDUserSpec{
+					Username:  pocketidinternalv1alpha1.StringValue{Value: "deleteuser"},
+					FirstName: pocketidinternalv1alpha1.StringValue{Value: "Delete"},
+					Admin:     false,
+				},
+			}
+			Expect(k8sClient.Create(ctx, user)).To(Succeed())
+
+			// Wait for creation
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      userName,
+					Namespace: namespace,
+				}, &pocketidinternalv1alpha1.PocketIDUser{})
+			}, timeout, interval).Should(Succeed())
+		})
+
+		It("Should delete the PocketIDUser resource", func() {
+			Expect(k8sClient.Delete(ctx, user)).To(Succeed())
+
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      userName,
+					Namespace: namespace,
+				}, &pocketidinternalv1alpha1.PocketIDUser{})
+				return errors.IsNotFound(err)
+			}, timeout, interval).Should(BeTrue())
+		})
+	})
+
+	Context("When updating a PocketIDUser", func() {
+		const userName = "test-user-update"
+
+		var user *pocketidinternalv1alpha1.PocketIDUser
+
+		BeforeEach(func() {
+			user = &pocketidinternalv1alpha1.PocketIDUser{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      userName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDUserSpec{
+					Username:  pocketidinternalv1alpha1.StringValue{Value: "updateuser"},
+					FirstName: pocketidinternalv1alpha1.StringValue{Value: "Update"},
+					LastName:  pocketidinternalv1alpha1.StringValue{Value: "User"},
+					Admin:     false,
+				},
+			}
+			Expect(k8sClient.Create(ctx, user)).To(Succeed())
+
+			// Wait for creation
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      userName,
+					Namespace: namespace,
+				}, user)
+			}, timeout, interval).Should(Succeed())
+		})
+
+		AfterEach(func() {
+			if user != nil {
+				_ = k8sClient.Delete(ctx, user)
+			}
+		})
+
+		It("Should update the PocketIDUser when spec changes", func() {
+			// Update the user
+			Eventually(func() error {
+				if err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      userName,
+					Namespace: namespace,
+				}, user); err != nil {
+					return err
+				}
+				user.Spec.FirstName = pocketidinternalv1alpha1.StringValue{Value: "Updated"}
+				user.Spec.Admin = true
+				return k8sClient.Update(ctx, user)
+			}, timeout, interval).Should(Succeed())
+
+			// Verify the update
+			updatedUser := &pocketidinternalv1alpha1.PocketIDUser{}
+			Eventually(func() string {
+				if err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      userName,
+					Namespace: namespace,
+				}, updatedUser); err != nil {
+					return ""
+				}
+				return updatedUser.Spec.FirstName.Value
+			}, timeout, interval).Should(Equal("Updated"))
+
+			Expect(updatedUser.Spec.Admin).To(BeTrue())
 		})
 	})
 })

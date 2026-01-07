@@ -31,6 +31,9 @@ const (
 	certmanagerVersion = "v1.19.1"
 	certmanagerURLTmpl = "https://github.com/cert-manager/cert-manager/releases/download/%s/cert-manager.yaml"
 
+	gatewayAPIVersion = "v1.2.1"
+	gatewayAPIURLTmpl = "https://github.com/kubernetes-sigs/gateway-api/releases/download/%s/standard-install.yaml"
+
 	defaultKindBinary  = "kind"
 	defaultKindCluster = "kind"
 )
@@ -123,6 +126,51 @@ func IsCertManagerCRDsInstalled() bool {
 	// Check if any of the Cert Manager CRDs are present
 	crdList := GetNonEmptyLines(output)
 	for _, crd := range certManagerCRDs {
+		for _, line := range crdList {
+			if strings.Contains(line, crd) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// UninstallGatewayAPI uninstalls the Gateway API CRDs
+func UninstallGatewayAPI() {
+	url := fmt.Sprintf(gatewayAPIURLTmpl, gatewayAPIVersion)
+	cmd := exec.Command("kubectl", "delete", "-f", url, "--ignore-not-found")
+	if _, err := Run(cmd); err != nil {
+		warnError(err)
+	}
+}
+
+// InstallGatewayAPI installs the Gateway API CRDs
+func InstallGatewayAPI() error {
+	url := fmt.Sprintf(gatewayAPIURLTmpl, gatewayAPIVersion)
+	cmd := exec.Command("kubectl", "apply", "-f", url)
+	if _, err := Run(cmd); err != nil {
+		return err
+	}
+	return nil
+}
+
+// IsGatewayAPICRDsInstalled checks if Gateway API CRDs are installed
+func IsGatewayAPICRDsInstalled() bool {
+	gatewayAPICRDs := []string{
+		"gateways.gateway.networking.k8s.io",
+		"httproutes.gateway.networking.k8s.io",
+		"gatewayclasses.gateway.networking.k8s.io",
+	}
+
+	cmd := exec.Command("kubectl", "get", "crds")
+	output, err := Run(cmd)
+	if err != nil {
+		return false
+	}
+
+	crdList := GetNonEmptyLines(output)
+	for _, crd := range gatewayAPICRDs {
 		for _, line := range crdList {
 			if strings.Contains(line, crd) {
 				return true

@@ -25,11 +25,6 @@ resources:
   - pocketidinstance_admin_role.yaml
   - pocketidinstance_editor_role.yaml
   - pocketidinstance_viewer_role.yaml
-# For each CRD, "Admin", "Editor" and "Viewer" roles are scaffolded by
-# default, aiding admins in cluster management. Those roles are
-# not used by the pocket-id-operator itself. You can comment the following lines
-# if you do not want those helpers be installed with your Project.
-- pocketiduser_admin_role.yaml
-- pocketiduser_editor_role.yaml
-- pocketiduser_viewer_role.yaml
-
+  - pocketiduser_admin_role.yaml
+  - pocketiduser_editor_role.yaml
+  - pocketiduser_viewer_role.yaml

@@ -34,11 +34,15 @@ import (
 var (
 	// Optional Environment Variables:
 	// - CERT_MANAGER_INSTALL_SKIP=true: Skips CertManager installation during test setup.
-	// These variables are useful if CertManager is already installed, avoiding
+	// - GATEWAY_API_INSTALL_SKIP=true: Skips Gateway API installation during test setup.
+	// These variables are useful if CertManager/Gateway API is already installed, avoiding
 	// re-installation and conflicts.
 	skipCertManagerInstall = os.Getenv("CERT_MANAGER_INSTALL_SKIP") == "true"
+	skipGatewayAPIInstall  = os.Getenv("GATEWAY_API_INSTALL_SKIP") == "true"
 	// isCertManagerAlreadyInstalled will be set true when CertManager CRDs be found on the cluster
 	isCertManagerAlreadyInstalled = false
+	// isGatewayAPIAlreadyInstalled will be set true when Gateway API CRDs be found on the cluster
+	isGatewayAPIAlreadyInstalled = false
 
 	// projectImage is the name of the image which will be build and loaded
 	// with the code source changes to be tested.
@@ -81,9 +85,27 @@ var _ = BeforeSuite(func() {
 			_, _ = fmt.Fprintf(GinkgoWriter, "WARNING: CertManager is already installed. Skipping installation...\n")
 		}
 	}
+
+	// Setup Gateway API CRDs before the suite if not skipped and if not already installed
+	if !skipGatewayAPIInstall {
+		By("checking if Gateway API is installed already")
+		isGatewayAPIAlreadyInstalled = utils.IsGatewayAPICRDsInstalled()
+		if !isGatewayAPIAlreadyInstalled {
+			_, _ = fmt.Fprintf(GinkgoWriter, "Installing Gateway API CRDs...\n")
+			Expect(utils.InstallGatewayAPI()).To(Succeed(), "Failed to install Gateway API CRDs")
+		} else {
+			_, _ = fmt.Fprintf(GinkgoWriter, "WARNING: Gateway API is already installed. Skipping installation...\n")
+		}
+	}
 })
 
 var _ = AfterSuite(func() {
+	// Teardown Gateway API after the suite if not skipped and if it was not already installed
+	if !skipGatewayAPIInstall && !isGatewayAPIAlreadyInstalled {
+		_, _ = fmt.Fprintf(GinkgoWriter, "Uninstalling Gateway API CRDs...\n")
+		utils.UninstallGatewayAPI()
+	}
+
 	// Teardown CertManager after the suite if not skipped and if it was not already installed
 	if !skipCertManagerInstall && !isCertManagerAlreadyInstalled {
 		_, _ = fmt.Fprintf(GinkgoWriter, "Uninstalling CertManager...\n")

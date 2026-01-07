@@ -49,6 +49,26 @@ spec:
                   External URL Pocket-id can be reached at
                   See the official documentation for APP_URL
                 type: string
+              auth:
+                description: How the operator authenticates with the instance
+                properties:
+                  apiKeyName:
+                    default: pocket-id-operator
+                    description: |-
+                      APIKeyName is the name of the API key to use from the referenced user
+                      If the key exists in PocketIDUser.status.apiKeys, that key will be used
+                      Otherwise the operator will attempt to bootstrap the instance and create a new key
+                    type: string
+                  userRef:
+                    default: pocket-id-operator
+                    description: |-
+                      UserRef is the name of the PocketIDUser CR to use for authentication
+                      Defaults to "pocket-id-operator" which will be created if it does not exist
+                    type: string
+                required:
+                - apiKeyName
+                - userRef
+                type: object
               containerSecurityContext:
                 description: Container security context
                 properties:
@@ -1501,17 +1521,25 @@ spec:
           status:
             description: status defines the observed state of PocketIDInstance
             properties:
-              conditions:
+              authApiKeyName:
+                description: AuthAPIKeyName is the name of the API key being used
+                  for authentication
+                type: string
+              authUserRef:
+                description: AuthUserRef is the name of the PocketIDUser CR being
+                  used for authentication
+                type: string
+              bootstrapped:
                 description: |-
-                  conditions represent the current state of the Instance resource.
-                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
-
-                  Standard condition types include:
-                  - "Available": the resource is fully functional
-                  - "Progressing": the resource is being created or updated
-                  - "Degraded": the resource failed to reach or maintain its desired state
-
-                  The status of each condition is one of True, False, or Unknown.
+                  Bootstrapped indicates whether the instance has been bootstrapped
+                  (initial admin user and API key created)
+                type: boolean
+              bootstrappedAt:
+                description: BootstrappedAt is the timestamp when bootstrap completed
+                type: string
+              conditions:
+                description: Conditions represent the current state of the Instance
+                  resource.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.

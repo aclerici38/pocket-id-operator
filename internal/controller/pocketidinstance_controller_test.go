@@ -1476,4 +1476,206 @@ var _ = Describe("PocketIDInstance Controller", func() {
 			Expect(podAnnotations).To(HaveKeyWithValue("prometheus.io/scrape", "true"))
 		})
 	})
+
+	Context("When creating a PocketIDInstance with explicit auth config", func() {
+		const instanceName = "test-auth-explicit"
+
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
+		var secret *corev1.Secret
+
+		BeforeEach(func() {
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName + "-secret",
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"encryption-key": []byte("test-encryption-key-value"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
+						ValueFrom: &corev1.EnvVarSource{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: secret.Name,
+								},
+								Key: "encryption-key",
+							},
+						},
+					},
+					AppURL: "https://auth.example.com",
+					Auth: &pocketidinternalv1alpha1.AuthConfig{
+						UserRef:    "custom-admin",
+						APIKeyName: "custom-key",
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if instance != nil {
+				_ = k8sClient.Delete(ctx, instance)
+			}
+			if secret != nil {
+				_ = k8sClient.Delete(ctx, secret)
+			}
+		})
+
+		It("Should create the instance with explicit auth config", func() {
+			createdInstance := &pocketidinternalv1alpha1.PocketIDInstance{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName,
+					Namespace: namespace,
+				}, createdInstance)
+			}, timeout, interval).Should(Succeed())
+
+			Expect(createdInstance.Spec.Auth).NotTo(BeNil())
+			Expect(createdInstance.Spec.Auth.UserRef).To(Equal("custom-admin"))
+			Expect(createdInstance.Spec.Auth.APIKeyName).To(Equal("custom-key"))
+		})
+	})
+
+	Context("When creating a PocketIDInstance without auth config (defaults)", func() {
+		const instanceName = "test-auth-default"
+
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
+		var secret *corev1.Secret
+
+		BeforeEach(func() {
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName + "-secret",
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"encryption-key": []byte("test-encryption-key-value"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			// Create instance WITHOUT auth config - should use defaults
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
+						ValueFrom: &corev1.EnvVarSource{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: secret.Name,
+								},
+								Key: "encryption-key",
+							},
+						},
+					},
+					AppURL: "https://auth.example.com",
+					// Auth is intentionally nil - controller should use defaults
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if instance != nil {
+				_ = k8sClient.Delete(ctx, instance)
+			}
+			if secret != nil {
+				_ = k8sClient.Delete(ctx, secret)
+			}
+		})
+
+		It("Should create the instance without auth config (controller uses defaults)", func() {
+			createdInstance := &pocketidinternalv1alpha1.PocketIDInstance{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName,
+					Namespace: namespace,
+				}, createdInstance)
+			}, timeout, interval).Should(Succeed())
+
+			// Auth is nil in spec - controller will use defaults (pocket-id-operator)
+			Expect(createdInstance.Spec.Auth).To(BeNil())
+		})
+	})
+
+	Context("When creating a PocketIDInstance with auth using default values", func() {
+		const instanceName = "test-auth-with-defaults"
+
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
+		var secret *corev1.Secret
+
+		BeforeEach(func() {
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName + "-secret",
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"encryption-key": []byte("test-encryption-key-value"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			// Create with explicit auth using kubebuilder defaults
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
+						ValueFrom: &corev1.EnvVarSource{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: secret.Name,
+								},
+								Key: "encryption-key",
+							},
+						},
+					},
+					AppURL: "https://auth.example.com",
+					Auth: &pocketidinternalv1alpha1.AuthConfig{
+						UserRef:    "pocket-id-operator",
+						APIKeyName: "pocket-id-operator",
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if instance != nil {
+				_ = k8sClient.Delete(ctx, instance)
+			}
+			if secret != nil {
+				_ = k8sClient.Delete(ctx, secret)
+			}
+		})
+
+		It("Should create the instance with default auth values", func() {
+			createdInstance := &pocketidinternalv1alpha1.PocketIDInstance{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName,
+					Namespace: namespace,
+				}, createdInstance)
+			}, timeout, interval).Should(Succeed())
+
+			Expect(createdInstance.Spec.Auth).NotTo(BeNil())
+			Expect(createdInstance.Spec.Auth.UserRef).To(Equal("pocket-id-operator"))
+			Expect(createdInstance.Spec.Auth.APIKeyName).To(Equal("pocket-id-operator"))
+		})
+	})
 })

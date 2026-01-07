@@ -25,6 +25,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -35,6 +36,9 @@ import (
 
 // namespace where the project is deployed in
 const namespace = "pocket-id-operator-system"
+
+// testNamespace where test resources are created
+const testNamespace = "pocket-id-test"
 
 // serviceAccountName created for the project
 const serviceAccountName = "pocket-id-operator"
@@ -267,16 +271,280 @@ var _ = Describe("Manager", Ordered, func() {
 		})
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
+	})
 
-		// TODO: Customize the e2e test suite with scenarios specific to your project.
-		// Consider applying sample/CR(s) and check their status and/or verifying
-		// the reconciliation by using the metrics, i.e.:
-		// metricsOutput, err := getMetricsOutput()
-		// Expect(err).NotTo(HaveOccurred(), "Failed to retrieve logs from curl pod")
-		// Expect(metricsOutput).To(ContainSubstring(
-		//    fmt.Sprintf(`controller_runtime_reconcile_total{controller="%s",result="success"} 1`,
-		//    strings.ToLower(<Kind>),
-		// ))
+	Context("PocketIDInstance CR", func() {
+		BeforeAll(func() {
+			By("creating the test namespace")
+			cmd := exec.Command("kubectl", "create", "ns", testNamespace, "--dry-run=client", "-o", "yaml")
+			output, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			cmd = exec.Command("kubectl", "apply", "-f", "-")
+			cmd.Stdin = strings.NewReader(output)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("creating a secret for encryption key")
+			cmd = exec.Command("kubectl", "create", "secret", "generic", "pocket-id-encryption",
+				"--from-literal=key=test-encryption-key-32chars",
+				"-n", testNamespace)
+			_, _ = utils.Run(cmd) // Ignore error if already exists
+		})
+
+		AfterAll(func() {
+			By("cleaning up test namespace")
+			cmd := exec.Command("kubectl", "delete", "ns", testNamespace, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+		})
+
+		It("should create a PocketIDInstance with Deployment", func() {
+			instanceYAML := fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDInstance
+metadata:
+  name: test-instance
+  namespace: %s
+spec:
+  deploymentType: Deployment
+  image: ghcr.io/pocket-id/pocket-id:latest
+  encryptionKey:
+    valueFrom:
+      secretKeyRef:
+        name: pocket-id-encryption
+        key: key
+  appUrl: "https://auth.example.com"
+`, testNamespace)
+
+			By("applying the PocketIDInstance CR")
+			cmd := exec.Command("kubectl", "apply", "-f", "-")
+			cmd.Stdin = strings.NewReader(instanceYAML)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create PocketIDInstance")
+
+			By("verifying the Deployment is created")
+			verifyDeployment := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "deployment", "test-instance",
+					"-n", testNamespace, "-o", "jsonpath={.metadata.name}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("test-instance"))
+			}
+			Eventually(verifyDeployment, 2*time.Minute, time.Second).Should(Succeed())
+
+			By("verifying the Service is created")
+			verifyService := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "service", "test-instance",
+					"-n", testNamespace, "-o", "jsonpath={.spec.ports[0].port}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("1411"))
+			}
+			Eventually(verifyService, time.Minute, time.Second).Should(Succeed())
+
+			By("cleaning up the instance")
+			cmd = exec.Command("kubectl", "delete", "pocketidinstance", "test-instance",
+				"-n", testNamespace, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+		})
+
+		It("should create a PocketIDInstance with StatefulSet", func() {
+			instanceYAML := fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDInstance
+metadata:
+  name: test-sts-instance
+  namespace: %s
+spec:
+  deploymentType: StatefulSet
+  encryptionKey:
+    valueFrom:
+      secretKeyRef:
+        name: pocket-id-encryption
+        key: key
+`, testNamespace)
+
+			By("applying the PocketIDInstance CR")
+			cmd := exec.Command("kubectl", "apply", "-f", "-")
+			cmd.Stdin = strings.NewReader(instanceYAML)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create PocketIDInstance")
+
+			By("verifying the StatefulSet is created")
+			verifyStatefulSet := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "statefulset", "test-sts-instance",
+					"-n", testNamespace, "-o", "jsonpath={.metadata.name}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("test-sts-instance"))
+			}
+			Eventually(verifyStatefulSet, 2*time.Minute, time.Second).Should(Succeed())
+
+			By("cleaning up the instance")
+			cmd = exec.Command("kubectl", "delete", "pocketidinstance", "test-sts-instance",
+				"-n", testNamespace, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+		})
+	})
+
+	Context("PocketIDUser CR", func() {
+		BeforeAll(func() {
+			By("ensuring test namespace exists")
+			cmd := exec.Command("kubectl", "create", "ns", testNamespace, "--dry-run=client", "-o", "yaml")
+			output, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			cmd = exec.Command("kubectl", "apply", "-f", "-")
+			cmd.Stdin = strings.NewReader(output)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should create a PocketIDUser with plain values", func() {
+			userYAML := fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: test-user
+  namespace: %s
+spec:
+  username:
+    value: testuser
+  firstName:
+    value: Test
+  lastName:
+    value: User
+  email:
+    value: test@example.com
+  admin: false
+`, testNamespace)
+
+			By("applying the PocketIDUser CR")
+			cmd := exec.Command("kubectl", "apply", "-f", "-")
+			cmd.Stdin = strings.NewReader(userYAML)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create PocketIDUser")
+
+			By("verifying the PocketIDUser is created")
+			verifyUser := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "pocketiduser", "test-user",
+					"-n", testNamespace, "-o", "jsonpath={.spec.username.value}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("testuser"))
+			}
+			Eventually(verifyUser, time.Minute, time.Second).Should(Succeed())
+
+			By("cleaning up the user")
+			cmd = exec.Command("kubectl", "delete", "pocketiduser", "test-user",
+				"-n", testNamespace, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+		})
+
+		It("should create a PocketIDUser with secret references", func() {
+			By("creating secrets for user data")
+			cmd := exec.Command("kubectl", "create", "secret", "generic", "user-data",
+				"--from-literal=username=secretuser",
+				"--from-literal=email=secret@example.com",
+				"-n", testNamespace)
+			_, _ = utils.Run(cmd) // Ignore error if already exists
+
+			userYAML := fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: test-secret-user
+  namespace: %s
+spec:
+  username:
+    valueFrom:
+      name: user-data
+      key: username
+  firstName:
+    value: Secret
+  email:
+    valueFrom:
+      name: user-data
+      key: email
+  admin: true
+`, testNamespace)
+
+			By("applying the PocketIDUser CR")
+			cmd = exec.Command("kubectl", "apply", "-f", "-")
+			cmd.Stdin = strings.NewReader(userYAML)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create PocketIDUser")
+
+			By("verifying the PocketIDUser is created")
+			verifyUser := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "pocketiduser", "test-secret-user",
+					"-n", testNamespace, "-o", "jsonpath={.spec.admin}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("true"))
+			}
+			Eventually(verifyUser, time.Minute, time.Second).Should(Succeed())
+
+			By("cleaning up")
+			cmd = exec.Command("kubectl", "delete", "pocketiduser", "test-secret-user",
+				"-n", testNamespace, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+			cmd = exec.Command("kubectl", "delete", "secret", "user-data",
+				"-n", testNamespace, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+		})
+
+		It("should create a PocketIDUser with API key using SecretRef", func() {
+			By("creating a secret for existing API key")
+			cmd := exec.Command("kubectl", "create", "secret", "generic", "existing-api-key",
+				"--from-literal=token=my-existing-api-key-token",
+				"-n", testNamespace)
+			_, _ = utils.Run(cmd) // Ignore error if already exists
+
+			userYAML := fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: test-apikey-user
+  namespace: %s
+spec:
+  username:
+    value: apikeyuser
+  firstName:
+    value: APIKey
+  admin: false
+  apiKeys:
+  - name: existing-key
+    description: Pre-existing API key
+    secretRef:
+      name: existing-api-key
+      key: token
+`, testNamespace)
+
+			By("applying the PocketIDUser CR")
+			cmd = exec.Command("kubectl", "apply", "-f", "-")
+			cmd.Stdin = strings.NewReader(userYAML)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create PocketIDUser")
+
+			By("verifying the PocketIDUser is created with API key")
+			verifyUser := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "pocketiduser", "test-apikey-user",
+					"-n", testNamespace, "-o", "jsonpath={.spec.apiKeys[0].name}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("existing-key"))
+			}
+			Eventually(verifyUser, time.Minute, time.Second).Should(Succeed())
+
+			By("cleaning up")
+			cmd = exec.Command("kubectl", "delete", "pocketiduser", "test-apikey-user",
+				"-n", testNamespace, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+			cmd = exec.Command("kubectl", "delete", "secret", "existing-api-key",
+				"-n", testNamespace, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+		})
 	})
 })
 

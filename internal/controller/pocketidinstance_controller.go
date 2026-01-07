@@ -18,11 +18,14 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"net/url"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,6 +38,7 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
 const (
@@ -56,9 +60,12 @@ type PocketIDInstanceReconciler struct {
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidinstances,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidinstances/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidinstances/finalizers,verbs=update
+// +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidusers,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidusers/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch;create;update;patch;delete
 
@@ -101,7 +108,30 @@ func (r *PocketIDInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 
+	// Attempt auth reconciliation when instance is available
+	// If auth is not configured, use defaults (pocket-id-operator user and API key)
+	if r.isInstanceAvailable(instance) {
+		result, err := r.reconcileAuth(ctx, instance)
+		if err != nil {
+			log.Error(err, "Failed to reconcile auth")
+			return result, err
+		}
+		if result.RequeueAfter > 0 {
+			return result, nil
+		}
+	}
+
 	return ctrl.Result{}, nil
+}
+
+// isInstanceAvailable checks if the instance has Available=True
+func (r *PocketIDInstanceReconciler) isInstanceAvailable(instance *pocketidinternalv1alpha1.PocketIDInstance) bool {
+	for _, cond := range instance.Status.Conditions {
+		if cond.Type == "Available" && cond.Status == metav1.ConditionTrue {
+			return true
+		}
+	}
+	return false
 }
 
 // Helpers
@@ -638,6 +668,225 @@ func (r *PocketIDInstanceReconciler) updateStatus(ctx context.Context, instance 
 	return r.Status().Patch(ctx, instance, client.MergeFrom(base))
 }
 
+const (
+	defaultAuthUserRef    = "pocket-id-operator"
+	defaultAuthAPIKeyName = "pocket-id-operator"
+)
+
+// reconcileAuth handles bootstrap and auth configuration
+func (r *PocketIDInstanceReconciler) reconcileAuth(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) (ctrl.Result, error) {
+	log := logf.FromContext(ctx)
+
+	// Use defaults if auth is not configured
+	userRef := defaultAuthUserRef
+	apiKeyName := defaultAuthAPIKeyName
+	if instance.Spec.Auth != nil {
+		userRef = instance.Spec.Auth.UserRef
+		apiKeyName = instance.Spec.Auth.APIKeyName
+	}
+
+	// Check if the referenced User CR exists
+	user := &pocketidinternalv1alpha1.PocketIDUser{}
+	err := r.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: userRef}, user)
+
+	if errors.IsNotFound(err) {
+		// User doesn't exist - check if we need to bootstrap
+		if instance.Status.Bootstrapped {
+			// Already bootstrapped but user is gone - this is an error state
+			log.Error(nil, "User CR deleted after bootstrap", "user", userRef)
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, fmt.Errorf("user CR %s not found but instance was bootstrapped", userRef)
+		}
+
+		// Need to bootstrap - create the user and API key
+		return r.bootstrap(ctx, instance)
+	}
+
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("get user CR: %w", err)
+	}
+
+	// User exists - check if the API key exists in status
+	var keyStatus *pocketidinternalv1alpha1.APIKeyStatus
+	for i := range user.Status.APIKeys {
+		if user.Status.APIKeys[i].Name == apiKeyName {
+			keyStatus = &user.Status.APIKeys[i]
+			break
+		}
+	}
+
+	if keyStatus == nil || keyStatus.SecretName == "" {
+		// API key not ready yet
+		if !instance.Status.Bootstrapped {
+			// Check if we need to bootstrap (API key in spec but not created yet)
+			hasKeyInSpec := false
+			for _, k := range user.Spec.APIKeys {
+				if k.Name == apiKeyName {
+					hasKeyInSpec = true
+					break
+				}
+			}
+
+			if !hasKeyInSpec {
+				// Need to add the API key to the user spec or bootstrap
+				return r.bootstrap(ctx, instance)
+			}
+		}
+
+		log.Info("Waiting for API key to be ready", "user", userRef, "apiKey", apiKeyName)
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+
+	// Update instance status with auth info
+	return r.updateAuthStatus(ctx, instance, userRef, apiKeyName)
+}
+
+// bootstrap performs the initial setup of Pocket-ID
+func (r *PocketIDInstanceReconciler) bootstrap(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) (ctrl.Result, error) {
+	log := logf.FromContext(ctx)
+
+	if instance.Spec.AppURL == "" {
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, fmt.Errorf("cannot bootstrap: appUrl not configured")
+	}
+
+	// Use defaults if auth is not configured
+	userRef := defaultAuthUserRef
+	apiKeyName := defaultAuthAPIKeyName
+	if instance.Spec.Auth != nil {
+		userRef = instance.Spec.Auth.UserRef
+		apiKeyName = instance.Spec.Auth.APIKeyName
+	}
+
+	log.Info("Starting bootstrap", "user", userRef, "apiKey", apiKeyName)
+
+	// Create bootstrap client
+	bootstrapClient := pocketid.NewBootstrapClient(instance.Spec.AppURL)
+
+	// Perform bootstrap
+	setupReq := pocketid.SetupRequest{
+		Username:  userRef,
+		FirstName: "Operator",
+		LastName:  "Admin",
+	}
+
+	setupResp, apiKeyResp, err := bootstrapClient.Bootstrap(
+		ctx,
+		setupReq,
+		apiKeyName,
+		"Managed by pocket-id-operator",
+		pocketid.DefaultAPIKeyExpiry(),
+	)
+	if err != nil {
+		// Check if setup already completed (instance not fresh)
+		log.Error(err, "Bootstrap failed - instance may already be initialized")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
+	}
+
+	log.Info("Bootstrap completed", "userID", setupResp.ID, "apiKeyID", apiKeyResp.APIKey.ID)
+
+	// Create the User CR
+	user := &pocketidinternalv1alpha1.PocketIDUser{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      userRef,
+			Namespace: instance.Namespace,
+		},
+		Spec: pocketidinternalv1alpha1.PocketIDUserSpec{
+			Username:  pocketidinternalv1alpha1.StringValue{Value: setupResp.Username},
+			FirstName: pocketidinternalv1alpha1.StringValue{Value: setupResp.FirstName},
+			LastName:  pocketidinternalv1alpha1.StringValue{Value: setupResp.LastName},
+			Email:     pocketidinternalv1alpha1.StringValue{Value: setupResp.Email},
+			Admin:     true,
+			APIKeys: []pocketidinternalv1alpha1.APIKeySpec{
+				{
+					Name:        apiKeyName,
+					ExpiresAt:   apiKeyResp.APIKey.ExpiresAt,
+					Description: "Managed by pocket-id-operator",
+				},
+			},
+		},
+	}
+
+	if err := controllerutil.SetControllerReference(instance, user, r.Scheme); err != nil {
+		return ctrl.Result{}, fmt.Errorf("set controller reference on user: %w", err)
+	}
+
+	if err := r.Create(ctx, user); err != nil {
+		return ctrl.Result{}, fmt.Errorf("create user CR: %w", err)
+	}
+
+	// Create the secret with the API key token
+	secretName := fmt.Sprintf("%s-%s", userRef, apiKeyName)
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      secretName,
+			Namespace: instance.Namespace,
+		},
+		Type: corev1.SecretTypeOpaque,
+		Data: map[string][]byte{
+			"token": []byte(apiKeyResp.Token),
+		},
+	}
+
+	if err := controllerutil.SetControllerReference(user, secret, r.Scheme); err != nil {
+		return ctrl.Result{}, fmt.Errorf("set controller reference on secret: %w", err)
+	}
+
+	if err := r.Create(ctx, secret); err != nil {
+		return ctrl.Result{}, fmt.Errorf("create API key secret: %w", err)
+	}
+
+	// Update user status with the created resources
+	user.Status.UserID = setupResp.ID
+	user.Status.Username = setupResp.Username
+	user.Status.DisplayName = setupResp.DisplayName
+	user.Status.Email = setupResp.Email
+	user.Status.IsAdmin = setupResp.IsAdmin
+	user.Status.APIKeys = []pocketidinternalv1alpha1.APIKeyStatus{
+		{
+			Name:       apiKeyName,
+			ID:         apiKeyResp.APIKey.ID,
+			CreatedAt:  apiKeyResp.APIKey.CreatedAt,
+			ExpiresAt:  apiKeyResp.APIKey.ExpiresAt,
+			SecretName: secretName,
+			SecretKey:  "token",
+		},
+	}
+
+	if err := r.Status().Update(ctx, user); err != nil {
+		return ctrl.Result{}, fmt.Errorf("update user status: %w", err)
+	}
+
+	// Update instance status
+	base := instance.DeepCopy()
+	instance.Status.Bootstrapped = true
+	instance.Status.BootstrappedAt = time.Now().Format(time.RFC3339)
+	instance.Status.AuthUserRef = userRef
+	instance.Status.AuthAPIKeyName = apiKeyName
+
+	if err := r.Status().Patch(ctx, instance, client.MergeFrom(base)); err != nil {
+		return ctrl.Result{}, fmt.Errorf("update instance status: %w", err)
+	}
+
+	log.Info("Bootstrap successful")
+	return ctrl.Result{}, nil
+}
+
+// updateAuthStatus updates the instance status with auth info
+func (r *PocketIDInstanceReconciler) updateAuthStatus(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, userRef, apiKeyName string) (ctrl.Result, error) {
+	if instance.Status.AuthUserRef == userRef && instance.Status.AuthAPIKeyName == apiKeyName {
+		return ctrl.Result{}, nil
+	}
+
+	base := instance.DeepCopy()
+	instance.Status.AuthUserRef = userRef
+	instance.Status.AuthAPIKeyName = apiKeyName
+
+	if err := r.Status().Patch(ctx, instance, client.MergeFrom(base)); err != nil {
+		return ctrl.Result{}, fmt.Errorf("update auth status: %w", err)
+	}
+
+	return ctrl.Result{}, nil
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *PocketIDInstanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
@@ -647,6 +896,7 @@ func (r *PocketIDInstanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.Service{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Owns(&gwapiv1.HTTPRoute{}).
+		Owns(&pocketidinternalv1alpha1.PocketIDUser{}).
 		Named("pocketidinstance").
 		Complete(r)
 }

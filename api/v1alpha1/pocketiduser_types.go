@@ -17,11 +17,23 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+
+// StringValue represents a value that can be either a plain string or from a secret
+type StringValue struct {
+	// Plain text value
+	// +optional
+	Value string `json:"value,omitempty"`
+
+	// Source for the value from a secret
+	// +optional
+	ValueFrom *corev1.SecretKeySelector `json:"valueFrom,omitempty"`
+}
 
 // APIKeySpec defines the desired state of an API key
 type APIKeySpec struct {
@@ -39,6 +51,11 @@ type APIKeySpec struct {
 	// Description of the API key
 	// +optional
 	Description string `json:"description,omitempty"`
+
+	// SecretRef references an existing Secret containing the API key token
+	// If set, the operator will use this secret instead of creating a new one
+	// +optional
+	SecretRef *corev1.SecretKeySelector `json:"secretRef,omitempty"`
 }
 
 // APIKeyStatus reflects the observed state of an API key from Pocket-ID
@@ -73,25 +90,24 @@ type PocketIDUserSpec struct {
 	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
 
 	// Username of the user. Defaults to the metadata.name
+	// Can be a plain value or reference a secret
 	// +optional
-	// +kubebuilder:validation:MinLength=2
-	// +kubebuilder:validation:MaxLength=50
-	Username string `json:"username,omitempty"`
+	Username StringValue `json:"username,omitempty"`
 
 	// First name of the user
-	// +kubebuilder:validation:Required
-    // +kubebuilder:validation:MinLength=1
-    // +kubebuilder:validation:MaxLength=50
-    FirstName string `json:"firstName"`
+	// Can be a plain value or reference a secret
+	// +optional
+	FirstName StringValue `json:"firstName,omitempty"`
 
-    // Last name of the user
-    // +optional
-    // +kubebuilder:validation:MaxLength=50
-    LastName string `json:"lastName,omitempty"`
+	// Last name of the user
+	// Can be a plain value or reference a secret
+	// +optional
+	LastName StringValue `json:"lastName,omitempty"`
 
-    // Email of the user
-    // +optional
-    Email string `json:"email,omitempty"`
+	// Email of the user
+	// Can be a plain value or reference a secret
+	// +optional
+	Email StringValue `json:"email,omitempty"`
 
 	// Flag whether a user is an admin or not
 	// +kubebuilder:default=false
