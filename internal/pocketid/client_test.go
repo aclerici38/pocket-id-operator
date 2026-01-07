@@ -336,7 +336,14 @@ func TestClient_CreateUser(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL).WithAPIKey("test-key")
-	user, err := client.CreateUser(context.Background(), "newuser", "New", "User", "new@example.com", false)
+	user, err := client.CreateUser(context.Background(), UserInput{
+		Username:    "newuser",
+		FirstName:   "New",
+		LastName:    "User",
+		Email:       "new@example.com",
+		DisplayName: "New User",
+		IsAdmin:     false,
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -376,7 +383,14 @@ func TestClient_UpdateUser(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL).WithAPIKey("test-key")
-	user, err := client.UpdateUser(context.Background(), "user-123", "updateduser", "Updated", "User", "updated@example.com", true)
+	user, err := client.UpdateUser(context.Background(), "user-123", UserInput{
+		Username:    "updateduser",
+		FirstName:   "Updated",
+		LastName:    "User",
+		Email:       "updated@example.com",
+		DisplayName: "Updated User",
+		IsAdmin:     true,
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -553,7 +567,14 @@ func TestClient_CreateUser_Conflict(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL).WithAPIKey("test-key")
-	_, err := client.CreateUser(context.Background(), "existing", "First", "Last", "email@example.com", false)
+	_, err := client.CreateUser(context.Background(), UserInput{
+		Username:    "existing",
+		FirstName:   "First",
+		LastName:    "Last",
+		Email:       "email@example.com",
+		DisplayName: "First Last",
+		IsAdmin:     false,
+	})
 	if err == nil {
 		t.Fatal("expected error for conflicting user")
 	}

@@ -362,6 +362,7 @@ func (in *PocketIDUserSpec) DeepCopyInto(out *PocketIDUserSpec) {
 	in.FirstName.DeepCopyInto(&out.FirstName)
 	in.LastName.DeepCopyInto(&out.LastName)
 	in.Email.DeepCopyInto(&out.Email)
+	in.DisplayName.DeepCopyInto(&out.DisplayName)
 	if in.APIKeys != nil {
 		in, out := &in.APIKeys, &out.APIKeys
 		*out = make([]APIKeySpec, len(*in))

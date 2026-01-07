@@ -61,9 +61,8 @@ spec:
                     type: string
                   userRef:
                     default: pocket-id-operator
-                    description: |-
-                      UserRef is the name of the PocketIDUser CR to use for authentication
-                      Defaults to "pocket-id-operator" which will be created if it does not exist
+                    description: UserRef is the name of the PocketIDUser CR to use
+                      for authentication
                     type: string
                 required:
                 - apiKeyName

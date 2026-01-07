@@ -96,6 +96,7 @@ type PocketIDUserSpec struct {
 
 	// First name of the user
 	// Can be a plain value or reference a secret
+	// Defaults to name of the Resource
 	// +optional
 	FirstName StringValue `json:"firstName,omitempty"`
 
@@ -109,9 +110,24 @@ type PocketIDUserSpec struct {
 	// +optional
 	Email StringValue `json:"email,omitempty"`
 
+	// DisplayName of the user
+	// Defaults to "FirstName LastName"
+	// +optional
+	DisplayName StringValue `json:"displayName,omitempty"`
+
 	// Flag whether a user is an admin or not
 	// +kubebuilder:default=false
+	// +optional
 	Admin bool `json:"admin"`
+
+	// Disabled indicates whether the user account is disabled
+	// +kubebuilder:default=false
+	// +optional
+	Disabled bool `json:"disabled,omitempty"`
+
+	// Locale is the user's preferred locale (e.g., "en", "de", "fr")
+	// +optional
+	Locale string `json:"locale,omitempty"`
 
 	// APIKeys is a list of API keys to create for this user
 	// +optional
@@ -171,8 +187,8 @@ type PocketIDUser struct {
 	metav1.ObjectMeta `json:"metadata,omitzero"`
 
 	// spec defines the desired state of PocketIDUser
-	// +required
-	Spec PocketIDUserSpec `json:"spec"`
+	// +optional
+	Spec PocketIDUserSpec `json:"spec,omitempty"`
 
 	// status defines the observed state of PocketIDUser
 	// +optional

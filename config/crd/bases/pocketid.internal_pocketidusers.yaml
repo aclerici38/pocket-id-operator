@@ -91,6 +91,43 @@ spec:
                   - name
                   type: object
                 type: array
+              disabled:
+                default: false
+                description: Disabled indicates whether the user account is disabled
+                type: boolean
+              displayName:
+                description: |-
+                  DisplayName of the user
+                  Defaults to "FirstName LastName"
+                properties:
+                  value:
+                    description: Plain text value
+                    type: string
+                  valueFrom:
+                    description: Source for the value from a secret
+                    properties:
+                      key:
+                        description: The key of the secret to select from.  Must be
+                          a valid secret key.
+                        type: string
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                      optional:
+                        description: Specify whether the Secret or its key must be
+                          defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
+                type: object
               email:
                 description: |-
                   Email of the user
@@ -128,6 +165,7 @@ spec:
                 description: |-
                   First name of the user
                   Can be a plain value or reference a secret
+                  Defaults to name of the Resource
                 properties:
                   value:
                     description: Plain text value
@@ -190,6 +228,10 @@ spec:
                     type: object
                     x-kubernetes-map-type: atomic
                 type: object
+              locale:
+                description: Locale is the user's preferred locale (e.g., "en", "de",
+                  "fr")
+                type: string
               username:
                 description: |-
                   Username of the user. Defaults to the metadata.name
@@ -223,8 +265,6 @@ spec:
                     type: object
                     x-kubernetes-map-type: atomic
                 type: object
-            required:
-            - admin
             type: object
           status:
             description: status defines the observed state of PocketIDUser
@@ -343,8 +383,6 @@ spec:
                 description: Username as stored in Pocket-ID
                 type: string
             type: object
-        required:
-        - spec
         type: object
     served: true
     storage: true

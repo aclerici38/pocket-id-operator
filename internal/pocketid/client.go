@@ -144,15 +144,30 @@ func (c *Client) GetCurrentUser(ctx context.Context) (*User, error) {
 	return userFromDTO(resp.Payload), nil
 }
 
-func (c *Client) CreateUser(ctx context.Context, username, firstName, lastName, email string, isAdmin bool) (*User, error) {
+// UserInput contains the fields for creating or updating a user.
+type UserInput struct {
+	Username    string
+	FirstName   string
+	LastName    string
+	Email       string
+	DisplayName string
+	IsAdmin     bool
+	Disabled    bool
+	Locale      string
+}
+
+func (c *Client) CreateUser(ctx context.Context, input UserInput) (*User, error) {
 	params := users.NewPostAPIUsersParams().
 		WithContext(ctx).
 		WithUser(&models.GithubComPocketIDPocketIDBackendInternalDtoUserCreateDto{
-			Username:  &username,
-			FirstName: &firstName,
-			LastName:  lastName,
-			Email:     email,
-			IsAdmin:   isAdmin,
+			Username:    &input.Username,
+			FirstName:   &input.FirstName,
+			LastName:    input.LastName,
+			Email:       input.Email,
+			DisplayName: &input.DisplayName,
+			IsAdmin:     input.IsAdmin,
+			Disabled:    input.Disabled,
+			Locale:      input.Locale,
 		})
 
 	resp, err := c.raw.Users.PostAPIUsers(params)
@@ -163,17 +178,20 @@ func (c *Client) CreateUser(ctx context.Context, username, firstName, lastName, 
 	return userFromDTO(resp.Payload), nil
 }
 
-// Updates an existing user.
-func (c *Client) UpdateUser(ctx context.Context, id, username, firstName, lastName, email string, isAdmin bool) (*User, error) {
+// UpdateUser updates an existing user.
+func (c *Client) UpdateUser(ctx context.Context, id string, input UserInput) (*User, error) {
 	params := users.NewPutAPIUsersIDParams().
 		WithContext(ctx).
 		WithID(id).
 		WithUser(&models.GithubComPocketIDPocketIDBackendInternalDtoUserCreateDto{
-			Username:  &username,
-			FirstName: &firstName,
-			LastName:  lastName,
-			Email:     email,
-			IsAdmin:   isAdmin,
+			Username:    &input.Username,
+			FirstName:   &input.FirstName,
+			LastName:    input.LastName,
+			Email:       input.Email,
+			DisplayName: &input.DisplayName,
+			IsAdmin:     input.IsAdmin,
+			Disabled:    input.Disabled,
+			Locale:      input.Locale,
 		})
 
 	resp, err := c.raw.Users.PutAPIUsersID(params)

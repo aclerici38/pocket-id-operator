@@ -307,6 +307,10 @@ func (r *PocketIDUserReconciler) reconcileUser(ctx context.Context, user *pocket
 	if err != nil {
 		return fmt.Errorf("resolve firstName: %w", err)
 	}
+	// FirstName is required by Pocket-ID, default to username if not set
+	if firstName == "" {
+		firstName = username
+	}
 
 	lastName, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.LastName)
 	if err != nil {
@@ -317,11 +321,45 @@ func (r *PocketIDUserReconciler) reconcileUser(ctx context.Context, user *pocket
 	if err != nil {
 		return fmt.Errorf("resolve email: %w", err)
 	}
+	// Email is required by Pocket-ID, generate a placeholder if not set
+	if email == "" {
+		email = fmt.Sprintf("%s@placeholder.local", username)
+	}
+
+	displayName, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.DisplayName)
+	if err != nil {
+		return fmt.Errorf("resolve displayName: %w", err)
+	}
+	// Default displayName to "FirstName LastName" if not set
+	if displayName == "" {
+		displayName = firstName
+		if lastName != "" {
+			if displayName != "" {
+				displayName += " "
+			}
+			displayName += lastName
+		}
+		// Fallback to username if still empty
+		if displayName == "" {
+			displayName = username
+		}
+	}
+
+	input := pocketid.UserInput{
+		Username:    username,
+		FirstName:   firstName,
+		LastName:    lastName,
+		Email:       email,
+		DisplayName: displayName,
+		IsAdmin:     user.Spec.Admin,
+		Disabled:    user.Spec.Disabled,
+		Locale:      user.Spec.Locale,
+	}
 
 	// If we don't have a user ID, we need to create the user
 	if user.Status.UserID == "" {
 		log.Info("Creating user in Pocket-ID", "username", username)
-		pUser, err := apiClient.CreateUser(ctx, username, firstName, lastName, email, user.Spec.Admin)
+		pUser, err := apiClient.CreateUser(ctx, input)
 		if err != nil {
 			return fmt.Errorf("create user: %w", err)
 		}
@@ -336,15 +374,18 @@ func (r *PocketIDUserReconciler) reconcileUser(ctx context.Context, user *pocket
 	}
 
 	// Check if update needed
-	needsUpdate := pUser.Username != username ||
-		pUser.FirstName != firstName ||
-		pUser.LastName != lastName ||
-		pUser.Email != email ||
-		pUser.IsAdmin != user.Spec.Admin
+	needsUpdate := pUser.Username != input.Username ||
+		pUser.FirstName != input.FirstName ||
+		pUser.LastName != input.LastName ||
+		pUser.Email != input.Email ||
+		pUser.DisplayName != input.DisplayName ||
+		pUser.IsAdmin != input.IsAdmin ||
+		pUser.Disabled != input.Disabled ||
+		pUser.Locale != input.Locale
 
 	if needsUpdate {
 		log.Info("Updating user in Pocket-ID", "username", username)
-		pUser, err = apiClient.UpdateUser(ctx, user.Status.UserID, username, firstName, lastName, email, user.Spec.Admin)
+		pUser, err = apiClient.UpdateUser(ctx, user.Status.UserID, input)
 		if err != nil {
 			return fmt.Errorf("update user: %w", err)
 		}
