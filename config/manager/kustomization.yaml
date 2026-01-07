@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: example.com/pocket-id-operator
-  newTag: v0.0.1
+  newTag: dev

@@ -145,13 +145,11 @@ func (r *PocketIDUserReconciler) isInstanceReady(instance *pocketidinternalv1alp
 
 // getAPIClient creates an authenticated Pocket-ID client
 func (r *PocketIDUserReconciler) getAPIClient(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, namespace string) (*pocketid.Client, error) {
-	if instance.Spec.AppURL == "" {
-		return nil, fmt.Errorf("instance has no appUrl configured")
-	}
+	// Use internal service URL for operator-to-instance communication
+	serviceURL := internalServiceURL(instance.Name, instance.Namespace)
+	baseClient := pocketid.NewClient(serviceURL)
 
-	baseClient := pocketid.NewClient(instance.Spec.AppURL)
-
-	// If auth is configured, get the API key from the referenced user's secret
+	// If auth is configured in spec, use that
 	if instance.Spec.Auth != nil {
 		token, err := r.getAPIKeyToken(ctx, namespace, instance.Spec.Auth.UserRef, instance.Spec.Auth.APIKeyName)
 		if err != nil {
@@ -160,8 +158,36 @@ func (r *PocketIDUserReconciler) getAPIClient(ctx context.Context, instance *poc
 		return baseClient.WithAPIKey(token), nil
 	}
 
+	// Check if auth is configured in status (from bootstrap)
+	if instance.Status.AuthUserRef != "" && instance.Status.AuthAPIKeyName != "" {
+		token, err := r.getAPIKeyTokenDirect(ctx, namespace, instance.Status.AuthUserRef, instance.Status.AuthAPIKeyName)
+		if err != nil {
+			return nil, fmt.Errorf("get bootstrapped API key token: %w", err)
+		}
+		return baseClient.WithAPIKey(token), nil
+	}
+
 	// No auth configured - this will only work for unauthenticated endpoints
 	return baseClient, nil
+}
+
+// getAPIKeyTokenDirect retrieves the API key token directly from the secret
+// This is used for bootstrapped auth where the status.APIKeys may not be populated yet
+func (r *PocketIDUserReconciler) getAPIKeyTokenDirect(ctx context.Context, namespace, userRef, apiKeyName string) (string, error) {
+	// The secret name follows the pattern: {userRef}-{apiKeyName}-key
+	secretName := fmt.Sprintf("%s-%s-key", userRef, apiKeyName)
+
+	secret := &corev1.Secret{}
+	if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: secretName}, secret); err != nil {
+		return "", fmt.Errorf("get secret %s: %w", secretName, err)
+	}
+
+	token, ok := secret.Data["token"]
+	if !ok {
+		return "", fmt.Errorf("secret %s missing key 'token'", secretName)
+	}
+
+	return string(token), nil
 }
 
 // getAPIKeyToken retrieves the API key token from the user's secret
@@ -406,8 +432,8 @@ func (r *PocketIDUserReconciler) reconcileAPIKeys(ctx context.Context, user *poc
 			return fmt.Errorf("create API key %s: %w", spec.Name, err)
 		}
 
-		// Create secret for the token
-		secretName := fmt.Sprintf("%s-%s", user.Name, spec.Name)
+		// Create secret for the token: {username}-{apikeyname}-key
+		secretName := fmt.Sprintf("%s-%s-key", user.Name, spec.Name)
 		if err := r.createAPIKeySecret(ctx, user, secretName, apiKey.Token); err != nil {
 			return fmt.Errorf("create secret for API key %s: %w", spec.Name, err)
 		}

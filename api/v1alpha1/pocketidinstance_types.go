@@ -77,7 +77,6 @@ type PersistenceConfig struct {
 // AuthConfig specifies how the operator authenticates with the instance
 type AuthConfig struct {
 	// UserRef is the name of the PocketIDUser CR to use for authentication
-	// Defaults to "pocket-id-operator" which will be created if it does not exist
 	// +kubebuilder:default="pocket-id-operator"
 	UserRef string `json:"userRef"`
 

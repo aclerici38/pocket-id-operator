@@ -85,6 +85,10 @@ var _ = Describe("Manager", Ordered, func() {
 		cmd := exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace)
 		_, _ = utils.Run(cmd)
 
+		By("cleaning up the metrics ClusterRoleBinding")
+		cmd = exec.Command("kubectl", "delete", "clusterrolebinding", metricsRoleBindingName, "--ignore-not-found")
+		_, _ = utils.Run(cmd)
+
 		By("undeploying the controller-manager")
 		cmd = exec.Command("make", "undeploy")
 		_, _ = utils.Run(cmd)
@@ -179,7 +183,11 @@ var _ = Describe("Manager", Ordered, func() {
 
 		It("should ensure the metrics endpoint is serving metrics", func() {
 			By("creating a ClusterRoleBinding for the service account to allow access to metrics")
-			cmd := exec.Command("kubectl", "create", "clusterrolebinding", metricsRoleBindingName,
+			// Delete existing binding first to avoid "already exists" error
+			cmd := exec.Command("kubectl", "delete", "clusterrolebinding", metricsRoleBindingName, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+
+			cmd = exec.Command("kubectl", "create", "clusterrolebinding", metricsRoleBindingName,
 				"--clusterrole=pocket-id-operator-metrics-reader",
 				fmt.Sprintf("--serviceaccount=%s:%s", namespace, serviceAccountName),
 			)
@@ -293,8 +301,33 @@ var _ = Describe("Manager", Ordered, func() {
 		})
 
 		AfterAll(func() {
+			By("removing finalizers from any stuck resources in test namespace")
+			// Remove finalizers from PocketIDUsers
+			cmd := exec.Command("kubectl", "get", "pocketidusers", "-n", testNamespace,
+				"-o", "jsonpath={.items[*].metadata.name}")
+			if output, err := utils.Run(cmd); err == nil && output != "" {
+				for _, name := range strings.Fields(output) {
+					patchCmd := exec.Command("kubectl", "patch", "pocketiduser", name,
+						"-n", testNamespace,
+						"--type=merge", "-p", `{"metadata":{"finalizers":null}}`)
+					_, _ = utils.Run(patchCmd)
+				}
+			}
+
+			// Remove finalizers from PocketIDInstances
+			cmd = exec.Command("kubectl", "get", "pocketidinstances", "-n", testNamespace,
+				"-o", "jsonpath={.items[*].metadata.name}")
+			if output, err := utils.Run(cmd); err == nil && output != "" {
+				for _, name := range strings.Fields(output) {
+					patchCmd := exec.Command("kubectl", "patch", "pocketidinstance", name,
+						"-n", testNamespace,
+						"--type=merge", "-p", `{"metadata":{"finalizers":null}}`)
+					_, _ = utils.Run(patchCmd)
+				}
+			}
+
 			By("cleaning up test namespace")
-			cmd := exec.Command("kubectl", "delete", "ns", testNamespace, "--ignore-not-found")
+			cmd = exec.Command("kubectl", "delete", "ns", testNamespace, "--ignore-not-found", "--timeout=60s")
 			_, _ = utils.Run(cmd)
 		})
 
@@ -385,6 +418,275 @@ spec:
 				"-n", testNamespace, "--ignore-not-found")
 			_, _ = utils.Run(cmd)
 		})
+	})
+
+	Context("Bootstrap and API Key Authentication", func() {
+		const bootstrapNamespace = "pocket-id-bootstrap-test"
+
+		BeforeAll(func() {
+			By("creating the bootstrap test namespace")
+			cmd := exec.Command("kubectl", "create", "ns", bootstrapNamespace)
+			_, _ = utils.Run(cmd) // Ignore if exists
+
+			By("labeling the namespace to enforce the restricted security policy")
+			cmd = exec.Command("kubectl", "label", "--overwrite", "ns", bootstrapNamespace,
+				"pod-security.kubernetes.io/enforce=baseline",
+				"pod-security.kubernetes.io/warn=restricted")
+			_, _ = utils.Run(cmd)
+
+			By("creating a secret for encryption key")
+			cmd = exec.Command("kubectl", "create", "secret", "generic", "pocket-id-encryption",
+				"--from-literal=key=bootstrap-test-encryption-key-32chars",
+				"-n", bootstrapNamespace)
+			_, _ = utils.Run(cmd) // Ignore if exists
+		})
+
+		AfterAll(func() {
+			By("removing finalizers from any stuck resources")
+			// Remove finalizers from PocketIDUsers to prevent namespace from being stuck
+			cmd := exec.Command("kubectl", "get", "pocketidusers", "-n", bootstrapNamespace,
+				"-o", "jsonpath={.items[*].metadata.name}")
+			if output, err := utils.Run(cmd); err == nil && output != "" {
+				for _, name := range strings.Fields(output) {
+					patchCmd := exec.Command("kubectl", "patch", "pocketiduser", name,
+						"-n", bootstrapNamespace,
+						"--type=merge", "-p", `{"metadata":{"finalizers":null}}`)
+					_, _ = utils.Run(patchCmd)
+				}
+			}
+
+			// Remove finalizers from PocketIDInstances
+			cmd = exec.Command("kubectl", "get", "pocketidinstances", "-n", bootstrapNamespace,
+				"-o", "jsonpath={.items[*].metadata.name}")
+			if output, err := utils.Run(cmd); err == nil && output != "" {
+				for _, name := range strings.Fields(output) {
+					patchCmd := exec.Command("kubectl", "patch", "pocketidinstance", name,
+						"-n", bootstrapNamespace,
+						"--type=merge", "-p", `{"metadata":{"finalizers":null}}`)
+					_, _ = utils.Run(patchCmd)
+				}
+			}
+
+			By("cleaning up bootstrap test namespace")
+			cmd = exec.Command("kubectl", "delete", "ns", bootstrapNamespace, "--ignore-not-found", "--timeout=60s")
+			_, _ = utils.Run(cmd)
+		})
+
+		It("should bootstrap an instance and create the operator user with API key", func(ctx SpecContext) {
+			// Ensure cleanup happens regardless of test outcome
+			DeferCleanup(func() {
+				By("cleaning up bootstrap test resources")
+				// Remove finalizers first to prevent stuck deletion
+				cmd := exec.Command("kubectl", "patch", "pocketiduser", "pocket-id-operator",
+					"-n", bootstrapNamespace,
+					"--type=merge", "-p", `{"metadata":{"finalizers":null}}`)
+				_, _ = utils.Run(cmd)
+
+				cmd = exec.Command("kubectl", "patch", "pocketidinstance", "bootstrap-test",
+					"-n", bootstrapNamespace,
+					"--type=merge", "-p", `{"metadata":{"finalizers":null}}`)
+				_, _ = utils.Run(cmd)
+
+				cmd = exec.Command("kubectl", "delete", "pocketidinstance", "bootstrap-test",
+					"-n", bootstrapNamespace, "--ignore-not-found", "--timeout=30s")
+				_, _ = utils.Run(cmd)
+
+				cmd = exec.Command("kubectl", "delete", "pocketiduser", "pocket-id-operator",
+					"-n", bootstrapNamespace, "--ignore-not-found", "--timeout=30s")
+				_, _ = utils.Run(cmd)
+
+				cmd = exec.Command("kubectl", "delete", "pod", "api-key-test",
+					"-n", bootstrapNamespace, "--ignore-not-found")
+				_, _ = utils.Run(cmd)
+			})
+
+			// Create the User CR first - the instance will wait for it before bootstrapping
+			userYAML := fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: pocket-id-operator
+  namespace: %s
+spec:
+  username:
+    value: pocket-id-operator
+  firstName:
+    value: Operator
+  lastName:
+    value: Admin
+  email:
+    value: operator@test.local
+  admin: true
+  apiKeys:
+  - name: pocket-id-operator
+    description: Operator API key for bootstrap
+`, bootstrapNamespace)
+
+			By("creating the PocketIDUser CR first")
+			cmd := exec.Command("kubectl", "apply", "-f", "-")
+			cmd.Stdin = strings.NewReader(userYAML)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create PocketIDUser")
+
+			// Create a PocketIDInstance without explicit auth config
+			// The controller should use defaults (pocket-id-operator user and API key)
+			instanceYAML := fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDInstance
+metadata:
+  name: bootstrap-test
+  namespace: %s
+spec:
+  deploymentType: Deployment
+  image: ghcr.io/pocket-id/pocket-id:latest
+  encryptionKey:
+    valueFrom:
+      secretKeyRef:
+        name: pocket-id-encryption
+        key: key
+  appUrl: "http://bootstrap-test.%s.svc.cluster.local:1411"
+`, bootstrapNamespace, bootstrapNamespace)
+
+			By("applying the PocketIDInstance CR without auth config")
+			cmd = exec.Command("kubectl", "apply", "-f", "-")
+			cmd.Stdin = strings.NewReader(instanceYAML)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create PocketIDInstance")
+
+			By("verifying the Deployment is created")
+			verifyDeployment := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "deployment", "bootstrap-test",
+					"-n", bootstrapNamespace, "-o", "jsonpath={.metadata.name}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("bootstrap-test"))
+			}
+			Eventually(verifyDeployment, 2*time.Minute, time.Second).Should(Succeed())
+
+			By("verifying the Service is created")
+			verifyService := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "service", "bootstrap-test",
+					"-n", bootstrapNamespace, "-o", "jsonpath={.spec.ports[0].port}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("1411"))
+			}
+			Eventually(verifyService, time.Minute, time.Second).Should(Succeed())
+
+			By("waiting for the deployment to be available")
+			verifyDeploymentReady := func(g Gomega) {
+				cmd := exec.Command("kubectl", "rollout", "status", "deployment/bootstrap-test",
+					"-n", bootstrapNamespace, "--timeout=30s")
+				_, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+			}
+			Eventually(verifyDeploymentReady, 5*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("verifying the instance becomes Available")
+			verifyInstanceAvailable := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "pocketidinstance", "bootstrap-test",
+					"-n", bootstrapNamespace,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Available')].status}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("True"), "Instance should be Available")
+			}
+			Eventually(verifyInstanceAvailable, 3*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("verifying the API key secret is created with correct naming")
+			// Secret name follows pattern: {userRef}-{apiKeyName}-key
+			verifyAPIKeySecret := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "secret", "pocket-id-operator-pocket-id-operator-key",
+					"-n", bootstrapNamespace, "-o", "jsonpath={.data.token}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).NotTo(BeEmpty(), "API key token should exist in secret")
+			}
+			Eventually(verifyAPIKeySecret, 3*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("verifying the instance status reflects bootstrap completion")
+			verifyInstanceBootstrapped := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "pocketidinstance", "bootstrap-test",
+					"-n", bootstrapNamespace, "-o", "jsonpath={.status.bootstrapped}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("true"), "Instance should be bootstrapped")
+			}
+			Eventually(verifyInstanceBootstrapped, 2*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("verifying the user status has the user ID from Pocket-ID")
+			verifyUserStatus := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "pocketiduser", "pocket-id-operator",
+					"-n", bootstrapNamespace, "-o", "jsonpath={.status.userID}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).NotTo(BeEmpty(), "User should have a userID from Pocket-ID")
+			}
+			Eventually(verifyUserStatus, 2*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("verifying the API key can be used to authenticate with the Pocket-ID API")
+			verifyAPIKeyWorks := func(g Gomega) {
+				// Get the API key token from the secret (named {userRef}-{apiKeyName}-key)
+				cmd := exec.Command("kubectl", "get", "secret", "pocket-id-operator-pocket-id-operator-key",
+					"-n", bootstrapNamespace, "-o", "jsonpath={.data.token}")
+				tokenBase64, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				// Create a pod that uses the API key to call the Pocket-ID API
+				curlPodYAML := fmt.Sprintf(`
+apiVersion: v1
+kind: Pod
+metadata:
+  name: api-key-test
+  namespace: %s
+spec:
+  restartPolicy: Never
+  containers:
+  - name: curl
+    image: curlimages/curl:latest
+    command: ["/bin/sh", "-c"]
+    args:
+    - |
+      TOKEN=$(echo '%s' | base64 -d)
+      curl -s -f -H "X-API-KEY: $TOKEN" http://bootstrap-test.%s.svc.cluster.local:1411/api/users/me
+    securityContext:
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+      runAsNonRoot: true
+      runAsUser: 1000
+`, bootstrapNamespace, tokenBase64, bootstrapNamespace)
+
+				// Delete any existing test pod
+				delCmd := exec.Command("kubectl", "delete", "pod", "api-key-test",
+					"-n", bootstrapNamespace, "--ignore-not-found")
+				_, _ = utils.Run(delCmd)
+
+				// Create the test pod
+				cmd = exec.Command("kubectl", "apply", "-f", "-")
+				cmd.Stdin = strings.NewReader(curlPodYAML)
+				_, err = utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+			}
+			Eventually(verifyAPIKeyWorks, time.Minute, 5*time.Second).Should(Succeed())
+
+			By("waiting for the API key test pod to complete")
+			verifyAPITestComplete := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "pod", "api-key-test",
+					"-n", bootstrapNamespace, "-o", "jsonpath={.status.phase}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("Succeeded"), "API key test pod should succeed")
+			}
+			Eventually(verifyAPITestComplete, 2*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("verifying the API response contains the operator user")
+			cmd = exec.Command("kubectl", "logs", "api-key-test", "-n", bootstrapNamespace)
+			logs, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(logs).To(ContainSubstring("pocket-id-operator"), "API response should contain the operator username")
+		}, SpecTimeout(10*time.Minute))
 	})
 
 	Context("PocketIDUser CR", func() {
