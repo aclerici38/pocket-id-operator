@@ -21,9 +21,10 @@ package e2e
 
 import (
 	"fmt"
-	"os"
+	"io"
 	"os/exec"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -31,84 +32,135 @@ import (
 	"github.com/aclerici38/pocket-id-operator/test/utils"
 )
 
-var (
-	// Optional Environment Variables:
-	// - CERT_MANAGER_INSTALL_SKIP=true: Skips CertManager installation during test setup.
-	// - GATEWAY_API_INSTALL_SKIP=true: Skips Gateway API installation during test setup.
-	// These variables are useful if CertManager/Gateway API is already installed, avoiding
-	// re-installation and conflicts.
-	skipCertManagerInstall = os.Getenv("CERT_MANAGER_INSTALL_SKIP") == "true"
-	skipGatewayAPIInstall  = os.Getenv("GATEWAY_API_INSTALL_SKIP") == "true"
-	// isCertManagerAlreadyInstalled will be set true when CertManager CRDs be found on the cluster
-	isCertManagerAlreadyInstalled = false
-	// isGatewayAPIAlreadyInstalled will be set true when Gateway API CRDs be found on the cluster
-	isGatewayAPIAlreadyInstalled = false
-
-	// projectImage is the name of the image which will be build and loaded
-	// with the code source changes to be tested.
-	projectImage = "example.com/pocket-id-operator:v0.0.1"
+const (
+	namespace    = "pocket-id-operator-system"
+	projectImage = "pocket-id-operator:e2e"
 )
 
-// TestE2E runs the end-to-end (e2e) test suite for the project. These tests execute in an isolated,
-// temporary environment to validate project changes with the purpose of being used in CI jobs.
-// The default setup requires Kind, builds/loads the Manager Docker image locally, and installs
-// CertManager.
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
-	_, _ = fmt.Fprintf(GinkgoWriter, "Starting pocket-id-operator integration test suite\n")
-	RunSpecs(t, "e2e suite")
+	SetDefaultEventuallyTimeout(3 * time.Minute)
+	SetDefaultEventuallyPollingInterval(2 * time.Second)
+	RunSpecs(t, "Pocket-ID Operator E2E Suite")
 }
 
 var _ = BeforeSuite(func() {
-	By("building the manager(Operator) image")
+	By("building the operator image")
 	cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
 	_, err := utils.Run(cmd)
-	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager(Operator) image")
+	Expect(err).NotTo(HaveOccurred(), "Failed to build operator image")
 
-	// TODO(user): If you want to change the e2e test vendor from Kind, ensure the image is
-	// built and available before running the tests. Also, remove the following block.
-	By("loading the manager(Operator) image on Kind")
+	By("loading the operator image into Kind")
 	err = utils.LoadImageToKindClusterWithName(projectImage)
-	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the manager(Operator) image into Kind")
+	Expect(err).NotTo(HaveOccurred(), "Failed to load operator image into Kind")
 
-	// The tests-e2e are intended to run on a temporary cluster that is created and destroyed for testing.
-	// To prevent errors when tests run in environments with CertManager already installed,
-	// we check for its presence before execution.
-	// Setup CertManager before the suite if not skipped and if not already installed
-	if !skipCertManagerInstall {
-		By("checking if cert manager is installed already")
-		isCertManagerAlreadyInstalled = utils.IsCertManagerCRDsInstalled()
-		if !isCertManagerAlreadyInstalled {
-			_, _ = fmt.Fprintf(GinkgoWriter, "Installing CertManager...\n")
-			Expect(utils.InstallCertManager()).To(Succeed(), "Failed to install CertManager")
-		} else {
-			_, _ = fmt.Fprintf(GinkgoWriter, "WARNING: CertManager is already installed. Skipping installation...\n")
-		}
-	}
+	By("cleaning up any resources from previous runs")
+	cleanupAllResources()
 
-	// Setup Gateway API CRDs before the suite if not skipped and if not already installed
-	if !skipGatewayAPIInstall {
-		By("checking if Gateway API is installed already")
-		isGatewayAPIAlreadyInstalled = utils.IsGatewayAPICRDsInstalled()
-		if !isGatewayAPIAlreadyInstalled {
-			_, _ = fmt.Fprintf(GinkgoWriter, "Installing Gateway API CRDs...\n")
-			Expect(utils.InstallGatewayAPI()).To(Succeed(), "Failed to install Gateway API CRDs")
-		} else {
-			_, _ = fmt.Fprintf(GinkgoWriter, "WARNING: Gateway API is already installed. Skipping installation...\n")
-		}
-	}
+	By("installing CRDs")
+	cmd = exec.Command("make", "install")
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
+
+	By("deploying the operator")
+	cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImage))
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to deploy operator")
+
+	By("waiting for operator to be ready")
+	Eventually(func(g Gomega) {
+		cmd := exec.Command("kubectl", "get", "deployment", "pocket-id-operator",
+			"-n", namespace, "-o", "jsonpath={.status.availableReplicas}")
+		output, err := utils.Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(output).To(Equal("1"))
+	}, 2*time.Minute, 2*time.Second).Should(Succeed())
 })
 
 var _ = AfterSuite(func() {
-	// Teardown Gateway API after the suite if not skipped and if it was not already installed
-	if !skipGatewayAPIInstall && !isGatewayAPIAlreadyInstalled {
-		_, _ = fmt.Fprintf(GinkgoWriter, "Uninstalling Gateway API CRDs...\n")
-		utils.UninstallGatewayAPI()
+	By("cleaning up all test resources")
+	cleanupAllResources()
+
+	By("undeploying the operator")
+	cmd := exec.Command("make", "undeploy", "--ignore-errors")
+	_, _ = utils.Run(cmd)
+
+	By("uninstalling CRDs")
+	cmd = exec.Command("make", "uninstall", "--ignore-errors")
+	_, _ = utils.Run(cmd)
+})
+
+func cleanupAllResources() {
+	// Remove finalizers from all PocketIDUsers first
+	cmd := exec.Command("kubectl", "get", "pocketidusers", "-A",
+		"-o", "jsonpath={range .items[*]}{.metadata.namespace}/{.metadata.name}{\"\\n\"}{end}")
+	if output, err := utils.Run(cmd); err == nil && output != "" {
+		for _, item := range utils.GetNonEmptyLines(output) {
+			parts := splitNamespacedName(item)
+			if len(parts) == 2 {
+				patchCmd := exec.Command("kubectl", "patch", "pocketiduser", parts[1],
+					"-n", parts[0], "--type=merge", "-p", `{"metadata":{"finalizers":null}}`)
+				_, _ = utils.Run(patchCmd)
+			}
+		}
 	}
 
-	// Teardown CertManager after the suite if not skipped and if it was not already installed
-	if !skipCertManagerInstall && !isCertManagerAlreadyInstalled {
-		_, _ = fmt.Fprintf(GinkgoWriter, "Uninstalling CertManager...\n")
-		utils.UninstallCertManager()
+	// Remove finalizers from all PocketIDInstances
+	cmd = exec.Command("kubectl", "get", "pocketidinstances", "-A",
+		"-o", "jsonpath={range .items[*]}{.metadata.namespace}/{.metadata.name}{\"\\n\"}{end}")
+	if output, err := utils.Run(cmd); err == nil && output != "" {
+		for _, item := range utils.GetNonEmptyLines(output) {
+			parts := splitNamespacedName(item)
+			if len(parts) == 2 {
+				patchCmd := exec.Command("kubectl", "patch", "pocketidinstance", parts[1],
+					"-n", parts[0], "--type=merge", "-p", `{"metadata":{"finalizers":null}}`)
+				_, _ = utils.Run(patchCmd)
+			}
+		}
 	}
-})
+
+	// Delete all PocketIDUsers
+	cmd = exec.Command("kubectl", "delete", "pocketidusers", "--all", "-A",
+		"--ignore-not-found", "--wait=true", "--timeout=30s")
+	_, _ = utils.Run(cmd)
+
+	// Delete all PocketIDInstances
+	cmd = exec.Command("kubectl", "delete", "pocketidinstances", "--all", "-A",
+		"--ignore-not-found", "--wait=true", "--timeout=30s")
+	_, _ = utils.Run(cmd)
+
+	// Also delete any test namespaces from previous runs
+	cmd = exec.Command("kubectl", "delete", "ns", "pocket-id-e2e-test",
+		"--ignore-not-found", "--timeout=30s")
+	_, _ = utils.Run(cmd)
+}
+
+func splitNamespacedName(s string) []string {
+	var parts []string
+	for i := 0; i < len(s); i++ {
+		if s[i] == '/' {
+			parts = append(parts, s[:i])
+			parts = append(parts, s[i+1:])
+			return parts
+		}
+	}
+	return parts
+}
+
+func stringReader(s string) *stringReaderImpl {
+	return &stringReaderImpl{s: s, i: 0}
+}
+
+type stringReaderImpl struct {
+	s string
+	i int
+}
+
+func (r *stringReaderImpl) Read(p []byte) (n int, err error) {
+	if r.i >= len(r.s) {
+		return 0, io.EOF
+	}
+	n = copy(p, r.s[r.i:])
+	r.i += n
+	return n, nil
+}

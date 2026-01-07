@@ -533,10 +533,13 @@ func (r *PocketIDInstanceReconciler) reconcileRoute(ctx context.Context, instanc
 		},
 	}
 
-	// If route is disabled, delete it if it exists
+	// If route is disabled, try to delete it if it exists
 	if !instance.Spec.Route.Enabled {
-		if err := r.Delete(ctx, route); err != nil && !errors.IsNotFound(err) {
-			return err
+		if err := r.Delete(ctx, route); err != nil {
+			// Ignore NotFound and NoMatchError (CRD not installed)
+			if !errors.IsNotFound(err) && !meta.IsNoMatchError(err) {
+				return err
+			}
 		}
 		return nil
 	}
@@ -752,6 +755,9 @@ func (r *PocketIDInstanceReconciler) bootstrap(ctx context.Context, instance *po
 	firstName, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.FirstName)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("resolve firstName: %w", err)
+	}
+	if firstName == "" {
+		firstName = username // Default to username
 	}
 
 	lastName, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.LastName)
