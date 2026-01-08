@@ -652,6 +652,106 @@ spec:
 		})
 	})
 
+	Context("User Groups and OIDC Clients", func() {
+		const (
+			groupUserName  = "test-group-user"
+			groupName      = "test-user-group"
+			oidcClientName = "test-oidc-client"
+		)
+
+		BeforeAll(func() {
+			By("creating a user to add to the group")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  firstName:
+    value: Group
+  email:
+    value: group-user@example.local
+`, groupUserName, userNS))
+
+			By("waiting for the group user to be Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketiduser", groupUserName, "-n", userNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(output).To(Equal("True"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("creating a user group with custom claims and user refs")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUserGroup
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  name: e2e-group
+  friendlyName: E2E Group
+  customClaims:
+  - key: department
+    value: engineering
+  userRefs:
+  - name: %s
+    namespace: %s
+`, groupName, userNS, groupUserName, userNS))
+		})
+
+		It("should reconcile the user group and surface claims in status", func() {
+			By("verifying the group ID is set")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
+					"-o", "jsonpath={.status.groupId}")
+				g.Expect(output).NotTo(BeEmpty())
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying custom claims are reflected in status")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
+					"-o", "jsonpath={.status.customClaims[?(@.key=='department')].value}")
+				g.Expect(output).To(Equal("engineering"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+
+		It("should create an OIDC client restricted to the user group", func() {
+			By("creating an OIDC client that references the group")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDOIDCClient
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  name: e2e-oidc-client
+  callbackUrls:
+  - https://example.com/callback
+  logoutCallbackUrls:
+  - https://example.com/logout
+  allowedUserGroups:
+  - name: %s
+`, oidcClientName, userNS, groupName))
+
+			By("verifying the OIDC client ID is set")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidoidcclient", oidcClientName, "-n", userNS,
+					"-o", "jsonpath={.status.clientId}")
+				g.Expect(output).NotTo(BeEmpty())
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying the allowed group IDs include the group")
+			groupID := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
+				"-o", "jsonpath={.status.groupId}")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidoidcclient", oidcClientName, "-n", userNS,
+					"-o", "jsonpath={.status.allowedUserGroupIds[*]}")
+				g.Expect(output).To(ContainSubstring(groupID))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+	})
+
 	Context("Auth Switch Safeguards", func() {
 		It("should delay auth switch until the target user is Ready", func() {
 			const unreadyUserName = "auth-unready-user"
@@ -1217,6 +1317,28 @@ func removeFinalizers(ns string) {
 	if output, err := utils.Run(cmd); err == nil && output != "" {
 		for _, name := range strings.Fields(output) {
 			patchCmd := exec.Command("kubectl", "patch", "pocketiduser", name,
+				"-n", ns, "--type=merge", "-p", `{"metadata":{"finalizers":null}}`)
+			_, _ = utils.Run(patchCmd)
+		}
+	}
+
+	// Remove finalizers from PocketIDUserGroups
+	cmd = exec.Command("kubectl", "get", "pocketidusergroups", "-n", ns,
+		"-o", "jsonpath={.items[*].metadata.name}")
+	if output, err := utils.Run(cmd); err == nil && output != "" {
+		for _, name := range strings.Fields(output) {
+			patchCmd := exec.Command("kubectl", "patch", "pocketidusergroup", name,
+				"-n", ns, "--type=merge", "-p", `{"metadata":{"finalizers":null}}`)
+			_, _ = utils.Run(patchCmd)
+		}
+	}
+
+	// Remove finalizers from PocketIDOIDCClients
+	cmd = exec.Command("kubectl", "get", "pocketidoidcclients", "-n", ns,
+		"-o", "jsonpath={.items[*].metadata.name}")
+	if output, err := utils.Run(cmd); err == nil && output != "" {
+		for _, name := range strings.Fields(output) {
+			patchCmd := exec.Command("kubectl", "patch", "pocketidoidcclient", name,
 				"-n", ns, "--type=merge", "-p", `{"metadata":{"finalizers":null}}`)
 			_, _ = utils.Run(patchCmd)
 		}

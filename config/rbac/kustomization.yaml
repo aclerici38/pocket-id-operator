@@ -28,3 +28,9 @@ resources:
   - pocketiduser_admin_role.yaml
   - pocketiduser_editor_role.yaml
   - pocketiduser_viewer_role.yaml
+  - pocketidusergroup_admin_role.yaml
+  - pocketidusergroup_editor_role.yaml
+  - pocketidusergroup_viewer_role.yaml
+  - pocketidoidcclient_admin_role.yaml
+  - pocketidoidcclient_editor_role.yaml
+  - pocketidoidcclient_viewer_role.yaml

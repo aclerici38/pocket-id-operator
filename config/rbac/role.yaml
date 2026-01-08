@@ -47,6 +47,8 @@ rules:
   - pocketid.internal
   resources:
   - pocketidinstances
+  - pocketidoidcclients
+  - pocketidusergroups
   - pocketidusers
   verbs:
   - create
@@ -60,6 +62,8 @@ rules:
   - pocketid.internal
   resources:
   - pocketidinstances/finalizers
+  - pocketidoidcclients/finalizers
+  - pocketidusergroups/finalizers
   - pocketidusers/finalizers
   verbs:
   - update
@@ -67,6 +71,8 @@ rules:
   - pocketid.internal
   resources:
   - pocketidinstances/status
+  - pocketidoidcclients/status
+  - pocketidusergroups/status
   - pocketidusers/status
   verbs:
   - get

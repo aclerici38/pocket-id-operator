@@ -105,6 +105,34 @@ func cleanupAllResources() {
 		}
 	}
 
+	// Remove finalizers from all PocketIDUserGroups
+	cmd = exec.Command("kubectl", "get", "pocketidusergroups", "-A",
+		"-o", "jsonpath={range .items[*]}{.metadata.namespace}/{.metadata.name}{\"\\n\"}{end}")
+	if output, err := utils.Run(cmd); err == nil && output != "" {
+		for _, item := range utils.GetNonEmptyLines(output) {
+			parts := splitNamespacedName(item)
+			if len(parts) == 2 {
+				patchCmd := exec.Command("kubectl", "patch", "pocketidusergroup", parts[1],
+					"-n", parts[0], "--type=merge", "-p", `{"metadata":{"finalizers":null}}`)
+				_, _ = utils.Run(patchCmd)
+			}
+		}
+	}
+
+	// Remove finalizers from all PocketIDOIDCClients
+	cmd = exec.Command("kubectl", "get", "pocketidoidcclients", "-A",
+		"-o", "jsonpath={range .items[*]}{.metadata.namespace}/{.metadata.name}{\"\\n\"}{end}")
+	if output, err := utils.Run(cmd); err == nil && output != "" {
+		for _, item := range utils.GetNonEmptyLines(output) {
+			parts := splitNamespacedName(item)
+			if len(parts) == 2 {
+				patchCmd := exec.Command("kubectl", "patch", "pocketidoidcclient", parts[1],
+					"-n", parts[0], "--type=merge", "-p", `{"metadata":{"finalizers":null}}`)
+				_, _ = utils.Run(patchCmd)
+			}
+		}
+	}
+
 	// Remove finalizers from all PocketIDInstances
 	cmd = exec.Command("kubectl", "get", "pocketidinstances", "-A",
 		"-o", "jsonpath={range .items[*]}{.metadata.namespace}/{.metadata.name}{\"\\n\"}{end}")
@@ -121,6 +149,16 @@ func cleanupAllResources() {
 
 	// Delete all PocketIDUsers
 	cmd = exec.Command("kubectl", "delete", "pocketidusers", "--all", "-A",
+		"--ignore-not-found", "--wait=true", "--timeout=30s")
+	_, _ = utils.Run(cmd)
+
+	// Delete all PocketIDUserGroups
+	cmd = exec.Command("kubectl", "delete", "pocketidusergroups", "--all", "-A",
+		"--ignore-not-found", "--wait=true", "--timeout=30s")
+	_, _ = utils.Run(cmd)
+
+	// Delete all PocketIDOIDCClients
+	cmd = exec.Command("kubectl", "delete", "pocketidoidcclients", "--all", "-A",
 		"--ignore-not-found", "--wait=true", "--timeout=30s")
 	_, _ = utils.Run(cmd)
 

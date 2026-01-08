@@ -235,6 +235,123 @@ func TestAPIKeyFromDTO(t *testing.T) {
 	}
 }
 
+func TestOIDCClientFromAllowedGroupsDTO(t *testing.T) {
+	tests := []struct {
+		name     string
+		dto      *models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientWithAllowedUserGroupsDto
+		expected *OIDCClient
+	}{
+		{
+			name:     "nil dto",
+			dto:      nil,
+			expected: nil,
+		},
+		{
+			name: "full dto",
+			dto: &models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientWithAllowedUserGroupsDto{
+				ID:                       "client-1",
+				Name:                     "Test Client",
+				CallbackURLs:             []string{"https://example.com/callback"},
+				LogoutCallbackURLs:       []string{"https://example.com/logout"},
+				LaunchURL:                "https://example.com",
+				HasLogo:                  true,
+				HasDarkLogo:              true,
+				IsPublic:                 true,
+				IsGroupRestricted:        true,
+				PkceEnabled:              true,
+				RequiresReauthentication: true,
+				AllowedUserGroups: []*models.GithubComPocketIDPocketIDBackendInternalDtoUserGroupMinimalDto{
+					{ID: "group-1"},
+					{ID: "group-2"},
+				},
+			},
+			expected: &OIDCClient{
+				ID:                       "client-1",
+				Name:                     "Test Client",
+				CallbackURLs:             []string{"https://example.com/callback"},
+				LogoutCallbackURLs:       []string{"https://example.com/logout"},
+				LaunchURL:                "https://example.com",
+				HasLogo:                  true,
+				HasDarkLogo:              true,
+				IsPublic:                 true,
+				IsGroupRestricted:        true,
+				PKCEEnabled:              true,
+				RequiresReauthentication: true,
+				AllowedUserGroupIDs:      []string{"group-1", "group-2"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := oidcClientFromAllowedGroupsDTO(tt.dto)
+			if tt.expected == nil {
+				if result != nil {
+					t.Errorf("expected nil, got %v", result)
+				}
+				return
+			}
+			if result == nil {
+				t.Fatal("expected non-nil result")
+			}
+			if result.ID != tt.expected.ID {
+				t.Errorf("expected ID %s, got %s", tt.expected.ID, result.ID)
+			}
+			if result.Name != tt.expected.Name {
+				t.Errorf("expected Name %s, got %s", tt.expected.Name, result.Name)
+			}
+			if result.LaunchURL != tt.expected.LaunchURL {
+				t.Errorf("expected LaunchURL %s, got %s", tt.expected.LaunchURL, result.LaunchURL)
+			}
+			if result.IsPublic != tt.expected.IsPublic {
+				t.Errorf("expected IsPublic %v, got %v", tt.expected.IsPublic, result.IsPublic)
+			}
+			if result.PKCEEnabled != tt.expected.PKCEEnabled {
+				t.Errorf("expected PKCEEnabled %v, got %v", tt.expected.PKCEEnabled, result.PKCEEnabled)
+			}
+			if len(result.AllowedUserGroupIDs) != len(tt.expected.AllowedUserGroupIDs) {
+				t.Fatalf("expected %d groups, got %d", len(tt.expected.AllowedUserGroupIDs), len(result.AllowedUserGroupIDs))
+			}
+			for i := range tt.expected.AllowedUserGroupIDs {
+				if result.AllowedUserGroupIDs[i] != tt.expected.AllowedUserGroupIDs[i] {
+					t.Errorf("expected group %s, got %s", tt.expected.AllowedUserGroupIDs[i], result.AllowedUserGroupIDs[i])
+				}
+			}
+		})
+	}
+}
+
+func TestUserGroupFromDTO(t *testing.T) {
+	dto := &models.GithubComPocketIDPocketIDBackendInternalDtoUserGroupDto{
+		ID:           "group-1",
+		Name:         "eng",
+		FriendlyName: "Engineering",
+		CreatedAt:    "2026-01-01T00:00:00Z",
+		LdapID:       "ldap-1",
+		Users: []*models.GithubComPocketIDPocketIDBackendInternalDtoUserDto{
+			{ID: "user-1"},
+			{ID: "user-2"},
+		},
+		CustomClaims: []*models.GithubComPocketIDPocketIDBackendInternalDtoCustomClaimDto{
+			{Key: "tier", Value: "internal"},
+		},
+	}
+
+	group := userGroupFromDTO(dto)
+	if group == nil {
+		t.Fatal("expected non-nil group")
+	}
+	if group.ID != "group-1" {
+		t.Errorf("expected ID group-1, got %s", group.ID)
+	}
+	if group.UserCount != 2 {
+		t.Errorf("expected user count 2, got %d", group.UserCount)
+	}
+	if len(group.CustomClaims) != 1 || group.CustomClaims[0].Key != "tier" {
+		t.Errorf("expected custom claim tier, got %+v", group.CustomClaims)
+	}
+}
+
 // Integration-style tests that use httptest to mock the API server
 
 func TestClient_GetCurrentUser(t *testing.T) {

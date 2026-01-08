@@ -2,4 +2,6 @@
 resources:
   - v1alpha1_pocketidinstance.yaml
 - v1alpha1_pocketiduser.yaml
+- v1alpha1_pocketidoidcclient.yaml
+- v1alpha1_pocketidusergroup.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

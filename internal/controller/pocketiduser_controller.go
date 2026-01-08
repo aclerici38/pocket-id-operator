@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"time"
 
@@ -72,7 +73,7 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	// Get the PocketIDInstance to know where to connect
-	instance, err := r.getInstanceForUser(ctx, user)
+	instance, err := selectInstance(ctx, r.Client, user.Spec.InstanceSelector)
 	if err != nil {
 		log.Error(err, "Failed to select PocketIDInstance")
 		r.setReadyCondition(ctx, user, metav1.ConditionFalse, "InstanceSelectionError", err.Error())
@@ -89,14 +90,14 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	// Check if instance is available
-	if !r.isInstanceReady(instance) {
+	if !instanceReady(instance) {
 		log.Info("PocketIDInstance not ready, requeuing")
 		r.setReadyCondition(ctx, user, metav1.ConditionFalse, "InstanceNotReady", "Waiting for PocketIDInstance to be ready")
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
 	// Get API client
-	apiClient, err := r.getAPIClient(ctx, instance)
+	apiClient, err := apiClientForInstance(ctx, r.Client, instance)
 	if err != nil {
 		log.Error(err, "Failed to get API client")
 		r.setReadyCondition(ctx, user, metav1.ConditionFalse, "APIClientError", err.Error())
@@ -135,145 +136,6 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	return ctrl.Result{}, nil
-}
-
-// getInstanceForUser selects a single PocketIDInstance based on selector or uniqueness.
-func (r *PocketIDUserReconciler) getInstanceForUser(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser) (*pocketidinternalv1alpha1.PocketIDInstance, error) {
-	instances := &pocketidinternalv1alpha1.PocketIDInstanceList{}
-	listOpts := []client.ListOption{}
-
-	selectorString := "default instance"
-	if user.Spec.InstanceSelector != nil {
-		selector, err := metav1.LabelSelectorAsSelector(user.Spec.InstanceSelector)
-		if err != nil {
-			return nil, fmt.Errorf("invalid instanceSelector: %w", err)
-		}
-		selectorString = selector.String()
-		listOpts = append(listOpts, client.MatchingLabelsSelector{Selector: selector})
-	}
-
-	if err := r.List(ctx, instances, listOpts...); err != nil {
-		return nil, err
-	}
-
-	if len(instances.Items) == 0 {
-		return nil, fmt.Errorf("no PocketIDInstance found for selector %q", selectorString)
-	}
-	if len(instances.Items) > 1 {
-		return nil, fmt.Errorf("multiple PocketIDInstances found for selector %q", selectorString)
-	}
-
-	return &instances.Items[0], nil
-}
-
-// isInstanceReady checks if the instance has Available=True condition
-func (r *PocketIDUserReconciler) isInstanceReady(instance *pocketidinternalv1alpha1.PocketIDInstance) bool {
-	for _, cond := range instance.Status.Conditions {
-		if cond.Type == "Available" && cond.Status == metav1.ConditionTrue {
-			return true
-		}
-	}
-	return false
-}
-
-// getAPIClient creates an authenticated Pocket-ID client
-func (r *PocketIDUserReconciler) getAPIClient(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) (*pocketid.Client, error) {
-	// Use internal service URL for operator-to-instance communication
-	serviceURL := internalServiceURL(instance.Name, instance.Namespace)
-	baseClient := pocketid.NewClient(serviceURL)
-
-	// If auth is configured in spec, use that
-	if instance.Spec.Auth != nil {
-		authUser := resolveAuthUserRef(instance)
-		apiKeyName := instance.Spec.Auth.APIKeyName
-		if apiKeyName == "" {
-			apiKeyName = defaultAuthAPIKeyName
-		}
-		token, err := r.getAPIKeyToken(ctx, authUser.Namespace, authUser.Name, apiKeyName)
-		if err == nil {
-			return baseClient.WithAPIKey(token), nil
-		}
-
-		// Fall back to bootstrapped auth if the target auth user isn't ready yet.
-		if instance.Status.AuthUserRef == "" || instance.Status.AuthAPIKeyName == "" {
-			return nil, fmt.Errorf("get API key token: %w", err)
-		}
-	}
-
-	// Check if auth is configured in status (from bootstrap)
-	if authUser, ok := resolveAuthUserRefFromStatus(instance); ok && instance.Status.AuthAPIKeyName != "" {
-		token, err := r.getAPIKeyTokenDirect(ctx, authUser.Namespace, authUser.Name, instance.Status.AuthAPIKeyName)
-		if err != nil {
-			return nil, fmt.Errorf("get bootstrapped API key token: %w", err)
-		}
-		return baseClient.WithAPIKey(token), nil
-	}
-
-	// No auth configured - this will only work for unauthenticated endpoints
-	return baseClient, nil
-}
-
-// getAPIKeyTokenDirect retrieves the API key token directly from the secret
-// This is used for bootstrapped auth where the status.APIKeys may not be populated yet
-func (r *PocketIDUserReconciler) getAPIKeyTokenDirect(ctx context.Context, namespace, userRef, apiKeyName string) (string, error) {
-	// The secret name follows the pattern: {userRef}-{apiKeyName}-key
-	secretName := fmt.Sprintf("%s-%s-key", userRef, apiKeyName)
-
-	secret := &corev1.Secret{}
-	if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: secretName}, secret); err != nil {
-		return "", fmt.Errorf("get secret %s: %w", secretName, err)
-	}
-
-	token, ok := secret.Data["token"]
-	if !ok {
-		return "", fmt.Errorf("secret %s missing key 'token'", secretName)
-	}
-
-	return string(token), nil
-}
-
-// getAPIKeyToken retrieves the API key token from the user's secret
-func (r *PocketIDUserReconciler) getAPIKeyToken(ctx context.Context, namespace, userRef, apiKeyName string) (string, error) {
-	// Get the referenced User CR
-	user := &pocketidinternalv1alpha1.PocketIDUser{}
-	if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: userRef}, user); err != nil {
-		return "", fmt.Errorf("get user %s: %w", userRef, err)
-	}
-
-	// Find the API key in status
-	var keyStatus *pocketidinternalv1alpha1.APIKeyStatus
-	for i := range user.Status.APIKeys {
-		if user.Status.APIKeys[i].Name == apiKeyName {
-			keyStatus = &user.Status.APIKeys[i]
-			break
-		}
-	}
-
-	if keyStatus == nil {
-		return "", fmt.Errorf("API key %s not found in user %s status", apiKeyName, userRef)
-	}
-
-	if keyStatus.SecretName == "" {
-		return "", fmt.Errorf("API key %s has no secret reference", apiKeyName)
-	}
-
-	// Get the secret
-	secret := &corev1.Secret{}
-	if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: keyStatus.SecretName}, secret); err != nil {
-		return "", fmt.Errorf("get secret %s: %w", keyStatus.SecretName, err)
-	}
-
-	key := keyStatus.SecretKey
-	if key == "" {
-		key = apiKeySecretKey
-	}
-
-	token, ok := secret.Data[key]
-	if !ok {
-		return "", fmt.Errorf("secret %s missing key %s", keyStatus.SecretName, key)
-	}
-
-	return string(token), nil
 }
 
 func (r *PocketIDUserReconciler) reconcileUserFinalizers(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, instance *pocketidinternalv1alpha1.PocketIDInstance) (bool, error) {
@@ -348,14 +210,26 @@ func (r *PocketIDUserReconciler) reconcileDelete(ctx context.Context, user *pock
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	if instance, err := r.getInstanceForUser(ctx, user); err == nil {
-		if apiClient, err := r.getAPIClient(ctx, instance); err == nil && user.Status.UserID != "" {
+	if user.Status.UserID != "" {
+		instance, err := selectInstance(ctx, r.Client, user.Spec.InstanceSelector)
+		if err != nil {
+			if stderrors.Is(err, errNoInstance) {
+				log.Info("No PocketIDInstance found; skipping Pocket-ID deletion", "userID", user.Status.UserID)
+			} else {
+				log.Error(err, "Failed to select PocketIDInstance for delete")
+				return ctrl.Result{}, err
+			}
+		} else {
+			apiClient, err := apiClientForInstance(ctx, r.Client, instance)
+			if err != nil {
+				log.Error(err, "Failed to get API client for delete")
+				return ctrl.Result{}, err
+			}
 			log.Info("Deleting user from Pocket-ID", "userID", user.Status.UserID)
 			if err := apiClient.DeleteUser(ctx, user.Status.UserID); err != nil {
-				log.Error(err, "Failed to delete user from Pocket-ID, continuing with finalizer removal")
+				log.Error(err, "Failed to delete user from Pocket-ID")
+				return ctrl.Result{}, err
 			}
-		} else if err != nil {
-			log.Error(err, "Failed to get API client for delete, skipping Pocket-ID deletion")
 		}
 	}
 

@@ -333,8 +333,7 @@ var _ = Describe("PocketIDUser Controller", func() {
 				},
 			}
 
-			reconciler := &PocketIDUserReconciler{Client: k8sClient}
-			selected, err := reconciler.getInstanceForUser(ctx, user)
+			selected, err := selectInstance(ctx, k8sClient, user.Spec.InstanceSelector)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(selected.Name).To(Equal(instanceNameB))
 			Expect(selected.Namespace).To(Equal(instanceNSB))
