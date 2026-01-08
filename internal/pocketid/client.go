@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/go-openapi/runtime"
 	httptransport "github.com/go-openapi/runtime/client"
@@ -19,8 +20,10 @@ import (
 
 // Client wraps the Pocket-ID API client with a cleaner interface.
 type Client struct {
-	raw       *apiclient.PocketIDAPI
-	transport *httptransport.Runtime
+	raw        *apiclient.PocketIDAPI
+	transport  *httptransport.Runtime
+	baseURL    string
+	httpClient *http.Client
 }
 
 // User represents a Pocket-ID user with clean field names.
@@ -59,8 +62,10 @@ func NewClient(baseURL string) *Client {
 	raw := apiclient.New(transport, strfmt.Default)
 
 	return &Client{
-		raw:       raw,
-		transport: transport,
+		raw:        raw,
+		transport:  transport,
+		baseURL:    parsed.Scheme + "://" + parsed.Host,
+		httpClient: &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
@@ -74,8 +79,10 @@ func (c *Client) WithAPIKey(apiKey string) *Client {
 	)
 
 	return &Client{
-		raw:       apiclient.New(newTransport, strfmt.Default),
-		transport: newTransport,
+		raw:        apiclient.New(newTransport, strfmt.Default),
+		transport:  newTransport,
+		baseURL:    c.baseURL,
+		httpClient: c.httpClient,
 	}
 }
 
@@ -89,8 +96,10 @@ func (c *Client) WithCookie(cookie *http.Cookie) *Client {
 	)
 
 	return &Client{
-		raw:       apiclient.New(newTransport, strfmt.Default),
-		transport: newTransport,
+		raw:        apiclient.New(newTransport, strfmt.Default),
+		transport:  newTransport,
+		baseURL:    c.baseURL,
+		httpClient: c.httpClient,
 	}
 }
 
@@ -254,6 +263,35 @@ func (c *Client) CreateAPIKey(ctx context.Context, name, expiresAt, description 
 	}, nil
 }
 
+// CreateAPIKeyForUser creates an API key for the specified user by exchanging a one-time access token for a session.
+func (c *Client) CreateAPIKeyForUser(ctx context.Context, userID, name, expiresAt, description string, tokenTTLMinutes int) (*APIKeyWithToken, error) {
+	token, err := c.CreateOneTimeAccessToken(ctx, userID, tokenTTLMinutes)
+	if err != nil {
+		return nil, fmt.Errorf("create one-time access token: %w", err)
+	}
+
+	session := newSessionClient(c.baseURL, c.httpClient)
+	cookies, err := session.exchangeOneTimeAccessToken(ctx, token.Token)
+	if err != nil {
+		return nil, fmt.Errorf("exchange one-time access token: %w", err)
+	}
+
+	apiKeyReq := CreateAPIKeyRequest{
+		Name:        name,
+		ExpiresAt:   expiresAt,
+		Description: description,
+	}
+	apiKeyResp, err := session.createAPIKeyWithCookies(ctx, cookies, apiKeyReq)
+	if err != nil {
+		return nil, fmt.Errorf("create API key: %w", err)
+	}
+
+	return &APIKeyWithToken{
+		APIKey: apiKeyFromCreateResponse(apiKeyResp),
+		Token:  apiKeyResp.Token,
+	}, nil
+}
+
 // DeleteAPIKey deletes an API key by ID.
 func (c *Client) DeleteAPIKey(ctx context.Context, id string) error {
 	params := api_keys.NewDeleteAPIAPIKeysIDParams().
@@ -335,5 +373,18 @@ func apiKeyFromDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoAPIKey
 		CreatedAt:   dto.CreatedAt,
 		ExpiresAt:   dto.ExpiresAt,
 		LastUsedAt:  dto.LastUsedAt,
+	}
+}
+
+func apiKeyFromCreateResponse(resp *CreateAPIKeyResponse) APIKey {
+	if resp == nil {
+		return APIKey{}
+	}
+	return APIKey{
+		ID:          resp.APIKey.ID,
+		Name:        resp.APIKey.Name,
+		Description: resp.APIKey.Description,
+		CreatedAt:   resp.APIKey.CreatedAt,
+		ExpiresAt:   resp.APIKey.ExpiresAt,
 	}
 }

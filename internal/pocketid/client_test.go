@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/aclerici38/pocket-id-go-client/v2/models"
@@ -673,5 +674,74 @@ func TestClient_CreateOneTimeAccessToken_InvalidResponse(t *testing.T) {
 	_, err := client.CreateOneTimeAccessToken(context.Background(), "user-123", 15)
 	if err == nil {
 		t.Fatal("expected error for missing token in response")
+	}
+}
+
+func TestClient_CreateAPIKeyForUser(t *testing.T) {
+	const (
+		userID      = "user-123"
+		tokenValue  = "one-time-token-abc"
+		apiKeyName  = "new-key"
+		apiKeyToken = "new-key-token"
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/users/"+userID+"/one-time-access-token":
+			var body map[string]interface{}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("failed to decode request body: %v", err)
+			} else if body["ttl"] != "5m" {
+				t.Errorf("expected ttl 5m, got %v", body["ttl"])
+			}
+
+			if r.Header.Get("X-Api-Key") != "admin-key" {
+				t.Errorf("expected X-Api-Key header admin-key, got %s", r.Header.Get("X-Api-Key"))
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]string{"token": tokenValue})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/one-time-access-token/"+tokenValue:
+			http.SetCookie(w, &http.Cookie{Name: "session", Value: "session-token"})
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{}`))
+		case r.Method == http.MethodPost && r.URL.Path == pathAPIKeysC:
+			if !strings.Contains(r.Header.Get("Cookie"), "session=session-token") {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"apiKey": map[string]string{
+					"id":          "key-123",
+					"name":        apiKeyName,
+					"description": "Created via token",
+					"createdAt":   "2026-01-01T00:00:00Z",
+					"expiresAt":   "2030-01-01T00:00:00Z",
+				},
+				"token": apiKeyToken,
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL).WithAPIKey("admin-key")
+	apiKey, err := client.CreateAPIKeyForUser(context.Background(), userID, apiKeyName, "2030-01-01T00:00:00Z", "Created via token", 5)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if apiKey.Token != apiKeyToken {
+		t.Errorf("expected token %s, got %s", apiKeyToken, apiKey.Token)
+	}
+	if apiKey.ID != "key-123" {
+		t.Errorf("expected ID key-123, got %s", apiKey.ID)
+	}
+	if apiKey.Name != apiKeyName {
+		t.Errorf("expected name %s, got %s", apiKeyName, apiKey.Name)
 	}
 }

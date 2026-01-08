@@ -1,11 +1,8 @@
 package pocketid
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 )
@@ -16,6 +13,7 @@ import (
 type BootstrapClient struct {
 	baseURL    string
 	httpClient *http.Client
+	session    *sessionClient
 }
 
 // SetupRequest contains the data for initial admin setup.
@@ -55,88 +53,24 @@ type CreateAPIKeyResponse struct {
 }
 
 func NewBootstrapClient(baseURL string) *BootstrapClient {
+	httpClient := &http.Client{
+		Timeout: 10 * time.Second,
+	}
 	return &BootstrapClient{
-		baseURL: baseURL,
-		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
-		},
+		baseURL:    baseURL,
+		httpClient: httpClient,
+		session:    newSessionClient(baseURL, httpClient),
 	}
 }
 
 // Setup creates the initial admin user on a fresh Pocket-ID instance.
 // Returns the created user and the session cookies for subsequent requests.
 func (b *BootstrapClient) Setup(ctx context.Context, req SetupRequest) (*SetupResponse, []*http.Cookie, error) {
-	body, err := json.Marshal(req)
-	if err != nil {
-		return nil, nil, fmt.Errorf("marshal request: %w", err)
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, b.baseURL+"/api/signup/setup", bytes.NewReader(body))
-	if err != nil {
-		return nil, nil, fmt.Errorf("create request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := b.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, nil, fmt.Errorf("execute request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, nil, fmt.Errorf("read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, nil, fmt.Errorf("setup failed with status %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	var setupResp SetupResponse
-	if err := json.Unmarshal(respBody, &setupResp); err != nil {
-		return nil, nil, fmt.Errorf("unmarshal response: %w", err)
-	}
-
-	return &setupResp, resp.Cookies(), nil
+	return b.session.setup(ctx, req)
 }
 
 func (b *BootstrapClient) CreateAPIKeyWithCookies(ctx context.Context, cookies []*http.Cookie, req CreateAPIKeyRequest) (*CreateAPIKeyResponse, error) {
-	body, err := json.Marshal(req)
-	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, b.baseURL+"/api/api-keys", bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	for _, cookie := range cookies {
-		httpReq.AddCookie(cookie)
-	}
-
-	resp, err := b.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("execute request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusCreated {
-		return nil, fmt.Errorf("create API key failed with status %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	var apiKeyResp CreateAPIKeyResponse
-	if err := json.Unmarshal(respBody, &apiKeyResp); err != nil {
-		return nil, fmt.Errorf("unmarshal response: %w", err)
-	}
-
-	return &apiKeyResp, nil
+	return b.session.createAPIKeyWithCookies(ctx, cookies, req)
 }
 
 // Bootstrap performs the complete bootstrap flow:

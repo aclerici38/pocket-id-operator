@@ -439,6 +439,74 @@ spec:
 			Expect(output).To(Equal(secretName))
 		})
 
+		It("should create an API key owned by the target user", func() {
+			const userName = "test-apikey-owner-user"
+			const apiKeyName = "owner-key"
+			const podName = "api-key-owner-test"
+
+			By("creating user with API key")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  admin: false
+  apiKeys:
+  - name: %s
+    description: Owner API key
+`, userName, testNS, apiKeyName))
+
+			By("verifying user becomes Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketiduser", userName, "-n", testNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(output).To(Equal("True"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			secretName := fmt.Sprintf("%s-%s-key", userName, apiKeyName)
+			var tokenBase64 string
+			By("reading the API key token from the secret")
+			Eventually(func(g Gomega) {
+				tokenBase64 = kubectlGet("secret", secretName, "-n", testNS,
+					"-o", "jsonpath={.data.token}")
+				g.Expect(tokenBase64).NotTo(BeEmpty())
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("creating a curl pod to verify the token belongs to the user")
+			applyYAML(fmt.Sprintf(`
+apiVersion: v1
+kind: Pod
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  restartPolicy: Never
+  containers:
+  - name: curl
+    image: curlimages/curl:latest
+    command: ["/bin/sh", "-c"]
+    args:
+    - |
+      TOKEN=$(echo '%s' | base64 -d)
+      curl -sf -H "X-API-KEY: $TOKEN" http://e2e-instance.%s.svc.cluster.local:1411/api/users/me | grep -q '"username":"%s"'
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+      runAsNonRoot: true
+      runAsUser: 1000
+`, podName, testNS, tokenBase64, testNS, userName))
+
+			By("waiting for API key owner pod to succeed")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pod", podName, "-n", testNS,
+					"-o", "jsonpath={.status.phase}")
+				g.Expect(output).To(Equal("Succeeded"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+
 		It("should create an admin user", func() {
 			const userName = "test-admin-user"
 

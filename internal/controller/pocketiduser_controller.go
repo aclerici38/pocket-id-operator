@@ -635,12 +635,16 @@ func (r *PocketIDUserReconciler) reconcileAPIKeys(ctx context.Context, user *poc
 
 		log.Info("Creating API key", "name", spec.Name)
 
+		if user.Status.UserID == "" {
+			return fmt.Errorf("user ID not set for API key %s", spec.Name)
+		}
+
 		expiresAt := spec.ExpiresAt
 		if expiresAt == "" {
 			expiresAt = pocketid.DefaultAPIKeyExpiry().Format(time.RFC3339)
 		}
 
-		apiKey, err := apiClient.CreateAPIKey(ctx, spec.Name, expiresAt, spec.Description)
+		apiKey, err := apiClient.CreateAPIKeyForUser(ctx, user.Status.UserID, spec.Name, expiresAt, spec.Description, defaultLoginTokenExpiryMin)
 		if err != nil {
 			return fmt.Errorf("create API key %s: %w", spec.Name, err)
 		}
