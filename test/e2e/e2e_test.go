@@ -171,7 +171,7 @@ spec:
 				expiresAt := kubectlGet("pocketiduser", operatorUserName, "-n", testNS,
 					"-o", "jsonpath={.status.oneTimeLoginExpiresAt}")
 				g.Expect(token).NotTo(BeEmpty())
-				g.Expect(loginURL).To(ContainSubstring("/login/one-time-access/"))
+				g.Expect(loginURL).To(ContainSubstring("/lc/"))
 				g.Expect(loginURL).To(ContainSubstring(token))
 				g.Expect(expiresAt).NotTo(BeEmpty())
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
@@ -232,10 +232,77 @@ metadata:
 				expiresAt := kubectlGet("pocketiduser", userName, "-n", testNS,
 					"-o", "jsonpath={.status.oneTimeLoginExpiresAt}")
 				g.Expect(token).NotTo(BeEmpty())
-				g.Expect(loginURL).To(ContainSubstring("/login/one-time-access/"))
+				g.Expect(loginURL).To(ContainSubstring("/lc/"))
 				g.Expect(loginURL).To(ContainSubstring(token))
 				g.Expect(expiresAt).NotTo(BeEmpty())
 			}, time.Minute, 2*time.Second).Should(Succeed())
+		})
+
+		It("should exchange the one-time access token for a session", func() {
+			const userName = "test-login-token-exchange"
+
+			By("creating user with minimal spec")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: %s
+  namespace: %s
+`, userName, testNS))
+
+			By("verifying user becomes Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketiduser", userName, "-n", testNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(output).To(Equal("True"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			var token string
+			By("reading the one-time login token from status")
+			Eventually(func(g Gomega) {
+				token = kubectlGet("pocketiduser", userName, "-n", testNS,
+					"-o", "jsonpath={.status.oneTimeLoginToken}")
+				g.Expect(token).NotTo(BeEmpty())
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("creating a curl pod to exchange the token for a session")
+			applyYAML(fmt.Sprintf(`
+apiVersion: v1
+kind: Pod
+metadata:
+  name: login-token-exchange-test
+  namespace: %s
+spec:
+  restartPolicy: Never
+  containers:
+  - name: curl
+    image: curlimages/curl:latest
+    command: ["/bin/sh", "-c"]
+    args:
+    - |
+      TOKEN='%s'
+      curl -sf -D /tmp/headers -o /tmp/user.json -X POST http://e2e-instance.%s.svc.cluster.local:1411/api/one-time-access-token/$TOKEN
+      COOKIE=$(awk -F': ' 'tolower($1)=="set-cookie" && $2 ~ /access_token=/ {print $2; exit}' /tmp/headers)
+      if [ -z "$COOKIE" ]; then
+        echo "missing access token cookie" >&2
+        exit 1
+      fi
+      COOKIE_PAIR=$(echo "$COOKIE" | cut -d';' -f1)
+      curl -sf -H "Cookie: $COOKIE_PAIR" http://e2e-instance.%s.svc.cluster.local:1411/api/users/me | grep -q '"username":"%s"'
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+      runAsNonRoot: true
+      runAsUser: 1000
+`, testNS, token, testNS, testNS, userName))
+
+			By("waiting for token exchange pod to succeed")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pod", "login-token-exchange-test", "-n", testNS,
+					"-o", "jsonpath={.status.phase}")
+				g.Expect(output).To(Equal("Succeeded"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 		})
 
 		It("should store one-time login details in status", func() {
@@ -266,7 +333,7 @@ metadata:
 				expiresAt := kubectlGet("pocketiduser", userName, "-n", testNS,
 					"-o", "jsonpath={.status.oneTimeLoginExpiresAt}")
 				g.Expect(token).NotTo(BeEmpty())
-				g.Expect(loginURL).To(ContainSubstring("/login/one-time-access/"))
+				g.Expect(loginURL).To(ContainSubstring("/lc/"))
 				g.Expect(loginURL).To(ContainSubstring(token))
 				g.Expect(expiresAt).NotTo(BeEmpty())
 

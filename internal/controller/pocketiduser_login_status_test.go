@@ -27,7 +27,7 @@ func TestReconcileOneTimeLoginStatus_ExpiredClears(t *testing.T) {
 		},
 		Status: pocketidinternalv1alpha1.PocketIDUserStatus{
 			OneTimeLoginToken:     "token",
-			OneTimeLoginURL:       "http://example.com/login/one-time-access/token",
+			OneTimeLoginURL:       "http://example.com/lc/token",
 			OneTimeLoginExpiresAt: expiredAt,
 		},
 	}
@@ -66,7 +66,7 @@ func TestReconcileOneTimeLoginStatus_FutureRequeues(t *testing.T) {
 		},
 		Status: pocketidinternalv1alpha1.PocketIDUserStatus{
 			OneTimeLoginToken:     "token",
-			OneTimeLoginURL:       "http://example.com/login/one-time-access/token",
+			OneTimeLoginURL:       "http://example.com/lc/token",
 			OneTimeLoginExpiresAt: expiresAt,
 		},
 	}
@@ -108,7 +108,7 @@ func TestReconcileOneTimeLoginStatus_InvalidTimestampClears(t *testing.T) {
 		},
 		Status: pocketidinternalv1alpha1.PocketIDUserStatus{
 			OneTimeLoginToken:     "token",
-			OneTimeLoginURL:       "http://example.com/login/one-time-access/token",
+			OneTimeLoginURL:       "http://example.com/lc/token",
 			OneTimeLoginExpiresAt: "not-a-time",
 		},
 	}
@@ -175,7 +175,7 @@ func TestSetOneTimeLoginStatus_SetsTokenURLAndExpiry(t *testing.T) {
 	if updated.Status.OneTimeLoginToken != "token123" {
 		t.Fatalf("expected token to be set, got %q", updated.Status.OneTimeLoginToken)
 	}
-	expectedURL := "http://example.com/login/one-time-access/token123"
+	expectedURL := "http://example.com/lc/token123"
 	if updated.Status.OneTimeLoginURL != expectedURL {
 		t.Fatalf("expected URL %q, got %q", expectedURL, updated.Status.OneTimeLoginURL)
 	}

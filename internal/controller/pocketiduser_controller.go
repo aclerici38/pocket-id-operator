@@ -447,7 +447,7 @@ func (r *PocketIDUserReconciler) setOneTimeLoginStatus(ctx context.Context, user
 	if baseURL == "" {
 		baseURL = internalServiceURL(instance.Name, instance.Namespace)
 	}
-	loginURL := fmt.Sprintf("%s/login/one-time-access/%s", baseURL, token)
+	loginURL := fmt.Sprintf("%s/lc/%s", baseURL, token)
 	expiresAt := time.Now().UTC().Add(time.Duration(defaultLoginTokenExpiryMin) * time.Minute)
 
 	user.Status.OneTimeLoginToken = token

@@ -276,7 +276,7 @@ type OneTimeAccessToken struct {
 }
 
 // CreateOneTimeAccessToken creates a one-time access token for a user.
-// This token can be used to log in via the browser at /login/one-time-access/{token}
+// This token can be used to log in via the browser at /lc/{token}
 func (c *Client) CreateOneTimeAccessToken(ctx context.Context, userID string, expiresInMinutes int) (*OneTimeAccessToken, error) {
 	params := users.NewPostAPIUsersIDOneTimeAccessTokenParams().
 		WithContext(ctx).
