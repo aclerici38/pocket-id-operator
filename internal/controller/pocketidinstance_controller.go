@@ -442,7 +442,6 @@ func (r *PocketIDInstanceReconciler) reconcileStatefulSet(ctx context.Context, i
 	}
 
 	if instance.Spec.Persistence.Enabled {
-		stsSpec.Template.Spec.Volumes = nil
 		stsSpec.Template.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
 			{
 				Name:      "data",
@@ -450,27 +449,43 @@ func (r *PocketIDInstanceReconciler) reconcileStatefulSet(ctx context.Context, i
 			},
 		}
 
-		var scn *string
-		if instance.Spec.Persistence.StorageClass != "" {
-			sc := instance.Spec.Persistence.StorageClass
-			scn = &sc
-		}
-
-		stsSpec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{
-			{
-				ObjectMeta: metav1.ObjectMeta{
+		if instance.Spec.Persistence.ExistingClaim != "" {
+			stsSpec.Template.Spec.Volumes = []corev1.Volume{
+				{
 					Name: "data",
-				},
-				Spec: corev1.PersistentVolumeClaimSpec{
-					AccessModes:      instance.Spec.Persistence.AccessModes,
-					StorageClassName: scn,
-					Resources: corev1.VolumeResourceRequirements{
-						Requests: corev1.ResourceList{
-							corev1.ResourceStorage: instance.Spec.Persistence.Size,
+					VolumeSource: corev1.VolumeSource{
+						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+							ClaimName: instance.Spec.Persistence.ExistingClaim,
 						},
 					},
 				},
-			},
+			}
+			stsSpec.VolumeClaimTemplates = nil
+		} else {
+			stsSpec.Template.Spec.Volumes = nil
+
+			var scn *string
+			if instance.Spec.Persistence.StorageClass != "" {
+				sc := instance.Spec.Persistence.StorageClass
+				scn = &sc
+			}
+
+			stsSpec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "data",
+					},
+					Spec: corev1.PersistentVolumeClaimSpec{
+						AccessModes:      instance.Spec.Persistence.AccessModes,
+						StorageClassName: scn,
+						Resources: corev1.VolumeResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceStorage: instance.Spec.Persistence.Size,
+							},
+						},
+					},
+				},
+			}
 		}
 	}
 

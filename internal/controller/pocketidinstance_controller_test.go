@@ -553,7 +553,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					},
 					Persistence: pocketidinternalv1alpha1.PersistenceConfig{
 						Enabled:       true,
-						ExistingClaim: existingPVCName,
+						ExistingClaim: existingPVC.Name,
 					},
 				},
 			}
@@ -680,6 +680,107 @@ var _ = Describe("PocketIDInstance Controller", func() {
 
 		It("Should NOT create a separate PersistentVolumeClaim", func() {
 			// StatefulSets manage their own PVCs via volumeClaimTemplates
+			pvc := &corev1.PersistentVolumeClaim{}
+			Consistently(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName + "-data",
+					Namespace: namespace,
+				}, pvc)
+			}, time.Second*2, interval).ShouldNot(Succeed())
+		})
+	})
+
+	Context("When creating a StatefulSet with an existing PVC", func() {
+		const instanceName = "test-sts-existing-claim"
+
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
+		var secret *corev1.Secret
+		var existingPVC *corev1.PersistentVolumeClaim
+
+		BeforeEach(func() {
+			existingPVC = &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					GenerateName: "existing-sts-pvc-",
+					Namespace:    namespace,
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+					Resources: corev1.VolumeResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceStorage: resource.MustParse("2Gi"),
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, existingPVC)).To(Succeed())
+
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName + "-secret",
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"encryption-key": []byte("test-encryption-key-value"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					DeploymentType: "StatefulSet",
+					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
+						ValueFrom: &corev1.EnvVarSource{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: secret.Name,
+								},
+								Key: "encryption-key",
+							},
+						},
+					},
+					Persistence: pocketidinternalv1alpha1.PersistenceConfig{
+						Enabled:       true,
+						ExistingClaim: existingPVC.Name,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if instance != nil {
+				_ = k8sClient.Delete(ctx, instance)
+			}
+			if secret != nil {
+				_ = k8sClient.Delete(ctx, secret)
+			}
+			if existingPVC != nil {
+				_ = k8sClient.Delete(ctx, existingPVC)
+			}
+		})
+
+		It("Should mount the existing PVC and not create templates", func() {
+			sts := &appsv1.StatefulSet{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName,
+					Namespace: namespace,
+				}, sts)
+			}, timeout, interval).Should(Succeed())
+
+			Expect(sts.Spec.VolumeClaimTemplates).To(BeEmpty())
+
+			volumes := sts.Spec.Template.Spec.Volumes
+			Expect(volumes).To(HaveLen(1))
+			Expect(volumes[0].VolumeSource.PersistentVolumeClaim).NotTo(BeNil())
+			Expect(volumes[0].VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(existingPVC.Name))
+		})
+
+		It("Should NOT create a separate PersistentVolumeClaim", func() {
 			pvc := &corev1.PersistentVolumeClaim{}
 			Consistently(func() error {
 				return k8sClient.Get(ctx, types.NamespacedName{

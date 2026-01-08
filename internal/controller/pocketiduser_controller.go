@@ -142,7 +142,7 @@ func (r *PocketIDUserReconciler) getInstanceForUser(ctx context.Context, user *p
 	instances := &pocketidinternalv1alpha1.PocketIDInstanceList{}
 	listOpts := []client.ListOption{}
 
-	selectorString := "all instances"
+	selectorString := "default instance"
 	if user.Spec.InstanceSelector != nil {
 		selector, err := metav1.LabelSelectorAsSelector(user.Spec.InstanceSelector)
 		if err != nil {

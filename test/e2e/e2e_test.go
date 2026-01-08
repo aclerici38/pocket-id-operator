@@ -883,6 +883,280 @@ spec:
 					"-o", "jsonpath={.data.token}")
 				g.Expect(output).NotTo(BeEmpty())
 			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying emptyDir is mounted for the main deployment")
+			Eventually(func(g Gomega) {
+				emptyDir := kubectlGet("deployment", instanceName, "-n", instanceNS,
+					"-o", "jsonpath={.spec.template.spec.volumes[?(@.name=='data')].emptyDir}")
+				mountPath := kubectlGet("deployment", instanceName, "-n", instanceNS,
+					"-o", "jsonpath={.spec.template.spec.containers[0].volumeMounts[?(@.name=='data')].mountPath}")
+				g.Expect(emptyDir).NotTo(BeEmpty())
+				g.Expect(mountPath).To(Equal("/app/data"))
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying emptyDir is mounted for the secondary StatefulSet")
+			Eventually(func(g Gomega) {
+				emptyDir := kubectlGet("statefulset", secondaryInstanceName, "-n", instanceNS,
+					"-o", "jsonpath={.spec.template.spec.volumes[?(@.name=='data')].emptyDir}")
+				mountPath := kubectlGet("statefulset", secondaryInstanceName, "-n", instanceNS,
+					"-o", "jsonpath={.spec.template.spec.containers[0].volumeMounts[?(@.name=='data')].mountPath}")
+				g.Expect(emptyDir).NotTo(BeEmpty())
+				g.Expect(mountPath).To(Equal("/app/data"))
+			}, time.Minute, 2*time.Second).Should(Succeed())
+		})
+	})
+
+	Context("Storage Persistence", func() {
+		It("should provision storage when persistence is enabled", func() {
+			const deployInstanceName = "persist-deploy-instance"
+			const deployUserName = "persist-deploy-user"
+			const deployAPIKeyName = "persist-deploy-key"
+			const stsInstanceName = "persist-sts-instance"
+			const stsUserName = "persist-sts-user"
+			const stsAPIKeyName = "persist-sts-key"
+
+			By("creating users with instance selectors")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  admin: true
+  apiKeys:
+  - name: %s
+  instanceSelector:
+    matchLabels:
+      instance-group: persist-deploy
+---
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  admin: true
+  apiKeys:
+  - name: %s
+  instanceSelector:
+    matchLabels:
+      instance-group: persist-sts
+`, deployUserName, userNS, deployAPIKeyName, stsUserName, userNS, stsAPIKeyName))
+
+			By("creating deployment and statefulset instances with persistence enabled")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDInstance
+metadata:
+  name: %s
+  namespace: %s
+  labels:
+    instance-group: persist-deploy
+spec:
+  image: ghcr.io/pocket-id/pocket-id:latest
+  auth:
+    userRef:
+      name: %s
+      namespace: %s
+    apiKeyName: %s
+  persistence:
+    enabled: true
+  encryptionKey:
+    valueFrom:
+      secretKeyRef:
+        name: pocket-id-encryption
+        key: key
+  appUrl: "http://%s.%s.svc.cluster.local:1411"
+---
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDInstance
+metadata:
+  name: %s
+  namespace: %s
+  labels:
+    instance-group: persist-sts
+spec:
+  deploymentType: StatefulSet
+  image: ghcr.io/pocket-id/pocket-id:latest
+  auth:
+    userRef:
+      name: %s
+      namespace: %s
+    apiKeyName: %s
+  persistence:
+    enabled: true
+  encryptionKey:
+    valueFrom:
+      secretKeyRef:
+        name: pocket-id-encryption
+        key: key
+  appUrl: "http://%s.%s.svc.cluster.local:1411"
+`, deployInstanceName, instanceNS, deployUserName, userNS, deployAPIKeyName, deployInstanceName, instanceNS,
+				stsInstanceName, instanceNS, stsUserName, userNS, stsAPIKeyName, stsInstanceName, instanceNS))
+
+			By("verifying deployment mounts a dynamically provisioned PVC")
+			Eventually(func(g Gomega) {
+				claimName := kubectlGet("deployment", deployInstanceName, "-n", instanceNS,
+					"-o", "jsonpath={.spec.template.spec.volumes[?(@.name=='data')].persistentVolumeClaim.claimName}")
+				mountPath := kubectlGet("deployment", deployInstanceName, "-n", instanceNS,
+					"-o", "jsonpath={.spec.template.spec.containers[0].volumeMounts[?(@.name=='data')].mountPath}")
+				g.Expect(claimName).To(Equal(deployInstanceName + "-data"))
+				g.Expect(mountPath).To(Equal("/app/data"))
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying deployment PVC exists")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pvc", deployInstanceName+"-data", "-n", instanceNS, "-o", "name")
+				g.Expect(output).NotTo(BeEmpty())
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying StatefulSet uses a volumeClaimTemplate")
+			Eventually(func(g Gomega) {
+				claimTemplate := kubectlGet("statefulset", stsInstanceName, "-n", instanceNS,
+					"-o", "jsonpath={.spec.volumeClaimTemplates[0].metadata.name}")
+				mountPath := kubectlGet("statefulset", stsInstanceName, "-n", instanceNS,
+					"-o", "jsonpath={.spec.template.spec.containers[0].volumeMounts[?(@.name=='data')].mountPath}")
+				g.Expect(claimTemplate).To(Equal("data"))
+				g.Expect(mountPath).To(Equal("/app/data"))
+			}, time.Minute, 2*time.Second).Should(Succeed())
+		})
+
+		It("should mount existing claims when configured", func() {
+			const deployInstanceName = "existing-deploy-instance"
+			const deployUserName = "existing-deploy-user"
+			const deployAPIKeyName = "existing-deploy-key"
+			const deployPVCName = "existing-deploy-claim"
+			const stsInstanceName = "existing-sts-instance"
+			const stsUserName = "existing-sts-user"
+			const stsAPIKeyName = "existing-sts-key"
+			const stsPVCName = "existing-sts-claim"
+
+			By("creating existing PVCs")
+			applyYAML(fmt.Sprintf(`
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+`, deployPVCName, instanceNS, stsPVCName, instanceNS))
+
+			By("creating users with instance selectors")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  admin: true
+  apiKeys:
+  - name: %s
+  instanceSelector:
+    matchLabels:
+      instance-group: existing-deploy
+---
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  admin: true
+  apiKeys:
+  - name: %s
+  instanceSelector:
+    matchLabels:
+      instance-group: existing-sts
+`, deployUserName, userNS, deployAPIKeyName, stsUserName, userNS, stsAPIKeyName))
+
+			By("creating instances that reference existing claims")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDInstance
+metadata:
+  name: %s
+  namespace: %s
+  labels:
+    instance-group: existing-deploy
+spec:
+  image: ghcr.io/pocket-id/pocket-id:latest
+  auth:
+    userRef:
+      name: %s
+      namespace: %s
+    apiKeyName: %s
+  persistence:
+    enabled: true
+    existingClaim: %s
+  encryptionKey:
+    valueFrom:
+      secretKeyRef:
+        name: pocket-id-encryption
+        key: key
+  appUrl: "http://%s.%s.svc.cluster.local:1411"
+---
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDInstance
+metadata:
+  name: %s
+  namespace: %s
+  labels:
+    instance-group: existing-sts
+spec:
+  deploymentType: StatefulSet
+  image: ghcr.io/pocket-id/pocket-id:latest
+  auth:
+    userRef:
+      name: %s
+      namespace: %s
+    apiKeyName: %s
+  persistence:
+    enabled: true
+    existingClaim: %s
+  encryptionKey:
+    valueFrom:
+      secretKeyRef:
+        name: pocket-id-encryption
+        key: key
+  appUrl: "http://%s.%s.svc.cluster.local:1411"
+`, deployInstanceName, instanceNS, deployUserName, userNS, deployAPIKeyName, deployPVCName, deployInstanceName, instanceNS,
+				stsInstanceName, instanceNS, stsUserName, userNS, stsAPIKeyName, stsPVCName, stsInstanceName, instanceNS))
+
+			By("verifying deployment mounts the existing claim")
+			Eventually(func(g Gomega) {
+				claimName := kubectlGet("deployment", deployInstanceName, "-n", instanceNS,
+					"-o", "jsonpath={.spec.template.spec.volumes[?(@.name=='data')].persistentVolumeClaim.claimName}")
+				g.Expect(claimName).To(Equal(deployPVCName))
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying StatefulSet mounts the existing claim")
+			Eventually(func(g Gomega) {
+				claimName := kubectlGet("statefulset", stsInstanceName, "-n", instanceNS,
+					"-o", "jsonpath={.spec.template.spec.volumes[?(@.name=='data')].persistentVolumeClaim.claimName}")
+				claimTemplate := kubectlGet("statefulset", stsInstanceName, "-n", instanceNS,
+					"-o", "jsonpath={.spec.volumeClaimTemplates[0].metadata.name}")
+				g.Expect(claimName).To(Equal(stsPVCName))
+				g.Expect(claimTemplate).To(BeEmpty())
+			}, time.Minute, 2*time.Second).Should(Succeed())
 		})
 	})
 })
