@@ -164,6 +164,18 @@ type PocketIDUserStatus struct {
 	// +optional
 	Locale string `json:"locale,omitempty"`
 
+	// OneTimeLoginToken is the one-time login token for a newly created user
+	// +optional
+	OneTimeLoginToken string `json:"oneTimeLoginToken,omitempty"`
+
+	// OneTimeLoginURL is the login URL built from the one-time login token
+	// +optional
+	OneTimeLoginURL string `json:"oneTimeLoginURL,omitempty"`
+
+	// OneTimeLoginExpiresAt is the RFC3339 timestamp when the login token expires
+	// +optional
+	OneTimeLoginExpiresAt string `json:"oneTimeLoginExpiresAt,omitempty"`
+
 	// APIKeys reflects the observed state of each API key
 	// +optional
 	APIKeys []APIKeyStatus `json:"apiKeys,omitempty"`

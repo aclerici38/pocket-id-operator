@@ -376,6 +376,18 @@ spec:
               locale:
                 description: Locale of the user from Pocket-ID
                 type: string
+              oneTimeLoginExpiresAt:
+                description: OneTimeLoginExpiresAt is the RFC3339 timestamp when the
+                  login token expires
+                type: string
+              oneTimeLoginToken:
+                description: OneTimeLoginToken is the one-time login token for a newly
+                  created user
+                type: string
+              oneTimeLoginURL:
+                description: OneTimeLoginURL is the login URL built from the one-time
+                  login token
+                type: string
               userID:
                 description: UserID is the ID assigned by Pocket-ID
                 type: string

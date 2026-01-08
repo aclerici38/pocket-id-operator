@@ -188,9 +188,8 @@ func main() {
 		os.Exit(1)
 	}
 	if err := (&controller.PocketIDUserReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("pocketiduser-controller"),
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PocketIDUser")
 		os.Exit(1)

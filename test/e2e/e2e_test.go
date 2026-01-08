@@ -208,16 +208,56 @@ metadata:
 				"-o", "jsonpath={.status.email}")
 			Expect(output).To(Equal(userName + "@placeholder.local"))
 
-			By("verifying UserCreated event was emitted with login URL")
+			By("verifying one-time login status fields are set")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "events", "-n", testNS,
-					"--field-selector", fmt.Sprintf("involvedObject.name=%s,reason=UserCreated", userName),
-					"-o", "jsonpath={.items[0].message}")
-				output, err := utils.Run(cmd)
+				token := kubectlGet("pocketiduser", userName, "-n", testNS,
+					"-o", "jsonpath={.status.oneTimeLoginToken}")
+				loginURL := kubectlGet("pocketiduser", userName, "-n", testNS,
+					"-o", "jsonpath={.status.oneTimeLoginURL}")
+				expiresAt := kubectlGet("pocketiduser", userName, "-n", testNS,
+					"-o", "jsonpath={.status.oneTimeLoginExpiresAt}")
+				g.Expect(token).NotTo(BeEmpty())
+				g.Expect(loginURL).To(ContainSubstring("/login/one-time-access/"))
+				g.Expect(loginURL).To(ContainSubstring(token))
+				g.Expect(expiresAt).NotTo(BeEmpty())
+			}, time.Minute, 2*time.Second).Should(Succeed())
+		})
+
+		It("should store one-time login details in status", func() {
+			const userName = "test-login-token-user"
+
+			By("creating user with minimal spec")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: %s
+  namespace: %s
+`, userName, testNS))
+
+			By("verifying user becomes Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketiduser", userName, "-n", testNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(output).To(Equal("True"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying one-time login status fields are populated and future-dated")
+			Eventually(func(g Gomega) {
+				token := kubectlGet("pocketiduser", userName, "-n", testNS,
+					"-o", "jsonpath={.status.oneTimeLoginToken}")
+				loginURL := kubectlGet("pocketiduser", userName, "-n", testNS,
+					"-o", "jsonpath={.status.oneTimeLoginURL}")
+				expiresAt := kubectlGet("pocketiduser", userName, "-n", testNS,
+					"-o", "jsonpath={.status.oneTimeLoginExpiresAt}")
+				g.Expect(token).NotTo(BeEmpty())
+				g.Expect(loginURL).To(ContainSubstring("/login/one-time-access/"))
+				g.Expect(loginURL).To(ContainSubstring(token))
+				g.Expect(expiresAt).NotTo(BeEmpty())
+
+				parsed, err := time.Parse(time.RFC3339, expiresAt)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(ContainSubstring("User"))
-				// Check for login URL - should contain /login/one-time-access/
-				g.Expect(output).To(ContainSubstring("/login/one-time-access/"))
+				g.Expect(parsed.After(time.Now().Add(-time.Second))).To(BeTrue())
 			}, time.Minute, 2*time.Second).Should(Succeed())
 		})
 

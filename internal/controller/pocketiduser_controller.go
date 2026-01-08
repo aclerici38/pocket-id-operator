@@ -26,7 +26,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -46,8 +45,7 @@ const (
 // PocketIDUserReconciler reconciles a PocketIDUser object
 type PocketIDUserReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Scheme *runtime.Scheme
 }
 
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidusers,verbs=get;list;watch;create;update;patch;delete
@@ -55,7 +53,6 @@ type PocketIDUserReconciler struct {
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidusers/finalizers,verbs=update
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidinstances,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 
 func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
@@ -106,7 +103,7 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	// Reconcile the user in Pocket-ID
-	if err := r.reconcileUser(ctx, user, apiClient); err != nil {
+	if err := r.reconcileUser(ctx, user, apiClient, instance); err != nil {
 		log.Error(err, "Failed to reconcile user")
 		r.setReadyCondition(ctx, user, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
@@ -120,6 +117,17 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	r.setReadyCondition(ctx, user, metav1.ConditionTrue, "Reconciled", "User and API keys are in sync")
+
+	cleanupResult, err := r.reconcileOneTimeLoginStatus(ctx, user)
+	if err != nil {
+		log.Error(err, "Failed to reconcile one-time login status")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	if cleanupResult.RequeueAfter > 0 {
+		return cleanupResult, nil
+	}
+
 	return ctrl.Result{}, nil
 }
 
@@ -295,7 +303,7 @@ func (r *PocketIDUserReconciler) resolveStringValue(ctx context.Context, namespa
 }
 
 // reconcileUser ensures the user exists in Pocket-ID with correct settings
-func (r *PocketIDUserReconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client) error {
+func (r *PocketIDUserReconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
 	log := logf.FromContext(ctx)
 
 	// Resolve all StringValue fields
@@ -373,7 +381,14 @@ func (r *PocketIDUserReconciler) reconcileUser(ctx context.Context, user *pocket
 		}
 
 		// Generate one-time login token for the newly created user
-		r.emitOneTimeLoginEvent(ctx, user, apiClient, pUser.ID, username)
+		token, err := apiClient.CreateOneTimeAccessToken(ctx, pUser.ID, defaultLoginTokenExpiryMin)
+		if err != nil {
+			log.Error(err, "Failed to create one-time login token - user created but token not available")
+			return nil
+		}
+		if err := r.setOneTimeLoginStatus(ctx, user, instance, token.Token); err != nil {
+			return fmt.Errorf("set one-time login status: %w", err)
+		}
 
 		return nil
 	}
@@ -420,40 +435,53 @@ func (r *PocketIDUserReconciler) updateUserStatus(ctx context.Context, user *poc
 	return r.Status().Patch(ctx, user, client.MergeFrom(base))
 }
 
-// emitOneTimeLoginEvent generates a one-time login token and emits an event with the login URL
-func (r *PocketIDUserReconciler) emitOneTimeLoginEvent(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client, userID, username string) {
-	log := logf.FromContext(ctx)
+func (r *PocketIDUserReconciler) setOneTimeLoginStatus(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, instance *pocketidinternalv1alpha1.PocketIDInstance, token string) error {
+	base := user.DeepCopy()
 
-	// Generate one-time access token
-	token, err := apiClient.CreateOneTimeAccessToken(ctx, userID, defaultLoginTokenExpiryMin)
-	if err != nil {
-		log.Error(err, "Failed to create one-time login token - user created but login URL not available")
-		r.Recorder.Eventf(user, corev1.EventTypeNormal, "UserCreated",
-			"User '%s' created successfully. One-time login token could not be generated.",
-			username)
-		return
-	}
-
-	// Get instance to determine the app URL
-	instance, err := r.getInstance(ctx, user.Namespace)
-	if err != nil {
-		log.Error(err, "Failed to get instance for login URL")
-		r.Recorder.Eventf(user, corev1.EventTypeNormal, "UserCreated",
-			"User '%s' created successfully. Login token: %s (expires in %d minutes)",
-			username, token.Token, defaultLoginTokenExpiryMin)
-		return
-	}
-
-	// Build login URL
 	baseURL := instance.Spec.AppURL
 	if baseURL == "" {
 		baseURL = internalServiceURL(instance.Name, instance.Namespace)
 	}
-	loginURL := fmt.Sprintf("%s/login/one-time-access/%s", baseURL, token.Token)
+	loginURL := fmt.Sprintf("%s/login/one-time-access/%s", baseURL, token)
+	expiresAt := time.Now().UTC().Add(time.Duration(defaultLoginTokenExpiryMin) * time.Minute)
 
-	r.Recorder.Eventf(user, corev1.EventTypeNormal, "UserCreated",
-		"User '%s' created. Login at: %s (expires in %d minutes)",
-		username, loginURL, defaultLoginTokenExpiryMin)
+	user.Status.OneTimeLoginToken = token
+	user.Status.OneTimeLoginURL = loginURL
+	user.Status.OneTimeLoginExpiresAt = expiresAt.Format(time.RFC3339)
+
+	return r.Status().Patch(ctx, user, client.MergeFrom(base))
+}
+
+func (r *PocketIDUserReconciler) reconcileOneTimeLoginStatus(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser) (ctrl.Result, error) {
+	if user.Status.OneTimeLoginExpiresAt == "" {
+		return ctrl.Result{}, nil
+	}
+
+	expiresAt, err := time.Parse(time.RFC3339, user.Status.OneTimeLoginExpiresAt)
+	if err != nil {
+		logf.FromContext(ctx).Error(err, "Invalid one-time login expiry timestamp")
+		return r.clearOneTimeLoginStatus(ctx, user)
+	}
+
+	now := time.Now().UTC()
+	if !expiresAt.After(now) {
+		return r.clearOneTimeLoginStatus(ctx, user)
+	}
+
+	return ctrl.Result{RequeueAfter: time.Until(expiresAt)}, nil
+}
+
+func (r *PocketIDUserReconciler) clearOneTimeLoginStatus(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser) (ctrl.Result, error) {
+	base := user.DeepCopy()
+	user.Status.OneTimeLoginToken = ""
+	user.Status.OneTimeLoginURL = ""
+	user.Status.OneTimeLoginExpiresAt = ""
+
+	if err := r.Status().Patch(ctx, user, client.MergeFrom(base)); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
 }
 
 // reconcileAPIKeys ensures API keys exist in Pocket-ID and secrets are created
