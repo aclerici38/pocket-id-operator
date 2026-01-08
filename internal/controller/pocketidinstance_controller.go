@@ -716,7 +716,7 @@ func (r *PocketIDInstanceReconciler) reconcileAuth(ctx context.Context, instance
 		return ctrl.Result{}, fmt.Errorf("get auth user CR: %w", err)
 	}
 
-	if !user.Status.IsAdmin {
+	if user.Status.UserID != "" && !user.Status.IsAdmin {
 		log.Info("Auth user is not admin; blocking reconcile", "user", userRef)
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}

@@ -91,6 +91,7 @@ func TestReconcileAuth_BlocksWhenAuthUserNotAdmin(t *testing.T) {
 			Namespace: "default",
 		},
 		Status: pocketidinternalv1alpha1.PocketIDUserStatus{
+			UserID:  "user-123",
 			IsAdmin: false,
 			Conditions: []metav1.Condition{
 				{
