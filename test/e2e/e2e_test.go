@@ -31,6 +31,11 @@ import (
 	"github.com/aclerici38/pocket-id-operator/test/utils"
 )
 
+const (
+	instanceName     = "e2e-instance"
+	operatorUserName = "pocket-id-operator"
+)
+
 var _ = Describe("Pocket-ID Operator", Ordered, func() {
 	// Single test namespace with a running Pocket-ID instance for all user tests
 	const testNS = "pocket-id-e2e-test"
@@ -65,9 +70,6 @@ var _ = Describe("Pocket-ID Operator", Ordered, func() {
 	})
 
 	Context("PocketIDInstance", func() {
-		const instanceName = "e2e-instance"
-		const operatorUserName = "pocket-id-operator"
-
 		BeforeAll(func() {
 			By("creating the operator user for bootstrap")
 			applyYAML(fmt.Sprintf(`
