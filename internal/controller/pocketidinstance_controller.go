@@ -685,19 +685,14 @@ func apiKeySecretName(userRef, apiKeyName string) string {
 	return fmt.Sprintf("%s-%s-key", userRef, apiKeyName)
 }
 
-func (r *PocketIDInstanceReconciler) isUserReady(ctx context.Context, namespace, name string) (bool, error) {
-	user := &pocketidinternalv1alpha1.PocketIDUser{}
-	if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, user); err != nil {
-		return false, err
-	}
-
+func isUserReadyStatus(user *pocketidinternalv1alpha1.PocketIDUser) bool {
 	for _, condition := range user.Status.Conditions {
 		if condition.Type == readyConditionType && condition.Status == metav1.ConditionTrue {
-			return true, nil
+			return true
 		}
 	}
 
-	return false, nil
+	return false
 }
 
 // reconcileAuth handles bootstrap and auth configuration
@@ -712,13 +707,22 @@ func (r *PocketIDInstanceReconciler) reconcileAuth(ctx context.Context, instance
 		apiKeyName = instance.Spec.Auth.APIKeyName
 	}
 
-	if instance.Spec.Auth != nil && instance.Status.AuthUserRef != "" && instance.Status.AuthUserRef != userRef {
-		ready, err := r.isUserReady(ctx, instance.Namespace, userRef)
-		if err != nil {
-			log.Error(err, "Failed to check auth user readiness", "user", userRef)
-			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	user := &pocketidinternalv1alpha1.PocketIDUser{}
+	if err := r.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: userRef}, user); err != nil {
+		if errors.IsNotFound(err) {
+			log.Info("Waiting for auth user CR to be created", "user", userRef)
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 		}
-		if !ready {
+		return ctrl.Result{}, fmt.Errorf("get auth user CR: %w", err)
+	}
+
+	if !user.Status.IsAdmin {
+		log.Info("Auth user is not admin; blocking reconcile", "user", userRef)
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	if instance.Spec.Auth != nil && instance.Status.AuthUserRef != "" && instance.Status.AuthUserRef != userRef {
+		if !isUserReadyStatus(user) {
 			log.Info("Auth user not ready; delaying auth switch", "user", userRef)
 			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 		}
@@ -742,20 +746,6 @@ func (r *PocketIDInstanceReconciler) reconcileAuth(ctx context.Context, instance
 	if instance.Status.Bootstrapped {
 		log.Error(nil, "API key secret missing after bootstrap", "secret", secretName)
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, fmt.Errorf("API key secret %s not found but instance was bootstrapped", secretName)
-	}
-
-	// Check if the User CR exists - we need it to bootstrap
-	user := &pocketidinternalv1alpha1.PocketIDUser{}
-	err = r.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: userRef}, user)
-
-	if errors.IsNotFound(err) {
-		// User CR doesn't exist yet - wait for it
-		log.Info("Waiting for User CR to be created", "user", userRef)
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
-	}
-
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("get user CR: %w", err)
 	}
 
 	// User CR exists but secret doesn't - need to bootstrap
