@@ -162,6 +162,21 @@ spec:
 			}).Should(Succeed())
 		})
 
+		It("should set one-time login details in operator user status", func() {
+			Eventually(func(g Gomega) {
+				token := kubectlGet("pocketiduser", operatorUserName, "-n", testNS,
+					"-o", "jsonpath={.status.oneTimeLoginToken}")
+				loginURL := kubectlGet("pocketiduser", operatorUserName, "-n", testNS,
+					"-o", "jsonpath={.status.oneTimeLoginURL}")
+				expiresAt := kubectlGet("pocketiduser", operatorUserName, "-n", testNS,
+					"-o", "jsonpath={.status.oneTimeLoginExpiresAt}")
+				g.Expect(token).NotTo(BeEmpty())
+				g.Expect(loginURL).To(ContainSubstring("/login/one-time-access/"))
+				g.Expect(loginURL).To(ContainSubstring(token))
+				g.Expect(expiresAt).NotTo(BeEmpty())
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+
 		It("should set operator user Ready condition to True", func() {
 			Eventually(func(g Gomega) {
 				output := kubectlGet("pocketiduser", operatorUserName, "-n", testNS,

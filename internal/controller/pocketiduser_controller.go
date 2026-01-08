@@ -116,6 +116,11 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
+	if err := r.ensureOneTimeLoginStatus(ctx, user, apiClient, instance); err != nil {
+		log.Error(err, "Failed to ensure one-time login status")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
 	r.setReadyCondition(ctx, user, metav1.ConditionTrue, "Reconciled", "User and API keys are in sync")
 
 	cleanupResult, err := r.reconcileOneTimeLoginStatus(ctx, user)
@@ -452,8 +457,28 @@ func (r *PocketIDUserReconciler) setOneTimeLoginStatus(ctx context.Context, user
 	return r.Status().Patch(ctx, user, client.MergeFrom(base))
 }
 
+func (r *PocketIDUserReconciler) ensureOneTimeLoginStatus(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
+	if user.Status.UserID == "" {
+		return nil
+	}
+	if user.Status.OneTimeLoginExpiresAt != "" {
+		return nil
+	}
+
+	token, err := apiClient.CreateOneTimeAccessToken(ctx, user.Status.UserID, defaultLoginTokenExpiryMin)
+	if err != nil {
+		return fmt.Errorf("create one-time login token: %w", err)
+	}
+
+	return r.setOneTimeLoginStatus(ctx, user, instance, token.Token)
+}
+
 func (r *PocketIDUserReconciler) reconcileOneTimeLoginStatus(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser) (ctrl.Result, error) {
 	if user.Status.OneTimeLoginExpiresAt == "" {
+		return ctrl.Result{}, nil
+	}
+
+	if user.Status.OneTimeLoginToken == "" && user.Status.OneTimeLoginURL == "" {
 		return ctrl.Result{}, nil
 	}
 
@@ -475,7 +500,6 @@ func (r *PocketIDUserReconciler) clearOneTimeLoginStatus(ctx context.Context, us
 	base := user.DeepCopy()
 	user.Status.OneTimeLoginToken = ""
 	user.Status.OneTimeLoginURL = ""
-	user.Status.OneTimeLoginExpiresAt = ""
 
 	if err := r.Status().Patch(ctx, user, client.MergeFrom(base)); err != nil {
 		return ctrl.Result{}, err

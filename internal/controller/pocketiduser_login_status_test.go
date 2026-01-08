@@ -19,6 +19,7 @@ func TestReconcileOneTimeLoginStatus_ExpiredClears(t *testing.T) {
 	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
 	_ = corev1.AddToScheme(scheme)
 
+	expiredAt := time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
 	user := &pocketidinternalv1alpha1.PocketIDUser{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "expired-user",
@@ -27,7 +28,7 @@ func TestReconcileOneTimeLoginStatus_ExpiredClears(t *testing.T) {
 		Status: pocketidinternalv1alpha1.PocketIDUserStatus{
 			OneTimeLoginToken:     "token",
 			OneTimeLoginURL:       "http://example.com/login/one-time-access/token",
-			OneTimeLoginExpiresAt: time.Now().Add(-time.Minute).UTC().Format(time.RFC3339),
+			OneTimeLoginExpiresAt: expiredAt,
 		},
 	}
 
@@ -46,8 +47,8 @@ func TestReconcileOneTimeLoginStatus_ExpiredClears(t *testing.T) {
 	if err := client.Get(context.Background(), types.NamespacedName{Name: user.Name, Namespace: user.Namespace}, updated); err != nil {
 		t.Fatalf("failed to get updated user: %v", err)
 	}
-	if updated.Status.OneTimeLoginToken != "" || updated.Status.OneTimeLoginURL != "" || updated.Status.OneTimeLoginExpiresAt != "" {
-		t.Fatalf("expected login status fields to be cleared, got token=%q url=%q expiresAt=%q",
+	if updated.Status.OneTimeLoginToken != "" || updated.Status.OneTimeLoginURL != "" || updated.Status.OneTimeLoginExpiresAt != expiredAt {
+		t.Fatalf("expected token and URL to be cleared while expiry remains, got token=%q url=%q expiresAt=%q",
 			updated.Status.OneTimeLoginToken, updated.Status.OneTimeLoginURL, updated.Status.OneTimeLoginExpiresAt)
 	}
 }
@@ -127,8 +128,8 @@ func TestReconcileOneTimeLoginStatus_InvalidTimestampClears(t *testing.T) {
 	if err := client.Get(context.Background(), types.NamespacedName{Name: user.Name, Namespace: user.Namespace}, updated); err != nil {
 		t.Fatalf("failed to get updated user: %v", err)
 	}
-	if updated.Status.OneTimeLoginToken != "" || updated.Status.OneTimeLoginURL != "" || updated.Status.OneTimeLoginExpiresAt != "" {
-		t.Fatalf("expected login status fields to be cleared, got token=%q url=%q expiresAt=%q",
+	if updated.Status.OneTimeLoginToken != "" || updated.Status.OneTimeLoginURL != "" || updated.Status.OneTimeLoginExpiresAt != "not-a-time" {
+		t.Fatalf("expected token and URL to be cleared and expiry preserved, got token=%q url=%q expiresAt=%q",
 			updated.Status.OneTimeLoginToken, updated.Status.OneTimeLoginURL, updated.Status.OneTimeLoginExpiresAt)
 	}
 }
