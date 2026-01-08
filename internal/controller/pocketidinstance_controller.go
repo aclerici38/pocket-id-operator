@@ -807,13 +807,11 @@ func (r *PocketIDInstanceReconciler) bootstrap(ctx context.Context, instance *po
 		Email:     email,
 	}
 
-	// Find the API key description from the user spec if available
-	apiKeyDescription := "Managed by pocket-id-operator"
+	// Find the API key description from the user spec
+	apiKeyDescription := ""
 	for _, k := range user.Spec.APIKeys {
 		if k.Name == apiKeyName {
-			if k.Description != "" {
-				apiKeyDescription = k.Description
-			}
+			apiKeyDescription = k.Description
 			break
 		}
 	}
@@ -829,9 +827,7 @@ func (r *PocketIDInstanceReconciler) bootstrap(ctx context.Context, instance *po
 		log.Error(err, "Bootstrap failed - instance may already be initialized")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 	}
-
-	log.Info("Bootstrap completed", "userID", setupResp.ID, "apiKeyID", apiKeyResp.APIKey.ID)
-
+	
 	// Create the API key secret
 	secretName := apiKeySecretName(user.Name, apiKeyName)
 	if err := ensureAPIKeySecret(ctx, r.Client, r.Scheme, user, secretName, apiKeyResp.Token); err != nil {
