@@ -256,10 +256,10 @@ func (r *PocketIDUserReconciler) getAPIKeyToken(ctx context.Context, namespace, 
 }
 
 func (r *PocketIDUserReconciler) reconcileUserFinalizers(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, instance *pocketidinternalv1alpha1.PocketIDInstance) (bool, error) {
-	desiredAuthUser := authUserRef(instance)
+	isAuthUser := isAuthUserReference(instance, user.Name)
 	needsUpdate := false
 
-	if desiredAuthUser != "" && desiredAuthUser == user.Name {
+	if isAuthUser {
 		if !controllerutil.ContainsFinalizer(user, authUserFinalizer) {
 			controllerutil.AddFinalizer(user, authUserFinalizer)
 			needsUpdate = true
@@ -285,14 +285,14 @@ func (r *PocketIDUserReconciler) reconcileUserFinalizers(ctx context.Context, us
 	return true, nil
 }
 
-func authUserRef(instance *pocketidinternalv1alpha1.PocketIDInstance) string {
-	if instance.Spec.Auth != nil && instance.Spec.Auth.UserRef != "" {
-		return instance.Spec.Auth.UserRef
+func isAuthUserReference(instance *pocketidinternalv1alpha1.PocketIDInstance, userName string) bool {
+	if instance.Spec.Auth != nil && instance.Spec.Auth.UserRef == userName {
+		return true
 	}
-	if instance.Status.AuthUserRef != "" {
-		return instance.Status.AuthUserRef
+	if instance.Status.AuthUserRef == userName {
+		return true
 	}
-	return ""
+	return false
 }
 
 func (r *PocketIDUserReconciler) isUserReferencedByInstance(ctx context.Context, namespace, userName string) (bool, error) {
@@ -302,7 +302,7 @@ func (r *PocketIDUserReconciler) isUserReferencedByInstance(ctx context.Context,
 	}
 
 	for i := range instances.Items {
-		if authUserRef(&instances.Items[i]) == userName {
+		if isAuthUserReference(&instances.Items[i], userName) {
 			return true, nil
 		}
 	}

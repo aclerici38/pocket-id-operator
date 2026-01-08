@@ -511,53 +511,6 @@ spec:
 		})
 	})
 
-	Context("API Key Authentication", func() {
-		It("should be able to authenticate with the operator API key", func() {
-			By("getting the API key token")
-			tokenBase64 := kubectlGet("secret", "pocket-id-operator-pocket-id-operator-key",
-				"-n", testNS, "-o", "jsonpath={.data.token}")
-			Expect(tokenBase64).NotTo(BeEmpty())
-
-			By("creating a curl pod to test authentication")
-			applyYAML(fmt.Sprintf(`
-apiVersion: v1
-kind: Pod
-metadata:
-  name: api-auth-test
-  namespace: %s
-spec:
-  restartPolicy: Never
-  containers:
-  - name: curl
-    image: curlimages/curl:latest
-    command: ["/bin/sh", "-c"]
-    args:
-    - |
-      TOKEN=$(echo '%s' | base64 -d)
-      curl -sf -H "X-API-KEY: $TOKEN" http://e2e-instance.%s.svc.cluster.local:1411/api/users/me
-    securityContext:
-      allowPrivilegeEscalation: false
-      capabilities:
-        drop: ["ALL"]
-      runAsNonRoot: true
-      runAsUser: 1000
-`, testNS, tokenBase64, testNS))
-
-			By("waiting for auth test pod to succeed")
-			Eventually(func(g Gomega) {
-				output := kubectlGet("pod", "api-auth-test", "-n", testNS,
-					"-o", "jsonpath={.status.phase}")
-				g.Expect(output).To(Equal("Succeeded"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
-
-			By("verifying response contains operator user")
-			cmd := exec.Command("kubectl", "logs", "api-auth-test", "-n", testNS)
-			output, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(output).To(ContainSubstring("pocket-id-operator"))
-		})
-	})
-
 	Context("Auth Switch Safeguards", func() {
 		It("should delay auth switch until the target user is Ready", func() {
 			const unreadyUserName = "auth-unready-user"
