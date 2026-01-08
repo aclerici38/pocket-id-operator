@@ -233,6 +233,23 @@ spec:
                 description: Locale is the user's preferred locale (e.g., "en", "de",
                   "fr")
                 type: string
+              userInfoSecretRef:
+                description: |-
+                  UserInfoSecretRef references a single Secret containing sensitive user profile fields.
+                  Values from the secret are evaluated last, so spec.username will override the username key in this secret
+                  Keys: username, firstName, lastName, email, displayName
+                properties:
+                  name:
+                    default: ""
+                    description: |-
+                      Name of the referent.
+                      This field is effectively required, but due to backwards compatibility is
+                      allowed to be empty. Instances of this type with an empty value here are
+                      almost certainly wrong.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                    type: string
+                type: object
+                x-kubernetes-map-type: atomic
               username:
                 description: |-
                   Username of the user. Defaults to the metadata.name
@@ -365,12 +382,6 @@ spec:
               disabled:
                 description: Disabled reflects whether the user is disabled in Pocket-ID
                 type: boolean
-              displayName:
-                description: DisplayName from Pocket-ID
-                type: string
-              email:
-                description: Email as stored in Pocket-ID
-                type: string
               isAdmin:
                 description: IsAdmin reflects whether the user is an admin in Pocket-ID
                 type: boolean
@@ -392,8 +403,10 @@ spec:
               userID:
                 description: UserID is the ID assigned by Pocket-ID
                 type: string
-              username:
-                description: Username as stored in Pocket-ID
+              userInfoSecretName:
+                description: |-
+                  UserInfoSecretName is the name of the Secret storing user profile fields.
+                  The operator writes to "<name>-user-data".
                 type: string
             type: object
         type: object

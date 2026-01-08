@@ -116,6 +116,12 @@ type PocketIDUserSpec struct {
 	// +optional
 	DisplayName StringValue `json:"displayName,omitempty"`
 
+	// UserInfoSecretRef references a single Secret containing sensitive user profile fields.
+	// Values from the secret are evaluated last, so spec.username will override the username key in this secret
+	// Keys: username, firstName, lastName, email, displayName
+	// +optional
+	UserInfoSecretRef *corev1.LocalObjectReference `json:"userInfoSecretRef,omitempty"`
+
 	// Flag whether a user is an admin or not
 	// +kubebuilder:default=false
 	// +optional
@@ -141,17 +147,10 @@ type PocketIDUserStatus struct {
 	// +optional
 	UserID string `json:"userID,omitempty"`
 
-	// Username as stored in Pocket-ID
+	// UserInfoSecretName is the name of the Secret storing user profile fields.
+	// The operator writes to "<name>-user-data".
 	// +optional
-	Username string `json:"username,omitempty"`
-
-	// DisplayName from Pocket-ID
-	// +optional
-	DisplayName string `json:"displayName,omitempty"`
-
-	// Email as stored in Pocket-ID
-	// +optional
-	Email string `json:"email,omitempty"`
+	UserInfoSecretName string `json:"userInfoSecretName,omitempty"`
 
 	// IsAdmin reflects whether the user is an admin in Pocket-ID
 	// +optional

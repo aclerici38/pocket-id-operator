@@ -762,7 +762,8 @@ func (r *PocketIDInstanceReconciler) bootstrap(ctx context.Context, instance *po
 	log := logf.FromContext(ctx)
 
 	// Resolve user spec values
-	username, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.Username)
+	userInfoInputSecret := userInfoInputSecretName(user)
+	username, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.Username, userInfoInputSecret, userInfoSecretKeyUsername)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("resolve username: %w", err)
 	}
@@ -770,7 +771,7 @@ func (r *PocketIDInstanceReconciler) bootstrap(ctx context.Context, instance *po
 		username = user.Name // Default to CR name
 	}
 
-	firstName, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.FirstName)
+	firstName, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.FirstName, userInfoInputSecret, userInfoSecretKeyFirstName)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("resolve firstName: %w", err)
 	}
@@ -778,12 +779,12 @@ func (r *PocketIDInstanceReconciler) bootstrap(ctx context.Context, instance *po
 		firstName = username // Default to username
 	}
 
-	lastName, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.LastName)
+	lastName, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.LastName, userInfoInputSecret, userInfoSecretKeyLastName)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("resolve lastName: %w", err)
 	}
 
-	email, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.Email)
+	email, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.Email, userInfoInputSecret, userInfoSecretKeyEmail)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("resolve email: %w", err)
 	}
@@ -827,11 +828,21 @@ func (r *PocketIDInstanceReconciler) bootstrap(ctx context.Context, instance *po
 		log.Error(err, "Bootstrap failed - instance may already be initialized")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 	}
-	
+
 	// Create the API key secret
-	secretName := apiKeySecretName(user.Name, apiKeyName)
-	if err := ensureAPIKeySecret(ctx, r.Client, r.Scheme, user, secretName, apiKeyResp.Token); err != nil {
+	apiKeySecret := apiKeySecretName(user.Name, apiKeyName)
+	if err := ensureAPIKeySecret(ctx, r.Client, r.Scheme, user, apiKeySecret, apiKeyResp.Token); err != nil {
 		return ctrl.Result{}, fmt.Errorf("create API key secret: %w", err)
+	}
+
+	pUser := &pocketid.User{
+		ID:          setupResp.ID,
+		Username:    setupResp.Username,
+		FirstName:   setupResp.FirstName,
+		LastName:    setupResp.LastName,
+		Email:       setupResp.Email,
+		DisplayName: setupResp.DisplayName,
+		IsAdmin:     setupResp.IsAdmin,
 	}
 
 	// Update user status with user info and API key
@@ -839,17 +850,19 @@ func (r *PocketIDInstanceReconciler) bootstrap(ctx context.Context, instance *po
 		if err := r.Get(ctx, client.ObjectKeyFromObject(user), user); err != nil {
 			return err
 		}
+		userInfoSecret := userInfoOutputSecretName(user.Name)
+		if err := ensureUserInfoSecret(ctx, r.Client, r.Scheme, user, userInfoSecret, pUser); err != nil {
+			return fmt.Errorf("ensure user info secret: %w", err)
+		}
 		user.Status.UserID = setupResp.ID
-		user.Status.Username = setupResp.Username
-		user.Status.DisplayName = setupResp.DisplayName
-		user.Status.Email = setupResp.Email
+		user.Status.UserInfoSecretName = userInfoSecret
 		user.Status.IsAdmin = setupResp.IsAdmin
 		mergeAPIKeyStatus(user, pocketidinternalv1alpha1.APIKeyStatus{
 			Name:       apiKeyName,
 			ID:         apiKeyResp.APIKey.ID,
 			CreatedAt:  apiKeyResp.APIKey.CreatedAt,
 			ExpiresAt:  apiKeyResp.APIKey.ExpiresAt,
-			SecretName: secretName,
+			SecretName: apiKeySecret,
 			SecretKey:  apiKeySecretKey,
 		})
 		return r.Status().Update(ctx, user)
@@ -891,7 +904,7 @@ func (r *PocketIDInstanceReconciler) updateAuthStatus(ctx context.Context, insta
 }
 
 // resolveStringValue resolves a StringValue to its actual string value
-func (r *PocketIDInstanceReconciler) resolveStringValue(ctx context.Context, namespace string, sv pocketidinternalv1alpha1.StringValue) (string, error) {
+func (r *PocketIDInstanceReconciler) resolveStringValue(ctx context.Context, namespace string, sv pocketidinternalv1alpha1.StringValue, fallbackSecretName, fallbackKey string) (string, error) {
 	if sv.Value != "" {
 		return sv.Value, nil
 	}
@@ -903,6 +916,17 @@ func (r *PocketIDInstanceReconciler) resolveStringValue(ctx context.Context, nam
 		val, ok := secret.Data[sv.ValueFrom.Key]
 		if !ok {
 			return "", fmt.Errorf("secret %s missing key %s", sv.ValueFrom.Name, sv.ValueFrom.Key)
+		}
+		return string(val), nil
+	}
+	if fallbackSecretName != "" && fallbackKey != "" {
+		secret := &corev1.Secret{}
+		if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: fallbackSecretName}, secret); err != nil {
+			return "", fmt.Errorf("get secret %s: %w", fallbackSecretName, err)
+		}
+		val, ok := secret.Data[fallbackKey]
+		if !ok {
+			return "", fmt.Errorf("secret %s missing key %s", fallbackSecretName, fallbackKey)
 		}
 		return string(val), nil
 	}

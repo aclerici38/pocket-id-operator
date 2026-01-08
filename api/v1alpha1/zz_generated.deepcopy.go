@@ -363,6 +363,11 @@ func (in *PocketIDUserSpec) DeepCopyInto(out *PocketIDUserSpec) {
 	in.LastName.DeepCopyInto(&out.LastName)
 	in.Email.DeepCopyInto(&out.Email)
 	in.DisplayName.DeepCopyInto(&out.DisplayName)
+	if in.UserInfoSecretRef != nil {
+		in, out := &in.UserInfoSecretRef, &out.UserInfoSecretRef
+		*out = new(corev1.LocalObjectReference)
+		**out = **in
+	}
 	if in.APIKeys != nil {
 		in, out := &in.APIKeys, &out.APIKeys
 		*out = make([]APIKeySpec, len(*in))

@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -361,7 +362,7 @@ func (r *PocketIDUserReconciler) reconcileDelete(ctx context.Context, user *pock
 }
 
 // resolveStringValue resolves a StringValue to its actual string value
-func (r *PocketIDUserReconciler) resolveStringValue(ctx context.Context, namespace string, sv pocketidinternalv1alpha1.StringValue) (string, error) {
+func (r *PocketIDUserReconciler) resolveStringValue(ctx context.Context, namespace string, sv pocketidinternalv1alpha1.StringValue, fallbackSecretName, fallbackKey string) (string, error) {
 	if sv.Value != "" {
 		return sv.Value, nil
 	}
@@ -377,6 +378,17 @@ func (r *PocketIDUserReconciler) resolveStringValue(ctx context.Context, namespa
 		}
 		return string(val), nil
 	}
+	if fallbackSecretName != "" && fallbackKey != "" {
+		secret := &corev1.Secret{}
+		if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: fallbackSecretName}, secret); err != nil {
+			return "", fmt.Errorf("get secret %s: %w", fallbackSecretName, err)
+		}
+		val, ok := secret.Data[fallbackKey]
+		if !ok {
+			return "", fmt.Errorf("secret %s missing key %s", fallbackSecretName, fallbackKey)
+		}
+		return string(val), nil
+	}
 	return "", nil
 }
 
@@ -385,7 +397,8 @@ func (r *PocketIDUserReconciler) reconcileUser(ctx context.Context, user *pocket
 	log := logf.FromContext(ctx)
 
 	// Resolve all StringValue fields
-	username, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.Username)
+	userInfoInputSecret := userInfoInputSecretName(user)
+	username, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.Username, userInfoInputSecret, userInfoSecretKeyUsername)
 	if err != nil {
 		return fmt.Errorf("resolve username: %w", err)
 	}
@@ -393,7 +406,7 @@ func (r *PocketIDUserReconciler) reconcileUser(ctx context.Context, user *pocket
 		username = user.Name
 	}
 
-	firstName, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.FirstName)
+	firstName, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.FirstName, userInfoInputSecret, userInfoSecretKeyFirstName)
 	if err != nil {
 		return fmt.Errorf("resolve firstName: %w", err)
 	}
@@ -402,12 +415,12 @@ func (r *PocketIDUserReconciler) reconcileUser(ctx context.Context, user *pocket
 		firstName = username
 	}
 
-	lastName, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.LastName)
+	lastName, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.LastName, userInfoInputSecret, userInfoSecretKeyLastName)
 	if err != nil {
 		return fmt.Errorf("resolve lastName: %w", err)
 	}
 
-	email, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.Email)
+	email, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.Email, userInfoInputSecret, userInfoSecretKeyEmail)
 	if err != nil {
 		return fmt.Errorf("resolve email: %w", err)
 	}
@@ -416,7 +429,7 @@ func (r *PocketIDUserReconciler) reconcileUser(ctx context.Context, user *pocket
 		email = fmt.Sprintf("%s@placeholder.local", username)
 	}
 
-	displayName, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.DisplayName)
+	displayName, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.DisplayName, userInfoInputSecret, userInfoSecretKeyDisplayName)
 	if err != nil {
 		return fmt.Errorf("resolve displayName: %w", err)
 	}
@@ -500,17 +513,37 @@ func (r *PocketIDUserReconciler) reconcileUser(ctx context.Context, user *pocket
 
 // updateUserStatus updates the User CR status from Pocket-ID response
 func (r *PocketIDUserReconciler) updateUserStatus(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, pUser *pocketid.User) error {
-	base := user.DeepCopy()
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latest := &pocketidinternalv1alpha1.PocketIDUser{}
+		if err := r.Get(ctx, client.ObjectKeyFromObject(user), latest); err != nil {
+			return err
+		}
 
-	user.Status.UserID = pUser.ID
-	user.Status.Username = pUser.Username
-	user.Status.DisplayName = pUser.DisplayName
-	user.Status.Email = pUser.Email
-	user.Status.IsAdmin = pUser.IsAdmin
-	user.Status.Disabled = pUser.Disabled
-	user.Status.Locale = pUser.Locale
+		oldSecretName := latest.Status.UserInfoSecretName
+		secretName := userInfoOutputSecretName(latest.Name)
+		if oldSecretName != "" && oldSecretName != secretName {
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      oldSecretName,
+					Namespace: latest.Namespace,
+				},
+			}
+			if err := r.Delete(ctx, secret); err != nil && !errors.IsNotFound(err) {
+				return fmt.Errorf("delete old user info secret %s: %w", oldSecretName, err)
+			}
+		}
+		if err := ensureUserInfoSecret(ctx, r.Client, r.Scheme, latest, secretName, pUser); err != nil {
+			return fmt.Errorf("ensure user info secret: %w", err)
+		}
 
-	return r.Status().Patch(ctx, user, client.MergeFrom(base))
+		latest.Status.UserID = pUser.ID
+		latest.Status.UserInfoSecretName = secretName
+		latest.Status.IsAdmin = pUser.IsAdmin
+		latest.Status.Disabled = pUser.Disabled
+		latest.Status.Locale = pUser.Locale
+
+		return r.Status().Update(ctx, latest)
+	})
 }
 
 func (r *PocketIDUserReconciler) setOneTimeLoginStatus(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, instance *pocketidinternalv1alpha1.PocketIDInstance, token string) error {

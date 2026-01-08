@@ -20,6 +20,7 @@ limitations under the License.
 package e2e
 
 import (
+	"encoding/base64"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -215,14 +216,17 @@ metadata:
 				g.Expect(output).NotTo(BeEmpty())
 			}).Should(Succeed())
 
+			By("verifying user info secret is set")
+			secretName := kubectlGet("pocketiduser", userName, "-n", testNS,
+				"-o", "jsonpath={.status.userInfoSecretName}")
+			Expect(secretName).To(Equal(userName + "-user-data"))
+
 			By("verifying username defaults to CR name")
-			output := kubectlGet("pocketiduser", userName, "-n", testNS,
-				"-o", "jsonpath={.status.username}")
+			output := kubectlGetSecretData(secretName, testNS, "username")
 			Expect(output).To(Equal(userName))
 
 			By("verifying email has placeholder default")
-			output = kubectlGet("pocketiduser", userName, "-n", testNS,
-				"-o", "jsonpath={.status.email}")
+			output = kubectlGetSecretData(secretName, testNS, "email")
 			Expect(output).To(Equal(userName + "@placeholder.local"))
 
 			By("verifying one-time login status fields are set")
@@ -376,16 +380,72 @@ spec:
 				g.Expect(output).To(Equal("True"))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
-			By("verifying status reflects provided values")
-			Expect(kubectlGet("pocketiduser", userName, "-n", testNS,
-				"-o", "jsonpath={.status.username}")).To(Equal("explicit-username"))
-			Expect(kubectlGet("pocketiduser", userName, "-n", testNS,
-				"-o", "jsonpath={.status.email}")).To(Equal("john.doe@example.com"))
-			Expect(kubectlGet("pocketiduser", userName, "-n", testNS,
-				"-o", "jsonpath={.status.displayName}")).To(Equal("John Doe"))
+			By("verifying secret reflects provided values")
+			secretName := kubectlGet("pocketiduser", userName, "-n", testNS,
+				"-o", "jsonpath={.status.userInfoSecretName}")
+			Expect(secretName).To(Equal(userName + "-user-data"))
+			Expect(kubectlGetSecretData(secretName, testNS, "username")).To(Equal("explicit-username"))
+			Expect(kubectlGetSecretData(secretName, testNS, "email")).To(Equal("john.doe@example.com"))
+			Expect(kubectlGetSecretData(secretName, testNS, "displayName")).To(Equal("John Doe"))
 			// isAdmin is omitempty, so false values are omitted from JSON
 			Expect(kubectlGet("pocketiduser", userName, "-n", testNS,
 				"-o", "jsonpath={.status.isAdmin}")).To(BeEmpty())
+		})
+
+		It("should merge userInfoSecretRef with explicit overrides", func() {
+			const userName = "test-secret-override-user"
+			const secretName = "user-info-source"
+
+			By("creating a secret with user info")
+			applyYAML(fmt.Sprintf(`
+apiVersion: v1
+kind: Secret
+metadata:
+  name: %s
+  namespace: %s
+type: Opaque
+stringData:
+  username: secret-username
+  firstName: Secret
+  lastName: User
+  email: secret@example.com
+  displayName: Secret User
+`, secretName, testNS))
+
+			By("creating a user referencing the secret with overrides")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  userInfoSecretRef:
+    name: %s
+  username:
+    value: override-username
+  displayName:
+    value: Override Name
+`, userName, testNS, secretName))
+
+			By("verifying user becomes Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketiduser", userName, "-n", testNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(output).To(Equal("True"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying output secret reflects overrides and secret defaults")
+			Eventually(func(g Gomega) {
+				outSecret := kubectlGet("pocketiduser", userName, "-n", testNS,
+					"-o", "jsonpath={.status.userInfoSecretName}")
+				g.Expect(outSecret).To(Equal(userName + "-user-data"))
+				g.Expect(kubectlGetSecretData(outSecret, testNS, "username")).To(Equal("override-username"))
+				g.Expect(kubectlGetSecretData(outSecret, testNS, "displayName")).To(Equal("Override Name"))
+				g.Expect(kubectlGetSecretData(outSecret, testNS, "firstName")).To(Equal("Secret"))
+				g.Expect(kubectlGetSecretData(outSecret, testNS, "lastName")).To(Equal("User"))
+				g.Expect(kubectlGetSecretData(outSecret, testNS, "email")).To(Equal("secret@example.com"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 		})
 
 		It("should create a user with API key and store token in secret", func() {
@@ -765,6 +825,17 @@ func kubectlGet(args ...string) string {
 		return ""
 	}
 	return strings.TrimSpace(out)
+}
+
+func kubectlGetSecretData(secretName, namespace, key string) string {
+	encoded := kubectlGet("secret", secretName, "-n", namespace,
+		"-o", fmt.Sprintf("jsonpath={.data.%s}", key))
+	if encoded == "" {
+		return ""
+	}
+	decoded, err := base64.StdEncoding.DecodeString(encoded)
+	Expect(err).NotTo(HaveOccurred())
+	return string(decoded)
 }
 
 func applyYAML(yaml string) {
