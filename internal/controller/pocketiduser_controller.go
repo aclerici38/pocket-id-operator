@@ -626,7 +626,7 @@ func (r *PocketIDUserReconciler) reconcileAPIKeys(ctx context.Context, user *poc
 			}
 
 			base := user.DeepCopy()
-			user.Status.APIKeys = append(user.Status.APIKeys, keyStatus)
+			mergeAPIKeyStatus(user, keyStatus)
 			if err := r.Status().Patch(ctx, user, client.MergeFrom(base)); err != nil {
 				return fmt.Errorf("update status for API key %s: %w", spec.Name, err)
 			}
@@ -651,7 +651,7 @@ func (r *PocketIDUserReconciler) reconcileAPIKeys(ctx context.Context, user *poc
 
 		// Create secret for the token: {username}-{apikeyname}-key
 		secretName := fmt.Sprintf("%s-%s-key", user.Name, spec.Name)
-		if err := r.createAPIKeySecret(ctx, user, secretName, apiKey.Token); err != nil {
+		if err := ensureAPIKeySecret(ctx, r.Client, r.Scheme, user, secretName, apiKey.Token); err != nil {
 			return fmt.Errorf("create secret for API key %s: %w", spec.Name, err)
 		}
 
@@ -666,7 +666,7 @@ func (r *PocketIDUserReconciler) reconcileAPIKeys(ctx context.Context, user *poc
 		}
 
 		base := user.DeepCopy()
-		user.Status.APIKeys = append(user.Status.APIKeys, keyStatus)
+		mergeAPIKeyStatus(user, keyStatus)
 		if err := r.Status().Patch(ctx, user, client.MergeFrom(base)); err != nil {
 			return fmt.Errorf("update status for API key %s: %w", spec.Name, err)
 		}
@@ -715,31 +715,6 @@ func (r *PocketIDUserReconciler) reconcileAPIKeys(ctx context.Context, user *poc
 	}
 
 	return nil
-}
-
-// createAPIKeySecret creates a secret containing the API key token
-func (r *PocketIDUserReconciler) createAPIKeySecret(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, secretName, token string) error {
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: user.Namespace,
-		},
-	}
-
-	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, secret, func() error {
-		if err := controllerutil.SetControllerReference(user, secret, r.Scheme); err != nil {
-			return err
-		}
-
-		secret.Type = corev1.SecretTypeOpaque
-		secret.Data = map[string][]byte{
-			apiKeySecretKey: []byte(token),
-		}
-
-		return nil
-	})
-
-	return err
 }
 
 // setReadyCondition updates the Ready condition on the User CR

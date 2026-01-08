@@ -49,6 +49,7 @@ spec:
                   description: APIKeySpec defines the desired state of an API key
                   properties:
                     description:
+                      default: Created by pocket-id-operator
                       description: Description of the API key
                       type: string
                     expiresAt:

@@ -49,6 +49,7 @@ type APIKeySpec struct {
 	ExpiresAt string `json:"expiresAt,omitempty"`
 
 	// Description of the API key
+	// +kubebuilder:default="Created by pocket-id-operator"
 	// +optional
 	Description string `json:"description,omitempty"`
 

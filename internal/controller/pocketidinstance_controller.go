@@ -834,22 +834,7 @@ func (r *PocketIDInstanceReconciler) bootstrap(ctx context.Context, instance *po
 
 	// Create the API key secret
 	secretName := apiKeySecretName(user.Name, apiKeyName)
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: instance.Namespace,
-		},
-		Type: corev1.SecretTypeOpaque,
-		Data: map[string][]byte{
-			"token": []byte(apiKeyResp.Token),
-		},
-	}
-
-	if err := controllerutil.SetControllerReference(user, secret, r.Scheme); err != nil {
-		return ctrl.Result{}, fmt.Errorf("set controller reference on secret: %w", err)
-	}
-
-	if err := r.Create(ctx, secret); err != nil && !errors.IsAlreadyExists(err) {
+	if err := ensureAPIKeySecret(ctx, r.Client, r.Scheme, user, secretName, apiKeyResp.Token); err != nil {
 		return ctrl.Result{}, fmt.Errorf("create API key secret: %w", err)
 	}
 
@@ -863,16 +848,14 @@ func (r *PocketIDInstanceReconciler) bootstrap(ctx context.Context, instance *po
 		user.Status.DisplayName = setupResp.DisplayName
 		user.Status.Email = setupResp.Email
 		user.Status.IsAdmin = setupResp.IsAdmin
-		user.Status.APIKeys = []pocketidinternalv1alpha1.APIKeyStatus{
-			{
-				Name:       apiKeyName,
-				ID:         apiKeyResp.APIKey.ID,
-				CreatedAt:  apiKeyResp.APIKey.CreatedAt,
-				ExpiresAt:  apiKeyResp.APIKey.ExpiresAt,
-				SecretName: secretName,
-				SecretKey:  "token",
-			},
-		}
+		mergeAPIKeyStatus(user, pocketidinternalv1alpha1.APIKeyStatus{
+			Name:       apiKeyName,
+			ID:         apiKeyResp.APIKey.ID,
+			CreatedAt:  apiKeyResp.APIKey.CreatedAt,
+			ExpiresAt:  apiKeyResp.APIKey.ExpiresAt,
+			SecretName: secretName,
+			SecretKey:  apiKeySecretKey,
+		})
 		return r.Status().Update(ctx, user)
 	})
 	if err != nil {
