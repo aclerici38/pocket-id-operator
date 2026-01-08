@@ -268,6 +268,43 @@ func (c *Client) DeleteAPIKey(ctx context.Context, id string) error {
 	return nil
 }
 
+// --- One-Time Access Token Operations ---
+
+// OneTimeAccessToken represents a one-time login token.
+type OneTimeAccessToken struct {
+	Token string
+}
+
+// CreateOneTimeAccessToken creates a one-time access token for a user.
+// This token can be used to log in via the browser at /login/one-time-access/{token}
+func (c *Client) CreateOneTimeAccessToken(ctx context.Context, userID string, expiresInMinutes int) (*OneTimeAccessToken, error) {
+	params := users.NewPostAPIUsersIDOneTimeAccessTokenParams().
+		WithContext(ctx).
+		WithID(userID).
+		WithBody(map[string]interface{}{
+			"userId": userID,
+			"ttl":    fmt.Sprintf("%dm", expiresInMinutes),
+		})
+
+	resp, err := c.raw.Users.PostAPIUsersIDOneTimeAccessToken(params)
+	if err != nil {
+		return nil, fmt.Errorf("create one-time access token failed: %w", err)
+	}
+
+	// The response payload is `any` type, so we need to type assert
+	payload, ok := resp.Payload.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("unexpected response format")
+	}
+
+	token, ok := payload["token"].(string)
+	if !ok {
+		return nil, fmt.Errorf("token not found in response")
+	}
+
+	return &OneTimeAccessToken{Token: token}, nil
+}
+
 // --- Helpers ---
 
 func userFromDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoUserDto) *User {

@@ -593,3 +593,85 @@ func TestClient_Unauthorized(t *testing.T) {
 		t.Fatal("expected error for unauthorized request")
 	}
 }
+
+// One-time access token tests
+
+func TestClient_CreateOneTimeAccessToken(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		expectedPath := "/api/users/user-123/one-time-access-token"
+		if r.URL.Path != expectedPath {
+			t.Errorf("expected path %s, got %s", expectedPath, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		var body map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("failed to decode request body: %v", err)
+		} else {
+			if body["userId"] != "user-123" {
+				t.Errorf("expected userId user-123, got %v", body["userId"])
+			}
+			if body["ttl"] != "15m" {
+				t.Errorf("expected ttl 15m, got %v", body["ttl"])
+			}
+		}
+
+		// Check API key header
+		apiKey := r.Header.Get("X-Api-Key")
+		if apiKey != "test-api-key" {
+			t.Errorf("expected X-Api-Key header test-api-key, got %s", apiKey)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"token": "one-time-login-token-xyz",
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL).WithAPIKey("test-api-key")
+	token, err := client.CreateOneTimeAccessToken(context.Background(), "user-123", 15)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if token.Token != "one-time-login-token-xyz" {
+		t.Errorf("expected token one-time-login-token-xyz, got %s", token.Token)
+	}
+}
+
+func TestClient_CreateOneTimeAccessToken_Error(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error": "unauthorized"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL).WithAPIKey("invalid-key")
+	_, err := client.CreateOneTimeAccessToken(context.Background(), "user-123", 15)
+	if err == nil {
+		t.Fatal("expected error for unauthorized request")
+	}
+}
+
+func TestClient_CreateOneTimeAccessToken_InvalidResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		// Return response without token field
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"something": "else",
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL).WithAPIKey("test-api-key")
+	_, err := client.CreateOneTimeAccessToken(context.Background(), "user-123", 15)
+	if err == nil {
+		t.Fatal("expected error for missing token in response")
+	}
+}

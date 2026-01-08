@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -36,15 +37,17 @@ import (
 )
 
 const (
-	userFinalizer     = "pocketid.internal/user-finalizer"
-	apiKeySecretKey   = "token"
-	defaultAPIKeyName = "pocket-id-operator"
+	userFinalizer              = "pocketid.internal/user-finalizer"
+	apiKeySecretKey            = "token"
+	defaultAPIKeyName          = "pocket-id-operator"
+	defaultLoginTokenExpiryMin = 15
 )
 
 // PocketIDUserReconciler reconciles a PocketIDUser object
 type PocketIDUserReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	Recorder record.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidusers,verbs=get;list;watch;create;update;patch;delete
@@ -52,6 +55,7 @@ type PocketIDUserReconciler struct {
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidusers/finalizers,verbs=update
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidinstances,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 
 func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
@@ -364,7 +368,14 @@ func (r *PocketIDUserReconciler) reconcileUser(ctx context.Context, user *pocket
 			return fmt.Errorf("create user: %w", err)
 		}
 
-		return r.updateUserStatus(ctx, user, pUser)
+		if err := r.updateUserStatus(ctx, user, pUser); err != nil {
+			return err
+		}
+
+		// Generate one-time login token for the newly created user
+		r.emitOneTimeLoginEvent(ctx, user, apiClient, pUser.ID, username)
+
+		return nil
 	}
 
 	// User exists, check if update needed
@@ -407,6 +418,42 @@ func (r *PocketIDUserReconciler) updateUserStatus(ctx context.Context, user *poc
 	user.Status.Locale = pUser.Locale
 
 	return r.Status().Patch(ctx, user, client.MergeFrom(base))
+}
+
+// emitOneTimeLoginEvent generates a one-time login token and emits an event with the login URL
+func (r *PocketIDUserReconciler) emitOneTimeLoginEvent(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client, userID, username string) {
+	log := logf.FromContext(ctx)
+
+	// Generate one-time access token
+	token, err := apiClient.CreateOneTimeAccessToken(ctx, userID, defaultLoginTokenExpiryMin)
+	if err != nil {
+		log.Error(err, "Failed to create one-time login token - user created but login URL not available")
+		r.Recorder.Eventf(user, corev1.EventTypeNormal, "UserCreated",
+			"User '%s' created successfully. One-time login token could not be generated.",
+			username)
+		return
+	}
+
+	// Get instance to determine the app URL
+	instance, err := r.getInstance(ctx, user.Namespace)
+	if err != nil {
+		log.Error(err, "Failed to get instance for login URL")
+		r.Recorder.Eventf(user, corev1.EventTypeNormal, "UserCreated",
+			"User '%s' created successfully. Login token: %s (expires in %d minutes)",
+			username, token.Token, defaultLoginTokenExpiryMin)
+		return
+	}
+
+	// Build login URL
+	baseURL := instance.Spec.AppURL
+	if baseURL == "" {
+		baseURL = internalServiceURL(instance.Name, instance.Namespace)
+	}
+	loginURL := fmt.Sprintf("%s/login/one-time-access/%s", baseURL, token.Token)
+
+	r.Recorder.Eventf(user, corev1.EventTypeNormal, "UserCreated",
+		"User '%s' created. Login at: %s (expires in %d minutes)",
+		username, loginURL, defaultLoginTokenExpiryMin)
 }
 
 // reconcileAPIKeys ensures API keys exist in Pocket-ID and secrets are created

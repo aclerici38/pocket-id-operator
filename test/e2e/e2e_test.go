@@ -207,6 +207,18 @@ metadata:
 			output = kubectlGet("pocketiduser", userName, "-n", testNS,
 				"-o", "jsonpath={.status.email}")
 			Expect(output).To(Equal(userName + "@placeholder.local"))
+
+			By("verifying UserCreated event was emitted with login URL")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "events", "-n", testNS,
+					"--field-selector", fmt.Sprintf("involvedObject.name=%s,reason=UserCreated", userName),
+					"-o", "jsonpath={.items[0].message}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(ContainSubstring("User"))
+				// Check for login URL - should contain /login/one-time-access/
+				g.Expect(output).To(ContainSubstring("/login/one-time-access/"))
+			}, time.Minute, 2*time.Second).Should(Succeed())
 		})
 
 		It("should create a user with explicit values", func() {
