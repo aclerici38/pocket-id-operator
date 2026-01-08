@@ -74,11 +74,24 @@ type PersistenceConfig struct {
 	AccessModes []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
 }
 
+// NamespacedUserReference references a PocketIDUser by name and namespace.
+type NamespacedUserReference struct {
+	// Name is the name of the PocketIDUser CR
+	// +optional
+	Name string `json:"name,omitempty"`
+
+	// Namespace is the namespace of the PocketIDUser CR
+	// Defaults to the PocketIDInstance namespace
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+}
+
 // AuthConfig specifies how the operator authenticates with the instance
 type AuthConfig struct {
-	// UserRef is the name of the PocketIDUser CR to use for authentication
-	// +kubebuilder:default="pocket-id-operator"
-	UserRef string `json:"userRef"`
+	// UserRef references the PocketIDUser CR to use for authentication
+	// Defaults to "pocket-id-operator" in the PocketIDInstance namespace
+	// +optional
+	UserRef *NamespacedUserReference `json:"userRef,omitempty"`
 
 	// APIKeyName is the name of the API key to use from the referenced user
 	// If the key exists in PocketIDUser.status.apiKeys, that key will be used
@@ -190,6 +203,10 @@ type PocketIDInstanceStatus struct {
 	// AuthUserRef is the name of the PocketIDUser CR being used for authentication
 	// +optional
 	AuthUserRef string `json:"authUserRef,omitempty"`
+
+	// AuthUserNamespace is the namespace of the PocketIDUser CR being used for authentication
+	// +optional
+	AuthUserNamespace string `json:"authUserNamespace,omitempty"`
 
 	// AuthAPIKeyName is the name of the API key being used for authentication
 	// +optional

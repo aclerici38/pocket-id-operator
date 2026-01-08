@@ -116,6 +116,11 @@ type PocketIDUserSpec struct {
 	// +optional
 	DisplayName StringValue `json:"displayName,omitempty"`
 
+	// InstanceSelector selects the PocketIDInstance to reconcile against.
+	// If omitted, the controller expects exactly one instance in the cluster.
+	// +optional
+	InstanceSelector *metav1.LabelSelector `json:"instanceSelector,omitempty"`
+
 	// UserInfoSecretRef references a single Secret containing sensitive user profile fields.
 	// Values from the secret are evaluated last, so spec.username will override the username key in this secret
 	// Keys: username, firstName, lastName, email, displayName

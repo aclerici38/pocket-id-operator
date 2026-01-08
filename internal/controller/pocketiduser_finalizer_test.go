@@ -33,7 +33,7 @@ func TestReconcileUserFinalizers_AddsAuthFinalizer(t *testing.T) {
 		},
 		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 			Auth: &pocketidinternalv1alpha1.AuthConfig{
-				UserRef:    "auth-user",
+				UserRef:    &pocketidinternalv1alpha1.NamespacedUserReference{Name: "auth-user"},
 				APIKeyName: "pocket-id-operator",
 			},
 		},
@@ -80,13 +80,14 @@ func TestReconcileUserFinalizers_AddsAuthFinalizerFromStatus(t *testing.T) {
 		},
 		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 			Auth: &pocketidinternalv1alpha1.AuthConfig{
-				UserRef:    "other-user",
+				UserRef:    &pocketidinternalv1alpha1.NamespacedUserReference{Name: "other-user"},
 				APIKeyName: "pocket-id-operator",
 			},
 		},
 		Status: pocketidinternalv1alpha1.PocketIDInstanceStatus{
-			AuthUserRef:    "auth-user",
-			AuthAPIKeyName: "pocket-id-operator",
+			AuthUserRef:       "auth-user",
+			AuthUserNamespace: "default",
+			AuthAPIKeyName:    "pocket-id-operator",
 		},
 	}
 
@@ -134,7 +135,7 @@ func TestReconcileDelete_BlocksWhenReferenced(t *testing.T) {
 		},
 		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 			Auth: &pocketidinternalv1alpha1.AuthConfig{
-				UserRef:    "auth-user",
+				UserRef:    &pocketidinternalv1alpha1.NamespacedUserReference{Name: "auth-user"},
 				APIKeyName: "pocket-id-operator",
 			},
 		},
@@ -184,13 +185,14 @@ func TestReconcileDelete_BlocksWhenStatusReferenced(t *testing.T) {
 		},
 		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 			Auth: &pocketidinternalv1alpha1.AuthConfig{
-				UserRef:    "other-user",
+				UserRef:    &pocketidinternalv1alpha1.NamespacedUserReference{Name: "other-user"},
 				APIKeyName: "pocket-id-operator",
 			},
 		},
 		Status: pocketidinternalv1alpha1.PocketIDInstanceStatus{
-			AuthUserRef:    "auth-user",
-			AuthAPIKeyName: "pocket-id-operator",
+			AuthUserRef:       "auth-user",
+			AuthUserNamespace: "default",
+			AuthAPIKeyName:    "pocket-id-operator",
 		},
 	}
 
@@ -238,7 +240,7 @@ func TestReconcileDelete_RemovesFinalizersWhenUnreferenced(t *testing.T) {
 		},
 		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 			Auth: &pocketidinternalv1alpha1.AuthConfig{
-				UserRef:    "other-user",
+				UserRef:    &pocketidinternalv1alpha1.NamespacedUserReference{Name: "other-user"},
 				APIKeyName: "pocket-id-operator",
 			},
 		},

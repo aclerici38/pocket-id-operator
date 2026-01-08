@@ -1513,7 +1513,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					},
 					AppURL: "https://auth.example.com",
 					Auth: &pocketidinternalv1alpha1.AuthConfig{
-						UserRef:    "custom-admin",
+						UserRef:    &pocketidinternalv1alpha1.NamespacedUserReference{Name: "custom-admin"},
 						APIKeyName: "custom-key",
 					},
 				},
@@ -1540,7 +1540,8 @@ var _ = Describe("PocketIDInstance Controller", func() {
 			}, timeout, interval).Should(Succeed())
 
 			Expect(createdInstance.Spec.Auth).NotTo(BeNil())
-			Expect(createdInstance.Spec.Auth.UserRef).To(Equal("custom-admin"))
+			Expect(createdInstance.Spec.Auth.UserRef).NotTo(BeNil())
+			Expect(createdInstance.Spec.Auth.UserRef.Name).To(Equal("custom-admin"))
 			Expect(createdInstance.Spec.Auth.APIKeyName).To(Equal("custom-key"))
 		})
 	})
@@ -1647,7 +1648,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					},
 					AppURL: "https://auth.example.com",
 					Auth: &pocketidinternalv1alpha1.AuthConfig{
-						UserRef:    "pocket-id-operator",
+						UserRef:    &pocketidinternalv1alpha1.NamespacedUserReference{Name: "pocket-id-operator"},
 						APIKeyName: "pocket-id-operator",
 					},
 				},
@@ -1674,7 +1675,8 @@ var _ = Describe("PocketIDInstance Controller", func() {
 			}, timeout, interval).Should(Succeed())
 
 			Expect(createdInstance.Spec.Auth).NotTo(BeNil())
-			Expect(createdInstance.Spec.Auth.UserRef).To(Equal("pocket-id-operator"))
+			Expect(createdInstance.Spec.Auth.UserRef).NotTo(BeNil())
+			Expect(createdInstance.Spec.Auth.UserRef.Name).To(Equal("pocket-id-operator"))
 			Expect(createdInstance.Spec.Auth.APIKeyName).To(Equal("pocket-id-operator"))
 		})
 	})

@@ -251,6 +251,96 @@ var _ = Describe("PocketIDUser Controller", func() {
 		})
 	})
 
+	Context("Instance selection", func() {
+		const (
+			instanceLabelKey   = "pocketid.internal/instance-group"
+			instanceLabelValue = "target"
+			instanceNameA      = "instance-select-a"
+			instanceNameB      = "instance-select-b"
+			instanceNSA        = "instance-select-a"
+			instanceNSB        = "instance-select-b"
+		)
+
+		var (
+			namespaceA *corev1.Namespace
+			namespaceB *corev1.Namespace
+			instanceA  *pocketidinternalv1alpha1.PocketIDInstance
+			instanceB  *pocketidinternalv1alpha1.PocketIDInstance
+		)
+
+		BeforeEach(func() {
+			namespaceA = &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: instanceNSA}}
+			namespaceB = &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: instanceNSB}}
+			Expect(k8sClient.Create(ctx, namespaceA)).To(Succeed())
+			Expect(k8sClient.Create(ctx, namespaceB)).To(Succeed())
+
+			instanceA = &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceNameA,
+					Namespace: instanceNSA,
+					Labels: map[string]string{
+						instanceLabelKey: "other",
+					},
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					EncryptionKey: pocketidinternalv1alpha1.EnvValue{Value: "test-encryption-key-1234"},
+				},
+			}
+			instanceB = &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceNameB,
+					Namespace: instanceNSB,
+					Labels: map[string]string{
+						instanceLabelKey: instanceLabelValue,
+					},
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					EncryptionKey: pocketidinternalv1alpha1.EnvValue{Value: "test-encryption-key-5678"},
+				},
+			}
+
+			Expect(k8sClient.Create(ctx, instanceA)).To(Succeed())
+			Expect(k8sClient.Create(ctx, instanceB)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if instanceA != nil {
+				_ = k8sClient.Delete(ctx, instanceA)
+			}
+			if instanceB != nil {
+				_ = k8sClient.Delete(ctx, instanceB)
+			}
+			if namespaceA != nil {
+				_ = k8sClient.Delete(ctx, namespaceA)
+			}
+			if namespaceB != nil {
+				_ = k8sClient.Delete(ctx, namespaceB)
+			}
+		})
+
+		It("should select the instance matching the selector", func() {
+			user := &pocketidinternalv1alpha1.PocketIDUser{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "selector-user",
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDUserSpec{
+					InstanceSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							instanceLabelKey: instanceLabelValue,
+						},
+					},
+				},
+			}
+
+			reconciler := &PocketIDUserReconciler{Client: k8sClient}
+			selected, err := reconciler.getInstanceForUser(ctx, user)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(selected.Name).To(Equal(instanceNameB))
+			Expect(selected.Namespace).To(Equal(instanceNSB))
+		})
+	})
+
 	Context("When creating a PocketIDUser with default username", func() {
 		const userName = "test-user-default-username"
 

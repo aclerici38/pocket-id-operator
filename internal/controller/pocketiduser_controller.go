@@ -72,10 +72,10 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	// Get the PocketIDInstance to know where to connect
-	instance, err := r.getInstance(ctx, user.Namespace)
+	instance, err := r.getInstanceForUser(ctx, user)
 	if err != nil {
-		log.Error(err, "Failed to get PocketIDInstance")
-		r.setReadyCondition(ctx, user, metav1.ConditionFalse, "InstanceNotFound", err.Error())
+		log.Error(err, "Failed to select PocketIDInstance")
+		r.setReadyCondition(ctx, user, metav1.ConditionFalse, "InstanceSelectionError", err.Error())
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
@@ -96,7 +96,7 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	// Get API client
-	apiClient, err := r.getAPIClient(ctx, instance, user.Namespace)
+	apiClient, err := r.getAPIClient(ctx, instance)
 	if err != nil {
 		log.Error(err, "Failed to get API client")
 		r.setReadyCondition(ctx, user, metav1.ConditionFalse, "APIClientError", err.Error())
@@ -137,15 +137,30 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	return ctrl.Result{}, nil
 }
 
-// getInstance finds the PocketIDInstance in the namespace (assumes single instance per namespace)
-func (r *PocketIDUserReconciler) getInstance(ctx context.Context, namespace string) (*pocketidinternalv1alpha1.PocketIDInstance, error) {
+// getInstanceForUser selects a single PocketIDInstance based on selector or uniqueness.
+func (r *PocketIDUserReconciler) getInstanceForUser(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser) (*pocketidinternalv1alpha1.PocketIDInstance, error) {
 	instances := &pocketidinternalv1alpha1.PocketIDInstanceList{}
-	if err := r.List(ctx, instances, client.InNamespace(namespace)); err != nil {
+	listOpts := []client.ListOption{}
+
+	selectorString := "all instances"
+	if user.Spec.InstanceSelector != nil {
+		selector, err := metav1.LabelSelectorAsSelector(user.Spec.InstanceSelector)
+		if err != nil {
+			return nil, fmt.Errorf("invalid instanceSelector: %w", err)
+		}
+		selectorString = selector.String()
+		listOpts = append(listOpts, client.MatchingLabelsSelector{Selector: selector})
+	}
+
+	if err := r.List(ctx, instances, listOpts...); err != nil {
 		return nil, err
 	}
 
 	if len(instances.Items) == 0 {
-		return nil, fmt.Errorf("no PocketIDInstance found in namespace %s", namespace)
+		return nil, fmt.Errorf("no PocketIDInstance found for selector %q", selectorString)
+	}
+	if len(instances.Items) > 1 {
+		return nil, fmt.Errorf("multiple PocketIDInstances found for selector %q", selectorString)
 	}
 
 	return &instances.Items[0], nil
@@ -162,14 +177,19 @@ func (r *PocketIDUserReconciler) isInstanceReady(instance *pocketidinternalv1alp
 }
 
 // getAPIClient creates an authenticated Pocket-ID client
-func (r *PocketIDUserReconciler) getAPIClient(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, namespace string) (*pocketid.Client, error) {
+func (r *PocketIDUserReconciler) getAPIClient(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) (*pocketid.Client, error) {
 	// Use internal service URL for operator-to-instance communication
 	serviceURL := internalServiceURL(instance.Name, instance.Namespace)
 	baseClient := pocketid.NewClient(serviceURL)
 
 	// If auth is configured in spec, use that
 	if instance.Spec.Auth != nil {
-		token, err := r.getAPIKeyToken(ctx, namespace, instance.Spec.Auth.UserRef, instance.Spec.Auth.APIKeyName)
+		authUser := resolveAuthUserRef(instance)
+		apiKeyName := instance.Spec.Auth.APIKeyName
+		if apiKeyName == "" {
+			apiKeyName = defaultAuthAPIKeyName
+		}
+		token, err := r.getAPIKeyToken(ctx, authUser.Namespace, authUser.Name, apiKeyName)
 		if err == nil {
 			return baseClient.WithAPIKey(token), nil
 		}
@@ -181,8 +201,8 @@ func (r *PocketIDUserReconciler) getAPIClient(ctx context.Context, instance *poc
 	}
 
 	// Check if auth is configured in status (from bootstrap)
-	if instance.Status.AuthUserRef != "" && instance.Status.AuthAPIKeyName != "" {
-		token, err := r.getAPIKeyTokenDirect(ctx, namespace, instance.Status.AuthUserRef, instance.Status.AuthAPIKeyName)
+	if authUser, ok := resolveAuthUserRefFromStatus(instance); ok && instance.Status.AuthAPIKeyName != "" {
+		token, err := r.getAPIKeyTokenDirect(ctx, authUser.Namespace, authUser.Name, instance.Status.AuthAPIKeyName)
 		if err != nil {
 			return nil, fmt.Errorf("get bootstrapped API key token: %w", err)
 		}
@@ -257,7 +277,7 @@ func (r *PocketIDUserReconciler) getAPIKeyToken(ctx context.Context, namespace, 
 }
 
 func (r *PocketIDUserReconciler) reconcileUserFinalizers(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, instance *pocketidinternalv1alpha1.PocketIDInstance) (bool, error) {
-	isAuthUser := isAuthUserReference(instance, user.Name)
+	isAuthUser := isAuthUserReference(instance, user.Name, user.Namespace)
 	needsUpdate := false
 
 	if isAuthUser {
@@ -286,24 +306,27 @@ func (r *PocketIDUserReconciler) reconcileUserFinalizers(ctx context.Context, us
 	return true, nil
 }
 
-func isAuthUserReference(instance *pocketidinternalv1alpha1.PocketIDInstance, userName string) bool {
-	if instance.Spec.Auth != nil && instance.Spec.Auth.UserRef == userName {
+func isAuthUserReference(instance *pocketidinternalv1alpha1.PocketIDInstance, userName, userNamespace string) bool {
+	authUser := resolveAuthUserRef(instance)
+	if authUser.Name == userName && authUser.Namespace == userNamespace {
 		return true
 	}
-	if instance.Status.AuthUserRef == userName {
-		return true
+	if statusUser, ok := resolveAuthUserRefFromStatus(instance); ok {
+		if statusUser.Name == userName && statusUser.Namespace == userNamespace {
+			return true
+		}
 	}
 	return false
 }
 
-func (r *PocketIDUserReconciler) isUserReferencedByInstance(ctx context.Context, namespace, userName string) (bool, error) {
+func (r *PocketIDUserReconciler) isUserReferencedByInstance(ctx context.Context, userName, userNamespace string) (bool, error) {
 	instances := &pocketidinternalv1alpha1.PocketIDInstanceList{}
-	if err := r.List(ctx, instances, client.InNamespace(namespace)); err != nil {
+	if err := r.List(ctx, instances); err != nil {
 		return false, err
 	}
 
 	for i := range instances.Items {
-		if isAuthUserReference(&instances.Items[i], userName) {
+		if isAuthUserReference(&instances.Items[i], userName, userNamespace) {
 			return true, nil
 		}
 	}
@@ -315,7 +338,7 @@ func (r *PocketIDUserReconciler) isUserReferencedByInstance(ctx context.Context,
 func (r *PocketIDUserReconciler) reconcileDelete(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	referenced, err := r.isUserReferencedByInstance(ctx, user.Namespace, user.Name)
+	referenced, err := r.isUserReferencedByInstance(ctx, user.Name, user.Namespace)
 	if err != nil {
 		log.Error(err, "Failed to check PocketIDInstance references")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
@@ -325,8 +348,8 @@ func (r *PocketIDUserReconciler) reconcileDelete(ctx context.Context, user *pock
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	if instance, err := r.getInstance(ctx, user.Namespace); err == nil {
-		if apiClient, err := r.getAPIClient(ctx, instance, user.Namespace); err == nil && user.Status.UserID != "" {
+	if instance, err := r.getInstanceForUser(ctx, user); err == nil {
+		if apiClient, err := r.getAPIClient(ctx, instance); err == nil && user.Status.UserID != "" {
 			log.Info("Deleting user from Pocket-ID", "userID", user.Status.UserID)
 			if err := apiClient.DeleteUser(ctx, user.Status.UserID); err != nil {
 				log.Error(err, "Failed to delete user from Pocket-ID, continuing with finalizer removal")

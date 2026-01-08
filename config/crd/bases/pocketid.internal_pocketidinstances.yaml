@@ -60,13 +60,21 @@ spec:
                       Otherwise the operator will attempt to bootstrap the instance and create a new key
                     type: string
                   userRef:
-                    default: pocket-id-operator
-                    description: UserRef is the name of the PocketIDUser CR to use
-                      for authentication
-                    type: string
+                    description: |-
+                      UserRef references the PocketIDUser CR to use for authentication
+                      Defaults to "pocket-id-operator" in the PocketIDInstance namespace
+                    properties:
+                      name:
+                        description: Name is the name of the PocketIDUser CR
+                        type: string
+                      namespace:
+                        description: |-
+                          Namespace is the namespace of the PocketIDUser CR
+                          Defaults to the PocketIDInstance namespace
+                        type: string
+                    type: object
                 required:
                 - apiKeyName
-                - userRef
                 type: object
               containerSecurityContext:
                 description: Container security context
@@ -1523,6 +1531,10 @@ spec:
               authApiKeyName:
                 description: AuthAPIKeyName is the name of the API key being used
                   for authentication
+                type: string
+              authUserNamespace:
+                description: AuthUserNamespace is the namespace of the PocketIDUser
+                  CR being used for authentication
                 type: string
               authUserRef:
                 description: AuthUserRef is the name of the PocketIDUser CR being

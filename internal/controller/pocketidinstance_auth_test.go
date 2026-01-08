@@ -25,13 +25,14 @@ func TestReconcileAuth_DelaysAuthSwitchUntilUserReady(t *testing.T) {
 		},
 		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 			Auth: &pocketidinternalv1alpha1.AuthConfig{
-				UserRef:    "new-user",
+				UserRef:    &pocketidinternalv1alpha1.NamespacedUserReference{Name: "new-user"},
 				APIKeyName: "new-key",
 			},
 		},
 		Status: pocketidinternalv1alpha1.PocketIDInstanceStatus{
-			AuthUserRef:    "old-user",
-			AuthAPIKeyName: "old-key",
+			AuthUserRef:       "old-user",
+			AuthUserNamespace: "default",
+			AuthAPIKeyName:    "old-key",
 		},
 	}
 	user := &pocketidinternalv1alpha1.PocketIDUser{
@@ -80,7 +81,7 @@ func TestReconcileAuth_BlocksWhenAuthUserNotAdmin(t *testing.T) {
 		},
 		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 			Auth: &pocketidinternalv1alpha1.AuthConfig{
-				UserRef:    "non-admin",
+				UserRef:    &pocketidinternalv1alpha1.NamespacedUserReference{Name: "non-admin"},
 				APIKeyName: "key",
 			},
 		},

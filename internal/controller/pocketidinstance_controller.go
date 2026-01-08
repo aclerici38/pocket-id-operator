@@ -700,42 +700,45 @@ func (r *PocketIDInstanceReconciler) reconcileAuth(ctx context.Context, instance
 	log := logf.FromContext(ctx)
 
 	// Get auth config - use defaults if not configured (matching kubebuilder defaults)
-	userRef := defaultAuthUserRef
+	authUser := resolveAuthUserRef(instance)
 	apiKeyName := defaultAuthAPIKeyName
 	if instance.Spec.Auth != nil {
-		userRef = instance.Spec.Auth.UserRef
-		apiKeyName = instance.Spec.Auth.APIKeyName
+		if instance.Spec.Auth.APIKeyName != "" {
+			apiKeyName = instance.Spec.Auth.APIKeyName
+		}
 	}
 
 	user := &pocketidinternalv1alpha1.PocketIDUser{}
-	if err := r.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: userRef}, user); err != nil {
+	if err := r.Get(ctx, client.ObjectKey{Namespace: authUser.Namespace, Name: authUser.Name}, user); err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("Waiting for auth user CR to be created", "user", userRef)
+			log.Info("Waiting for auth user CR to be created", "user", authUser.Name, "namespace", authUser.Namespace)
 			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("get auth user CR: %w", err)
 	}
 
 	if user.Status.UserID != "" && !user.Status.IsAdmin {
-		log.Info("Auth user is not admin; blocking reconcile", "user", userRef)
+		log.Info("Auth user is not admin; blocking reconcile", "user", authUser.Name)
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	if instance.Spec.Auth != nil && instance.Status.AuthUserRef != "" && instance.Status.AuthUserRef != userRef {
-		if !isUserReadyStatus(user) {
-			log.Info("Auth user not ready; delaying auth switch", "user", userRef)
-			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	if instance.Spec.Auth != nil && instance.Status.AuthUserRef != "" {
+		if instance.Status.AuthUserRef != authUser.Name || instance.Status.AuthUserNamespace != authUser.Namespace {
+			if !isUserReadyStatus(user) {
+				log.Info("Auth user not ready; delaying auth switch", "user", authUser.Name)
+				return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+			}
 		}
 	}
 
 	// Check if the API key secret exists
-	secretName := apiKeySecretName(userRef, apiKeyName)
+	secretName := apiKeySecretName(authUser.Name, apiKeyName)
 	secret := &corev1.Secret{}
-	err := r.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: secretName}, secret)
+	err := r.Get(ctx, client.ObjectKey{Namespace: authUser.Namespace, Name: secretName}, secret)
 
 	if err == nil {
 		// Secret exists - auth is ready, update status
-		return r.updateAuthStatus(ctx, instance, userRef, apiKeyName)
+		return r.updateAuthStatus(ctx, instance, authUser, apiKeyName)
 	}
 
 	if !errors.IsNotFound(err) {
@@ -876,6 +879,7 @@ func (r *PocketIDInstanceReconciler) bootstrap(ctx context.Context, instance *po
 	instance.Status.Bootstrapped = true
 	instance.Status.BootstrappedAt = time.Now().Format(time.RFC3339)
 	instance.Status.AuthUserRef = user.Name
+	instance.Status.AuthUserNamespace = user.Namespace
 	instance.Status.AuthAPIKeyName = apiKeyName
 
 	if err := r.Status().Patch(ctx, instance, client.MergeFrom(base)); err != nil {
@@ -887,13 +891,14 @@ func (r *PocketIDInstanceReconciler) bootstrap(ctx context.Context, instance *po
 }
 
 // updateAuthStatus updates the instance status with auth info
-func (r *PocketIDInstanceReconciler) updateAuthStatus(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, userRef, apiKeyName string) (ctrl.Result, error) {
-	if instance.Status.AuthUserRef == userRef && instance.Status.AuthAPIKeyName == apiKeyName {
+func (r *PocketIDInstanceReconciler) updateAuthStatus(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, userRef authUserRef, apiKeyName string) (ctrl.Result, error) {
+	if instance.Status.AuthUserRef == userRef.Name && instance.Status.AuthUserNamespace == userRef.Namespace && instance.Status.AuthAPIKeyName == apiKeyName {
 		return ctrl.Result{}, nil
 	}
 
 	base := instance.DeepCopy()
-	instance.Status.AuthUserRef = userRef
+	instance.Status.AuthUserRef = userRef.Name
+	instance.Status.AuthUserNamespace = userRef.Namespace
 	instance.Status.AuthAPIKeyName = apiKeyName
 
 	if err := r.Status().Patch(ctx, instance, client.MergeFrom(base)); err != nil {
