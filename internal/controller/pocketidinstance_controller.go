@@ -648,7 +648,7 @@ func (r *PocketIDInstanceReconciler) updateStatus(ctx context.Context, instance 
 		if err := r.Get(ctx, client.ObjectKeyFromObject(instance), sts); err == nil {
 			if sts.Status.ReadyReplicas > 0 {
 				available = metav1.ConditionTrue
-				reason = "Ready"
+				reason = readyConditionType
 				message = "StatefulSet has ready replicas"
 			}
 		}
@@ -657,7 +657,7 @@ func (r *PocketIDInstanceReconciler) updateStatus(ctx context.Context, instance 
 		if err := r.Get(ctx, client.ObjectKeyFromObject(instance), deployment); err == nil {
 			if deployment.Status.AvailableReplicas > 0 {
 				available = metav1.ConditionTrue
-				reason = "Ready"
+				reason = readyConditionType
 				message = "Deployment has available replicas"
 			}
 		}
@@ -677,11 +677,27 @@ func (r *PocketIDInstanceReconciler) updateStatus(ctx context.Context, instance 
 const (
 	defaultAuthUserRef    = "pocket-id-operator"
 	defaultAuthAPIKeyName = "pocket-id-operator"
+	readyConditionType    = "Ready"
 )
 
 // apiKeySecretName returns the secret name for a user's API key: {userRef}-{apiKeyName}-key
 func apiKeySecretName(userRef, apiKeyName string) string {
 	return fmt.Sprintf("%s-%s-key", userRef, apiKeyName)
+}
+
+func (r *PocketIDInstanceReconciler) isUserReady(ctx context.Context, namespace, name string) (bool, error) {
+	user := &pocketidinternalv1alpha1.PocketIDUser{}
+	if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, user); err != nil {
+		return false, err
+	}
+
+	for _, condition := range user.Status.Conditions {
+		if condition.Type == readyConditionType && condition.Status == metav1.ConditionTrue {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // reconcileAuth handles bootstrap and auth configuration
@@ -694,6 +710,18 @@ func (r *PocketIDInstanceReconciler) reconcileAuth(ctx context.Context, instance
 	if instance.Spec.Auth != nil {
 		userRef = instance.Spec.Auth.UserRef
 		apiKeyName = instance.Spec.Auth.APIKeyName
+	}
+
+	if instance.Spec.Auth != nil && instance.Status.AuthUserRef != "" && instance.Status.AuthUserRef != userRef {
+		ready, err := r.isUserReady(ctx, instance.Namespace, userRef)
+		if err != nil {
+			log.Error(err, "Failed to check auth user readiness", "user", userRef)
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+		}
+		if !ready {
+			log.Info("Auth user not ready; delaying auth switch", "user", userRef)
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+		}
 	}
 
 	// Check if the API key secret exists

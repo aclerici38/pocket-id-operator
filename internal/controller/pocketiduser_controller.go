@@ -169,10 +169,14 @@ func (r *PocketIDUserReconciler) getAPIClient(ctx context.Context, instance *poc
 	// If auth is configured in spec, use that
 	if instance.Spec.Auth != nil {
 		token, err := r.getAPIKeyToken(ctx, namespace, instance.Spec.Auth.UserRef, instance.Spec.Auth.APIKeyName)
-		if err != nil {
+		if err == nil {
+			return baseClient.WithAPIKey(token), nil
+		}
+
+		// Fall back to bootstrapped auth if the target auth user isn't ready yet.
+		if instance.Status.AuthUserRef == "" || instance.Status.AuthAPIKeyName == "" {
 			return nil, fmt.Errorf("get API key token: %w", err)
 		}
-		return baseClient.WithAPIKey(token), nil
 	}
 
 	// Check if auth is configured in status (from bootstrap)

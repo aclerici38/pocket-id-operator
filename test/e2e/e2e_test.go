@@ -558,6 +558,93 @@ spec:
 		})
 	})
 
+	Context("Auth Switch Safeguards", func() {
+		It("should delay auth switch until the target user is Ready", func() {
+			const unreadyUserName = "auth-unready-user"
+			const unreadyAPIKeyName = "auth-unready-key"
+			const unreadySecretName = "auth-unready-user-secret"
+
+			By("creating a user that cannot reconcile yet")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  username:
+    valueFrom:
+      name: %s
+      key: username
+  firstName:
+    value: Auth
+  email:
+    value: auth-unready@example.local
+  admin: true
+  apiKeys:
+  - name: %s
+`, unreadyUserName, testNS, unreadySecretName, unreadyAPIKeyName))
+
+			By("verifying the user is not Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketiduser", unreadyUserName, "-n", testNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(output).To(Equal("False"))
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("attempting to switch instance auth to the unready user")
+			patch := fmt.Sprintf(`{"spec":{"auth":{"userRef":"%s","apiKeyName":"%s"}}}`, unreadyUserName, unreadyAPIKeyName)
+			cmd := exec.Command("kubectl", "patch", "pocketidinstance", instanceName, "-n", testNS, "--type=merge", "-p", patch)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("verifying auth switch is delayed")
+			Consistently(func() string {
+				return kubectlGet("pocketidinstance", instanceName, "-n", testNS,
+					"-o", "jsonpath={.status.authUserRef}")
+			}, 20*time.Second, 2*time.Second).Should(Equal(operatorUserName))
+
+			By("creating the missing secret to allow user reconciliation")
+			applyYAML(fmt.Sprintf(`
+apiVersion: v1
+kind: Secret
+metadata:
+  name: %s
+  namespace: %s
+type: Opaque
+data:
+  username: %s
+`, unreadySecretName, testNS, "YXV0aC11bnJlYWR5LXVzZXI="))
+
+			By("verifying the user becomes Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketiduser", unreadyUserName, "-n", testNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(output).To(Equal("True"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying instance authUserRef switches to the ready user")
+			Eventually(func(g Gomega) {
+				userRef := kubectlGet("pocketidinstance", instanceName, "-n", testNS,
+					"-o", "jsonpath={.status.authUserRef}")
+				g.Expect(userRef).To(Equal(unreadyUserName))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("switching instance auth back to the operator user")
+			patch = fmt.Sprintf(`{"spec":{"auth":{"userRef":"%s","apiKeyName":"%s"}}}`, operatorUserName, "pocket-id-operator")
+			cmd = exec.Command("kubectl", "patch", "pocketidinstance", instanceName, "-n", testNS, "--type=merge", "-p", patch)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("verifying instance authUserRef switches back to the operator user")
+			Eventually(func(g Gomega) {
+				userRef := kubectlGet("pocketidinstance", instanceName, "-n", testNS,
+					"-o", "jsonpath={.status.authUserRef}")
+				g.Expect(userRef).To(Equal(operatorUserName))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+	})
+
 	Context("Auth User Finalizer", func() {
 		It("should block deletion of the auth user until instance auth changes", func() {
 			const newUserName = "auth-switch-user"
