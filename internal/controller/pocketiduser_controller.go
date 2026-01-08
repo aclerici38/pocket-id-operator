@@ -37,6 +37,7 @@ import (
 
 const (
 	userFinalizer              = "pocketid.internal/user-finalizer"
+	authUserFinalizer          = "pocketid.internal/auth-user-finalizer"
 	apiKeySecretKey            = "token"
 	defaultAPIKeyName          = "pocket-id-operator"
 	defaultLoginTokenExpiryMin = 15
@@ -65,12 +66,25 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	log.Info("Reconciling PocketIDUser", "name", user.Name)
 
+	if !user.DeletionTimestamp.IsZero() {
+		return r.reconcileDelete(ctx, user)
+	}
+
 	// Get the PocketIDInstance to know where to connect
 	instance, err := r.getInstance(ctx, user.Namespace)
 	if err != nil {
 		log.Error(err, "Failed to get PocketIDInstance")
 		r.setReadyCondition(ctx, user, metav1.ConditionFalse, "InstanceNotFound", err.Error())
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	updatedFinalizers, err := r.reconcileUserFinalizers(ctx, user, instance)
+	if err != nil {
+		log.Error(err, "Failed to reconcile user finalizers")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+	if updatedFinalizers {
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// Check if instance is available
@@ -86,20 +100,6 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		log.Error(err, "Failed to get API client")
 		r.setReadyCondition(ctx, user, metav1.ConditionFalse, "APIClientError", err.Error())
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
-	}
-
-	// Handle deletion
-	if !user.DeletionTimestamp.IsZero() {
-		return r.reconcileDelete(ctx, user, apiClient)
-	}
-
-	// Add finalizer if missing
-	if !controllerutil.ContainsFinalizer(user, userFinalizer) {
-		controllerutil.AddFinalizer(user, userFinalizer)
-		if err := r.Update(ctx, user); err != nil {
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// Reconcile the user in Pocket-ID
@@ -251,15 +251,83 @@ func (r *PocketIDUserReconciler) getAPIKeyToken(ctx context.Context, namespace, 
 	return string(token), nil
 }
 
+func (r *PocketIDUserReconciler) reconcileUserFinalizers(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, instance *pocketidinternalv1alpha1.PocketIDInstance) (bool, error) {
+	desiredAuthUser := authUserRef(instance)
+	needsUpdate := false
+
+	if desiredAuthUser != "" && desiredAuthUser == user.Name {
+		if !controllerutil.ContainsFinalizer(user, authUserFinalizer) {
+			controllerutil.AddFinalizer(user, authUserFinalizer)
+			needsUpdate = true
+		}
+	} else if controllerutil.ContainsFinalizer(user, authUserFinalizer) {
+		controllerutil.RemoveFinalizer(user, authUserFinalizer)
+		needsUpdate = true
+	}
+
+	if !controllerutil.ContainsFinalizer(user, userFinalizer) {
+		controllerutil.AddFinalizer(user, userFinalizer)
+		needsUpdate = true
+	}
+
+	if !needsUpdate {
+		return false, nil
+	}
+
+	if err := r.Update(ctx, user); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+func authUserRef(instance *pocketidinternalv1alpha1.PocketIDInstance) string {
+	if instance.Spec.Auth != nil && instance.Spec.Auth.UserRef != "" {
+		return instance.Spec.Auth.UserRef
+	}
+	if instance.Status.AuthUserRef != "" {
+		return instance.Status.AuthUserRef
+	}
+	return ""
+}
+
+func (r *PocketIDUserReconciler) isUserReferencedByInstance(ctx context.Context, namespace, userName string) (bool, error) {
+	instances := &pocketidinternalv1alpha1.PocketIDInstanceList{}
+	if err := r.List(ctx, instances, client.InNamespace(namespace)); err != nil {
+		return false, err
+	}
+
+	for i := range instances.Items {
+		if authUserRef(&instances.Items[i]) == userName {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 // reconcileDelete handles user deletion
-func (r *PocketIDUserReconciler) reconcileDelete(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client) (ctrl.Result, error) {
+func (r *PocketIDUserReconciler) reconcileDelete(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	// Delete user from Pocket-ID if we have their ID
-	if user.Status.UserID != "" {
-		log.Info("Deleting user from Pocket-ID", "userID", user.Status.UserID)
-		if err := apiClient.DeleteUser(ctx, user.Status.UserID); err != nil {
-			log.Error(err, "Failed to delete user from Pocket-ID, continuing with finalizer removal")
+	referenced, err := r.isUserReferencedByInstance(ctx, user.Namespace, user.Name)
+	if err != nil {
+		log.Error(err, "Failed to check PocketIDInstance references")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+	if referenced {
+		log.Info("User is referenced by PocketIDInstance, blocking deletion", "user", user.Name)
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	if instance, err := r.getInstance(ctx, user.Namespace); err == nil {
+		if apiClient, err := r.getAPIClient(ctx, instance, user.Namespace); err == nil && user.Status.UserID != "" {
+			log.Info("Deleting user from Pocket-ID", "userID", user.Status.UserID)
+			if err := apiClient.DeleteUser(ctx, user.Status.UserID); err != nil {
+				log.Error(err, "Failed to delete user from Pocket-ID, continuing with finalizer removal")
+			}
+		} else if err != nil {
+			log.Error(err, "Failed to get API client for delete, skipping Pocket-ID deletion")
 		}
 	}
 
@@ -279,6 +347,7 @@ func (r *PocketIDUserReconciler) reconcileDelete(ctx context.Context, user *pock
 	}
 
 	// Remove finalizer
+	controllerutil.RemoveFinalizer(user, authUserFinalizer)
 	controllerutil.RemoveFinalizer(user, userFinalizer)
 	if err := r.Update(ctx, user); err != nil {
 		return ctrl.Result{}, err

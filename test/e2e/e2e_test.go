@@ -555,6 +555,75 @@ spec:
 			Expect(output).To(ContainSubstring("pocket-id-operator"))
 		})
 	})
+
+	Context("Auth User Finalizer", func() {
+		It("should block deletion of the auth user until instance auth changes", func() {
+			const newUserName = "auth-switch-user"
+			const newAPIKeyName = "auth-switch-key"
+
+			By("creating a new admin user for auth switching")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  admin: true
+  apiKeys:
+  - name: %s
+`, newUserName, testNS, newAPIKeyName))
+
+			By("verifying new auth user becomes Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketiduser", newUserName, "-n", testNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(output).To(Equal("True"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying new auth user API key secret exists")
+			secretName := fmt.Sprintf("%s-%s-key", newUserName, newAPIKeyName)
+			Eventually(func(g Gomega) {
+				output := kubectlGet("secret", secretName, "-n", testNS,
+					"-o", "jsonpath={.data.token}")
+				g.Expect(output).NotTo(BeEmpty())
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("requesting deletion of the current auth user")
+			cmd := exec.Command("kubectl", "delete", "pocketiduser", operatorUserName, "-n", testNS, "--wait=false")
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("verifying deletion is blocked by the auth finalizer")
+			Eventually(func(g Gomega) {
+				deletionTimestamp := kubectlGet("pocketiduser", operatorUserName, "-n", testNS,
+					"-o", "jsonpath={.metadata.deletionTimestamp}")
+				finalizers := kubectlGet("pocketiduser", operatorUserName, "-n", testNS,
+					"-o", "jsonpath={.metadata.finalizers}")
+				g.Expect(deletionTimestamp).NotTo(BeEmpty())
+				g.Expect(finalizers).To(ContainSubstring("pocketid.internal/auth-user-finalizer"))
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("switching instance auth to the new user")
+			patch := fmt.Sprintf(`{"spec":{"auth":{"userRef":"%s","apiKeyName":"%s"}}}`, newUserName, newAPIKeyName)
+			cmd = exec.Command("kubectl", "patch", "pocketidinstance", instanceName, "-n", testNS, "--type=merge", "-p", patch)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("verifying instance authUserRef updates")
+			Eventually(func(g Gomega) {
+				userRef := kubectlGet("pocketidinstance", instanceName, "-n", testNS,
+					"-o", "jsonpath={.status.authUserRef}")
+				g.Expect(userRef).To(Equal(newUserName))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying the old auth user is deleted")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketiduser", operatorUserName, "-n", testNS, "-o", "name")
+				g.Expect(output).To(BeEmpty())
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+	})
 })
 
 // Helper functions
