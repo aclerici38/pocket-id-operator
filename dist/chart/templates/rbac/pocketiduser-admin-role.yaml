@@ -1,0 +1,22 @@
+{{- if .Values.rbacHelpers.enable }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+    labels:
+        app.kubernetes.io/managed-by: {{ .Release.Service }}
+        app.kubernetes.io/name: pocket-id-operator
+    name: pocketiduser-admin-role
+rules:
+    - apiGroups:
+        - pocketid.internal
+      resources:
+        - pocketidusers
+      verbs:
+        - '*'
+    - apiGroups:
+        - pocketid.internal
+      resources:
+        - pocketidusers/status
+      verbs:
+        - get
+{{- end }}

@@ -6,6 +6,10 @@ cliVersion: 4.10.1
 domain: pocketid.internal
 layout:
 - go.kubebuilder.io/v4
+plugins:
+  helm.kubebuilder.io/v2-alpha:
+    manifests: dist/install.yaml
+    output: dist
 projectName: pocket-id-operator
 repo: github.com/aclerici38/pocket-id-operator
 resources:
