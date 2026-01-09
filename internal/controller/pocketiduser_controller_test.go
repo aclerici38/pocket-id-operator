@@ -43,7 +43,7 @@ var _ = Describe("PocketIDUser Controller", func() {
 
 	BeforeEach(func() {
 		ctx = context.Background()
-		namespace = "default"
+		namespace = defaultNamespace
 	})
 
 	Context("When creating a PocketIDUser with plain values", func() {

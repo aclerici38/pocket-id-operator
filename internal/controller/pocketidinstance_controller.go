@@ -33,9 +33,11 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
@@ -122,7 +124,7 @@ func (r *PocketIDInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}
 
-	return ctrl.Result{}, nil
+	return applyResync(ctrl.Result{}), nil
 }
 
 // isInstanceAvailable checks if the instance has Available=True
@@ -956,7 +958,7 @@ func (r *PocketIDInstanceReconciler) resolveStringValue(ctx context.Context, nam
 // SetupWithManager sets up the controller with the Manager.
 func (r *PocketIDInstanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&pocketidinternalv1alpha1.PocketIDInstance{}).
+		For(&pocketidinternalv1alpha1.PocketIDInstance{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Owns(&appsv1.Deployment{}).
 		Owns(&appsv1.StatefulSet{}).
 		Owns(&corev1.Service{}).

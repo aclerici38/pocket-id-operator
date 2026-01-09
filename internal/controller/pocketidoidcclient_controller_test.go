@@ -22,12 +22,17 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
 var _ = Describe("PocketIDOIDCClient Controller", func() {
@@ -43,7 +48,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 
 	BeforeEach(func() {
 		ctx = context.Background()
-		namespace = "default"
+		namespace = defaultNamespace
 	})
 
 	Context("When no instance exists", func() {
@@ -166,6 +171,471 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 
 			_, err := reconciler.resolveAllowedUserGroups(ctx, client)
 			Expect(err).To(HaveOccurred())
+		})
+
+		It("should error when a group ref has an empty name", func() {
+			client := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      clientName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+					Name: "Client",
+					AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
+						{Name: ""},
+					},
+				},
+			}
+
+			_, err := reconciler.resolveAllowedUserGroups(ctx, client)
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("should error when a group is not ready", func() {
+			group := &pocketidinternalv1alpha1.PocketIDUserGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "unready-group",
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDUserGroupSpec{
+					Name:         "group-name",
+					FriendlyName: "Group Name",
+				},
+			}
+			Expect(k8sClient.Create(ctx, group)).To(Succeed())
+			DeferCleanup(func() {
+				_ = k8sClient.Delete(ctx, group)
+			})
+
+			client := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      clientName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+					Name: "Client",
+					AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
+						{Name: group.Name},
+					},
+				},
+			}
+
+			_, err := reconciler.resolveAllowedUserGroups(ctx, client)
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("should resolve group IDs across namespaces", func() {
+			otherNamespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "oidc-other-ns"}}
+			Expect(k8sClient.Create(ctx, otherNamespace)).To(Succeed())
+			DeferCleanup(func() {
+				_ = k8sClient.Delete(ctx, otherNamespace)
+			})
+
+			group := &pocketidinternalv1alpha1.PocketIDUserGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cross-ns-group",
+					Namespace: otherNamespace.Name,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDUserGroupSpec{
+					Name:         "group-name",
+					FriendlyName: "Group Name",
+				},
+			}
+			Expect(k8sClient.Create(ctx, group)).To(Succeed())
+			DeferCleanup(func() {
+				_ = k8sClient.Delete(ctx, group)
+			})
+
+			Eventually(func() error {
+				return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+					if err := k8sClient.Get(ctx, types.NamespacedName{Name: group.Name, Namespace: otherNamespace.Name}, group); err != nil {
+						return err
+					}
+					group.Status.GroupID = "cross-ns-group-id"
+					return k8sClient.Status().Update(ctx, group)
+				})
+			}, timeout, interval).Should(Succeed())
+
+			client := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      clientName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+					Name: "Client",
+					AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
+						{Name: group.Name, Namespace: otherNamespace.Name},
+					},
+				},
+			}
+
+			ids, err := reconciler.resolveAllowedUserGroups(ctx, client)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ids).To(Equal([]string{"cross-ns-group-id"}))
+		})
+	})
+
+	Context("When instance is not ready", func() {
+		const (
+			instanceName = "test-oidc-instance-not-ready"
+			clientName   = "test-oidc-client-not-ready"
+		)
+
+		AfterEach(func() {
+			resource := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: clientName, Namespace: namespace}, resource); err == nil {
+				_ = k8sClient.Delete(ctx, resource)
+			}
+			instance := &pocketidinternalv1alpha1.PocketIDInstance{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: instanceName, Namespace: namespace}, instance); err == nil {
+				_ = k8sClient.Delete(ctx, instance)
+			}
+		})
+
+		It("should set Ready condition to InstanceNotReady", func() {
+			instance := &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					EncryptionKey: pocketidinternalv1alpha1.EnvValue{Value: "0123456789abcdef"},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			resource := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      clientName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+					Name: "Test OIDC Client",
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+
+			Eventually(func() string {
+				updated := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: clientName, Namespace: namespace}, updated); err != nil {
+					return ""
+				}
+				cond := meta.FindStatusCondition(updated.Status.Conditions, "Ready")
+				if cond == nil {
+					return ""
+				}
+				return cond.Reason
+			}, timeout, interval).Should(Equal("InstanceNotReady"))
+		})
+	})
+
+	Context("When multiple instances exist", func() {
+		const (
+			instanceNameA = "test-oidc-instance-a"
+			instanceNameB = "test-oidc-instance-b"
+			clientName    = "test-oidc-client-multi-instance"
+		)
+
+		AfterEach(func() {
+			resource := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: clientName, Namespace: namespace}, resource); err == nil {
+				_ = k8sClient.Delete(ctx, resource)
+			}
+			instance := &pocketidinternalv1alpha1.PocketIDInstance{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: instanceNameA, Namespace: namespace}, instance); err == nil {
+				_ = k8sClient.Delete(ctx, instance)
+			}
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: instanceNameB, Namespace: namespace}, instance); err == nil {
+				_ = k8sClient.Delete(ctx, instance)
+			}
+		})
+
+		It("should set Ready condition to InstanceSelectionError", func() {
+			instance := &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceNameA,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					EncryptionKey: pocketidinternalv1alpha1.EnvValue{Value: "0123456789abcdef"},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceNameB,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					EncryptionKey: pocketidinternalv1alpha1.EnvValue{Value: "fedcba9876543210"},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			resource := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      clientName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+					Name: "Test OIDC Client",
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+
+			Eventually(func() string {
+				updated := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: clientName, Namespace: namespace}, updated); err != nil {
+					return ""
+				}
+				cond := meta.FindStatusCondition(updated.Status.Conditions, "Ready")
+				if cond == nil {
+					return ""
+				}
+				return cond.Reason
+			}, timeout, interval).Should(Equal("InstanceSelectionError"))
+		})
+	})
+
+	Context("When API client cannot be created", func() {
+		const (
+			instanceName = "test-oidc-instance-api-client-error"
+			clientName   = "test-oidc-client-api-client-error"
+		)
+
+		It("should set Ready condition to APIClientError", func() {
+			scheme := runtime.NewScheme()
+			_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+			_ = corev1.AddToScheme(scheme)
+
+			instance := &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					Auth: &pocketidinternalv1alpha1.AuthConfig{
+						UserRef:    &pocketidinternalv1alpha1.NamespacedUserReference{Name: "missing-user"},
+						APIKeyName: "missing-key",
+					},
+					EncryptionKey: pocketidinternalv1alpha1.EnvValue{Value: "0123456789abcdef"},
+				},
+				Status: pocketidinternalv1alpha1.PocketIDInstanceStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:               "Available",
+							Status:             metav1.ConditionTrue,
+							Reason:             "Ready",
+							Message:            "Instance is ready",
+							LastTransitionTime: metav1.Now(),
+						},
+					},
+				},
+			}
+
+			resource := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      clientName,
+					Namespace: namespace,
+					Finalizers: []string{
+						oidcClientFinalizer,
+					},
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+					Name: "Test OIDC Client",
+				},
+			}
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithStatusSubresource(resource).
+				WithObjects(instance, resource).
+				Build()
+
+			reconciler := &PocketIDOIDCClientReconciler{
+				Client: fakeClient,
+				Scheme: scheme,
+			}
+
+			_, err := reconciler.Reconcile(ctx, ctrl.Request{
+				NamespacedName: types.NamespacedName{Name: clientName, Namespace: namespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			updated := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
+			Expect(fakeClient.Get(ctx, types.NamespacedName{Name: clientName, Namespace: namespace}, updated)).To(Succeed())
+			cond := meta.FindStatusCondition(updated.Status.Conditions, "Ready")
+			Expect(cond).NotTo(BeNil())
+			Expect(cond.Reason).To(Equal("APIClientError"))
+		})
+	})
+
+	Context("OIDC client input mapping", func() {
+		It("should map spec fields to API input", func() {
+			reconciler := &PocketIDOIDCClientReconciler{}
+			oidc := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "fallback-name",
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+					ID:                       "client-id",
+					Name:                     "",
+					CallbackURLs:             []string{"https://example.com/callback"},
+					LogoutCallbackURLs:       []string{"https://example.com/logout"},
+					LaunchURL:                "https://example.com",
+					LogoURL:                  "https://example.com/logo.png",
+					DarkLogoURL:              "https://example.com/logo-dark.png",
+					IsPublic:                 true,
+					PKCEEnabled:              true,
+					RequiresReauthentication: true,
+					FederatedIdentities: []pocketidinternalv1alpha1.OIDCClientFederatedIdentity{
+						{
+							Issuer:   "https://issuer.example.com",
+							Subject:  "subject",
+							Audience: "audience",
+							JWKS:     "https://issuer.example.com/jwks",
+						},
+					},
+					AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
+						{Name: "group"},
+					},
+				},
+			}
+
+			input := reconciler.oidcClientInput(oidc)
+			Expect(input.Name).To(Equal("fallback-name"))
+			Expect(input.HasLogo).To(BeTrue())
+			Expect(input.HasDarkLogo).To(BeTrue())
+			Expect(input.IsGroupRestricted).To(BeTrue())
+			Expect(input.Credentials).NotTo(BeNil())
+			Expect(input.Credentials.FederatedIdentities).To(Equal([]pocketid.OIDCClientFederatedIdentity{
+				{
+					Issuer:   "https://issuer.example.com",
+					Subject:  "subject",
+					Audience: "audience",
+					JWKS:     "https://issuer.example.com/jwks",
+				},
+			}))
+		})
+	})
+
+	Context("Updating OIDC client status", func() {
+		const clientName = "test-oidc-status-update"
+
+		AfterEach(func() {
+			resource := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: clientName, Namespace: namespace}, resource); err == nil {
+				_ = k8sClient.Delete(ctx, resource)
+			}
+		})
+
+		It("should patch status from Pocket-ID response", func() {
+			resource := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      clientName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+					Name: "Test OIDC Client",
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+
+			reconciler := &PocketIDOIDCClientReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+			current := &pocketid.OIDCClient{
+				ID:                  "client-id",
+				Name:                "Test OIDC Client",
+				AllowedUserGroupIDs: []string{"group-1"},
+			}
+			Expect(reconciler.updateOIDCClientStatus(ctx, resource, current)).To(Succeed())
+
+			updated := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: clientName, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.ClientID).To(Equal("client-id"))
+			Expect(updated.Status.AllowedUserGroupIDs).To(Equal([]string{"group-1"}))
+		})
+	})
+
+	Context("Delete behavior", func() {
+		It("should remove finalizer when no instance exists", func() {
+			scheme := runtime.NewScheme()
+			_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+			resource := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "delete-oidc-no-instance",
+					Namespace:  namespace,
+					Finalizers: []string{oidcClientFinalizer},
+				},
+				Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
+					ClientID: "client-id",
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+					Name: "Client",
+				},
+			}
+
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(resource).
+				Build()
+
+			reconciler := &PocketIDOIDCClientReconciler{Client: fakeClient, Scheme: scheme}
+			_, err := reconciler.reconcileDelete(context.Background(), resource)
+			Expect(err).NotTo(HaveOccurred())
+
+			updated := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
+			Expect(fakeClient.Get(context.Background(), types.NamespacedName{Name: resource.Name, Namespace: resource.Namespace}, updated)).To(Succeed())
+			Expect(updated.Finalizers).NotTo(ContainElement(oidcClientFinalizer))
+		})
+
+		It("should keep finalizer when API client lookup fails", func() {
+			scheme := runtime.NewScheme()
+			_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+			instance := &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "delete-oidc-instance",
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					Auth: &pocketidinternalv1alpha1.AuthConfig{
+						UserRef:    &pocketidinternalv1alpha1.NamespacedUserReference{Name: "missing-user"},
+						APIKeyName: "missing-key",
+					},
+					EncryptionKey: pocketidinternalv1alpha1.EnvValue{Value: "0123456789abcdef"},
+				},
+			}
+
+			resource := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "delete-oidc-api-client-error",
+					Namespace:  namespace,
+					Finalizers: []string{oidcClientFinalizer},
+				},
+				Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
+					ClientID: "client-id",
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+					Name: "Client",
+				},
+			}
+
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(instance, resource).
+				Build()
+
+			reconciler := &PocketIDOIDCClientReconciler{Client: fakeClient, Scheme: scheme}
+			_, err := reconciler.reconcileDelete(context.Background(), resource)
+			Expect(err).To(HaveOccurred())
+
+			updated := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
+			Expect(fakeClient.Get(context.Background(), types.NamespacedName{Name: resource.Name, Namespace: resource.Namespace}, updated)).To(Succeed())
+			Expect(updated.Finalizers).To(ContainElement(oidcClientFinalizer))
 		})
 	})
 

@@ -26,15 +26,22 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
-const userGroupFinalizer = "pocketid.internal/user-group-finalizer"
+const (
+	userGroupFinalizer       = "pocketid.internal/user-group-finalizer"
+	userGroupUserRefIndexKey = "pocketidusergroup.userRef"
+)
 
 // PocketIDUserGroupReconciler reconciles a PocketIDUserGroup object
 type PocketIDUserGroupReconciler struct {
@@ -103,6 +110,9 @@ func (r *PocketIDUserGroupReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	current, err := r.reconcileUserGroup(ctx, userGroup, apiClient)
 	if err != nil {
 		log.Error(err, "Failed to reconcile user group")
+		if updateErr := r.updateUserGroupStatus(ctx, userGroup, current); updateErr != nil {
+			log.Error(updateErr, "Failed to update user group status")
+		}
 		r.setReadyCondition(ctx, userGroup, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
@@ -114,7 +124,7 @@ func (r *PocketIDUserGroupReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	r.setReadyCondition(ctx, userGroup, metav1.ConditionTrue, "Reconciled", "User group is in sync")
 
-	return ctrl.Result{}, nil
+	return applyResync(ctrl.Result{}), nil
 }
 
 func (r *PocketIDUserGroupReconciler) reconcileUserGroup(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, apiClient *pocketid.Client) (*pocketid.UserGroup, error) {
@@ -153,10 +163,10 @@ func (r *PocketIDUserGroupReconciler) reconcileUserGroup(ctx context.Context, us
 	if userGroup.Spec.UserRefs != nil {
 		userIDs, err := r.resolveUserRefs(ctx, userGroup)
 		if err != nil {
-			return nil, err
+			return current, err
 		}
 		if err := apiClient.UpdateUserGroupUsers(ctx, current.ID, userIDs); err != nil {
-			return nil, err
+			return current, err
 		}
 	}
 
@@ -253,6 +263,30 @@ func (r *PocketIDUserGroupReconciler) reconcileDelete(ctx context.Context, userG
 	return ctrl.Result{}, nil
 }
 
+func (r *PocketIDUserGroupReconciler) requestsForUser(ctx context.Context, obj client.Object) []reconcile.Request {
+	user, ok := obj.(*pocketidinternalv1alpha1.PocketIDUser)
+	if !ok {
+		return nil
+	}
+
+	userGroups := &pocketidinternalv1alpha1.PocketIDUserGroupList{}
+	if err := r.List(ctx, userGroups, client.MatchingFields{
+		userGroupUserRefIndexKey: client.ObjectKeyFromObject(user).String(),
+	}); err != nil {
+		logf.FromContext(ctx).Error(err, "Failed to list user groups for user", "user", client.ObjectKeyFromObject(user))
+		return nil
+	}
+
+	requests := make([]reconcile.Request, 0, len(userGroups.Items))
+	for i := range userGroups.Items {
+		requests = append(requests, reconcile.Request{
+			NamespacedName: client.ObjectKeyFromObject(&userGroups.Items[i]),
+		})
+	}
+
+	return requests
+}
+
 func toCustomClaims(claims []pocketid.CustomClaim) []pocketidinternalv1alpha1.CustomClaim {
 	if len(claims) == 0 {
 		return nil
@@ -269,8 +303,36 @@ func toCustomClaims(claims []pocketid.CustomClaim) []pocketidinternalv1alpha1.Cu
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *PocketIDUserGroupReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	ctx := context.Background()
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &pocketidinternalv1alpha1.PocketIDUserGroup{}, userGroupUserRefIndexKey, func(raw client.Object) []string {
+		userGroup, ok := raw.(*pocketidinternalv1alpha1.PocketIDUserGroup)
+		if !ok {
+			return nil
+		}
+
+		if len(userGroup.Spec.UserRefs) == 0 {
+			return nil
+		}
+
+		keys := make([]string, 0, len(userGroup.Spec.UserRefs))
+		for _, ref := range userGroup.Spec.UserRefs {
+			if ref.Name == "" {
+				continue
+			}
+			namespace := ref.Namespace
+			if namespace == "" {
+				namespace = userGroup.Namespace
+			}
+			keys = append(keys, fmt.Sprintf("%s/%s", namespace, ref.Name))
+		}
+		return keys
+	}); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&pocketidinternalv1alpha1.PocketIDUserGroup{}).
+		For(&pocketidinternalv1alpha1.PocketIDUserGroup{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Watches(&pocketidinternalv1alpha1.PocketIDUser{}, handler.EnqueueRequestsFromMapFunc(r.requestsForUser)).
 		Named("pocketidusergroup").
 		Complete(r)
 }

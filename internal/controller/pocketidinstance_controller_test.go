@@ -46,7 +46,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 
 	BeforeEach(func() {
 		ctx = context.Background()
-		namespace = "default"
+		namespace = defaultNamespace
 	})
 
 	Context("When creating a PocketIDInstance with Deployment type", func() {

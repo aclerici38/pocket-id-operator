@@ -654,9 +654,14 @@ spec:
 
 	Context("User Groups and OIDC Clients", func() {
 		const (
-			groupUserName  = "test-group-user"
-			groupName      = "test-user-group"
-			oidcClientName = "test-oidc-client"
+			groupUserName        = "test-group-user"
+			groupName            = "test-user-group"
+			oidcClientName       = "test-oidc-client"
+			recoveryUserName     = "test-group-recovery-user"
+			recoveryGroupName    = "test-user-group-recovery"
+			recoveryOIDCName     = "test-oidc-client-recovery"
+			recoveryOIDCGroup    = "test-oidc-group-recovery"
+			recoveryOIDCGroupAlt = "test-oidc-group-recovery-alt"
 		)
 
 		BeforeAll(func() {
@@ -748,6 +753,185 @@ spec:
 				output := kubectlGet("pocketidoidcclient", oidcClientName, "-n", userNS,
 					"-o", "jsonpath={.status.allowedUserGroupIds[*]}")
 				g.Expect(output).To(ContainSubstring(groupID))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+
+		It("should recover a user group when the referenced user becomes ready", func() {
+			By("creating a user group with a missing user ref")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUserGroup
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  name: recovery-group
+  friendlyName: Recovery Group
+  customClaims:
+  - key: team
+    value: alpha
+  userRefs:
+  - name: %s
+    namespace: %s
+`, recoveryGroupName, userNS, recoveryUserName, userNS))
+
+			By("verifying the group reports a reconcile error")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidusergroup", recoveryGroupName, "-n", userNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].reason}")
+				g.Expect(output).To(Equal("ReconcileError"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("creating the missing user")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  firstName:
+    value: Recovery
+  email:
+    value: recovery-user@example.local
+`, recoveryUserName, userNS))
+
+			By("waiting for the user to be Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketiduser", recoveryUserName, "-n", userNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(output).To(Equal("True"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying the group becomes Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidusergroup", recoveryGroupName, "-n", userNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(output).To(Equal("True"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("updating group custom claims")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUserGroup
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  name: recovery-group
+  friendlyName: Recovery Group
+  customClaims:
+  - key: team
+    value: beta
+`, recoveryGroupName, userNS))
+
+			By("verifying custom claims are updated in status")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidusergroup", recoveryGroupName, "-n", userNS,
+					"-o", "jsonpath={.status.customClaims[?(@.key=='team')].value}")
+				g.Expect(output).To(Equal("beta"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+
+		It("should recover an OIDC client when allowed groups become ready and update allowed groups", func() {
+			By("creating an OIDC client that references a missing group")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDOIDCClient
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  name: recovery-oidc-client
+  callbackUrls:
+  - https://example.com/recovery/callback
+  logoutCallbackUrls:
+  - https://example.com/recovery/logout
+  allowedUserGroups:
+  - name: %s
+`, recoveryOIDCName, userNS, recoveryOIDCGroup))
+
+			By("verifying the OIDC client reports a reconcile error")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidoidcclient", recoveryOIDCName, "-n", userNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].reason}")
+				g.Expect(output).To(Equal("ReconcileError"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("creating the missing allowed group")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUserGroup
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  name: recovery-oidc-group
+  friendlyName: Recovery OIDC Group
+`, recoveryOIDCGroup, userNS))
+
+			By("waiting for the allowed group to be Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidusergroup", recoveryOIDCGroup, "-n", userNS,
+					"-o", "jsonpath={.status.groupId}")
+				g.Expect(output).NotTo(BeEmpty())
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying the OIDC client becomes Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidoidcclient", recoveryOIDCName, "-n", userNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(output).To(Equal("True"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("creating an additional allowed group")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUserGroup
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  name: recovery-oidc-group-alt
+  friendlyName: Recovery OIDC Group Alt
+`, recoveryOIDCGroupAlt, userNS))
+
+			By("waiting for the additional group to be Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidusergroup", recoveryOIDCGroupAlt, "-n", userNS,
+					"-o", "jsonpath={.status.groupId}")
+				g.Expect(output).NotTo(BeEmpty())
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("updating the OIDC client to include both groups")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDOIDCClient
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  name: recovery-oidc-client
+  callbackUrls:
+  - https://example.com/recovery/callback
+  logoutCallbackUrls:
+  - https://example.com/recovery/logout
+  allowedUserGroups:
+  - name: %s
+  - name: %s
+`, recoveryOIDCName, userNS, recoveryOIDCGroup, recoveryOIDCGroupAlt))
+
+			groupID := kubectlGet("pocketidusergroup", recoveryOIDCGroup, "-n", userNS,
+				"-o", "jsonpath={.status.groupId}")
+			groupIDAlt := kubectlGet("pocketidusergroup", recoveryOIDCGroupAlt, "-n", userNS,
+				"-o", "jsonpath={.status.groupId}")
+
+			By("verifying allowed group IDs include both groups")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidoidcclient", recoveryOIDCName, "-n", userNS,
+					"-o", "jsonpath={.status.allowedUserGroupIds[*]}")
+				g.Expect(output).To(ContainSubstring(groupID))
+				g.Expect(output).To(ContainSubstring(groupIDAlt))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 		})
 	})
