@@ -104,12 +104,6 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "override=${OVERRIDE}" >> "$GITHUB_OUTPUT"
 
-      - name: Log in to Helm registry
-        run: |
-          helm registry login ghcr.io \
-            --username "${{ github.actor }}" \
-            --password "${{ secrets.GITHUB_TOKEN }}"
-
       - name: Package chart
         run: |
           mkdir -p dist/chart-packages
@@ -122,10 +116,28 @@ jobs:
             helm package dist/chart --destination dist/chart-packages
           fi
 
-      - name: Push chart to GHCR (OCI)
+      - name: Log in to Helm registry
+        run: |
+          helm registry login ghcr.io \
+            --username "${{ github.actor }}" \
+            --password "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Push chart (OCI)
         run: |
           helm push dist/chart-packages/pocket-id-operator-${{ steps.chart.outputs.version }}.tgz \
             oci://ghcr.io/${{ inputs.repo_owner }}/charts
+
+      - name: Setup ORAS
+        if: github.ref_type != 'tag'
+        uses: oras-project/setup-oras@v1
+
+      - name: Retag chart with non-semver image tag
+        if: github.ref_type != 'tag'
+        run: |
+          CHART_NAME=$(awk -F': ' '$1=="name"{print $2}' dist/chart/Chart.yaml | tr -d '"')
+          oras tag \
+            ghcr.io/${{ inputs.repo_owner }}/charts/${CHART_NAME}:${{ steps.chart.outputs.version }} \
+            "${{ inputs.image_tag }}"
 
       - name: Create GitHub release
         if: github.ref_type == 'tag'
