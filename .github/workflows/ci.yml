@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   meta:
-    name: Stage 0 - Metadata
+    name: Metadata
     runs-on: ubuntu-latest
     outputs:
       repo_owner: ${{ steps.meta.outputs.repo_owner }}
