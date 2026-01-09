@@ -148,6 +148,10 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 	cd config/manager && "$(KUSTOMIZE)" edit set image controller=${IMG}
 	"$(KUSTOMIZE)" build config/default > dist/install.yaml
 
+.PHONY: helm
+helm: ## Generate/update Helm chart under dist/chart (includes CRDs).
+	kubebuilder edit --plugins=helm.kubebuilder.io/v2-alpha
+
 ##@ Deployment
 
 ifndef ignore-not-found
