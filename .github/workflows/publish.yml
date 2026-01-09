@@ -3,6 +3,10 @@ name: Publish
 on:
   workflow_call:
     inputs:
+      image:
+        description: Source image reference to retag for release.
+        required: true
+        type: string
       repo_owner:
         description: Lowercase repo owner for GHCR namespace.
         required: true
@@ -13,6 +17,10 @@ on:
         type: string
   workflow_dispatch:
     inputs:
+      image:
+        description: Source image reference to retag for release.
+        required: true
+        type: string
       repo_owner:
         description: Lowercase repo owner for GHCR namespace.
         required: true
@@ -27,17 +35,9 @@ permissions:
   packages: write
 
 jobs:
-  build-main:
-    name: Build :main image
-    uses: ./.github/workflows/build-push-image.yml
-    with:
-      image: ghcr.io/${{ inputs.repo_owner }}/pocket-id-operator:main
-    secrets: inherit
-
   publish:
     name: Publish chart and tags
     runs-on: ubuntu-latest
-    needs: build-main
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -57,11 +57,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Tag :main image
+        run: |
+          docker buildx imagetools create \
+            -t ghcr.io/${{ inputs.repo_owner }}/pocket-id-operator:main \
+            ${{ inputs.image }}
+
       - name: Tag :commit-main image
         run: |
           docker buildx imagetools create \
             -t ghcr.io/${{ inputs.repo_owner }}/pocket-id-operator:${{ inputs.short_sha }}-main \
-            ghcr.io/${{ inputs.repo_owner }}/pocket-id-operator:main
+            ${{ inputs.image }}
 
       - name: Setup Helm
         uses: azure/setup-helm@v4

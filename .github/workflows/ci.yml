@@ -70,6 +70,7 @@ jobs:
       - e2e
     uses: ./.github/workflows/publish.yml
     with:
+      image: ghcr.io/${{ needs.meta.outputs.repo_owner }}/pocket-id-operator:${{ needs.meta.outputs.ci_tag }}
       repo_owner: ${{ needs.meta.outputs.repo_owner }}
       short_sha: ${{ needs.meta.outputs.short_sha }}
     secrets: inherit
