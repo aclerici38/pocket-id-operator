@@ -44,6 +44,7 @@ const (
 // PocketIDOIDCClientReconciler reconciles a PocketIDOIDCClient object
 type PocketIDOIDCClientReconciler struct {
 	client.Client
+	BaseReconciler
 	Scheme *runtime.Scheme
 }
 
@@ -66,6 +67,7 @@ type PocketIDOIDCClientReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.22.4/pkg/reconcile
 func (r *PocketIDOIDCClientReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
+	r.EnsureClient(r.Client)
 
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
 	if err := r.Get(ctx, req.NamespacedName, oidcClient); err != nil {
@@ -89,18 +91,17 @@ func (r *PocketIDOIDCClientReconciler) Reconcile(ctx context.Context, req ctrl.R
 	instance, err := selectInstance(ctx, r.Client, oidcClient.Spec.InstanceSelector)
 	if err != nil {
 		log.Error(err, "Failed to select PocketIDInstance")
-		r.setReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "InstanceSelectionError", err.Error())
+		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "InstanceSelectionError", err.Error())
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
 	// Validate instance is ready using base reconciler
-	base := &BaseReconciler{Client: r.Client}
-	if validationResult := base.ValidateInstanceReady(ctx, oidcClient, instance); validationResult.ShouldRequeue {
+	if validationResult := r.ValidateInstanceReady(ctx, oidcClient, instance); validationResult.ShouldRequeue {
 		return ctrl.Result{RequeueAfter: validationResult.RequeueAfter}, validationResult.Error
 	}
 
 	// Get API client using base reconciler
-	apiClient, result, err := base.GetAPIClientOrWait(ctx, oidcClient, instance)
+	apiClient, result, err := r.GetAPIClientOrWait(ctx, oidcClient, instance)
 	if result != nil {
 		return *result, err
 	}
@@ -111,7 +112,7 @@ func (r *PocketIDOIDCClientReconciler) Reconcile(ctx context.Context, req ctrl.R
 		if updateErr := r.updateOIDCClientStatus(ctx, oidcClient, current); updateErr != nil {
 			log.Error(updateErr, "Failed to update OIDC client status")
 		}
-		r.setReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "ReconcileError", err.Error())
+		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
@@ -120,7 +121,7 @@ func (r *PocketIDOIDCClientReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	r.setReadyCondition(ctx, oidcClient, metav1.ConditionTrue, "Reconciled", "OIDC client is in sync")
+	_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionTrue, "Reconciled", "OIDC client is in sync")
 
 	return applyResync(ctrl.Result{}), nil
 }
@@ -216,14 +217,9 @@ func (r *PocketIDOIDCClientReconciler) updateOIDCClientStatus(ctx context.Contex
 	return r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
 }
 
-func (r *PocketIDOIDCClientReconciler) setReadyCondition(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, status metav1.ConditionStatus, reason, message string) {
-	base := &BaseReconciler{Client: r.Client}
-	_ = base.SetReadyCondition(ctx, oidcClient, status, reason, message)
-}
-
 func (r *PocketIDOIDCClientReconciler) reconcileDelete(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) (ctrl.Result, error) {
-	base := &BaseReconciler{Client: r.Client}
-	return base.ReconcileDeleteWithPocketID(
+	r.EnsureClient(r.Client)
+	return r.ReconcileDeleteWithPocketID(
 		ctx,
 		oidcClient,
 		oidcClient.Status.ClientID,

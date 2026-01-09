@@ -28,6 +28,13 @@ type BaseReconciler struct {
 	client.Client
 }
 
+// EnsureClient sets the base client if it hasn't been initialized.
+func (r *BaseReconciler) EnsureClient(fallback client.Client) {
+	if r.Client == nil {
+		r.Client = fallback
+	}
+}
+
 // SetReadyCondition updates the Ready condition on a resource
 func (r *BaseReconciler) SetReadyCondition(ctx context.Context, obj ConditionedResource, status metav1.ConditionStatus, reason, message string) error {
 	logger := log.FromContext(ctx)

@@ -44,6 +44,7 @@ const (
 // PocketIDUserGroupReconciler reconciles a PocketIDUserGroup object
 type PocketIDUserGroupReconciler struct {
 	client.Client
+	BaseReconciler
 	Scheme *runtime.Scheme
 }
 
@@ -65,6 +66,7 @@ type PocketIDUserGroupReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.22.4/pkg/reconcile
 func (r *PocketIDUserGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
+	r.EnsureClient(r.Client)
 
 	userGroup := &pocketidinternalv1alpha1.PocketIDUserGroup{}
 	if err := r.Get(ctx, req.NamespacedName, userGroup); err != nil {
@@ -88,18 +90,17 @@ func (r *PocketIDUserGroupReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	instance, err := selectInstance(ctx, r.Client, userGroup.Spec.InstanceSelector)
 	if err != nil {
 		log.Error(err, "Failed to select PocketIDInstance")
-		r.setReadyCondition(ctx, userGroup, metav1.ConditionFalse, "InstanceSelectionError", err.Error())
+		_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "InstanceSelectionError", err.Error())
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
 	// Validate instance is ready using base reconciler
-	base := &BaseReconciler{Client: r.Client}
-	if validationResult := base.ValidateInstanceReady(ctx, userGroup, instance); validationResult.ShouldRequeue {
+	if validationResult := r.ValidateInstanceReady(ctx, userGroup, instance); validationResult.ShouldRequeue {
 		return ctrl.Result{RequeueAfter: validationResult.RequeueAfter}, validationResult.Error
 	}
 
 	// Get API client using base reconciler
-	apiClient, result, err := base.GetAPIClientOrWait(ctx, userGroup, instance)
+	apiClient, result, err := r.GetAPIClientOrWait(ctx, userGroup, instance)
 	if result != nil {
 		return *result, err
 	}
@@ -110,7 +111,7 @@ func (r *PocketIDUserGroupReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		if updateErr := r.updateUserGroupStatus(ctx, userGroup, current); updateErr != nil {
 			log.Error(updateErr, "Failed to update user group status")
 		}
-		r.setReadyCondition(ctx, userGroup, metav1.ConditionFalse, "ReconcileError", err.Error())
+		_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
@@ -119,7 +120,7 @@ func (r *PocketIDUserGroupReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	r.setReadyCondition(ctx, userGroup, metav1.ConditionTrue, "Reconciled", "User group is in sync")
+	_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionTrue, "Reconciled", "User group is in sync")
 
 	return applyResync(ctrl.Result{}), nil
 }
@@ -194,14 +195,9 @@ func (r *PocketIDUserGroupReconciler) updateUserGroupStatus(ctx context.Context,
 	return r.Status().Patch(ctx, userGroup, client.MergeFrom(base))
 }
 
-func (r *PocketIDUserGroupReconciler) setReadyCondition(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, status metav1.ConditionStatus, reason, message string) {
-	base := &BaseReconciler{Client: r.Client}
-	_ = base.SetReadyCondition(ctx, userGroup, status, reason, message)
-}
-
 func (r *PocketIDUserGroupReconciler) reconcileDelete(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup) (ctrl.Result, error) {
-	base := &BaseReconciler{Client: r.Client}
-	return base.ReconcileDeleteWithPocketID(
+	r.EnsureClient(r.Client)
+	return r.ReconcileDeleteWithPocketID(
 		ctx,
 		userGroup,
 		userGroup.Status.GroupID,

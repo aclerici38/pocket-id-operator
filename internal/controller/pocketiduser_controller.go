@@ -49,6 +49,7 @@ const (
 // PocketIDUserReconciler reconciles a PocketIDUser object
 type PocketIDUserReconciler struct {
 	client.Client
+	BaseReconciler
 	// APIReader provides direct API reads for externally-managed secrets.
 	// Used only when reading user-provided secrets (userInfoSecretRef, secretRef for API keys)
 	// to avoid cache delays when secrets are created externally.
@@ -64,6 +65,7 @@ type PocketIDUserReconciler struct {
 
 func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
+	r.EnsureClient(r.Client)
 
 	// Fetch the User CR
 	user := &pocketidinternalv1alpha1.PocketIDUser{}
@@ -81,7 +83,7 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	instance, err := selectInstance(ctx, r.Client, user.Spec.InstanceSelector)
 	if err != nil {
 		log.Error(err, "Failed to select PocketIDInstance")
-		r.setReadyCondition(ctx, user, metav1.ConditionFalse, "InstanceSelectionError", err.Error())
+		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "InstanceSelectionError", err.Error())
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
@@ -95,13 +97,12 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	// Validate instance is ready using base reconciler
-	base := &BaseReconciler{Client: r.Client}
-	if validationResult := base.ValidateInstanceReady(ctx, user, instance); validationResult.ShouldRequeue {
+	if validationResult := r.ValidateInstanceReady(ctx, user, instance); validationResult.ShouldRequeue {
 		return ctrl.Result{RequeueAfter: validationResult.RequeueAfter}, validationResult.Error
 	}
 
 	// Get API client using base reconciler
-	apiClient, result, err := base.GetAPIClientOrWait(ctx, user, instance)
+	apiClient, result, err := r.GetAPIClientOrWait(ctx, user, instance)
 	if result != nil {
 		return *result, err
 	}
@@ -109,14 +110,14 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// Reconcile the user in Pocket-ID
 	if err := r.reconcileUser(ctx, user, apiClient, instance); err != nil {
 		log.Error(err, "Failed to reconcile user")
-		r.setReadyCondition(ctx, user, metav1.ConditionFalse, "ReconcileError", err.Error())
+		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
 	// Reconcile API keys
 	if err := r.reconcileAPIKeys(ctx, user, apiClient); err != nil {
 		log.Error(err, "Failed to reconcile API keys")
-		r.setReadyCondition(ctx, user, metav1.ConditionFalse, "APIKeyError", err.Error())
+		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "APIKeyError", err.Error())
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
@@ -125,7 +126,7 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	r.setReadyCondition(ctx, user, metav1.ConditionTrue, "Reconciled", "User and API keys are in sync")
+	_ = r.SetReadyCondition(ctx, user, metav1.ConditionTrue, "Reconciled", "User and API keys are in sync")
 
 	cleanupResult, err := r.reconcileOneTimeLoginStatus(ctx, user)
 	if err != nil {
@@ -632,12 +633,6 @@ func (r *PocketIDUserReconciler) reconcileAPIKeys(ctx context.Context, user *poc
 	}
 
 	return nil
-}
-
-// setReadyCondition updates the Ready condition on the User CR
-func (r *PocketIDUserReconciler) setReadyCondition(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, status metav1.ConditionStatus, reason, message string) {
-	base := &BaseReconciler{Client: r.Client}
-	_ = base.SetReadyCondition(ctx, user, status, reason, message)
 }
 
 // SetupWithManager sets up the controller with the Manager.

@@ -314,7 +314,6 @@ func buildPodSecurityContext(instance *pocketidinternalv1alpha1.PocketIDInstance
 		return defaults
 	}
 
-	// Allow overriding the defaults
 	merged := instance.Spec.PodSecurityContext.DeepCopy()
 	if merged.RunAsNonRoot == nil {
 		merged.RunAsNonRoot = defaults.RunAsNonRoot
@@ -350,7 +349,6 @@ func buildContainerSecurityContext(instance *pocketidinternalv1alpha1.PocketIDIn
 		return defaults
 	}
 
-	// Allow overriding the defaults
 	merged := instance.Spec.ContainerSecurityContext.DeepCopy()
 	if merged.AllowPrivilegeEscalation == nil {
 		merged.AllowPrivilegeEscalation = defaults.AllowPrivilegeEscalation
@@ -401,7 +399,6 @@ func (r *PocketIDInstanceReconciler) reconcileDeployment(ctx context.Context, in
 	}
 
 	deployment := &appsv1.Deployment{
-		// Add type meta for SSA patching
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "apps/v1",
 			Kind:       "Deployment",
@@ -966,34 +963,10 @@ func (r *PocketIDInstanceReconciler) updateAuthStatus(ctx context.Context, insta
 	return ctrl.Result{}, nil
 }
 
-// resolveStringValue resolves a StringValue to its actual string value
+// resolveStringValue is a convenience wrapper around the shared helper
+// The instance controller uses cached client (no APIReader) since it only reads controller-owned secrets
 func (r *PocketIDInstanceReconciler) resolveStringValue(ctx context.Context, namespace string, sv pocketidinternalv1alpha1.StringValue, fallbackSecretName, fallbackKey string) (string, error) {
-	if sv.Value != "" {
-		return sv.Value, nil
-	}
-	if sv.ValueFrom != nil {
-		secret := &corev1.Secret{}
-		if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: sv.ValueFrom.Name}, secret); err != nil {
-			return "", fmt.Errorf("get secret %s: %w", sv.ValueFrom.Name, err)
-		}
-		val, ok := secret.Data[sv.ValueFrom.Key]
-		if !ok {
-			return "", fmt.Errorf("secret %s missing key %s", sv.ValueFrom.Name, sv.ValueFrom.Key)
-		}
-		return string(val), nil
-	}
-	if fallbackSecretName != "" && fallbackKey != "" {
-		secret := &corev1.Secret{}
-		if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: fallbackSecretName}, secret); err != nil {
-			return "", fmt.Errorf("get secret %s: %w", fallbackSecretName, err)
-		}
-		val, ok := secret.Data[fallbackKey]
-		if !ok {
-			return "", fmt.Errorf("secret %s missing key %s", fallbackSecretName, fallbackKey)
-		}
-		return string(val), nil
-	}
-	return "", nil
+	return ResolveStringValue(ctx, r.Client, nil, namespace, sv, fallbackSecretName, fallbackKey)
 }
 
 // SetupWithManager sets up the controller with the Manager.
