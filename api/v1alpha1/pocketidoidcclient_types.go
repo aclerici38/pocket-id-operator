@@ -61,11 +61,6 @@ type PocketIDOIDCClientSpec struct {
 	// +optional
 	InstanceSelector *metav1.LabelSelector `json:"instanceSelector,omitempty"`
 
-	// Name of the OIDC client
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MaxLength=50
-	Name string `json:"name"`
-
 	// ID is the optional client ID to use instead of a generated one
 	// +kubebuilder:validation:MinLength=2
 	// +kubebuilder:validation:MaxLength=128

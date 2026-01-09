@@ -730,7 +730,6 @@ metadata:
   name: %s
   namespace: %s
 spec:
-  name: e2e-oidc-client
   callbackUrls:
   - https://example.com/callback
   logoutCallbackUrls:
@@ -842,7 +841,6 @@ metadata:
   name: %s
   namespace: %s
 spec:
-  name: recovery-oidc-client
   callbackUrls:
   - https://example.com/recovery/callback
   logoutCallbackUrls:
@@ -911,7 +909,6 @@ metadata:
   name: %s
   namespace: %s
 spec:
-  name: recovery-oidc-client
   callbackUrls:
   - https://example.com/recovery/callback
   logoutCallbackUrls:
@@ -968,7 +965,6 @@ metadata:
   name: %s
   namespace: %s
 spec:
-  name: finalizer-oidc-client
   callbackUrls:
   - https://example.com/finalizer/callback
   logoutCallbackUrls:

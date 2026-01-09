@@ -68,9 +68,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 					Name:      resourceName,
 					Namespace: namespace,
 				},
-				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-					Name: "Test OIDC Client",
-				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{},
 			}
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
@@ -143,7 +141,6 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-					Name: "Client",
 					AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
 						{Name: groupName},
 					},
@@ -162,7 +159,6 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-					Name: "Client",
 					AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
 						{Name: "missing-group"},
 					},
@@ -180,7 +176,6 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-					Name: "Client",
 					AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
 						{Name: ""},
 					},
@@ -213,7 +208,6 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-					Name: "Client",
 					AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
 						{Name: group.Name},
 					},
@@ -262,7 +256,6 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-					Name: "Client",
 					AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
 						{Name: group.Name, Namespace: otherNamespace.Name},
 					},
@@ -309,9 +302,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 					Name:      clientName,
 					Namespace: namespace,
 				},
-				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-					Name: "Test OIDC Client",
-				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{},
 			}
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
@@ -378,9 +369,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 					Name:      clientName,
 					Namespace: namespace,
 				},
-				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-					Name: "Test OIDC Client",
-				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{},
 			}
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
@@ -443,9 +432,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 						oidcClientFinalizer,
 					},
 				},
-				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-					Name: "Test OIDC Client",
-				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{},
 			}
 			fakeClient := fake.NewClientBuilder().
 				WithScheme(scheme).
@@ -480,7 +467,6 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 					ID:                       "client-id",
-					Name:                     "",
 					CallbackURLs:             []string{"https://example.com/callback"},
 					LogoutCallbackURLs:       []string{"https://example.com/logout"},
 					LaunchURL:                "https://example.com",
@@ -536,9 +522,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 					Name:      clientName,
 					Namespace: namespace,
 				},
-				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-					Name: "Test OIDC Client",
-				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{},
 			}
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
@@ -574,9 +558,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 				Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
 					ClientID: "client-id",
 				},
-				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-					Name: "Client",
-				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{},
 			}
 
 			fakeClient := fake.NewClientBuilder().
@@ -620,9 +602,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 				Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
 					ClientID: "client-id",
 				},
-				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-					Name: "Client",
-				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{},
 			}
 
 			fakeClient := fake.NewClientBuilder().

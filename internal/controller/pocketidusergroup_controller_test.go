@@ -545,7 +545,6 @@ var _ = Describe("PocketIDUserGroup Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-					Name: "Finalizer OIDC Client",
 					AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
 						{Name: group.Name},
 					},
@@ -616,7 +615,6 @@ var _ = Describe("PocketIDUserGroup Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-					Name: "Finalizer OIDC Client Delete",
 					AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
 						{Name: group.Name},
 					},

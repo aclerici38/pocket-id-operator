@@ -153,10 +153,6 @@ spec:
                 items:
                   type: string
                 type: array
-              name:
-                description: Name of the OIDC client
-                maxLength: 50
-                type: string
               pkceEnabled:
                 default: false
                 description: Enables PKCE for the client
@@ -165,8 +161,6 @@ spec:
                 default: false
                 description: Requires reauthentication on login
                 type: boolean
-            required:
-            - name
             type: object
           status:
             description: status defines the observed state of PocketIDOIDCClient

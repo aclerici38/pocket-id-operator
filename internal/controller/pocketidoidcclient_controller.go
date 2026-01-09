@@ -160,10 +160,7 @@ func (r *PocketIDOIDCClientReconciler) reconcileOIDCClient(ctx context.Context, 
 }
 
 func (r *PocketIDOIDCClientReconciler) oidcClientInput(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) pocketid.OIDCClientInput {
-	name := oidcClient.Spec.Name
-	if name == "" {
-		name = oidcClient.Name
-	}
+	name := oidcClient.Name
 
 	var credentials *pocketid.OIDCClientCredentials
 	if len(oidcClient.Spec.FederatedIdentities) > 0 {
