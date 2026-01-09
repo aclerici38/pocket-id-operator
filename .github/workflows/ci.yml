@@ -40,6 +40,7 @@ jobs:
             IMAGE_TAG="${BUILD_TAG}"
           elif [ "${{ github.ref_type }}" = "tag" ]; then
             IMAGE_TAG="${{ github.ref_name }}"
+            BUILD_TAG="${SHORT_SHA}-main"
           fi
           BUILD_IMAGE="ghcr.io/${REPO_OWNER}/pocket-id-operator:${BUILD_TAG}"
           echo "repo_owner=${REPO_OWNER}" >> "$GITHUB_OUTPUT"
@@ -51,12 +52,14 @@ jobs:
   test:
     name: Tests
     needs: meta
+    if: ${{ github.ref_type != 'tag' }}
     uses: ./.github/workflows/test.yml
     secrets: inherit
 
   lint:
     name: Lint
     needs: meta
+    if: ${{ github.ref_type != 'tag' }}
     uses: ./.github/workflows/lint.yml
     secrets: inherit
 
@@ -64,7 +67,7 @@ jobs:
     name: Build Image
     needs: meta
     uses: ./.github/workflows/build-push-image.yml
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ github.ref_type != 'tag' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
     with:
       image: ${{ needs.meta.outputs.build_image }}
     secrets: inherit
@@ -76,7 +79,7 @@ jobs:
       - test
       - lint
       - build
-    if: ${{ github.event_name != 'pull_request' }}
+    if: ${{ github.ref_type != 'tag' && github.event_name != 'pull_request' }}
     uses: ./.github/workflows/test-e2e.yml
     with:
       image: ${{ needs.meta.outputs.build_image }}
@@ -87,7 +90,7 @@ jobs:
     needs:
       - meta
       - e2e
-    if: ${{ github.event_name == 'push' }}
+    if: ${{ github.event_name == 'push' && (github.ref_type == 'tag' || needs.e2e.result == 'success') }}
     uses: ./.github/workflows/publish.yml
     with:
       image: ${{ needs.meta.outputs.build_image }}

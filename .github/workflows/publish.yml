@@ -95,11 +95,14 @@ jobs:
       - name: Read chart version
         id: chart
         run: |
-          VERSION=""
+          VERSION=$(awk -F': ' '$1=="version"{print $2}' dist/chart/Chart.yaml | tr -d '"')
+          OVERRIDE=""
           if [ "${{ github.ref_type }}" = "tag" ]; then
             VERSION="${{ inputs.image_tag }}"
+            OVERRIDE="${VERSION}"
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "override=${OVERRIDE}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to Helm registry
         run: |
@@ -110,10 +113,10 @@ jobs:
       - name: Package chart
         run: |
           mkdir -p dist/chart-packages
-          if [ -n "${{ steps.chart.outputs.version }}" ]; then
+          if [ -n "${{ steps.chart.outputs.override }}" ]; then
             helm package dist/chart \
-              --version "${{ steps.chart.outputs.version }}" \
-              --app-version "${{ steps.chart.outputs.version }}" \
+              --version "${{ steps.chart.outputs.override }}" \
+              --app-version "${{ steps.chart.outputs.override }}" \
               --destination dist/chart-packages
           else
             helm package dist/chart --destination dist/chart-packages
