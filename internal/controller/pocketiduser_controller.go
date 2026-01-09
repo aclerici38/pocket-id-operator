@@ -24,7 +24,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/retry"
@@ -92,29 +91,16 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	// Check if instance is available
-	if !instanceReady(instance) {
-		log.Info("PocketIDInstance not ready, requeuing")
-		r.setReadyCondition(ctx, user, metav1.ConditionFalse, "InstanceNotReady", "Waiting for PocketIDInstance to be ready")
-		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
-	}
-	if !instance.Status.Bootstrapped {
-		log.Info("PocketIDInstance not bootstrapped, requeuing")
-		r.setReadyCondition(ctx, user, metav1.ConditionFalse, "InstanceNotBootstrapped", "Waiting for PocketIDInstance bootstrap")
-		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	// Validate instance is ready using base reconciler
+	base := &BaseReconciler{Client: r.Client}
+	if validationResult := base.ValidateInstanceReady(ctx, user, instance); validationResult.ShouldRequeue {
+		return ctrl.Result{RequeueAfter: validationResult.RequeueAfter}, validationResult.Error
 	}
 
-	// Get API client
-	apiClient, err := apiClientForInstance(ctx, r.Client, instance)
-	if err != nil {
-		if stderrors.Is(err, ErrAPIClientNotReady) {
-			log.Info("API client not ready, requeuing")
-			r.setReadyCondition(ctx, user, metav1.ConditionFalse, "APIClientNotReady", "Waiting for PocketID API client")
-			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
-		}
-		log.Error(err, "Failed to get API client")
-		r.setReadyCondition(ctx, user, metav1.ConditionFalse, "APIClientError", err.Error())
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	// Get API client using base reconciler
+	apiClient, result, err := base.GetAPIClientOrWait(ctx, user, instance)
+	if result != nil {
+		return *result, err
 	}
 
 	// Reconcile the user in Pocket-ID
@@ -278,43 +264,9 @@ func (r *PocketIDUserReconciler) reconcileDelete(ctx context.Context, user *pock
 	return ctrl.Result{}, nil
 }
 
-// resolveStringValue resolves a StringValue to its actual string value
+// resolveStringValue is a convenience wrapper around the shared helper
 func (r *PocketIDUserReconciler) resolveStringValue(ctx context.Context, namespace string, sv pocketidinternalv1alpha1.StringValue, fallbackSecretName, fallbackKey string) (string, error) {
-	if sv.Value != "" {
-		return sv.Value, nil
-	}
-	if sv.ValueFrom != nil {
-		reader := r.APIReader
-		if reader == nil {
-			reader = r.Client
-		}
-		secret := &corev1.Secret{}
-		if err := reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: sv.ValueFrom.Name}, secret); err != nil {
-			return "", fmt.Errorf("get secret %s: %w", sv.ValueFrom.Name, err)
-		}
-		key := sv.ValueFrom.Key
-		val, ok := secret.Data[key]
-		if !ok {
-			return "", fmt.Errorf("secret %s missing key %s", sv.ValueFrom.Name, key)
-		}
-		return string(val), nil
-	}
-	if fallbackSecretName != "" && fallbackKey != "" {
-		reader := r.APIReader
-		if reader == nil {
-			reader = r.Client
-		}
-		secret := &corev1.Secret{}
-		if err := reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: fallbackSecretName}, secret); err != nil {
-			return "", fmt.Errorf("get secret %s: %w", fallbackSecretName, err)
-		}
-		val, ok := secret.Data[fallbackKey]
-		if !ok {
-			return "", fmt.Errorf("secret %s missing key %s", fallbackSecretName, fallbackKey)
-		}
-		return string(val), nil
-	}
-	return "", nil
+	return ResolveStringValue(ctx, r.Client, r.APIReader, namespace, sv, fallbackSecretName, fallbackKey)
 }
 
 // reconcileUser ensures the user exists in Pocket-ID with correct settings
@@ -681,19 +633,8 @@ func (r *PocketIDUserReconciler) reconcileAPIKeys(ctx context.Context, user *poc
 
 // setReadyCondition updates the Ready condition on the User CR
 func (r *PocketIDUserReconciler) setReadyCondition(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, status metav1.ConditionStatus, reason, message string) {
-	base := user.DeepCopy()
-
-	meta.SetStatusCondition(&user.Status.Conditions, metav1.Condition{
-		Type:               "Ready",
-		Status:             status,
-		Reason:             reason,
-		Message:            message,
-		ObservedGeneration: user.Generation,
-	})
-
-	if err := r.Status().Patch(ctx, user, client.MergeFrom(base)); err != nil {
-		logf.FromContext(ctx).Error(err, "Failed to update condition")
-	}
+	base := &BaseReconciler{Client: r.Client}
+	_ = base.SetReadyCondition(ctx, user, status, reason, message)
 }
 
 // SetupWithManager sets up the controller with the Manager.

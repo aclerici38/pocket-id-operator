@@ -18,11 +18,9 @@ package controller
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -95,27 +93,16 @@ func (r *PocketIDOIDCClientReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	if !instanceReady(instance) {
-		log.Info("PocketIDInstance not ready, requeuing")
-		r.setReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "InstanceNotReady", "Waiting for PocketIDInstance to be ready")
-		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
-	}
-	if !instance.Status.Bootstrapped {
-		log.Info("PocketIDInstance not bootstrapped, requeuing")
-		r.setReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "InstanceNotBootstrapped", "Waiting for PocketIDInstance bootstrap")
-		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	// Validate instance is ready using base reconciler
+	base := &BaseReconciler{Client: r.Client}
+	if validationResult := base.ValidateInstanceReady(ctx, oidcClient, instance); validationResult.ShouldRequeue {
+		return ctrl.Result{RequeueAfter: validationResult.RequeueAfter}, validationResult.Error
 	}
 
-	apiClient, err := apiClientForInstance(ctx, r.Client, instance)
-	if err != nil {
-		if errors.Is(err, ErrAPIClientNotReady) {
-			log.Info("API client not ready, requeuing")
-			r.setReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "APIClientNotReady", "Waiting for PocketID API client")
-			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
-		}
-		log.Error(err, "Failed to get API client")
-		r.setReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "APIClientError", err.Error())
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	// Get API client using base reconciler
+	apiClient, result, err := base.GetAPIClientOrWait(ctx, oidcClient, instance)
+	if result != nil {
+		return *result, err
 	}
 
 	current, err := r.reconcileOIDCClient(ctx, oidcClient, apiClient)
@@ -214,25 +201,7 @@ func (r *PocketIDOIDCClientReconciler) oidcClientInput(oidcClient *pocketidinter
 }
 
 func (r *PocketIDOIDCClientReconciler) resolveAllowedUserGroups(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) ([]string, error) {
-	groupIDs := make([]string, 0, len(oidcClient.Spec.AllowedUserGroups))
-	for _, ref := range oidcClient.Spec.AllowedUserGroups {
-		if ref.Name == "" {
-			return nil, fmt.Errorf("allowedUserGroups contains an empty name")
-		}
-		namespace := ref.Namespace
-		if namespace == "" {
-			namespace = oidcClient.Namespace
-		}
-		group := &pocketidinternalv1alpha1.PocketIDUserGroup{}
-		if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: ref.Name}, group); err != nil {
-			return nil, fmt.Errorf("get user group %s: %w", ref.Name, err)
-		}
-		if group.Status.GroupID == "" {
-			return nil, fmt.Errorf("user group %s is not ready", ref.Name)
-		}
-		groupIDs = append(groupIDs, group.Status.GroupID)
-	}
-	return groupIDs, nil
+	return ResolveUserGroupReferences(ctx, r.Client, oidcClient.Spec.AllowedUserGroups, oidcClient.Namespace)
 }
 
 // Updates the OIDCClient status with values returned from pocket-id
@@ -248,55 +217,22 @@ func (r *PocketIDOIDCClientReconciler) updateOIDCClientStatus(ctx context.Contex
 }
 
 func (r *PocketIDOIDCClientReconciler) setReadyCondition(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, status metav1.ConditionStatus, reason, message string) {
-	base := oidcClient.DeepCopy()
-	meta.SetStatusCondition(&oidcClient.Status.Conditions, metav1.Condition{
-		Type:               "Ready",
-		Status:             status,
-		Reason:             reason,
-		Message:            message,
-		ObservedGeneration: oidcClient.Generation,
-	})
-	if err := r.Status().Patch(ctx, oidcClient, client.MergeFrom(base)); err != nil {
-		logf.FromContext(ctx).Error(err, "Failed to update condition")
-	}
+	base := &BaseReconciler{Client: r.Client}
+	_ = base.SetReadyCondition(ctx, oidcClient, status, reason, message)
 }
 
 func (r *PocketIDOIDCClientReconciler) reconcileDelete(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) (ctrl.Result, error) {
-	log := logf.FromContext(ctx)
-
-	if oidcClient.Status.ClientID != "" {
-		instance, err := selectInstance(ctx, r.Client, oidcClient.Spec.InstanceSelector)
-		if err != nil {
-			if errors.Is(err, errNoInstance) {
-				log.Info("No PocketIDInstance found; skipping Pocket-ID deletion", "clientID", oidcClient.Status.ClientID)
-			} else {
-				log.Error(err, "Failed to select PocketIDInstance for delete")
-				return ctrl.Result{}, err
-			}
-		} else {
-			apiClient, err := apiClientForInstance(ctx, r.Client, instance)
-			if err != nil {
-				if errors.Is(err, ErrAPIClientNotReady) {
-					log.Info("API client not ready for delete, requeuing", "clientID", oidcClient.Status.ClientID)
-					return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
-				}
-				log.Error(err, "Failed to get API client for delete")
-				return ctrl.Result{}, err
-			}
-			log.Info("Deleting OIDC client from Pocket-ID", "clientID", oidcClient.Status.ClientID)
-			if err := apiClient.DeleteOIDCClient(ctx, oidcClient.Status.ClientID); err != nil {
-				log.Error(err, "Failed to delete OIDC client from Pocket-ID")
-				return ctrl.Result{}, err
-			}
-		}
-	}
-
-	controllerutil.RemoveFinalizer(oidcClient, oidcClientFinalizer)
-	if err := r.Update(ctx, oidcClient); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	return ctrl.Result{}, nil
+	base := &BaseReconciler{Client: r.Client}
+	return base.ReconcileDeleteWithPocketID(
+		ctx,
+		oidcClient,
+		oidcClient.Status.ClientID,
+		oidcClient.Spec.InstanceSelector,
+		oidcClientFinalizer,
+		func(ctx context.Context, client *pocketid.Client, id string) error {
+			return client.DeleteOIDCClient(ctx, id)
+		},
+	)
 }
 
 func (r *PocketIDOIDCClientReconciler) requestsForUserGroup(ctx context.Context, obj client.Object) []reconcile.Request {

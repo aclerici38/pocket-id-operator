@@ -18,11 +18,9 @@ package controller
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -94,27 +92,16 @@ func (r *PocketIDUserGroupReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	if !instanceReady(instance) {
-		log.Info("PocketIDInstance not ready, requeuing")
-		r.setReadyCondition(ctx, userGroup, metav1.ConditionFalse, "InstanceNotReady", "Waiting for PocketIDInstance to be ready")
-		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
-	}
-	if !instance.Status.Bootstrapped {
-		log.Info("PocketIDInstance not bootstrapped, requeuing")
-		r.setReadyCondition(ctx, userGroup, metav1.ConditionFalse, "InstanceNotBootstrapped", "Waiting for PocketIDInstance bootstrap")
-		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	// Validate instance is ready using base reconciler
+	base := &BaseReconciler{Client: r.Client}
+	if validationResult := base.ValidateInstanceReady(ctx, userGroup, instance); validationResult.ShouldRequeue {
+		return ctrl.Result{RequeueAfter: validationResult.RequeueAfter}, validationResult.Error
 	}
 
-	apiClient, err := apiClientForInstance(ctx, r.Client, instance)
-	if err != nil {
-		if errors.Is(err, ErrAPIClientNotReady) {
-			log.Info("API client not ready, requeuing")
-			r.setReadyCondition(ctx, userGroup, metav1.ConditionFalse, "APIClientNotReady", "Waiting for PocketID API client")
-			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
-		}
-		log.Error(err, "Failed to get API client")
-		r.setReadyCondition(ctx, userGroup, metav1.ConditionFalse, "APIClientError", err.Error())
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	// Get API client using base reconciler
+	apiClient, result, err := base.GetAPIClientOrWait(ctx, userGroup, instance)
+	if result != nil {
+		return *result, err
 	}
 
 	current, err := r.reconcileUserGroup(ctx, userGroup, apiClient)
@@ -189,25 +176,7 @@ func (r *PocketIDUserGroupReconciler) reconcileUserGroup(ctx context.Context, us
 }
 
 func (r *PocketIDUserGroupReconciler) resolveUserRefs(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup) ([]string, error) {
-	userIDs := make([]string, 0, len(userGroup.Spec.UserRefs))
-	for _, ref := range userGroup.Spec.UserRefs {
-		if ref.Name == "" {
-			return nil, fmt.Errorf("userRefs contains an empty name")
-		}
-		namespace := ref.Namespace
-		if namespace == "" {
-			namespace = userGroup.Namespace
-		}
-		user := &pocketidinternalv1alpha1.PocketIDUser{}
-		if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: ref.Name}, user); err != nil {
-			return nil, fmt.Errorf("get user %s: %w", ref.Name, err)
-		}
-		if user.Status.UserID == "" {
-			return nil, fmt.Errorf("user %s is not ready", ref.Name)
-		}
-		userIDs = append(userIDs, user.Status.UserID)
-	}
-	return userIDs, nil
+	return ResolveUserReferences(ctx, r.Client, userGroup.Spec.UserRefs, userGroup.Namespace)
 }
 
 func (r *PocketIDUserGroupReconciler) updateUserGroupStatus(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, current *pocketid.UserGroup) error {
@@ -226,55 +195,22 @@ func (r *PocketIDUserGroupReconciler) updateUserGroupStatus(ctx context.Context,
 }
 
 func (r *PocketIDUserGroupReconciler) setReadyCondition(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, status metav1.ConditionStatus, reason, message string) {
-	base := userGroup.DeepCopy()
-	meta.SetStatusCondition(&userGroup.Status.Conditions, metav1.Condition{
-		Type:               "Ready",
-		Status:             status,
-		Reason:             reason,
-		Message:            message,
-		ObservedGeneration: userGroup.Generation,
-	})
-	if err := r.Status().Patch(ctx, userGroup, client.MergeFrom(base)); err != nil {
-		logf.FromContext(ctx).Error(err, "Failed to update condition")
-	}
+	base := &BaseReconciler{Client: r.Client}
+	_ = base.SetReadyCondition(ctx, userGroup, status, reason, message)
 }
 
 func (r *PocketIDUserGroupReconciler) reconcileDelete(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup) (ctrl.Result, error) {
-	log := logf.FromContext(ctx)
-
-	if userGroup.Status.GroupID != "" {
-		instance, err := selectInstance(ctx, r.Client, userGroup.Spec.InstanceSelector)
-		if err != nil {
-			if errors.Is(err, errNoInstance) {
-				log.Info("No PocketIDInstance found; skipping Pocket-ID deletion", "groupID", userGroup.Status.GroupID)
-			} else {
-				log.Error(err, "Failed to select PocketIDInstance for delete")
-				return ctrl.Result{}, err
-			}
-		} else {
-			apiClient, err := apiClientForInstance(ctx, r.Client, instance)
-			if err != nil {
-				if errors.Is(err, ErrAPIClientNotReady) {
-					log.Info("API client not ready for delete, requeuing", "groupID", userGroup.Status.GroupID)
-					return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
-				}
-				log.Error(err, "Failed to get API client for delete")
-				return ctrl.Result{}, err
-			}
-			log.Info("Deleting user group from Pocket-ID", "groupID", userGroup.Status.GroupID)
-			if err := apiClient.DeleteUserGroup(ctx, userGroup.Status.GroupID); err != nil {
-				log.Error(err, "Failed to delete user group from Pocket-ID")
-				return ctrl.Result{}, err
-			}
-		}
-	}
-
-	controllerutil.RemoveFinalizer(userGroup, userGroupFinalizer)
-	if err := r.Update(ctx, userGroup); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	return ctrl.Result{}, nil
+	base := &BaseReconciler{Client: r.Client}
+	return base.ReconcileDeleteWithPocketID(
+		ctx,
+		userGroup,
+		userGroup.Status.GroupID,
+		userGroup.Spec.InstanceSelector,
+		userGroupFinalizer,
+		func(ctx context.Context, client *pocketid.Client, id string) error {
+			return client.DeleteUserGroup(ctx, id)
+		},
+	)
 }
 
 func (r *PocketIDUserGroupReconciler) requestsForUser(ctx context.Context, obj client.Object) []reconcile.Request {
