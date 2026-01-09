@@ -60,8 +60,7 @@ const (
 // PocketIDInstanceReconciler reconciles a PocketIDInstance object
 type PocketIDInstanceReconciler struct {
 	client.Client
-	APIReader client.Reader
-	Scheme    *runtime.Scheme
+	Scheme *runtime.Scheme
 }
 
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidinstances,verbs=get;list;watch;create;update;patch;delete
@@ -645,13 +644,8 @@ func (r *PocketIDInstanceReconciler) reconcileVolume(ctx context.Context, instan
 		return err
 	}
 
-	reader := r.APIReader
-	if reader == nil {
-		reader = r.Client
-	}
-
 	existing := &corev1.PersistentVolumeClaim{}
-	if err := reader.Get(ctx, client.ObjectKeyFromObject(pvc), existing); err != nil {
+	if err := r.Get(ctx, client.ObjectKeyFromObject(pvc), existing); err != nil {
 		if !errors.IsNotFound(err) {
 			return err
 		}
@@ -978,12 +972,8 @@ func (r *PocketIDInstanceReconciler) resolveStringValue(ctx context.Context, nam
 		return sv.Value, nil
 	}
 	if sv.ValueFrom != nil {
-		reader := r.APIReader
-		if reader == nil {
-			reader = r.Client
-		}
 		secret := &corev1.Secret{}
-		if err := reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: sv.ValueFrom.Name}, secret); err != nil {
+		if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: sv.ValueFrom.Name}, secret); err != nil {
 			return "", fmt.Errorf("get secret %s: %w", sv.ValueFrom.Name, err)
 		}
 		val, ok := secret.Data[sv.ValueFrom.Key]
@@ -993,12 +983,8 @@ func (r *PocketIDInstanceReconciler) resolveStringValue(ctx context.Context, nam
 		return string(val), nil
 	}
 	if fallbackSecretName != "" && fallbackKey != "" {
-		reader := r.APIReader
-		if reader == nil {
-			reader = r.Client
-		}
 		secret := &corev1.Secret{}
-		if err := reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: fallbackSecretName}, secret); err != nil {
+		if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: fallbackSecretName}, secret); err != nil {
 			return "", fmt.Errorf("get secret %s: %w", fallbackSecretName, err)
 		}
 		val, ok := secret.Data[fallbackKey]

@@ -13,11 +13,11 @@ import (
 // ResolveStringValue resolves a StringValue to its actual string representation
 // It handles three cases:
 // 1. Direct value from sv.Value
-// 2. Value from a secret reference in sv.ValueFrom
-// 3. Fallback to a specified secret name and key
+// 2. Value from a secret reference in sv.ValueFrom (uses apiReader for fresh reads)
+// 3. Fallback to a specified secret name and key (uses apiReader for fresh reads)
 //
-// The apiReader parameter allows using a direct API reader for uncached reads.
-// If apiReader is nil, the regular client will be used.
+// The apiReader should be used for user-provided secrets to avoid cache delays.
+// If apiReader is nil, falls back to the cached client.
 func ResolveStringValue(
 	ctx context.Context,
 	c client.Client,
@@ -32,12 +32,12 @@ func ResolveStringValue(
 		return sv.Value, nil
 	}
 
-	// Case 2: Value from secret reference
+	// Case 2: Value from secret reference (user-provided, use APIReader)
 	if sv.ValueFrom != nil {
 		return getSecretValue(ctx, c, apiReader, namespace, sv.ValueFrom.Name, sv.ValueFrom.Key)
 	}
 
-	// Case 3: Fallback secret
+	// Case 3: Fallback secret (user-provided, use APIReader)
 	if fallbackSecretName != "" && fallbackKey != "" {
 		return getSecretValue(ctx, c, apiReader, namespace, fallbackSecretName, fallbackKey)
 	}
@@ -46,7 +46,7 @@ func ResolveStringValue(
 	return "", nil
 }
 
-// getSecretValue retrieves a value from a secret, preferring apiReader over client
+// getSecretValue retrieves a value from a secret, preferring apiReader for fresh reads
 func getSecretValue(
 	ctx context.Context,
 	c client.Client,
@@ -55,6 +55,7 @@ func getSecretValue(
 	secretName string,
 	key string,
 ) (string, error) {
+	// Use APIReader for direct reads if available, otherwise use cached client
 	reader := apiReader
 	if reader == nil {
 		reader = c

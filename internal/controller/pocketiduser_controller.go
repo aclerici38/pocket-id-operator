@@ -49,6 +49,9 @@ const (
 // PocketIDUserReconciler reconciles a PocketIDUser object
 type PocketIDUserReconciler struct {
 	client.Client
+	// APIReader provides direct API reads for externally-managed secrets.
+	// Used only when reading user-provided secrets (userInfoSecretRef, secretRef for API keys)
+	// to avoid cache delays when secrets are created externally.
 	APIReader client.Reader
 	Scheme    *runtime.Scheme
 }
@@ -517,7 +520,7 @@ func (r *PocketIDUserReconciler) reconcileAPIKeys(ctx context.Context, user *poc
 		if spec.SecretRef != nil {
 			log.Info("Using existing secret for API key", "name", spec.Name, "secret", spec.SecretRef.Name)
 
-			// Verify the secret exists
+			// Verify the secret exists (use APIReader for fresh read of user-provided secret)
 			reader := r.APIReader
 			if reader == nil {
 				reader = r.Client

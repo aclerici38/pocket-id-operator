@@ -56,7 +56,7 @@ func TestReconcileAuth_DelaysAuthSwitchUntilUserReady(t *testing.T) {
 		WithObjects(instance, user).
 		Build()
 
-	reconciler := &PocketIDInstanceReconciler{Client: client, APIReader: client, Scheme: scheme}
+	reconciler := &PocketIDInstanceReconciler{Client: client, Scheme: scheme}
 	result, err := reconciler.reconcileAuth(context.Background(), instance)
 	if err != nil {
 		t.Fatalf("reconcileAuth returned error: %v", err)
@@ -114,7 +114,7 @@ func TestReconcileAuth_BlocksWhenAuthUserNotAdmin(t *testing.T) {
 		WithObjects(instance, user, secret).
 		Build()
 
-	reconciler := &PocketIDInstanceReconciler{Client: client, APIReader: client, Scheme: scheme}
+	reconciler := &PocketIDInstanceReconciler{Client: client, Scheme: scheme}
 	result, err := reconciler.reconcileAuth(context.Background(), instance)
 	if err != nil {
 		t.Fatalf("reconcileAuth returned error: %v", err)
