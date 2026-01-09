@@ -95,8 +95,8 @@ jobs:
       - name: Get chart version
         id: chart
         run: |
-          VERSION="0.0.0"
-          OVERRIDE="${{ inputs.image_tag }}"
+          VERSION="${{ inputs.image_tag }}"
+          OVERRIDE="0.0.0"
           if [ "${{ github.ref_type }}" = "tag" ]; then
             OVERRIDE="${VERSION}"
           fi
