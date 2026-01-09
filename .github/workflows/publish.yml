@@ -92,13 +92,12 @@ jobs:
       - name: Generate Helm chart
         run: make helm
 
-      - name: Read chart version
+      - name: Get chart version
         id: chart
         run: |
-          VERSION=$(awk -F': ' '$1=="version"{print $2}' dist/chart/Chart.yaml | tr -d '"')
-          OVERRIDE=""
+          VERSION="0.0.0"
+          OVERRIDE="${{ inputs.image_tag }}"
           if [ "${{ github.ref_type }}" = "tag" ]; then
-            VERSION="${{ inputs.image_tag }}"
             OVERRIDE="${VERSION}"
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
@@ -138,6 +137,14 @@ jobs:
           oras tag \
             ghcr.io/${{ inputs.repo_owner }}/charts/${CHART_NAME}:${{ steps.chart.outputs.version }} \
             "${{ inputs.image_tag }}"
+            
+      - name: Tag :commit-main chart
+        if: inputs.image_tag == 'main'
+        run: |
+          CHART_NAME=$(awk -F': ' '$1=="name"{print $2}' dist/chart/Chart.yaml | tr -d '"')
+          oras tag \
+            ghcr.io/${{ inputs.repo_owner }}/charts/${CHART_NAME}:${{ steps.chart.outputs.version }} \
+            "${{ inputs.short_sha }}-main"
 
       - name: Create GitHub release
         if: github.ref_type == 'tag'
