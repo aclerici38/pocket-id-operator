@@ -410,7 +410,7 @@ var _ = Describe("PocketIDUserGroup Controller", func() {
 			groupName    = "test-user-group-api-client-error"
 		)
 
-		It("should set Ready condition to APIClientError", func() {
+		It("should set Ready condition to APIClientNotReady", func() {
 			scheme := runtime.NewScheme()
 			_ = pocketidinternalv1alpha1.AddToScheme(scheme)
 			_ = corev1.AddToScheme(scheme)
@@ -428,6 +428,7 @@ var _ = Describe("PocketIDUserGroup Controller", func() {
 					EncryptionKey: pocketidinternalv1alpha1.EnvValue{Value: "0123456789abcdef"},
 				},
 				Status: pocketidinternalv1alpha1.PocketIDInstanceStatus{
+					Bootstrapped: true,
 					Conditions: []metav1.Condition{
 						{
 							Type:               "Available",
@@ -473,7 +474,7 @@ var _ = Describe("PocketIDUserGroup Controller", func() {
 			Expect(fakeClient.Get(ctx, types.NamespacedName{Name: groupName, Namespace: namespace}, updated)).To(Succeed())
 			cond := meta.FindStatusCondition(updated.Status.Conditions, "Ready")
 			Expect(cond).NotTo(BeNil())
-			Expect(cond.Reason).To(Equal("APIClientError"))
+			Expect(cond.Reason).To(Equal("APIClientNotReady"))
 		})
 	})
 
@@ -556,7 +557,7 @@ var _ = Describe("PocketIDUserGroup Controller", func() {
 			Expect(updated.Finalizers).NotTo(ContainElement(userGroupFinalizer))
 		})
 
-		It("should keep finalizer when API client lookup fails", func() {
+		It("should keep finalizer when API client lookup is not ready", func() {
 			scheme := runtime.NewScheme()
 			_ = pocketidinternalv1alpha1.AddToScheme(scheme)
 
@@ -592,7 +593,7 @@ var _ = Describe("PocketIDUserGroup Controller", func() {
 
 			reconciler := &PocketIDUserGroupReconciler{Client: fakeClient, Scheme: scheme}
 			_, err := reconciler.reconcileDelete(context.Background(), group)
-			Expect(err).To(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			updated := &pocketidinternalv1alpha1.PocketIDUserGroup{}
 			Expect(fakeClient.Get(context.Background(), types.NamespacedName{Name: group.Name, Namespace: group.Namespace}, updated)).To(Succeed())

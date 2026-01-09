@@ -18,9 +18,12 @@ package controller
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"maps"
+	"net"
 	"net/url"
+	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -863,8 +866,12 @@ func (r *PocketIDInstanceReconciler) bootstrap(ctx context.Context, instance *po
 		pocketid.DefaultAPIKeyExpiry(),
 	)
 	if err != nil {
-		log.Error(err, "Bootstrap failed - instance may already be initialized")
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
+		if bootstrapNotReady(err) {
+			log.Info("Pocket-ID not ready for bootstrap, requeuing", "error", err)
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+		}
+		log.Error(err, "Bootstrap failed")
+		return ctrl.Result{}, err
 	}
 
 	// Create the API key secret
@@ -923,6 +930,28 @@ func (r *PocketIDInstanceReconciler) bootstrap(ctx context.Context, instance *po
 
 	log.Info("Bootstrap successful")
 	return ctrl.Result{}, nil
+}
+
+func bootstrapNotReady(err error) bool {
+	if err == nil {
+		return false
+	}
+	if stderrors.Is(err, context.DeadlineExceeded) || stderrors.Is(err, context.Canceled) {
+		return true
+	}
+	var netErr net.Error
+	if stderrors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	var urlErr *url.Error
+	if stderrors.As(err, &urlErr) && urlErr.Timeout() {
+		return true
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "connection refused") || strings.Contains(msg, "Client.Timeout exceeded") {
+		return true
+	}
+	return false
 }
 
 // updateAuthStatus updates the instance status with auth info

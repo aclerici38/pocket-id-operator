@@ -98,10 +98,20 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		r.setReadyCondition(ctx, user, metav1.ConditionFalse, "InstanceNotReady", "Waiting for PocketIDInstance to be ready")
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
+	if !instance.Status.Bootstrapped {
+		log.Info("PocketIDInstance not bootstrapped, requeuing")
+		r.setReadyCondition(ctx, user, metav1.ConditionFalse, "InstanceNotBootstrapped", "Waiting for PocketIDInstance bootstrap")
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	}
 
 	// Get API client
 	apiClient, err := apiClientForInstance(ctx, r.Client, instance)
 	if err != nil {
+		if stderrors.Is(err, ErrAPIClientNotReady) {
+			log.Info("API client not ready, requeuing")
+			r.setReadyCondition(ctx, user, metav1.ConditionFalse, "APIClientNotReady", "Waiting for PocketID API client")
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+		}
 		log.Error(err, "Failed to get API client")
 		r.setReadyCondition(ctx, user, metav1.ConditionFalse, "APIClientError", err.Error())
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
@@ -165,6 +175,9 @@ func (r *PocketIDUserReconciler) reconcileUserFinalizers(ctx context.Context, us
 	}
 
 	if err := r.Update(ctx, user); err != nil {
+		if errors.IsConflict(err) {
+			return true, nil
+		}
 		return false, err
 	}
 
@@ -225,6 +238,10 @@ func (r *PocketIDUserReconciler) reconcileDelete(ctx context.Context, user *pock
 		} else {
 			apiClient, err := apiClientForInstance(ctx, r.Client, instance)
 			if err != nil {
+				if stderrors.Is(err, ErrAPIClientNotReady) {
+					log.Info("API client not ready for delete, requeuing", "userID", user.Status.UserID)
+					return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+				}
 				log.Error(err, "Failed to get API client for delete")
 				return ctrl.Result{}, err
 			}
