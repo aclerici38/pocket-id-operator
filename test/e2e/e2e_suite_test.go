@@ -49,18 +49,22 @@ func TestE2E(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	projectImage = resolveProjectImage()
+	var (
+		cmd *exec.Cmd
+		err error
+	)
 
 	By("building the operator image")
 	if os.Getenv("IMG") == "" {
-		cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
-		_, err := utils.Run(cmd)
+		cmd = exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
+		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to build operator image")
 	} else {
 		By("skipping build because IMG is set")
 	}
 
 	By("loading the operator image into Kind")
-	err := utils.LoadImageToKindClusterWithName(projectImage)
+	err = utils.LoadImageToKindClusterWithName(projectImage)
 	Expect(err).NotTo(HaveOccurred(), "Failed to load operator image into Kind")
 
 	By("cleaning up any resources from previous runs")
