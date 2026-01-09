@@ -1,15 +1,18 @@
 name: Test Chart
 
 on:
-  push:
-  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  test-e2e:
-    name: Run on Ubuntu
+  test-chart:
+    name: Lint and install chart
     runs-on: ubuntu-latest
     steps:
-      - name: Clone the code
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Go
@@ -23,15 +26,11 @@ jobs:
           chmod +x ./kind
           sudo mv ./kind /usr/local/bin/kind
 
-      - name: Verify kind installation
-        run: kind version
-
       - name: Create kind cluster
         run: kind create cluster
 
-      - name: Prepare pocket-id-operator
+      - name: Prepare pocket-id-operator image
         run: |
-          go mod tidy
           make docker-build IMG=pocket-id-operator:v0.1.0
           kind load docker-image pocket-id-operator:v0.1.0
 
@@ -39,36 +38,14 @@ jobs:
         run: |
           curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
-      - name: Verify Helm installation
-        run: helm version
+      - name: Lint Helm chart
+        run: helm lint ./dist/chart
 
-      - name: Lint Helm Chart
+      - name: Install Helm chart
         run: |
-          helm lint ./dist/chart
-
-# TODO: Uncomment if cert-manager is enabled
-#      - name: Install cert-manager via Helm (wait for readiness)
-#        run: |
-#          helm repo add jetstack https://charts.jetstack.io
-#          helm repo update
-#          helm install cert-manager jetstack/cert-manager \
-#            --namespace cert-manager \
-#            --create-namespace \
-#            --set crds.enabled=true \
-#            --wait \
-#            --timeout 300s
-
-# TODO: Uncomment if Prometheus is enabled
-#      - name: Install Prometheus Operator CRDs
-#        run: |
-#          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-#          helm repo update
-#          helm install prometheus-crds prometheus-community/prometheus-operator-crds
-
-      - name: Install Helm chart for project
-        run: |
-          helm install my-release ./dist/chart --create-namespace --namespace pocket-id-operator-system
+          helm install my-release ./dist/chart \
+            --create-namespace \
+            --namespace pocket-id-operator-system
 
       - name: Check Helm release status
-        run: |
-          helm status my-release --namespace pocket-id-operator-system
+        run: helm status my-release --namespace pocket-id-operator-system

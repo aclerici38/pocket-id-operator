@@ -1,21 +1,33 @@
-name: Build and Push Image
+name: Build Image
 
 on:
-  push:
-    branches:
-      - main
+  workflow_call:
+    inputs:
+      image:
+        description: Full image reference to build and push.
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      image:
+        description: Full image reference to build and push.
+        required: true
+        type: string
 
 permissions:
   contents: read
   packages: write
 
 jobs:
-  build-push:
-    name: Build and Push Image
+  build:
+    name: Build and push image
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -27,16 +39,5 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        run: |
-          REPO_OWNER=$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')
-          SHORT_SHA=$(git rev-parse --short HEAD)
-          echo "repo_owner=${REPO_OWNER}" >> $GITHUB_OUTPUT
-          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
-
-      - name: Build and push :main tag
-        run: make docker-build docker-push IMG=ghcr.io/${{ steps.meta.outputs.repo_owner }}/pocket-id-operator:main
-
-      - name: Build and push :commit-main tag
-        run: make docker-build docker-push IMG=ghcr.io/${{ steps.meta.outputs.repo_owner }}/pocket-id-operator:${{ steps.meta.outputs.short_sha }}-main
+      - name: Build and push
+        run: make docker-buildx IMG=${{ inputs.image }}

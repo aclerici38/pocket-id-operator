@@ -1,16 +1,18 @@
 name: Lint
 
 on:
-  push:
-  pull_request:
   workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   lint:
-    name: Run on Ubuntu
+    name: Run linter
     runs-on: ubuntu-latest
     steps:
-      - name: Clone the code
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Go
@@ -19,6 +21,4 @@ jobs:
           go-version-file: go.mod
 
       - name: Run linter
-        uses: golangci/golangci-lint-action@v8
-        with:
-          version: v2.5.0
+        run: make lint

@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  meta:
+    name: Stage 0 - Metadata
+    runs-on: ubuntu-latest
+    outputs:
+      repo_owner: ${{ steps.meta.outputs.repo_owner }}
+      short_sha: ${{ steps.meta.outputs.short_sha }}
+      ci_tag: ${{ steps.meta.outputs.ci_tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set metadata
+        id: meta
+        run: |
+          REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          echo "repo_owner=${REPO_OWNER}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "ci_tag=ci-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
+  test:
+    name: Stage 1 - Tests
+    needs: meta
+    uses: ./.github/workflows/test.yml
+    secrets: inherit
+
+  lint:
+    name: Stage 1 - Lint
+    needs: meta
+    uses: ./.github/workflows/lint.yml
+    secrets: inherit
+
+  build:
+    name: Stage 1 - Build Image
+    needs: meta
+    uses: ./.github/workflows/build-push-image.yml
+    with:
+      image: ghcr.io/${{ needs.meta.outputs.repo_owner }}/pocket-id-operator:${{ needs.meta.outputs.ci_tag }}
+    secrets: inherit
+
+  e2e:
+    name: Stage 2 - E2E Tests
+    needs:
+      - meta
+      - test
+      - lint
+      - build
+    uses: ./.github/workflows/test-e2e.yml
+    with:
+      image: ghcr.io/${{ needs.meta.outputs.repo_owner }}/pocket-id-operator:${{ needs.meta.outputs.ci_tag }}
+    secrets: inherit
+
+  publish:
+    name: Stage 3 - Publish
+    needs:
+      - meta
+      - e2e
+    uses: ./.github/workflows/publish.yml
+    with:
+      repo_owner: ${{ needs.meta.outputs.repo_owner }}
+      short_sha: ${{ needs.meta.outputs.short_sha }}
+    secrets: inherit

@@ -1,16 +1,29 @@
 name: E2E Tests
 
 on:
-  push:
-  pull_request:
   workflow_call:
+    inputs:
+      image:
+        description: Optional image to preload for e2e tests.
+        required: false
+        type: string
+  workflow_dispatch:
+    inputs:
+      image:
+        description: Optional image to preload for e2e tests.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: read
 
 jobs:
   test-e2e:
-    name: Run on Ubuntu
+    name: Run e2e tests
     runs-on: ubuntu-latest
     steps:
-      - name: Clone the code
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Go
@@ -24,10 +37,19 @@ jobs:
           chmod +x ./kind
           sudo mv ./kind /usr/local/bin/kind
 
-      - name: Verify kind installation
-        run: kind version
+      - name: Log in to GitHub Container Registry
+        if: inputs.image != ''
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Running Test e2e
+      - name: Pull cached image
+        if: inputs.image != ''
         run: |
-          go mod tidy
-          make test-e2e
+          docker pull ${{ inputs.image }}
+          docker tag ${{ inputs.image }} pocket-id-operator:e2e
+
+      - name: Run e2e tests
+        run: make test-e2e

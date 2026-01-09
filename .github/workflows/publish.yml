@@ -1,0 +1,106 @@
+name: Publish
+
+on:
+  workflow_call:
+    inputs:
+      repo_owner:
+        description: Lowercase repo owner for GHCR namespace.
+        required: true
+        type: string
+      short_sha:
+        description: Short commit SHA for commit-main tags.
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      repo_owner:
+        description: Lowercase repo owner for GHCR namespace.
+        required: true
+        type: string
+      short_sha:
+        description: Short commit SHA for commit-main tags.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: Publish chart and image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push :main image
+        run: make docker-buildx IMG=ghcr.io/${{ inputs.repo_owner }}/pocket-id-operator:main
+
+      - name: Tag :commit-main image
+        run: |
+          docker buildx imagetools create \
+            -t ghcr.io/${{ inputs.repo_owner }}/pocket-id-operator:${{ inputs.short_sha }}-main \
+            ghcr.io/${{ inputs.repo_owner }}/pocket-id-operator:main
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install kubebuilder
+        run: |
+          OS=$(go env GOOS)
+          ARCH=$(go env GOARCH)
+          curl -L -o kubebuilder https://github.com/kubernetes-sigs/kubebuilder/releases/download/v4.10.1/kubebuilder_${OS}_${ARCH}
+          chmod +x kubebuilder
+          sudo mv kubebuilder /usr/local/bin/kubebuilder
+
+      - name: Generate Helm chart
+        run: make helm
+
+      - name: Read chart version
+        id: chart
+        run: |
+          VERSION=$(awk -F': ' '$1=="version"{print $2}' dist/chart/Chart.yaml | tr -d '"')
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to Helm registry
+        run: |
+          helm registry login ghcr.io \
+            --username "${{ github.actor }}" \
+            --password "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Package chart
+        run: |
+          mkdir -p dist/chart-packages
+          helm package dist/chart --destination dist/chart-packages
+
+      - name: Push chart to GHCR (OCI)
+        run: |
+          helm push dist/chart-packages/pocket-id-operator-${{ steps.chart.outputs.version }}.tgz \
+            oci://ghcr.io/${{ inputs.repo_owner }}/charts
+
+      - name: Setup ORAS
+        uses: oras-project/setup-oras@v1
+
+      - name: Tag chart as :main and :commit-main
+        run: |
+          oras tag ghcr.io/${{ inputs.repo_owner }}/charts/pocket-id-operator:${{ steps.chart.outputs.version }} main
+          oras tag ghcr.io/${{ inputs.repo_owner }}/charts/pocket-id-operator:${{ steps.chart.outputs.version }} ${{ inputs.short_sha }}-main
