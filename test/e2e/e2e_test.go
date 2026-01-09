@@ -936,6 +936,156 @@ spec:
 		})
 	})
 
+	Context("Reference Finalizers", func() {
+		It("should block deletion of a user group while referenced by an OIDC client", func() {
+			const finalizerGroupName = "finalizer-oidc-group"
+			const finalizerOIDCName = "finalizer-oidc-client"
+
+			By("creating a user group for OIDC finalizer testing")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUserGroup
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  name: finalizer-group
+  friendlyName: Finalizer Group
+`, finalizerGroupName, userNS))
+
+			By("waiting for the user group to be Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidusergroup", finalizerGroupName, "-n", userNS,
+					"-o", "jsonpath={.status.groupId}")
+				g.Expect(output).NotTo(BeEmpty())
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("creating an OIDC client that references the group")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDOIDCClient
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  name: finalizer-oidc-client
+  callbackUrls:
+  - https://example.com/finalizer/callback
+  logoutCallbackUrls:
+  - https://example.com/finalizer/logout
+  allowedUserGroups:
+  - name: %s
+`, finalizerOIDCName, userNS, finalizerGroupName))
+
+			By("waiting for the OIDC client to be Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidoidcclient", finalizerOIDCName, "-n", userNS,
+					"-o", "jsonpath={.status.clientId}")
+				g.Expect(output).NotTo(BeEmpty())
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("requesting deletion of the user group")
+			cmd := exec.Command("kubectl", "delete", "pocketidusergroup", finalizerGroupName, "-n", userNS, "--wait=false")
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("verifying deletion is blocked by the OIDC client finalizer")
+			Eventually(func(g Gomega) {
+				deletionTimestamp := kubectlGet("pocketidusergroup", finalizerGroupName, "-n", userNS,
+					"-o", "jsonpath={.metadata.deletionTimestamp}")
+				finalizers := kubectlGet("pocketidusergroup", finalizerGroupName, "-n", userNS,
+					"-o", "jsonpath={.metadata.finalizers}")
+				g.Expect(deletionTimestamp).NotTo(BeEmpty())
+				g.Expect(finalizers).To(ContainSubstring("pocketid.internal/oidc-client-finalizer"))
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("deleting the OIDC client")
+			cmd = exec.Command("kubectl", "delete", "pocketidoidcclient", finalizerOIDCName, "-n", userNS)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("verifying the user group is deleted")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidusergroup", finalizerGroupName, "-n", userNS, "-o", "name")
+				g.Expect(output).To(BeEmpty())
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+
+		It("should block deletion of a user while referenced by a user group", func() {
+			const finalizerUserName = "finalizer-user"
+			const finalizerUserGroupName = "finalizer-user-group"
+
+			By("creating a user for user group finalizer testing")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  firstName:
+    value: Finalizer
+  email:
+    value: finalizer-user@example.local
+`, finalizerUserName, userNS))
+
+			By("waiting for the user to be Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketiduser", finalizerUserName, "-n", userNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(output).To(Equal("True"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("creating a user group that references the user")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUserGroup
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  name: finalizer-user-group
+  friendlyName: Finalizer User Group
+  userRefs:
+  - name: %s
+    namespace: %s
+`, finalizerUserGroupName, userNS, finalizerUserName, userNS))
+
+			By("waiting for the user group to be Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidusergroup", finalizerUserGroupName, "-n", userNS,
+					"-o", "jsonpath={.status.groupId}")
+				g.Expect(output).NotTo(BeEmpty())
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("requesting deletion of the user")
+			cmd := exec.Command("kubectl", "delete", "pocketiduser", finalizerUserName, "-n", userNS, "--wait=false")
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("verifying deletion is blocked by the user group finalizer")
+			Eventually(func(g Gomega) {
+				deletionTimestamp := kubectlGet("pocketiduser", finalizerUserName, "-n", userNS,
+					"-o", "jsonpath={.metadata.deletionTimestamp}")
+				finalizers := kubectlGet("pocketiduser", finalizerUserName, "-n", userNS,
+					"-o", "jsonpath={.metadata.finalizers}")
+				g.Expect(deletionTimestamp).NotTo(BeEmpty())
+				g.Expect(finalizers).To(ContainSubstring("pocketid.internal/user-group-finalizer"))
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("deleting the user group")
+			cmd = exec.Command("kubectl", "delete", "pocketidusergroup", finalizerUserGroupName, "-n", userNS)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("verifying the user is deleted")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketiduser", finalizerUserName, "-n", userNS, "-o", "name")
+				g.Expect(output).To(BeEmpty())
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+	})
+
 	Context("Auth Switch Safeguards", func() {
 		It("should delay auth switch until the target user is Ready", func() {
 			const unreadyUserName = "auth-unready-user"

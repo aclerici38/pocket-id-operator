@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -37,8 +38,9 @@ import (
 )
 
 const (
-	userGroupFinalizer       = "pocketid.internal/user-group-finalizer"
-	userGroupUserRefIndexKey = "pocketidusergroup.userRef"
+	userGroupFinalizer           = "pocketid.internal/user-group-finalizer"
+	oidcClientUserGroupFinalizer = "pocketid.internal/oidc-client-finalizer"
+	userGroupUserRefIndexKey     = "pocketidusergroup.userRef"
 )
 
 // PocketIDUserGroupReconciler reconciles a PocketIDUserGroup object
@@ -53,6 +55,7 @@ type PocketIDUserGroupReconciler struct {
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidusergroups/finalizers,verbs=update
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidinstances,verbs=get;list;watch
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidusers,verbs=get;list;watch
+// +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidoidcclients,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -79,11 +82,12 @@ func (r *PocketIDUserGroupReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return r.reconcileDelete(ctx, userGroup)
 	}
 
-	if !controllerutil.ContainsFinalizer(userGroup, userGroupFinalizer) {
-		controllerutil.AddFinalizer(userGroup, userGroupFinalizer)
-		if err := r.Update(ctx, userGroup); err != nil {
-			return ctrl.Result{}, err
-		}
+	updatedFinalizers, err := r.reconcileUserGroupFinalizers(ctx, userGroup)
+	if err != nil {
+		log.Error(err, "Failed to reconcile user group finalizers")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+	if updatedFinalizers {
 		return ctrl.Result{Requeue: true}, nil
 	}
 
@@ -195,8 +199,106 @@ func (r *PocketIDUserGroupReconciler) updateUserGroupStatus(ctx context.Context,
 	return r.Status().Patch(ctx, userGroup, client.MergeFrom(base))
 }
 
+func (r *PocketIDUserGroupReconciler) reconcileUserGroupFinalizers(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup) (bool, error) {
+	needsUpdate := false
+
+	if !controllerutil.ContainsFinalizer(userGroup, userGroupFinalizer) {
+		controllerutil.AddFinalizer(userGroup, userGroupFinalizer)
+		needsUpdate = true
+	}
+
+	referencedByOIDCClient, err := r.isUserGroupReferencedByOIDCClient(ctx, userGroup)
+	if err != nil {
+		return false, err
+	}
+	if referencedByOIDCClient {
+		if !controllerutil.ContainsFinalizer(userGroup, oidcClientUserGroupFinalizer) {
+			controllerutil.AddFinalizer(userGroup, oidcClientUserGroupFinalizer)
+			needsUpdate = true
+		}
+	} else if controllerutil.ContainsFinalizer(userGroup, oidcClientUserGroupFinalizer) {
+		controllerutil.RemoveFinalizer(userGroup, oidcClientUserGroupFinalizer)
+		needsUpdate = true
+	}
+
+	if !needsUpdate {
+		return false, nil
+	}
+
+	if err := r.Update(ctx, userGroup); err != nil {
+		if errors.IsConflict(err) {
+			return true, nil
+		}
+		return false, err
+	}
+
+	return true, nil
+}
+
+func (r *PocketIDUserGroupReconciler) isUserGroupReferencedByOIDCClient(ctx context.Context, group *pocketidinternalv1alpha1.PocketIDUserGroup) (bool, error) {
+	groupKey := fmt.Sprintf("%s/%s", group.Namespace, group.Name)
+	clients := &pocketidinternalv1alpha1.PocketIDOIDCClientList{}
+	if err := r.List(ctx, clients, client.MatchingFields{oidcClientAllowedGroupIndexKey: groupKey}); err == nil {
+		return len(clients.Items) > 0, nil
+	}
+
+	if err := r.List(ctx, clients); err != nil {
+		return false, err
+	}
+
+	for i := range clients.Items {
+		if oidcClientAllowsGroup(&clients.Items[i], group.Namespace, group.Name) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func oidcClientAllowsGroup(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, groupNamespace, groupName string) bool {
+	for _, ref := range oidcClient.Spec.AllowedUserGroups {
+		if ref.Name == "" {
+			continue
+		}
+		namespace := ref.Namespace
+		if namespace == "" {
+			namespace = oidcClient.Namespace
+		}
+		if ref.Name == groupName && namespace == groupNamespace {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *PocketIDUserGroupReconciler) reconcileDelete(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup) (ctrl.Result, error) {
 	r.EnsureClient(r.Client)
+	referencedByOIDCClient, err := r.isUserGroupReferencedByOIDCClient(ctx, userGroup)
+	if err != nil {
+		logf.FromContext(ctx).Error(err, "Failed to check PocketIDOIDCClient references")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+	if referencedByOIDCClient {
+		logf.FromContext(ctx).Info("User group is referenced by PocketIDOIDCClient, blocking deletion", "userGroup", userGroup.Name)
+		if !controllerutil.ContainsFinalizer(userGroup, oidcClientUserGroupFinalizer) {
+			controllerutil.AddFinalizer(userGroup, oidcClientUserGroupFinalizer)
+			if err := r.Update(ctx, userGroup); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+	if controllerutil.ContainsFinalizer(userGroup, oidcClientUserGroupFinalizer) {
+		controllerutil.RemoveFinalizer(userGroup, oidcClientUserGroupFinalizer)
+		if err := r.Update(ctx, userGroup); err != nil {
+			if errors.IsConflict(err) {
+				return ctrl.Result{Requeue: true}, nil
+			}
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{Requeue: true}, nil
+	}
+
 	return r.ReconcileDeleteWithPocketID(
 		ctx,
 		userGroup,
@@ -227,6 +329,33 @@ func (r *PocketIDUserGroupReconciler) requestsForUser(ctx context.Context, obj c
 	for i := range userGroups.Items {
 		requests = append(requests, reconcile.Request{
 			NamespacedName: client.ObjectKeyFromObject(&userGroups.Items[i]),
+		})
+	}
+
+	return requests
+}
+
+func (r *PocketIDUserGroupReconciler) requestsForOIDCClient(ctx context.Context, obj client.Object) []reconcile.Request {
+	oidcClient, ok := obj.(*pocketidinternalv1alpha1.PocketIDOIDCClient)
+	if !ok {
+		return nil
+	}
+
+	if len(oidcClient.Spec.AllowedUserGroups) == 0 {
+		return nil
+	}
+
+	requests := make([]reconcile.Request, 0, len(oidcClient.Spec.AllowedUserGroups))
+	for _, ref := range oidcClient.Spec.AllowedUserGroups {
+		if ref.Name == "" {
+			continue
+		}
+		namespace := ref.Namespace
+		if namespace == "" {
+			namespace = oidcClient.Namespace
+		}
+		requests = append(requests, reconcile.Request{
+			NamespacedName: client.ObjectKey{Namespace: namespace, Name: ref.Name},
 		})
 	}
 
@@ -279,6 +408,7 @@ func (r *PocketIDUserGroupReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&pocketidinternalv1alpha1.PocketIDUserGroup{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(&pocketidinternalv1alpha1.PocketIDUser{}, handler.EnqueueRequestsFromMapFunc(r.requestsForUser)).
+		Watches(&pocketidinternalv1alpha1.PocketIDOIDCClient{}, handler.EnqueueRequestsFromMapFunc(r.requestsForOIDCClient)).
 		Named("pocketidusergroup").
 		Complete(r)
 }

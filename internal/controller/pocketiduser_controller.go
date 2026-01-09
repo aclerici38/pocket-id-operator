@@ -31,8 +31,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
@@ -41,6 +43,7 @@ import (
 const (
 	userFinalizer              = "pocketid.internal/user-finalizer"
 	authUserFinalizer          = "pocketid.internal/auth-user-finalizer"
+	userGroupUserFinalizer     = "pocketid.internal/user-group-finalizer"
 	apiKeySecretKey            = "token"
 	defaultAPIKeyName          = "pocket-id-operator"
 	defaultLoginTokenExpiryMin = 15
@@ -61,6 +64,7 @@ type PocketIDUserReconciler struct {
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidusers/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidusers/finalizers,verbs=update
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidinstances,verbs=get;list;watch
+// +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidusergroups,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
 
 func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -160,6 +164,20 @@ func (r *PocketIDUserReconciler) reconcileUserFinalizers(ctx context.Context, us
 		needsUpdate = true
 	}
 
+	referencedByUserGroup, err := r.isUserReferencedByUserGroup(ctx, user.Name, user.Namespace)
+	if err != nil {
+		return false, err
+	}
+	if referencedByUserGroup {
+		if !controllerutil.ContainsFinalizer(user, userGroupUserFinalizer) {
+			controllerutil.AddFinalizer(user, userGroupUserFinalizer)
+			needsUpdate = true
+		}
+	} else if controllerutil.ContainsFinalizer(user, userGroupUserFinalizer) {
+		controllerutil.RemoveFinalizer(user, userGroupUserFinalizer)
+		needsUpdate = true
+	}
+
 	if !needsUpdate {
 		return false, nil
 	}
@@ -202,6 +220,42 @@ func (r *PocketIDUserReconciler) isUserReferencedByInstance(ctx context.Context,
 	return false, nil
 }
 
+func (r *PocketIDUserReconciler) isUserReferencedByUserGroup(ctx context.Context, userName, userNamespace string) (bool, error) {
+	userKey := fmt.Sprintf("%s/%s", userNamespace, userName)
+	userGroups := &pocketidinternalv1alpha1.PocketIDUserGroupList{}
+	if err := r.List(ctx, userGroups, client.MatchingFields{userGroupUserRefIndexKey: userKey}); err == nil {
+		return len(userGroups.Items) > 0, nil
+	}
+
+	if err := r.List(ctx, userGroups); err != nil {
+		return false, err
+	}
+
+	for i := range userGroups.Items {
+		if userGroupHasUserRef(&userGroups.Items[i], userName, userNamespace) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func userGroupHasUserRef(group *pocketidinternalv1alpha1.PocketIDUserGroup, userName, userNamespace string) bool {
+	for _, ref := range group.Spec.UserRefs {
+		if ref.Name == "" {
+			continue
+		}
+		namespace := ref.Namespace
+		if namespace == "" {
+			namespace = group.Namespace
+		}
+		if ref.Name == userName && namespace == userNamespace {
+			return true
+		}
+	}
+	return false
+}
+
 // reconcileDelete handles user deletion
 func (r *PocketIDUserReconciler) reconcileDelete(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
@@ -213,6 +267,22 @@ func (r *PocketIDUserReconciler) reconcileDelete(ctx context.Context, user *pock
 	}
 	if referenced {
 		log.Info("User is referenced by PocketIDInstance, blocking deletion", "user", user.Name)
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	referencedByUserGroup, err := r.isUserReferencedByUserGroup(ctx, user.Name, user.Namespace)
+	if err != nil {
+		log.Error(err, "Failed to check PocketIDUserGroup references")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+	if referencedByUserGroup {
+		log.Info("User is referenced by PocketIDUserGroup, blocking deletion", "user", user.Name)
+		if !controllerutil.ContainsFinalizer(user, userGroupUserFinalizer) {
+			controllerutil.AddFinalizer(user, userGroupUserFinalizer)
+			if err := r.Update(ctx, user); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
@@ -261,6 +331,7 @@ func (r *PocketIDUserReconciler) reconcileDelete(ctx context.Context, user *pock
 	// Remove finalizer
 	controllerutil.RemoveFinalizer(user, authUserFinalizer)
 	controllerutil.RemoveFinalizer(user, userFinalizer)
+	controllerutil.RemoveFinalizer(user, userGroupUserFinalizer)
 	if err := r.Update(ctx, user); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -635,10 +706,34 @@ func (r *PocketIDUserReconciler) reconcileAPIKeys(ctx context.Context, user *poc
 	return nil
 }
 
+func (r *PocketIDUserReconciler) requestsForUserGroup(ctx context.Context, obj client.Object) []reconcile.Request {
+	group, ok := obj.(*pocketidinternalv1alpha1.PocketIDUserGroup)
+	if !ok {
+		return nil
+	}
+
+	requests := make([]reconcile.Request, 0, len(group.Spec.UserRefs))
+	for _, ref := range group.Spec.UserRefs {
+		if ref.Name == "" {
+			continue
+		}
+		namespace := ref.Namespace
+		if namespace == "" {
+			namespace = group.Namespace
+		}
+		requests = append(requests, reconcile.Request{
+			NamespacedName: client.ObjectKey{Namespace: namespace, Name: ref.Name},
+		})
+	}
+
+	return requests
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *PocketIDUserReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&pocketidinternalv1alpha1.PocketIDUser{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Watches(&pocketidinternalv1alpha1.PocketIDUserGroup{}, handler.EnqueueRequestsFromMapFunc(r.requestsForUserGroup)).
 		Owns(&corev1.Secret{}).
 		Named("pocketiduser").
 		Complete(r)

@@ -527,6 +527,118 @@ var _ = Describe("PocketIDUserGroup Controller", func() {
 		})
 	})
 
+	Context("OIDC client finalizers", func() {
+		It("should add OIDC client finalizer when referenced", func() {
+			scheme := runtime.NewScheme()
+			_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+			group := &pocketidinternalv1alpha1.PocketIDUserGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "finalizer-group",
+					Namespace: namespace,
+				},
+			}
+
+			oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "finalizer-oidc-client",
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+					Name: "Finalizer OIDC Client",
+					AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
+						{Name: group.Name},
+					},
+				},
+			}
+
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(group, oidcClient).
+				Build()
+
+			reconciler := &PocketIDUserGroupReconciler{Client: fakeClient, Scheme: scheme}
+			updated, err := reconciler.reconcileUserGroupFinalizers(context.Background(), group)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updated).To(BeTrue())
+
+			updatedGroup := &pocketidinternalv1alpha1.PocketIDUserGroup{}
+			Expect(fakeClient.Get(context.Background(), types.NamespacedName{Name: group.Name, Namespace: group.Namespace}, updatedGroup)).To(Succeed())
+			Expect(updatedGroup.Finalizers).To(ContainElement(userGroupFinalizer))
+			Expect(updatedGroup.Finalizers).To(ContainElement(oidcClientUserGroupFinalizer))
+		})
+
+		It("should remove OIDC client finalizer when unreferenced", func() {
+			scheme := runtime.NewScheme()
+			_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+			group := &pocketidinternalv1alpha1.PocketIDUserGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "finalizer-group-cleanup",
+					Namespace:  namespace,
+					Finalizers: []string{userGroupFinalizer, oidcClientUserGroupFinalizer},
+				},
+			}
+
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(group).
+				Build()
+
+			reconciler := &PocketIDUserGroupReconciler{Client: fakeClient, Scheme: scheme}
+			updated, err := reconciler.reconcileUserGroupFinalizers(context.Background(), group)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updated).To(BeTrue())
+
+			updatedGroup := &pocketidinternalv1alpha1.PocketIDUserGroup{}
+			Expect(fakeClient.Get(context.Background(), types.NamespacedName{Name: group.Name, Namespace: group.Namespace}, updatedGroup)).To(Succeed())
+			Expect(updatedGroup.Finalizers).To(ContainElement(userGroupFinalizer))
+			Expect(updatedGroup.Finalizers).NotTo(ContainElement(oidcClientUserGroupFinalizer))
+		})
+
+		It("should block deletion when referenced by an OIDC client", func() {
+			scheme := runtime.NewScheme()
+			_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+			now := metav1.NewTime(time.Now())
+			group := &pocketidinternalv1alpha1.PocketIDUserGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "finalizer-group-delete",
+					Namespace:         namespace,
+					Finalizers:        []string{userGroupFinalizer},
+					DeletionTimestamp: &now,
+				},
+			}
+
+			oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "finalizer-oidc-client-delete",
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+					Name: "Finalizer OIDC Client Delete",
+					AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
+						{Name: group.Name},
+					},
+				},
+			}
+
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(group, oidcClient).
+				Build()
+
+			reconciler := &PocketIDUserGroupReconciler{Client: fakeClient, Scheme: scheme}
+			result, err := reconciler.reconcileDelete(context.Background(), group)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeNumerically(">", 0))
+
+			updatedGroup := &pocketidinternalv1alpha1.PocketIDUserGroup{}
+			Expect(fakeClient.Get(context.Background(), types.NamespacedName{Name: group.Name, Namespace: group.Namespace}, updatedGroup)).To(Succeed())
+			Expect(updatedGroup.Finalizers).To(ContainElement(oidcClientUserGroupFinalizer))
+		})
+	})
+
 	Context("Delete behavior", func() {
 		It("should remove finalizer when no instance exists", func() {
 			scheme := runtime.NewScheme()
