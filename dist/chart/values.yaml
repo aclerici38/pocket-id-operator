@@ -4,7 +4,7 @@ manager:
 
   image:
     repository: ghcr.io/aclerici38/pocket-id-operator
-    tag: main
+    tag: "" # Defaults to Chart.appVersion when empty
     pullPolicy: IfNotPresent
 
   # Arguments
@@ -67,4 +67,3 @@ certManager:
 # Requires prometheus-operator to be installed in the cluster.
 prometheus:
   enable: false
-  

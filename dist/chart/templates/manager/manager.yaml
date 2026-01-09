@@ -35,7 +35,7 @@ spec:
                     {{- end }}
                   command:
                     - /manager
-                  image: "{{ .Values.manager.image.repository }}:{{ .Values.manager.image.tag }}"
+                  image: "{{ .Values.manager.image.repository }}:{{ default .Chart.AppVersion .Values.manager.image.tag }}"
                   imagePullPolicy: {{ .Values.manager.image.pullPolicy }}
                   livenessProbe:
                     httpGet:

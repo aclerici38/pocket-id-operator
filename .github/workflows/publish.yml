@@ -95,7 +95,10 @@ jobs:
       - name: Read chart version
         id: chart
         run: |
-          VERSION="${{ inputs.image_tag }}"
+          VERSION=""
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            VERSION="${{ inputs.image_tag }}"
+          fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to Helm registry
@@ -107,10 +110,14 @@ jobs:
       - name: Package chart
         run: |
           mkdir -p dist/chart-packages
-          helm package dist/chart \
-            --version "${{ steps.chart.outputs.version }}" \
-            --app-version "${{ steps.chart.outputs.version }}" \
-            --destination dist/chart-packages
+          if [ -n "${{ steps.chart.outputs.version }}" ]; then
+            helm package dist/chart \
+              --version "${{ steps.chart.outputs.version }}" \
+              --app-version "${{ steps.chart.outputs.version }}" \
+              --destination dist/chart-packages
+          else
+            helm package dist/chart --destination dist/chart-packages
+          fi
 
       - name: Push chart to GHCR (OCI)
         run: |
