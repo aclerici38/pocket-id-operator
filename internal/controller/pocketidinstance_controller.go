@@ -57,7 +57,8 @@ const (
 // PocketIDInstanceReconciler reconciles a PocketIDInstance object
 type PocketIDInstanceReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	APIReader client.Reader
+	Scheme    *runtime.Scheme
 }
 
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidinstances,verbs=get;list;watch;create;update;patch;delete
@@ -148,8 +149,7 @@ func (r *PocketIDInstanceReconciler) reconcileWorkload(ctx context.Context, inst
 }
 
 func (r *PocketIDInstanceReconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketIDInstance) corev1.PodTemplateSpec {
-	labels := make(map[string]string)
-	maps.Copy(labels, instance.Spec.Labels)
+	labels := managedByLabels(instance.Spec.Labels)
 	labels["app.kubernetes.io/name"] = "pocket-id"
 	labels["app.kubernetes.io/instance"] = instance.Name
 	labels["app.kubernetes.io/managed-by"] = "pocket-id-operator"
@@ -407,7 +407,7 @@ func (r *PocketIDInstanceReconciler) reconcileDeployment(ctx context.Context, in
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        instance.Name,
 			Namespace:   instance.Namespace,
-			Labels:      instance.Spec.Labels,
+			Labels:      managedByLabels(instance.Spec.Labels),
 			Annotations: instance.Spec.Annotations,
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -475,7 +475,8 @@ func (r *PocketIDInstanceReconciler) reconcileStatefulSet(ctx context.Context, i
 			stsSpec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: "data",
+						Name:   "data",
+						Labels: managedByLabels(instance.Spec.Labels),
 					},
 					Spec: corev1.PersistentVolumeClaimSpec{
 						AccessModes:      instance.Spec.Persistence.AccessModes,
@@ -499,7 +500,7 @@ func (r *PocketIDInstanceReconciler) reconcileStatefulSet(ctx context.Context, i
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        instance.Name,
 			Namespace:   instance.Namespace,
-			Labels:      instance.Spec.Labels,
+			Labels:      managedByLabels(instance.Spec.Labels),
 			Annotations: instance.Spec.Annotations,
 		},
 		Spec: *stsSpec,
@@ -513,33 +514,37 @@ func (r *PocketIDInstanceReconciler) reconcileStatefulSet(ctx context.Context, i
 
 func (r *PocketIDInstanceReconciler) reconcileService(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
 	service := &corev1.Service{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Service",
+		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      instance.Name,
-			Namespace: instance.Namespace,
+			Name:        instance.Name,
+			Namespace:   instance.Namespace,
+			Labels:      managedByLabels(instance.Spec.Labels),
+			Annotations: instance.Spec.Annotations,
+		},
+		Spec: corev1.ServiceSpec{
+			Selector: map[string]string{
+				"app.kubernetes.io/name":     "pocket-id",
+				"app.kubernetes.io/instance": instance.Name,
+			},
+			Ports: []corev1.ServicePort{
+				{
+					Name:       "http",
+					Port:       1411,
+					TargetPort: intstr.FromInt(1411),
+					Protocol:   corev1.ProtocolTCP,
+				},
+			},
 		},
 	}
 
-	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, service, func() error {
-		if err := controllerutil.SetControllerReference(instance, service, r.Scheme); err != nil {
-			return err
-		}
+	if err := controllerutil.SetControllerReference(instance, service, r.Scheme); err != nil {
+		return err
+	}
 
-		service.Spec.Selector = map[string]string{
-			"app.kubernetes.io/name":     "pocket-id",
-			"app.kubernetes.io/instance": instance.Name,
-		}
-
-		service.Spec.Ports = []corev1.ServicePort{
-			{
-				Name:       "http",
-				Port:       1411,
-				TargetPort: intstr.FromInt(1411),
-				Protocol:   corev1.ProtocolTCP,
-			},
-		}
-		return nil
-	})
-	return err
+	return r.Patch(ctx, service, client.Apply, client.FieldOwner("pocket-id-operator"))
 }
 
 func (r *PocketIDInstanceReconciler) reconcileRoute(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
@@ -608,6 +613,10 @@ func (r *PocketIDInstanceReconciler) reconcileRoute(ctx context.Context, instanc
 
 func (r *PocketIDInstanceReconciler) reconcileVolume(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
 	pvc := &corev1.PersistentVolumeClaim{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "PersistentVolumeClaim",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      instance.Name + "-data",
 			Namespace: instance.Namespace,
@@ -627,31 +636,40 @@ func (r *PocketIDInstanceReconciler) reconcileVolume(ctx context.Context, instan
 		scn = &sc
 	}
 
-	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, pvc, func() error {
-		if err := controllerutil.SetControllerReference(instance, pvc, r.Scheme); err != nil {
+	pvc.Labels = managedByLabels(instance.Spec.Labels)
+
+	if err := controllerutil.SetControllerReference(instance, pvc, r.Scheme); err != nil {
+		return err
+	}
+
+	reader := r.APIReader
+	if reader == nil {
+		reader = r.Client
+	}
+
+	existing := &corev1.PersistentVolumeClaim{}
+	if err := reader.Get(ctx, client.ObjectKeyFromObject(pvc), existing); err != nil {
+		if !errors.IsNotFound(err) {
 			return err
 		}
 
-		// Don't update immutable fields
-		if pvc.CreationTimestamp.IsZero() {
-			accessModes := instance.Spec.Persistence.AccessModes
-			if len(accessModes) == 0 {
-				accessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
-			}
-
-			pvc.Spec = corev1.PersistentVolumeClaimSpec{
-				AccessModes:      accessModes,
-				StorageClassName: scn,
-				Resources: corev1.VolumeResourceRequirements{
-					Requests: corev1.ResourceList{
-						corev1.ResourceStorage: instance.Spec.Persistence.Size,
-					},
-				},
-			}
+		accessModes := instance.Spec.Persistence.AccessModes
+		if len(accessModes) == 0 {
+			accessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
 		}
-		return nil
-	})
-	return err
+
+		pvc.Spec = corev1.PersistentVolumeClaimSpec{
+			AccessModes:      accessModes,
+			StorageClassName: scn,
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: instance.Spec.Persistence.Size,
+				},
+			},
+		}
+	}
+
+	return r.Patch(ctx, pvc, client.Apply, client.FieldOwner("pocket-id-operator"))
 }
 
 func (r *PocketIDInstanceReconciler) updateStatus(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
@@ -931,8 +949,12 @@ func (r *PocketIDInstanceReconciler) resolveStringValue(ctx context.Context, nam
 		return sv.Value, nil
 	}
 	if sv.ValueFrom != nil {
+		reader := r.APIReader
+		if reader == nil {
+			reader = r.Client
+		}
 		secret := &corev1.Secret{}
-		if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: sv.ValueFrom.Name}, secret); err != nil {
+		if err := reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: sv.ValueFrom.Name}, secret); err != nil {
 			return "", fmt.Errorf("get secret %s: %w", sv.ValueFrom.Name, err)
 		}
 		val, ok := secret.Data[sv.ValueFrom.Key]
@@ -942,8 +964,12 @@ func (r *PocketIDInstanceReconciler) resolveStringValue(ctx context.Context, nam
 		return string(val), nil
 	}
 	if fallbackSecretName != "" && fallbackKey != "" {
+		reader := r.APIReader
+		if reader == nil {
+			reader = r.Client
+		}
 		secret := &corev1.Secret{}
-		if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: fallbackSecretName}, secret); err != nil {
+		if err := reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: fallbackSecretName}, secret); err != nil {
 			return "", fmt.Errorf("get secret %s: %w", fallbackSecretName, err)
 		}
 		val, ok := secret.Data[fallbackKey]

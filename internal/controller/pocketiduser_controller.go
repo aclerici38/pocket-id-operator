@@ -50,7 +50,8 @@ const (
 // PocketIDUserReconciler reconciles a PocketIDUser object
 type PocketIDUserReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	APIReader client.Reader
+	Scheme    *runtime.Scheme
 }
 
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidusers,verbs=get;list;watch;create;update;patch;delete
@@ -266,8 +267,12 @@ func (r *PocketIDUserReconciler) resolveStringValue(ctx context.Context, namespa
 		return sv.Value, nil
 	}
 	if sv.ValueFrom != nil {
+		reader := r.APIReader
+		if reader == nil {
+			reader = r.Client
+		}
 		secret := &corev1.Secret{}
-		if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: sv.ValueFrom.Name}, secret); err != nil {
+		if err := reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: sv.ValueFrom.Name}, secret); err != nil {
 			return "", fmt.Errorf("get secret %s: %w", sv.ValueFrom.Name, err)
 		}
 		key := sv.ValueFrom.Key
@@ -278,8 +283,12 @@ func (r *PocketIDUserReconciler) resolveStringValue(ctx context.Context, namespa
 		return string(val), nil
 	}
 	if fallbackSecretName != "" && fallbackKey != "" {
+		reader := r.APIReader
+		if reader == nil {
+			reader = r.Client
+		}
 		secret := &corev1.Secret{}
-		if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: fallbackSecretName}, secret); err != nil {
+		if err := reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: fallbackSecretName}, secret); err != nil {
 			return "", fmt.Errorf("get secret %s: %w", fallbackSecretName, err)
 		}
 		val, ok := secret.Data[fallbackKey]
@@ -540,8 +549,12 @@ func (r *PocketIDUserReconciler) reconcileAPIKeys(ctx context.Context, user *poc
 			log.Info("Using existing secret for API key", "name", spec.Name, "secret", spec.SecretRef.Name)
 
 			// Verify the secret exists
+			reader := r.APIReader
+			if reader == nil {
+				reader = r.Client
+			}
 			secret := &corev1.Secret{}
-			if err := r.Get(ctx, client.ObjectKey{Namespace: user.Namespace, Name: spec.SecretRef.Name}, secret); err != nil {
+			if err := reader.Get(ctx, client.ObjectKey{Namespace: user.Namespace, Name: spec.SecretRef.Name}, secret); err != nil {
 				return fmt.Errorf("get secret %s for API key %s: %w", spec.SecretRef.Name, spec.Name, err)
 			}
 

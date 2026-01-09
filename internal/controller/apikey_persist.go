@@ -14,26 +14,27 @@ import (
 
 func ensureAPIKeySecret(ctx context.Context, c client.Client, scheme *runtime.Scheme, user *pocketidinternalv1alpha1.PocketIDUser, secretName, token string) error {
 	secret := &corev1.Secret{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Secret",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
 			Namespace: user.Namespace,
+			Labels:    managedByLabels(nil),
 		},
 	}
 
-	_, err := controllerutil.CreateOrUpdate(ctx, c, secret, func() error {
-		if err := controllerutil.SetControllerReference(user, secret, scheme); err != nil {
-			return err
-		}
+	if err := controllerutil.SetControllerReference(user, secret, scheme); err != nil {
+		return err
+	}
 
-		secret.Type = corev1.SecretTypeOpaque
-		secret.Data = map[string][]byte{
-			apiKeySecretKey: []byte(token),
-		}
+	secret.Type = corev1.SecretTypeOpaque
+	secret.Data = map[string][]byte{
+		apiKeySecretKey: []byte(token),
+	}
 
-		return nil
-	})
-
-	return err
+	return c.Patch(ctx, secret, client.Apply, client.FieldOwner("pocket-id-operator"))
 }
 
 func mergeAPIKeyStatus(user *pocketidinternalv1alpha1.PocketIDUser, keyStatus pocketidinternalv1alpha1.APIKeyStatus) {

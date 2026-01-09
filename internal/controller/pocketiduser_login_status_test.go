@@ -38,7 +38,7 @@ func TestReconcileOneTimeLoginStatus_ExpiredClears(t *testing.T) {
 		WithObjects(user).
 		Build()
 
-	reconciler := &PocketIDUserReconciler{Client: client, Scheme: scheme}
+	reconciler := &PocketIDUserReconciler{Client: client, APIReader: client, Scheme: scheme}
 	if _, err := reconciler.reconcileOneTimeLoginStatus(context.Background(), user); err != nil {
 		t.Fatalf("reconcileOneTimeLoginStatus returned error: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestReconcileOneTimeLoginStatus_FutureRequeues(t *testing.T) {
 		WithObjects(user).
 		Build()
 
-	reconciler := &PocketIDUserReconciler{Client: client, Scheme: scheme}
+	reconciler := &PocketIDUserReconciler{Client: client, APIReader: client, Scheme: scheme}
 	result, err := reconciler.reconcileOneTimeLoginStatus(context.Background(), user)
 	if err != nil {
 		t.Fatalf("reconcileOneTimeLoginStatus returned error: %v", err)
@@ -119,7 +119,7 @@ func TestReconcileOneTimeLoginStatus_InvalidTimestampClears(t *testing.T) {
 		WithObjects(user).
 		Build()
 
-	reconciler := &PocketIDUserReconciler{Client: client, Scheme: scheme}
+	reconciler := &PocketIDUserReconciler{Client: client, APIReader: client, Scheme: scheme}
 	if _, err := reconciler.reconcileOneTimeLoginStatus(context.Background(), user); err != nil {
 		t.Fatalf("reconcileOneTimeLoginStatus returned error: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestSetOneTimeLoginStatus_SetsTokenURLAndExpiry(t *testing.T) {
 		WithObjects(user).
 		Build()
 
-	reconciler := &PocketIDUserReconciler{Client: client, Scheme: scheme}
+	reconciler := &PocketIDUserReconciler{Client: client, APIReader: client, Scheme: scheme}
 	now := time.Now().UTC()
 	if err := reconciler.setOneTimeLoginStatus(context.Background(), user, instance, "token123"); err != nil {
 		t.Fatalf("setOneTimeLoginStatus returned error: %v", err)

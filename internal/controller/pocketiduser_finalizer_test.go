@@ -44,7 +44,7 @@ func TestReconcileUserFinalizers_AddsAuthFinalizer(t *testing.T) {
 		WithObjects(user, instance).
 		Build()
 
-	reconciler := &PocketIDUserReconciler{Client: client, Scheme: scheme}
+	reconciler := &PocketIDUserReconciler{Client: client, APIReader: client, Scheme: scheme}
 	updated, err := reconciler.reconcileUserFinalizers(context.Background(), user, instance)
 	if err != nil {
 		t.Fatalf("reconcileUserFinalizers returned error: %v", err)
@@ -96,7 +96,7 @@ func TestReconcileUserFinalizers_AddsAuthFinalizerFromStatus(t *testing.T) {
 		WithObjects(user, instance).
 		Build()
 
-	reconciler := &PocketIDUserReconciler{Client: client, Scheme: scheme}
+	reconciler := &PocketIDUserReconciler{Client: client, APIReader: client, Scheme: scheme}
 	updated, err := reconciler.reconcileUserFinalizers(context.Background(), user, instance)
 	if err != nil {
 		t.Fatalf("reconcileUserFinalizers returned error: %v", err)
@@ -146,7 +146,7 @@ func TestReconcileDelete_BlocksWhenReferenced(t *testing.T) {
 		WithObjects(user, instance).
 		Build()
 
-	reconciler := &PocketIDUserReconciler{Client: client, Scheme: scheme}
+	reconciler := &PocketIDUserReconciler{Client: client, APIReader: client, Scheme: scheme}
 	result, err := reconciler.reconcileDelete(context.Background(), user)
 	if err != nil {
 		t.Fatalf("reconcileDelete returned error: %v", err)
@@ -201,7 +201,7 @@ func TestReconcileDelete_BlocksWhenStatusReferenced(t *testing.T) {
 		WithObjects(user, instance).
 		Build()
 
-	reconciler := &PocketIDUserReconciler{Client: client, Scheme: scheme}
+	reconciler := &PocketIDUserReconciler{Client: client, APIReader: client, Scheme: scheme}
 	result, err := reconciler.reconcileDelete(context.Background(), user)
 	if err != nil {
 		t.Fatalf("reconcileDelete returned error: %v", err)
@@ -251,7 +251,7 @@ func TestReconcileDelete_RemovesFinalizersWhenUnreferenced(t *testing.T) {
 		WithObjects(user, instance).
 		Build()
 
-	reconciler := &PocketIDUserReconciler{Client: client, Scheme: scheme}
+	reconciler := &PocketIDUserReconciler{Client: client, APIReader: client, Scheme: scheme}
 	if _, err := reconciler.reconcileDelete(context.Background(), user); err != nil {
 		t.Fatalf("reconcileDelete returned error: %v", err)
 	}
