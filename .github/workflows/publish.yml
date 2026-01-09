@@ -95,25 +95,20 @@ jobs:
       - name: Get chart version
         id: chart
         run: |
-          VERSION="${{ inputs.image_tag }}"
-          OVERRIDE="0.0.0"
+          # For tag refs, use the semver tag; for non-tag refs, use 0.0.0
           if [ "${{ github.ref_type }}" = "tag" ]; then
-            OVERRIDE="${VERSION}"
+            echo "version=${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=0.0.0" >> "$GITHUB_OUTPUT"
           fi
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "override=${OVERRIDE}" >> "$GITHUB_OUTPUT"
 
       - name: Package chart
         run: |
           mkdir -p dist/chart-packages
-          if [ -n "${{ steps.chart.outputs.override }}" ]; then
-            helm package dist/chart \
-              --version "${{ steps.chart.outputs.override }}" \
-              --app-version "${{ steps.chart.outputs.override }}" \
-              --destination dist/chart-packages
-          else
-            helm package dist/chart --destination dist/chart-packages
-          fi
+          helm package dist/chart \
+            --version "${{ steps.chart.outputs.version }}" \
+            --app-version "${{ steps.chart.outputs.version }}" \
+            --destination dist/chart-packages
 
       - name: Log in to Helm registry
         run: |
@@ -130,16 +125,16 @@ jobs:
         if: github.ref_type != 'tag'
         uses: oras-project/setup-oras@v1
 
-      - name: Retag chart with non-semver image tag
+      - name: Retag chart with image_tag
         if: github.ref_type != 'tag'
         run: |
           CHART_NAME=$(awk -F': ' '$1=="name"{print $2}' dist/chart/Chart.yaml | tr -d '"')
           oras tag \
             ghcr.io/${{ inputs.repo_owner }}/charts/${CHART_NAME}:${{ steps.chart.outputs.version }} \
             "${{ inputs.image_tag }}"
-            
-      - name: Tag :commit-main chart
-        if: inputs.image_tag == 'main'
+
+      - name: Tag chart with commit-main
+        if: github.ref_type != 'tag' && inputs.image_tag == 'main'
         run: |
           CHART_NAME=$(awk -F': ' '$1=="name"{print $2}' dist/chart/Chart.yaml | tr -d '"')
           oras tag \
