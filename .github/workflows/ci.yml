@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "*"
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -18,6 +21,8 @@ jobs:
       repo_owner: ${{ steps.meta.outputs.repo_owner }}
       short_sha: ${{ steps.meta.outputs.short_sha }}
       ci_tag: ${{ steps.meta.outputs.ci_tag }}
+      build_image: ${{ steps.meta.outputs.build_image }}
+      image_tag: ${{ steps.meta.outputs.image_tag }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -27,9 +32,21 @@ jobs:
         run: |
           REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           SHORT_SHA=$(git rev-parse --short HEAD)
+          CI_TAG="ci-${SHORT_SHA}"
+          BUILD_TAG="${CI_TAG}"
+          IMAGE_TAG="main"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BUILD_TAG="PR-${{ github.event.pull_request.number }}"
+            IMAGE_TAG="${BUILD_TAG}"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            IMAGE_TAG="${{ github.ref_name }}"
+          fi
+          BUILD_IMAGE="ghcr.io/${REPO_OWNER}/pocket-id-operator:${BUILD_TAG}"
           echo "repo_owner=${REPO_OWNER}" >> "$GITHUB_OUTPUT"
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
-          echo "ci_tag=ci-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "ci_tag=${CI_TAG}" >> "$GITHUB_OUTPUT"
+          echo "build_image=${BUILD_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
 
   test:
     name: Tests
@@ -47,8 +64,9 @@ jobs:
     name: Build Image
     needs: meta
     uses: ./.github/workflows/build-push-image.yml
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     with:
-      image: ghcr.io/${{ needs.meta.outputs.repo_owner }}/pocket-id-operator:${{ needs.meta.outputs.ci_tag }}
+      image: ${{ needs.meta.outputs.build_image }}
     secrets: inherit
 
   e2e:
@@ -58,9 +76,10 @@ jobs:
       - test
       - lint
       - build
+    if: ${{ github.event_name != 'pull_request' }}
     uses: ./.github/workflows/test-e2e.yml
     with:
-      image: ghcr.io/${{ needs.meta.outputs.repo_owner }}/pocket-id-operator:${{ needs.meta.outputs.ci_tag }}
+      image: ${{ needs.meta.outputs.build_image }}
     secrets: inherit
 
   publish:
@@ -68,9 +87,11 @@ jobs:
     needs:
       - meta
       - e2e
+    if: ${{ github.event_name == 'push' }}
     uses: ./.github/workflows/publish.yml
     with:
-      image: ghcr.io/${{ needs.meta.outputs.repo_owner }}/pocket-id-operator:${{ needs.meta.outputs.ci_tag }}
+      image: ${{ needs.meta.outputs.build_image }}
+      image_tag: ${{ needs.meta.outputs.image_tag }}
       repo_owner: ${{ needs.meta.outputs.repo_owner }}
       short_sha: ${{ needs.meta.outputs.short_sha }}
     secrets: inherit

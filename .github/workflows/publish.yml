@@ -7,6 +7,10 @@ on:
         description: Source image reference to retag for release.
         required: true
         type: string
+      image_tag:
+        description: Tag to apply to the published image.
+        required: true
+        type: string
       repo_owner:
         description: Lowercase repo owner for GHCR namespace.
         required: true
@@ -19,6 +23,10 @@ on:
     inputs:
       image:
         description: Source image reference to retag for release.
+        required: true
+        type: string
+      image_tag:
+        description: Tag to apply to the published image.
         required: true
         type: string
       repo_owner:
@@ -57,13 +65,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Tag :main image
+      - name: Tag primary image
         run: |
           docker buildx imagetools create \
-            -t ghcr.io/${{ inputs.repo_owner }}/pocket-id-operator:main \
+            -t ghcr.io/${{ inputs.repo_owner }}/pocket-id-operator:${{ inputs.image_tag }} \
             ${{ inputs.image }}
 
       - name: Tag :commit-main image
+        if: inputs.image_tag == 'main'
         run: |
           docker buildx imagetools create \
             -t ghcr.io/${{ inputs.repo_owner }}/pocket-id-operator:${{ inputs.short_sha }}-main \
@@ -86,7 +95,7 @@ jobs:
       - name: Read chart version
         id: chart
         run: |
-          VERSION=$(awk -F': ' '$1=="version"{print $2}' dist/chart/Chart.yaml | tr -d '"')
+          VERSION="${{ inputs.image_tag }}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to Helm registry
@@ -98,17 +107,20 @@ jobs:
       - name: Package chart
         run: |
           mkdir -p dist/chart-packages
-          helm package dist/chart --destination dist/chart-packages
+          helm package dist/chart \
+            --version "${{ steps.chart.outputs.version }}" \
+            --app-version "${{ steps.chart.outputs.version }}" \
+            --destination dist/chart-packages
 
       - name: Push chart to GHCR (OCI)
         run: |
           helm push dist/chart-packages/pocket-id-operator-${{ steps.chart.outputs.version }}.tgz \
             oci://ghcr.io/${{ inputs.repo_owner }}/charts
 
-      - name: Setup ORAS
-        uses: oras-project/setup-oras@v1
-
-      - name: Tag chart as :main and :commit-main
-        run: |
-          oras tag ghcr.io/${{ inputs.repo_owner }}/charts/pocket-id-operator:${{ steps.chart.outputs.version }} main
-          oras tag ghcr.io/${{ inputs.repo_owner }}/charts/pocket-id-operator:${{ steps.chart.outputs.version }} ${{ inputs.short_sha }}-main
+      - name: Create GitHub release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.image_tag }}
+          name: ${{ inputs.image_tag }}
+          generate_release_notes: true

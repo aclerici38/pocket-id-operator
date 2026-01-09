@@ -2,6 +2,19 @@ apiVersion: v2
 name: pocket-id-operator
 description: A Helm chart to distribute the project pocket-id-operator
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
-icon: "https://example.com/icon.png"
+version: 0.0.0
+appVersion: 0.0.0
+home: https://github.com/aclerici38/pocket-id-operator
+sources:
+  - https://github.com/aclerici38/pocket-id-operator
+  - https://pocket-id.org/
+maintainers:
+  - name: Anthony Clerici
+    email: anthony@clerici.me
+keywords:
+  - pocket-id
+  - oidc
+  - oauth
+  - oauth2
+annotations:
+  category: Infrastructure
