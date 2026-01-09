@@ -59,9 +59,9 @@ var _ = Describe("Pocket-ID Operator", Ordered, func() {
 		removeFinalizers(instanceNS)
 
 		By("deleting test namespaces")
-		cmd := exec.Command("kubectl", "delete", "ns", userNS, "--ignore-not-found", "--timeout=60s")
+		cmd := exec.Command("kubectl", "delete", "ns", userNS, "--ignore-not-found", "--timeout=5s")
 		_, _ = utils.Run(cmd)
-		cmd = exec.Command("kubectl", "delete", "ns", instanceNS, "--ignore-not-found", "--timeout=60s")
+		cmd = exec.Command("kubectl", "delete", "ns", instanceNS, "--ignore-not-found", "--timeout=5s")
 		_, _ = utils.Run(cmd)
 	})
 
