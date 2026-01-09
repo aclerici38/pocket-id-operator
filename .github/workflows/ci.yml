@@ -29,22 +29,22 @@ jobs:
           SHORT_SHA=$(git rev-parse --short HEAD)
           echo "repo_owner=${REPO_OWNER}" >> "$GITHUB_OUTPUT"
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
-          echo "ci_tag=ci-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "ci_tag=${SHORT_SHA}-main" >> "$GITHUB_OUTPUT"
 
   test:
-    name: Stage 1 - Tests
+    name: Tests
     needs: meta
     uses: ./.github/workflows/test.yml
     secrets: inherit
 
   lint:
-    name: Stage 1 - Lint
+    name: Lint
     needs: meta
     uses: ./.github/workflows/lint.yml
     secrets: inherit
 
   build:
-    name: Stage 1 - Build Image
+    name: Build Image
     needs: meta
     uses: ./.github/workflows/build-push-image.yml
     with:
@@ -52,7 +52,7 @@ jobs:
     secrets: inherit
 
   e2e:
-    name: Stage 2 - E2E Tests
+    name: E2E Tests
     needs:
       - meta
       - test
@@ -64,7 +64,7 @@ jobs:
     secrets: inherit
 
   publish:
-    name: Stage 3 - Publish
+    name: Publish
     needs:
       - meta
       - e2e
