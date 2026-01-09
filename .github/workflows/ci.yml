@@ -29,7 +29,7 @@ jobs:
           SHORT_SHA=$(git rev-parse --short HEAD)
           echo "repo_owner=${REPO_OWNER}" >> "$GITHUB_OUTPUT"
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
-          echo "ci_tag=${SHORT_SHA}-main" >> "$GITHUB_OUTPUT"
+          echo "ci_tag=ci-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
   test:
     name: Tests

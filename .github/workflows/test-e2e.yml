@@ -47,9 +47,12 @@ jobs:
 
       - name: Pull cached image
         if: inputs.image != ''
-        run: |
-          docker pull ${{ inputs.image }}
-          docker tag ${{ inputs.image }} pocket-id-operator:e2e
+        run: docker pull ${{ inputs.image }}
 
       - name: Run e2e tests
-        run: make test-e2e
+        run: |
+          if [ -n "${{ inputs.image }}" ]; then
+            make test-e2e IMG=${{ inputs.image }}
+          else
+            make test-e2e
+          fi

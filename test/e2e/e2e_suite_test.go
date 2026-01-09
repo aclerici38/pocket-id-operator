@@ -22,6 +22,7 @@ package e2e
 import (
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"testing"
 	"time"
@@ -33,9 +34,11 @@ import (
 )
 
 const (
-	namespace    = "pocket-id-operator-system"
-	projectImage = "pocket-id-operator:e2e"
+	defaultProjectImage = "pocket-id-operator:e2e"
+	namespace           = "pocket-id-operator-system"
 )
+
+var projectImage = defaultProjectImage
 
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -45,13 +48,19 @@ func TestE2E(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
+	projectImage = resolveProjectImage()
+
 	By("building the operator image")
-	cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
-	_, err := utils.Run(cmd)
-	Expect(err).NotTo(HaveOccurred(), "Failed to build operator image")
+	if os.Getenv("IMG") == "" {
+		cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
+		_, err := utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred(), "Failed to build operator image")
+	} else {
+		By("skipping build because IMG is set")
+	}
 
 	By("loading the operator image into Kind")
-	err = utils.LoadImageToKindClusterWithName(projectImage)
+	err := utils.LoadImageToKindClusterWithName(projectImage)
 	Expect(err).NotTo(HaveOccurred(), "Failed to load operator image into Kind")
 
 	By("cleaning up any resources from previous runs")
@@ -171,6 +180,14 @@ func cleanupAllResources() {
 	cmd = exec.Command("kubectl", "delete", "ns", "pocket-id-e2e-test",
 		"--ignore-not-found", "--timeout=30s")
 	_, _ = utils.Run(cmd)
+}
+
+func resolveProjectImage() string {
+	if img := os.Getenv("IMG"); img != "" {
+		return img
+	}
+
+	return defaultProjectImage
 }
 
 func splitNamespacedName(s string) []string {
