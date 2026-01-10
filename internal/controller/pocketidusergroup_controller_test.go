@@ -134,6 +134,14 @@ var _ = Describe("PocketIDUserGroup Controller", func() {
 						return err
 					}
 					user.Status.UserID = "user-id-1"
+					user.Status.Conditions = []metav1.Condition{
+						{
+							Type:               "Ready",
+							Status:             metav1.ConditionTrue,
+							Reason:             "Reconciled",
+							LastTransitionTime: metav1.Now(),
+						},
+					}
 					return k8sClient.Status().Update(ctx, user)
 				})
 			}, timeout, interval).Should(Succeed())
@@ -255,6 +263,14 @@ var _ = Describe("PocketIDUserGroup Controller", func() {
 						return err
 					}
 					user.Status.UserID = "cross-ns-id"
+					user.Status.Conditions = []metav1.Condition{
+						{
+							Type:               "Ready",
+							Status:             metav1.ConditionTrue,
+							Reason:             "Reconciled",
+							LastTransitionTime: metav1.Now(),
+						},
+					}
 					return k8sClient.Status().Update(ctx, user)
 				})
 			}, timeout, interval).Should(Succeed())

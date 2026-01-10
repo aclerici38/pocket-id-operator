@@ -122,7 +122,7 @@ func TestReconcileAuth_BlocksWhenAuthUserNotAdmin(t *testing.T) {
 	if result.RequeueAfter <= 0 {
 		t.Fatalf("expected requeue when auth user is not admin, got %s", result.RequeueAfter)
 	}
-	if result.RequeueAfter < 20*time.Second {
-		t.Fatalf("expected a slower requeue for non-admin auth user, got %s", result.RequeueAfter)
+	if result.RequeueAfter < 5*time.Second {
+		t.Fatalf("expected a requeue for non-admin auth user, got %s", result.RequeueAfter)
 	}
 }

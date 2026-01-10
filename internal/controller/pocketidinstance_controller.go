@@ -36,11 +36,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
@@ -748,14 +746,14 @@ func (r *PocketIDInstanceReconciler) reconcileAuth(ctx context.Context, instance
 
 	if user.Status.UserID != "" && !user.Status.IsAdmin {
 		log.Info("Auth user is not admin; blocking reconcile", "user", authUser.Name)
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	if instance.Spec.Auth != nil && instance.Status.AuthUserRef != "" {
 		if instance.Status.AuthUserRef != authUser.Name || instance.Status.AuthUserNamespace != authUser.Namespace {
 			if !isUserReadyStatus(user) {
 				log.Info("Auth user not ready; delaying auth switch", "user", authUser.Name)
-				return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+				return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 			}
 		}
 	}
@@ -777,7 +775,7 @@ func (r *PocketIDInstanceReconciler) reconcileAuth(ctx context.Context, instance
 	// Secret doesn't exist - check if already bootstrapped
 	if instance.Status.Bootstrapped {
 		log.Error(nil, "API key secret missing after bootstrap", "secret", secretName)
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, fmt.Errorf("API key secret %s not found but instance was bootstrapped", secretName)
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, fmt.Errorf("API key secret %s not found but instance was bootstrapped", secretName)
 	}
 
 	// User CR exists but secret doesn't - need to bootstrap
@@ -859,7 +857,7 @@ func (r *PocketIDInstanceReconciler) bootstrap(ctx context.Context, instance *po
 	if err != nil {
 		if bootstrapNotReady(err) {
 			log.Info("Pocket-ID not ready for bootstrap, requeuing", "error", err)
-			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 		}
 		log.Error(err, "Bootstrap failed")
 		return ctrl.Result{}, err
@@ -972,7 +970,7 @@ func (r *PocketIDInstanceReconciler) resolveStringValue(ctx context.Context, nam
 // SetupWithManager sets up the controller with the Manager.
 func (r *PocketIDInstanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&pocketidinternalv1alpha1.PocketIDInstance{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		For(&pocketidinternalv1alpha1.PocketIDInstance{}).
 		Owns(&appsv1.Deployment{}).
 		Owns(&appsv1.StatefulSet{}).
 		Owns(&corev1.Service{}).

@@ -25,12 +25,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
@@ -85,7 +83,7 @@ func (r *PocketIDUserGroupReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	updatedFinalizers, err := r.reconcileUserGroupFinalizers(ctx, userGroup)
 	if err != nil {
 		log.Error(err, "Failed to reconcile user group finalizers")
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 	if updatedFinalizers {
 		return ctrl.Result{Requeue: true}, nil
@@ -95,7 +93,7 @@ func (r *PocketIDUserGroupReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	if err != nil {
 		log.Error(err, "Failed to select PocketIDInstance")
 		_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "InstanceSelectionError", err.Error())
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	// Validate instance is ready using base reconciler
@@ -116,12 +114,12 @@ func (r *PocketIDUserGroupReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			log.Error(updateErr, "Failed to update user group status")
 		}
 		_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "ReconcileError", err.Error())
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	if err := r.updateUserGroupStatus(ctx, userGroup, current); err != nil {
 		log.Error(err, "Failed to update user group status")
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionTrue, "Reconciled", "User group is in sync")
@@ -276,7 +274,7 @@ func (r *PocketIDUserGroupReconciler) reconcileDelete(ctx context.Context, userG
 	referencedByOIDCClient, err := r.isUserGroupReferencedByOIDCClient(ctx, userGroup)
 	if err != nil {
 		logf.FromContext(ctx).Error(err, "Failed to check PocketIDOIDCClient references")
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 	if referencedByOIDCClient {
 		logf.FromContext(ctx).Info("User group is referenced by PocketIDOIDCClient, blocking deletion", "userGroup", userGroup.Name)
@@ -286,7 +284,7 @@ func (r *PocketIDUserGroupReconciler) reconcileDelete(ctx context.Context, userG
 				return ctrl.Result{}, err
 			}
 		}
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 	if controllerutil.ContainsFinalizer(userGroup, oidcClientUserGroupFinalizer) {
 		controllerutil.RemoveFinalizer(userGroup, oidcClientUserGroupFinalizer)
@@ -406,7 +404,7 @@ func (r *PocketIDUserGroupReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&pocketidinternalv1alpha1.PocketIDUserGroup{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		For(&pocketidinternalv1alpha1.PocketIDUserGroup{}).
 		Watches(&pocketidinternalv1alpha1.PocketIDUser{}, handler.EnqueueRequestsFromMapFunc(r.requestsForUser)).
 		Watches(&pocketidinternalv1alpha1.PocketIDOIDCClient{}, handler.EnqueueRequestsFromMapFunc(r.requestsForOIDCClient)).
 		Named("pocketidusergroup").

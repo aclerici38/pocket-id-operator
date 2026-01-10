@@ -24,12 +24,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
@@ -92,7 +90,7 @@ func (r *PocketIDOIDCClientReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if err != nil {
 		log.Error(err, "Failed to select PocketIDInstance")
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "InstanceSelectionError", err.Error())
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	// Validate instance is ready using base reconciler
@@ -113,12 +111,12 @@ func (r *PocketIDOIDCClientReconciler) Reconcile(ctx context.Context, req ctrl.R
 			log.Error(updateErr, "Failed to update OIDC client status")
 		}
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "ReconcileError", err.Error())
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	if err := r.updateOIDCClientStatus(ctx, oidcClient, current); err != nil {
 		log.Error(err, "Failed to update OIDC client status")
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionTrue, "Reconciled", "OIDC client is in sync")
@@ -282,7 +280,7 @@ func (r *PocketIDOIDCClientReconciler) SetupWithManager(mgr ctrl.Manager) error 
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&pocketidinternalv1alpha1.PocketIDOIDCClient{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		For(&pocketidinternalv1alpha1.PocketIDOIDCClient{}).
 		Watches(&pocketidinternalv1alpha1.PocketIDUserGroup{}, handler.EnqueueRequestsFromMapFunc(r.requestsForUserGroup)).
 		Named("pocketidoidcclient").
 		Complete(r)

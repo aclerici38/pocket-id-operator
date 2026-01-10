@@ -28,12 +28,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
@@ -88,13 +86,13 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	if err != nil {
 		log.Error(err, "Failed to select PocketIDInstance")
 		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "InstanceSelectionError", err.Error())
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	updatedFinalizers, err := r.reconcileUserFinalizers(ctx, user, instance)
 	if err != nil {
 		log.Error(err, "Failed to reconcile user finalizers")
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 	if updatedFinalizers {
 		return ctrl.Result{Requeue: true}, nil
@@ -115,19 +113,19 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	if err := r.reconcileUser(ctx, user, apiClient, instance); err != nil {
 		log.Error(err, "Failed to reconcile user")
 		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "ReconcileError", err.Error())
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	// Reconcile API keys
 	if err := r.reconcileAPIKeys(ctx, user, apiClient); err != nil {
 		log.Error(err, "Failed to reconcile API keys")
 		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "APIKeyError", err.Error())
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	if err := r.ensureOneTimeLoginStatus(ctx, user, apiClient, instance); err != nil {
 		log.Error(err, "Failed to ensure one-time login status")
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	_ = r.SetReadyCondition(ctx, user, metav1.ConditionTrue, "Reconciled", "User and API keys are in sync")
@@ -135,7 +133,7 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	cleanupResult, err := r.reconcileOneTimeLoginStatus(ctx, user)
 	if err != nil {
 		log.Error(err, "Failed to reconcile one-time login status")
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	if cleanupResult.RequeueAfter > 0 {
@@ -263,17 +261,17 @@ func (r *PocketIDUserReconciler) reconcileDelete(ctx context.Context, user *pock
 	referenced, err := r.isUserReferencedByInstance(ctx, user.Name, user.Namespace)
 	if err != nil {
 		log.Error(err, "Failed to check PocketIDInstance references")
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 	if referenced {
 		log.Info("User is referenced by PocketIDInstance, blocking deletion", "user", user.Name)
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	referencedByUserGroup, err := r.isUserReferencedByUserGroup(ctx, user.Name, user.Namespace)
 	if err != nil {
 		log.Error(err, "Failed to check PocketIDUserGroup references")
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 	if referencedByUserGroup {
 		log.Info("User is referenced by PocketIDUserGroup, blocking deletion", "user", user.Name)
@@ -283,7 +281,7 @@ func (r *PocketIDUserReconciler) reconcileDelete(ctx context.Context, user *pock
 				return ctrl.Result{}, err
 			}
 		}
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	if user.Status.UserID != "" {
@@ -300,7 +298,7 @@ func (r *PocketIDUserReconciler) reconcileDelete(ctx context.Context, user *pock
 			if err != nil {
 				if stderrors.Is(err, ErrAPIClientNotReady) {
 					log.Info("API client not ready for delete, requeuing", "userID", user.Status.UserID)
-					return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+					return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 				}
 				log.Error(err, "Failed to get API client for delete")
 				return ctrl.Result{}, err
@@ -732,7 +730,7 @@ func (r *PocketIDUserReconciler) requestsForUserGroup(ctx context.Context, obj c
 // SetupWithManager sets up the controller with the Manager.
 func (r *PocketIDUserReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&pocketidinternalv1alpha1.PocketIDUser{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		For(&pocketidinternalv1alpha1.PocketIDUser{}).
 		Watches(&pocketidinternalv1alpha1.PocketIDUserGroup{}, handler.EnqueueRequestsFromMapFunc(r.requestsForUserGroup)).
 		Owns(&corev1.Secret{}).
 		Named("pocketiduser").

@@ -4,10 +4,18 @@ import (
 	"context"
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	pocketidv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 )
+
+// isResourceReady checks if a resource has the Ready condition set to True
+func isResourceReady(conditions []metav1.Condition) bool {
+	readyCondition := meta.FindStatusCondition(conditions, "Ready")
+	return readyCondition != nil && readyCondition.Status == metav1.ConditionTrue
+}
 
 // ResolveUserReferences resolves PocketIDUser references to user IDs
 func ResolveUserReferences(
@@ -33,8 +41,12 @@ func ResolveUserReferences(
 			return nil, fmt.Errorf("get user %s: %w", ref.Name, err)
 		}
 
+		if !isResourceReady(user.Status.Conditions) {
+			return nil, fmt.Errorf("user %s is not ready (Ready condition not True)", ref.Name)
+		}
+
 		if user.Status.UserID == "" {
-			return nil, fmt.Errorf("user %s is not ready", ref.Name)
+			return nil, fmt.Errorf("user %s has no UserID in status", ref.Name)
 		}
 
 		userIDs = append(userIDs, user.Status.UserID)
@@ -67,8 +79,12 @@ func ResolveUserGroupReferences(
 			return nil, fmt.Errorf("get user group %s: %w", ref.Name, err)
 		}
 
+		if !isResourceReady(group.Status.Conditions) {
+			return nil, fmt.Errorf("user group %s is not ready (Ready condition not True)", ref.Name)
+		}
+
 		if group.Status.GroupID == "" {
-			return nil, fmt.Errorf("user group %s is not ready", ref.Name)
+			return nil, fmt.Errorf("user group %s has no GroupID in status", ref.Name)
 		}
 
 		groupIDs = append(groupIDs, group.Status.GroupID)
