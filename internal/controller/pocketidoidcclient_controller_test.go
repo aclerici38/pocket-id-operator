@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
@@ -557,6 +558,286 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: clientName, Namespace: namespace}, updated)).To(Succeed())
 			Expect(updated.Status.ClientID).To(Equal("client-id"))
 			Expect(updated.Status.AllowedUserGroupIDs).To(Equal([]string{"group-1"}))
+		})
+	})
+
+	Context("Secret helper functions", func() {
+		var reconciler *PocketIDOIDCClientReconciler
+
+		BeforeEach(func() {
+			reconciler = &PocketIDOIDCClientReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+		})
+
+		Describe("getSecretName", func() {
+			It("should return default name when not specified", func() {
+				oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "my-client",
+					},
+				}
+				name := reconciler.getSecretName(oidcClient)
+				Expect(name).To(Equal("my-client-oidc-credentials"))
+			})
+
+			It("should return custom name when specified", func() {
+				oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "my-client",
+					},
+					Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+						Secret: &pocketidinternalv1alpha1.OIDCClientSecretSpec{
+							Name: "custom-secret",
+						},
+					},
+				}
+				name := reconciler.getSecretName(oidcClient)
+				Expect(name).To(Equal("custom-secret"))
+			})
+
+			It("should return default when secret spec exists but name is empty", func() {
+				oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "my-client",
+					},
+					Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+						Secret: &pocketidinternalv1alpha1.OIDCClientSecretSpec{
+							Name: "",
+						},
+					},
+				}
+				name := reconciler.getSecretName(oidcClient)
+				Expect(name).To(Equal("my-client-oidc-credentials"))
+			})
+		})
+
+		Describe("getSecretKeys", func() {
+			It("should return defaults when not specified", func() {
+				oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "my-client",
+					},
+				}
+				keys := reconciler.getSecretKeys(oidcClient)
+				Expect(keys.ClientID).To(Equal("client_id"))
+				Expect(keys.ClientSecret).To(Equal("client_secret"))
+				Expect(keys.IssuerURL).To(Equal("issuer_url"))
+				Expect(keys.CallbackURLs).To(Equal("callback_urls"))
+				Expect(keys.LogoutCallbackURLs).To(Equal("logout_callback_urls"))
+			})
+
+			It("should return custom keys when specified", func() {
+				oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "my-client",
+					},
+					Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+						Secret: &pocketidinternalv1alpha1.OIDCClientSecretSpec{
+							Keys: &pocketidinternalv1alpha1.OIDCClientSecretKeys{
+								ClientID:           "custom_client_id",
+								ClientSecret:       "custom_client_secret",
+								IssuerURL:          "custom_issuer",
+								CallbackURLs:       "custom_callbacks",
+								LogoutCallbackURLs: "custom_logout",
+							},
+						},
+					},
+				}
+				keys := reconciler.getSecretKeys(oidcClient)
+				Expect(keys.ClientID).To(Equal("custom_client_id"))
+				Expect(keys.ClientSecret).To(Equal("custom_client_secret"))
+				Expect(keys.IssuerURL).To(Equal("custom_issuer"))
+				Expect(keys.CallbackURLs).To(Equal("custom_callbacks"))
+				Expect(keys.LogoutCallbackURLs).To(Equal("custom_logout"))
+			})
+
+			It("should use defaults for unspecified custom keys", func() {
+				oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "my-client",
+					},
+					Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+						Secret: &pocketidinternalv1alpha1.OIDCClientSecretSpec{
+							Keys: &pocketidinternalv1alpha1.OIDCClientSecretKeys{
+								ClientID: "custom_client_id",
+								// Other keys not specified
+							},
+						},
+					},
+				}
+				keys := reconciler.getSecretKeys(oidcClient)
+				Expect(keys.ClientID).To(Equal("custom_client_id"))
+				Expect(keys.ClientSecret).To(Equal("client_secret"))
+				Expect(keys.IssuerURL).To(Equal("issuer_url"))
+				Expect(keys.CallbackURLs).To(Equal("callback_urls"))
+				Expect(keys.LogoutCallbackURLs).To(Equal("logout_callback_urls"))
+			})
+		})
+	})
+
+	Context("Secret reconciliation", func() {
+		It("should delete secret when disabled", func() {
+			scheme := runtime.NewScheme()
+			_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+			_ = corev1.AddToScheme(scheme)
+
+			enabled := false
+			oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-disabled-secret",
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+					Secret: &pocketidinternalv1alpha1.OIDCClientSecretSpec{
+						Enabled: &enabled,
+					},
+				},
+				Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
+					ClientID: "client-123",
+				},
+			}
+
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-disabled-secret-oidc-credentials",
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"client_id": []byte("client-123"),
+				},
+			}
+
+			instance := &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-instance",
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					AppURL:        "http://test.example.com",
+					EncryptionKey: pocketidinternalv1alpha1.EnvValue{Value: "0123456789abcdef"},
+				},
+			}
+
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(oidcClient, secret, instance).
+				Build()
+
+			reconciler := &PocketIDOIDCClientReconciler{
+				Client: fakeClient,
+				Scheme: scheme,
+			}
+
+			err := reconciler.reconcileSecret(ctx, oidcClient, instance, nil)
+			Expect(err).NotTo(HaveOccurred())
+
+			deletedSecret := &corev1.Secret{}
+			err = fakeClient.Get(ctx, client.ObjectKey{Name: secret.Name, Namespace: namespace}, deletedSecret)
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("should not error when disabling non-existent secret", func() {
+			scheme := runtime.NewScheme()
+			_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+			_ = corev1.AddToScheme(scheme)
+
+			enabled := false
+			oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-no-secret",
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+					Secret: &pocketidinternalv1alpha1.OIDCClientSecretSpec{
+						Enabled: &enabled,
+					},
+				},
+			}
+
+			instance := &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-instance",
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					AppURL:        "http://test.example.com",
+					EncryptionKey: pocketidinternalv1alpha1.EnvValue{Value: "0123456789abcdef"},
+				},
+			}
+
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(oidcClient, instance).
+				Build()
+
+			reconciler := &PocketIDOIDCClientReconciler{
+				Client: fakeClient,
+				Scheme: scheme,
+			}
+
+			err := reconciler.reconcileSecret(ctx, oidcClient, instance, nil)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should create secret with default settings for public clients", func() {
+			scheme := runtime.NewScheme()
+			_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+			_ = corev1.AddToScheme(scheme)
+
+			oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-public-enabled",
+					Namespace: namespace,
+					UID:       "test-uid-public",
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+					IsPublic:     true,
+					CallbackURLs: []string{"https://example.com/callback"},
+				},
+				Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
+					ClientID: "client-789",
+				},
+			}
+
+			instance := &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-instance",
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					AppURL:        "http://test.example.com",
+					EncryptionKey: pocketidinternalv1alpha1.EnvValue{Value: "0123456789abcdef"},
+				},
+			}
+
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(oidcClient, instance).
+				Build()
+
+			reconciler := &PocketIDOIDCClientReconciler{
+				Client: fakeClient,
+				Scheme: scheme,
+			}
+
+			// For public clients, no API client call is needed since there's no client_secret
+			err := reconciler.reconcileSecret(ctx, oidcClient, instance, nil)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify secret was created
+			secret := &corev1.Secret{}
+			err = fakeClient.Get(ctx, client.ObjectKey{
+				Name:      "test-public-enabled-oidc-credentials",
+				Namespace: namespace,
+			}, secret)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify it contains client_id but not client_secret
+			Expect(secret.Data).To(HaveKey("client_id"))
+			Expect(secret.Data).NotTo(HaveKey("client_secret"))
+			Expect(secret.Data).To(HaveKey("issuer_url"))
 		})
 	})
 

@@ -54,6 +54,52 @@ type OIDCClientFederatedIdentity struct {
 	JWKS string `json:"jwks,omitempty"`
 }
 
+// OIDCClientSecretSpec defines how credentials should be stored in a Secret.
+type OIDCClientSecretSpec struct {
+	// Enabled controls whether to create a secret with OIDC client credentials.
+	// If false, no secret will be created.
+	// +kubebuilder:default=true
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// Name is the name of the secret to create.
+	// Defaults to metadata.name + "-oidc-credentials"
+	// +optional
+	Name string `json:"name,omitempty"`
+
+	// Keys allows customization of the secret keys for each credential field.
+	// +optional
+	Keys *OIDCClientSecretKeys `json:"keys,omitempty"`
+}
+
+// OIDCClientSecretKeys defines customizable keys for secret data fields.
+type OIDCClientSecretKeys struct {
+	// ClientID is the key name for the OIDC client ID.
+	// +kubebuilder:default="client_id"
+	// +optional
+	ClientID string `json:"clientId,omitempty"`
+
+	// ClientSecret is the key name for the OIDC client secret.
+	// +kubebuilder:default="client_secret"
+	// +optional
+	ClientSecret string `json:"clientSecret,omitempty"`
+
+	// IssuerURL is the key name for the OIDC issuer URL.
+	// +kubebuilder:default="issuer_url"
+	// +optional
+	IssuerURL string `json:"issuerUrl,omitempty"`
+
+	// CallbackURLs is the key name for the callback URLs.
+	// +kubebuilder:default="callback_urls"
+	// +optional
+	CallbackURLs string `json:"callbackUrls,omitempty"`
+
+	// LogoutCallbackURLs is the key name for the logout callback URLs.
+	// +kubebuilder:default="logout_callback_urls"
+	// +optional
+	LogoutCallbackURLs string `json:"logoutCallbackUrls,omitempty"`
+}
+
 // PocketIDOIDCClientSpec defines the desired state of PocketIDOIDCClient
 type PocketIDOIDCClientSpec struct {
 	// InstanceSelector selects the PocketIDInstance to reconcile against.
@@ -109,6 +155,10 @@ type PocketIDOIDCClientSpec struct {
 	// AllowedUserGroups restricts access to the listed PocketIDUserGroups
 	// +optional
 	AllowedUserGroups []NamespacedUserGroupReference `json:"allowedUserGroups,omitempty"`
+
+	// Secret defines how OIDC client credentials should be stored in a Kubernetes Secret.
+	// +optional
+	Secret *OIDCClientSecretSpec `json:"secret,omitempty"`
 }
 
 // PocketIDOIDCClientStatus defines the observed state of PocketIDOIDCClient.

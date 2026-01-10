@@ -933,6 +933,282 @@ spec:
 		})
 	})
 
+	Context("OIDC Client Secrets", func() {
+		const (
+			secretClientName       = "test-oidc-secret-client"
+			customSecretClientName = "test-oidc-custom-secret"
+			publicClientName       = "test-oidc-public-client"
+			disabledSecretClient   = "test-oidc-disabled-secret"
+			regenerateSecretClient = "test-oidc-regenerate-secret"
+		)
+
+		It("should create a secret with default name and keys", func() {
+			By("creating an OIDC client with default secret config")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDOIDCClient
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  callbackUrls:
+  - https://example.com/callback
+  logoutCallbackUrls:
+  - https://example.com/logout
+`, secretClientName, userNS))
+
+			By("verifying the OIDC client becomes Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidoidcclient", secretClientName, "-n", userNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(output).To(Equal("True"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying the default secret is created")
+			defaultSecretName := secretClientName + "-oidc-credentials"
+			Eventually(func(g Gomega) {
+				output := kubectlGet("secret", defaultSecretName, "-n", userNS, "-o", "name")
+				g.Expect(output).To(Equal("secret/" + defaultSecretName))
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying the secret contains client_id")
+			clientID := kubectlGet("pocketidoidcclient", secretClientName, "-n", userNS,
+				"-o", "jsonpath={.status.clientId}")
+			Eventually(func(g Gomega) {
+				secretClientID := kubectlGetSecretData(defaultSecretName, userNS, "client_id")
+				g.Expect(secretClientID).To(Equal(clientID))
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying the secret contains client_secret")
+			Eventually(func(g Gomega) {
+				clientSecret := kubectlGetSecretData(defaultSecretName, userNS, "client_secret")
+				g.Expect(clientSecret).NotTo(BeEmpty())
+				g.Expect(len(clientSecret)).To(BeNumerically(">", 20))
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying the secret contains issuer_url")
+			Eventually(func(g Gomega) {
+				issuerURL := kubectlGetSecretData(defaultSecretName, userNS, "issuer_url")
+				g.Expect(issuerURL).To(ContainSubstring(instanceName))
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying the secret contains callback_urls as JSON")
+			Eventually(func(g Gomega) {
+				callbackURLs := kubectlGetSecretData(defaultSecretName, userNS, "callback_urls")
+				g.Expect(callbackURLs).To(ContainSubstring("https://example.com/callback"))
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying the secret contains logout_callback_urls as JSON")
+			Eventually(func(g Gomega) {
+				logoutURLs := kubectlGetSecretData(defaultSecretName, userNS, "logout_callback_urls")
+				g.Expect(logoutURLs).To(ContainSubstring("https://example.com/logout"))
+			}, time.Minute, 2*time.Second).Should(Succeed())
+		})
+
+		It("should create a secret with custom name and keys", func() {
+			By("creating an OIDC client with custom secret configuration")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDOIDCClient
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  callbackUrls:
+  - https://custom.example.com/callback
+  secret:
+    name: my-custom-secret
+    keys:
+      clientId: OIDC_CLIENT_ID
+      clientSecret: OIDC_CLIENT_SECRET
+      issuerUrl: OIDC_ISSUER
+      callbackUrls: OIDC_CALLBACKS
+      logoutCallbackUrls: OIDC_LOGOUT_URLS
+`, customSecretClientName, userNS))
+
+			By("verifying the OIDC client becomes Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidoidcclient", customSecretClientName, "-n", userNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(output).To(Equal("True"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying the custom secret is created")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("secret", "my-custom-secret", "-n", userNS, "-o", "name")
+				g.Expect(output).To(Equal("secret/my-custom-secret"))
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying custom key names are used")
+			Eventually(func(g Gomega) {
+				clientID := kubectlGetSecretData("my-custom-secret", userNS, "OIDC_CLIENT_ID")
+				g.Expect(clientID).NotTo(BeEmpty())
+
+				clientSecret := kubectlGetSecretData("my-custom-secret", userNS, "OIDC_CLIENT_SECRET")
+				g.Expect(clientSecret).NotTo(BeEmpty())
+
+				issuer := kubectlGetSecretData("my-custom-secret", userNS, "OIDC_ISSUER")
+				g.Expect(issuer).NotTo(BeEmpty())
+
+				callbacks := kubectlGetSecretData("my-custom-secret", userNS, "OIDC_CALLBACKS")
+				g.Expect(callbacks).NotTo(BeEmpty())
+			}, time.Minute, 2*time.Second).Should(Succeed())
+		})
+
+		It("should not include client_secret for public clients", func() {
+			By("creating a public OIDC client")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDOIDCClient
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  isPublic: true
+  callbackUrls:
+  - https://public.example.com/callback
+`, publicClientName, userNS))
+
+			By("verifying the OIDC client becomes Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidoidcclient", publicClientName, "-n", userNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(output).To(Equal("True"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			publicSecretName := publicClientName + "-oidc-credentials"
+			By("verifying the secret exists")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("secret", publicSecretName, "-n", userNS, "-o", "name")
+				g.Expect(output).To(Equal("secret/" + publicSecretName))
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying client_secret is not present in the secret")
+			cmd := exec.Command("kubectl", "get", "secret", publicSecretName, "-n", userNS,
+				"-o", "jsonpath={.data.client_secret}")
+			output, _ := utils.Run(cmd)
+			Expect(strings.TrimSpace(output)).To(BeEmpty())
+
+			By("verifying client_id is still present")
+			Eventually(func(g Gomega) {
+				clientID := kubectlGetSecretData(publicSecretName, userNS, "client_id")
+				g.Expect(clientID).NotTo(BeEmpty())
+			}, time.Minute, 2*time.Second).Should(Succeed())
+		})
+
+		It("should not create a secret when disabled", func() {
+			By("creating an OIDC client with secret creation disabled")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDOIDCClient
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  callbackUrls:
+  - https://disabled.example.com/callback
+  secret:
+    enabled: false
+`, disabledSecretClient, userNS))
+
+			By("verifying the OIDC client becomes Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidoidcclient", disabledSecretClient, "-n", userNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(output).To(Equal("True"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			disabledSecretName := disabledSecretClient + "-oidc-credentials"
+			By("verifying the secret does not exist")
+			Consistently(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "secret", disabledSecretName, "-n", userNS)
+				_, err := utils.Run(cmd)
+				g.Expect(err).To(HaveOccurred())
+			}, 10*time.Second, 2*time.Second).Should(Succeed())
+		})
+
+		It("should preserve client_secret across reconciles", func() {
+			By("creating an OIDC client")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDOIDCClient
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  callbackUrls:
+  - https://preserve.example.com/callback
+`, regenerateSecretClient, userNS))
+
+			By("verifying the OIDC client becomes Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidoidcclient", regenerateSecretClient, "-n", userNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(output).To(Equal("True"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			preserveSecretName := regenerateSecretClient + "-oidc-credentials"
+			var originalSecret string
+			By("reading the original client_secret")
+			Eventually(func(g Gomega) {
+				originalSecret = kubectlGetSecretData(preserveSecretName, userNS, "client_secret")
+				g.Expect(originalSecret).NotTo(BeEmpty())
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("triggering a reconcile by updating the spec")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDOIDCClient
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  callbackUrls:
+  - https://preserve.example.com/callback
+  - https://preserve.example.com/callback2
+`, regenerateSecretClient, userNS))
+
+			By("waiting for reconcile to complete")
+			time.Sleep(5 * time.Second)
+
+			By("verifying the client_secret is unchanged")
+			Consistently(func(g Gomega) {
+				currentSecret := kubectlGetSecretData(preserveSecretName, userNS, "client_secret")
+				g.Expect(currentSecret).To(Equal(originalSecret))
+			}, 20*time.Second, 2*time.Second).Should(Succeed())
+		})
+
+		It("should regenerate client_secret when annotation is added", func() {
+			preserveSecretName := regenerateSecretClient + "-oidc-credentials"
+			var originalSecret string
+			By("reading the current client_secret")
+			Eventually(func(g Gomega) {
+				originalSecret = kubectlGetSecretData(preserveSecretName, userNS, "client_secret")
+				g.Expect(originalSecret).NotTo(BeEmpty())
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("adding the regenerate annotation")
+			cmd := exec.Command("kubectl", "annotate", "pocketidoidcclient", regenerateSecretClient,
+				"-n", userNS, "pocketid.internal/regenerate-secret=true", "--overwrite")
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("verifying the client_secret is regenerated")
+			Eventually(func(g Gomega) {
+				currentSecret := kubectlGetSecretData(preserveSecretName, userNS, "client_secret")
+				g.Expect(currentSecret).NotTo(BeEmpty())
+				g.Expect(currentSecret).NotTo(Equal(originalSecret))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying the annotation is removed")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidoidcclient", regenerateSecretClient, "-n", userNS,
+					"-o", "jsonpath={.metadata.annotations.pocketid\\.internal/regenerate-secret}")
+				g.Expect(output).To(BeEmpty())
+			}, time.Minute, 2*time.Second).Should(Succeed())
+		})
+	})
+
 	Context("Reference Finalizers", func() {
 		It("should block deletion of a user group while referenced by an OIDC client", func() {
 			const finalizerGroupName = "finalizer-oidc-group"

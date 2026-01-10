@@ -18,9 +18,11 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -52,7 +54,7 @@ type PocketIDOIDCClientReconciler struct {
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidinstances,verbs=get;list;watch
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidusergroups,verbs=get;list;watch
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidusers,verbs=get;list;watch
-// +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -117,6 +119,21 @@ func (r *PocketIDOIDCClientReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if err := r.updateOIDCClientStatus(ctx, oidcClient, current); err != nil {
 		log.Error(err, "Failed to update OIDC client status")
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+
+	if err := r.reconcileSecret(ctx, oidcClient, instance, apiClient); err != nil {
+		log.Error(err, "Failed to reconcile OIDC client secret")
+		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "SecretReconcileError", err.Error())
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+
+	// Remove regenerate-secret annotation if it exists
+	if oidcClient.Annotations["pocketid.internal/regenerate-client-secret"] == "true" {
+		delete(oidcClient.Annotations, "pocketid.internal/regenerate-client-secret")
+		if err := r.Update(ctx, oidcClient); err != nil {
+			log.Error(err, "Failed to remove regenerate-secret annotation")
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		}
 	}
 
 	_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionTrue, "Reconciled", "OIDC client is in sync")
@@ -224,6 +241,153 @@ func (r *PocketIDOIDCClientReconciler) reconcileDelete(ctx context.Context, oidc
 			return client.DeleteOIDCClient(ctx, id)
 		},
 	)
+}
+
+func (r *PocketIDOIDCClientReconciler) reconcileSecret(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, instance *pocketidinternalv1alpha1.PocketIDInstance, apiClient *pocketid.Client) error {
+	enabled := true
+	if oidcClient.Spec.Secret != nil && oidcClient.Spec.Secret.Enabled != nil {
+		enabled = *oidcClient.Spec.Secret.Enabled
+	}
+
+	secretName := r.getSecretName(oidcClient)
+
+	if !enabled {
+		// Delete the secret if it exists but is now disabled
+		secret := &corev1.Secret{}
+		err := r.Get(ctx, client.ObjectKey{Name: secretName, Namespace: oidcClient.Namespace}, secret)
+		if err == nil {
+			if err := r.Delete(ctx, secret); err != nil {
+				return fmt.Errorf("failed to delete disabled secret: %w", err)
+			}
+		}
+		return nil
+	}
+
+	keys := r.getSecretKeys(oidcClient)
+
+	// Build secret data
+	secretData := make(map[string][]byte)
+
+	if oidcClient.Status.ClientID != "" {
+		secretData[keys.ClientID] = []byte(oidcClient.Status.ClientID)
+	}
+
+	// Include client_secret for non-public clients
+	// Only regenerate if the secret doesn't exist yet or if explicitly requested via annotation
+	if !oidcClient.Spec.IsPublic && oidcClient.Status.ClientID != "" {
+		existingSecret := &corev1.Secret{}
+		err := r.Get(ctx, client.ObjectKey{Name: secretName, Namespace: oidcClient.Namespace}, existingSecret)
+
+		shouldRegenerateSecret := false
+		if err != nil {
+			// Secret doesn't exist, we need to generate it
+			shouldRegenerateSecret = true
+		} else if _, exists := existingSecret.Data[keys.ClientSecret]; !exists {
+			// Secret exists but doesn't have the client_secret key
+			shouldRegenerateSecret = true
+		} else if oidcClient.Annotations["pocketid.internal/regenerate-client-secret"] == "true" {
+			// User explicitly requested regeneration via annotation
+			shouldRegenerateSecret = true
+		}
+
+		if shouldRegenerateSecret {
+			clientSecret, err := apiClient.RegenerateOIDCClientSecret(ctx, oidcClient.Status.ClientID)
+			if err != nil {
+				return fmt.Errorf("failed to get client secret: %w", err)
+			}
+			secretData[keys.ClientSecret] = []byte(clientSecret)
+		} else {
+			// update existing secret
+			secretData[keys.ClientSecret] = existingSecret.Data[keys.ClientSecret]
+		}
+	}
+
+	if instance.Spec.AppURL != "" {
+		secretData[keys.IssuerURL] = []byte(instance.Spec.AppURL)
+	}
+
+	if len(oidcClient.Spec.CallbackURLs) > 0 {
+		callbackURLsJSON, err := json.Marshal(oidcClient.Spec.CallbackURLs)
+		if err != nil {
+			return fmt.Errorf("failed to marshal callback URLs: %w", err)
+		}
+		secretData[keys.CallbackURLs] = callbackURLsJSON
+	}
+
+	if len(oidcClient.Spec.LogoutCallbackURLs) > 0 {
+		logoutCallbackURLsJSON, err := json.Marshal(oidcClient.Spec.LogoutCallbackURLs)
+		if err != nil {
+			return fmt.Errorf("failed to marshal logout callback URLs: %w", err)
+		}
+		secretData[keys.LogoutCallbackURLs] = logoutCallbackURLsJSON
+	}
+
+	// Create or update the secret
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      secretName,
+			Namespace: oidcClient.Namespace,
+			Labels:    managedByLabels(nil),
+		},
+	}
+
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, secret, func() error {
+		secret.Data = secretData
+		secret.Type = corev1.SecretTypeOpaque
+
+		if err := controllerutil.SetControllerReference(oidcClient, secret, r.Scheme); err != nil {
+			return fmt.Errorf("failed to set owner reference: %w", err)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to create or update secret: %w", err)
+	}
+
+	return nil
+}
+
+func (r *PocketIDOIDCClientReconciler) getSecretName(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) string {
+	if oidcClient.Spec.Secret != nil && oidcClient.Spec.Secret.Name != "" {
+		return oidcClient.Spec.Secret.Name
+	}
+	return oidcClient.Name + "-oidc-credentials"
+}
+
+func (r *PocketIDOIDCClientReconciler) getSecretKeys(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) pocketidinternalv1alpha1.OIDCClientSecretKeys {
+	defaults := pocketidinternalv1alpha1.OIDCClientSecretKeys{
+		ClientID:           "client_id",
+		ClientSecret:       "client_secret",
+		IssuerURL:          "issuer_url",
+		CallbackURLs:       "callback_urls",
+		LogoutCallbackURLs: "logout_callback_urls",
+	}
+
+	if oidcClient.Spec.Secret == nil || oidcClient.Spec.Secret.Keys == nil {
+		return defaults
+	}
+
+	keys := *oidcClient.Spec.Secret.Keys
+
+	if keys.ClientID == "" {
+		keys.ClientID = defaults.ClientID
+	}
+	if keys.ClientSecret == "" {
+		keys.ClientSecret = defaults.ClientSecret
+	}
+	if keys.IssuerURL == "" {
+		keys.IssuerURL = defaults.IssuerURL
+	}
+	if keys.CallbackURLs == "" {
+		keys.CallbackURLs = defaults.CallbackURLs
+	}
+	if keys.LogoutCallbackURLs == "" {
+		keys.LogoutCallbackURLs = defaults.LogoutCallbackURLs
+	}
+
+	return keys
 }
 
 func (r *PocketIDOIDCClientReconciler) requestsForUserGroup(ctx context.Context, obj client.Object) []reconcile.Request {

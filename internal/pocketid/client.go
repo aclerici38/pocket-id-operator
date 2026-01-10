@@ -474,6 +474,33 @@ func (c *Client) UpdateOIDCClientAllowedGroups(ctx context.Context, id string, g
 	return nil
 }
 
+// RegenerateOIDCClientSecret regenerates the client secret and returns it.
+// This is the only way to retrieve the client secret from Pocket ID.
+// The secret is only returned once and cannot be retrieved later without re-generating
+func (c *Client) RegenerateOIDCClientSecret(ctx context.Context, id string) (string, error) {
+	params := oidc.NewPostAPIOidcClientsIDSecretParams().
+		WithContext(ctx).
+		WithID(id)
+
+	resp, err := c.raw.OIDc.PostAPIOidcClientsIDSecret(params)
+	if err != nil {
+		return "", fmt.Errorf("regenerate OIDC client secret failed: %w", err)
+	}
+
+	// The response payload is `any` type, so we need to type assert
+	payload, ok := resp.GetPayload().(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("unexpected response format")
+	}
+
+	secret, ok := payload["secret"].(string)
+	if !ok {
+		return "", fmt.Errorf("secret not found in response")
+	}
+
+	return secret, nil
+}
+
 // --- User Group Operations ---
 
 func (c *Client) CreateUserGroup(ctx context.Context, name, friendlyName string) (*UserGroup, error) {
