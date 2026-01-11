@@ -43,18 +43,10 @@ permissions:
   packages: write
 
 jobs:
-  publish:
-    name: Publish chart and tags
+  publish-image:
+    name: Publish image tags
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -78,53 +70,13 @@ jobs:
             -t ghcr.io/${{ inputs.repo_owner }}/pocket-id-operator:${{ inputs.short_sha }}-main \
             ${{ inputs.image }}
 
-      - name: Setup Helm
-        uses: azure/setup-helm@v4
-
-      - name: Install kubebuilder
-        run: |
-          OS=$(go env GOOS)
-          ARCH=$(go env GOARCH)
-          curl -L -o kubebuilder https://github.com/kubernetes-sigs/kubebuilder/releases/download/v4.10.1/kubebuilder_${OS}_${ARCH}
-          chmod +x kubebuilder
-          sudo mv kubebuilder /usr/local/bin/kubebuilder
-
-      - name: Generate Helm chart
-        run: make helm
-
-      - name: Package chart
-        run: |
-          mkdir -p dist/chart-packages
-          helm package dist/chart \
-            --version "0.0.0" \
-            --app-version "0.0.0" \
-            --destination dist/chart-packages
-
-      - name: Log in to Helm registry
-        run: |
-          helm registry login ghcr.io \
-            --username "${{ github.actor }}" \
-            --password "${{ secrets.GITHUB_TOKEN }}"
-
-      - name: Push chart (OCI)
-        run: |
-          helm push dist/chart-packages/*.tgz \
-            oci://ghcr.io/${{ inputs.repo_owner }}/charts
-
-      - name: Setup ORAS
-        uses: oras-project/setup-oras@v1
-
-      - name: Retag chart with image_tag
-        run: |
-          CHART_NAME=$(awk -F': ' '$1=="name"{print $2}' dist/chart/Chart.yaml | tr -d '"')
-          oras tag \
-            ghcr.io/${{ inputs.repo_owner }}/charts/${CHART_NAME}:0.0.0 \
-            "${{ inputs.image_tag }}"
-
-      - name: Tag chart with commit-main
-        if: inputs.image_tag == 'main'
-        run: |
-          CHART_NAME=$(awk -F': ' '$1=="name"{print $2}' dist/chart/Chart.yaml | tr -d '"')
-          oras tag \
-            ghcr.io/${{ inputs.repo_owner }}/charts/${CHART_NAME}:0.0.0 \
-            "${{ inputs.short_sha }}-main"
+  publish-chart:
+    name: Publish Helm chart
+    uses: ./.github/workflows/chart.yml
+    with:
+      chart_version: "0.0.0"
+      app_version: "0.0.0"
+      repo_owner: ${{ inputs.repo_owner }}
+      primary_tag: ${{ inputs.image_tag }}
+      additional_tag: ${{ inputs.image_tag == 'main' && format('{0}-main', inputs.short_sha) || '' }}
+    secrets: inherit

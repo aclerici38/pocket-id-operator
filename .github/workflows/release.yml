@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g., v1.0.0)'
+        description: "Release version (e.g., v1.0.0)"
         required: true
         type: string
 
@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.validate.outputs.version }}
+      helm_version: ${{ steps.validate.outputs.helm_version }}
       repo_owner: ${{ steps.validate.outputs.repo_owner }}
     steps:
       - name: Validate version format
@@ -31,9 +32,13 @@ jobs:
             exit 1
           fi
 
+          # Remove 'v' prefix for Helm version (Helm doesn't use 'v' prefix)
+          HELM_VERSION="${VERSION#v}"
+
           REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
 
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "helm_version=${HELM_VERSION}" >> "$GITHUB_OUTPUT"
           echo "repo_owner=${REPO_OWNER}" >> "$GITHUB_OUTPUT"
 
   tag:
@@ -92,57 +97,13 @@ jobs:
     needs:
       - validate
       - tag
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.validate.outputs.version }}
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
-      - name: Setup Helm
-        uses: azure/setup-helm@v4
-
-      - name: Install kubebuilder
-        run: |
-          OS=$(go env GOOS)
-          ARCH=$(go env GOARCH)
-          curl -L -o kubebuilder https://github.com/kubernetes-sigs/kubebuilder/releases/download/v4.10.1/kubebuilder_${OS}_${ARCH}
-          chmod +x kubebuilder
-          sudo mv kubebuilder /usr/local/bin/kubebuilder
-
-      - name: Generate Helm chart
-        run: make helm
-
-      - name: Package chart
-        run: |
-          mkdir -p dist/chart-packages
-          VERSION="${{ needs.validate.outputs.version }}"
-          # Remove 'v' prefix for Helm version (Helm doesn't use 'v' prefix)
-          HELM_VERSION="${VERSION#v}"
-
-          helm package dist/chart \
-            --version "${HELM_VERSION}" \
-            --app-version "${{ needs.validate.outputs.version }}" \
-            --destination dist/chart-packages
-
-      - name: Log in to Helm registry
-        run: |
-          helm registry login ghcr.io \
-            --username "${{ github.actor }}" \
-            --password "${{ secrets.GITHUB_TOKEN }}"
-
-      - name: Push chart (OCI)
-        run: |
-          VERSION="${{ needs.validate.outputs.version }}"
-          HELM_VERSION="${VERSION#v}"
-
-          helm push dist/chart-packages/pocket-id-operator-${HELM_VERSION}.tgz \
-            oci://ghcr.io/${{ needs.validate.outputs.repo_owner }}/charts
+    uses: ./.github/workflows/chart.yml
+    with:
+      chart_version: ${{ needs.validate.outputs.helm_version }}
+      app_version: ${{ needs.validate.outputs.version }}
+      repo_owner: ${{ needs.validate.outputs.repo_owner }}
+      primary_tag: ${{ needs.validate.outputs.version }}
+    secrets: inherit
 
   create-release:
     name: Create GitHub Release
