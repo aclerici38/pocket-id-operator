@@ -69,10 +69,10 @@ instance:
       fsGroup: 65534
 
     containerSecurityContext:
-      AllowPrivilegeEscalation: false
-      RunAsNonRoot: true
-      ReadOnlyRootFilesystem: true
-      Capabilities:
+      allowPrivilegeEscalation: false
+      runAsNonRoot: true
+      readOnlyRootFilesystem: true
+      capabilities:
         drop:
           - ALL
 
