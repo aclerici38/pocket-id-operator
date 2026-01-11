@@ -181,6 +181,7 @@ metadata:
   namespace: %s
 spec:
   image: ghcr.io/pocket-id/pocket-id:latest
+  disableGlobalRateLimiting: true
   encryptionKey:
     valueFrom:
       secretKeyRef:
@@ -236,6 +237,7 @@ metadata:
   namespace: %s
 spec:
   image: ghcr.io/pocket-id/pocket-id:latest
+  disableGlobalRateLimiting: true
   encryptionKey:
     valueFrom:
       secretKeyRef:

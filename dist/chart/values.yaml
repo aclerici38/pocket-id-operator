@@ -67,8 +67,6 @@ instance:
       runAsNonRoot: true
       runAsUser: 65534
       fsGroup: 65534
-      SeccompProfile:
-        type: RuntimeDefault
 
     containerSecurityContext:
       AllowPrivilegeEscalation: false
