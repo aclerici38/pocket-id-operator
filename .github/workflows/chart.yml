@@ -104,6 +104,10 @@ jobs:
           helm install test-release dist/chart-packages/*.tgz \
             --create-namespace \
             --namespace pocket-id-operator-system \
+            --set manager.image.repository=ghcr.io/${{ inputs.repo_owner }}/pocket-id-operator \
+            --set manager.image.tag=ci-$(git rev-parse --short HEAD) \
+            --set instance.spec.encryptionKey.value="test-key-16chars" \
+            --set instance.spec.encryptionKey.valueFrom=null \
             --wait \
             --timeout 2m
 

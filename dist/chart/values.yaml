@@ -56,7 +56,7 @@ instance:
     # Mounts to /app/data. If spec.deploymentType is StatefulSet will be mounted as a VolumeClaimTemplate
     # if not enabled will mount emptyDir. It is possible to run stateless if using postgres
     persistence:
-      enabled: false
+      enabled: true
       # existingClaim: ""
       # storageClass: ""
       size: 1Gi
