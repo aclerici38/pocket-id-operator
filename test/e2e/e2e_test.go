@@ -2050,6 +2050,403 @@ spec:
 			}, time.Minute, 2*time.Second).Should(Succeed())
 		})
 	})
+
+	Context("Rate Limiting", func() {
+		It("should set DISABLE_RATE_LIMITING environment variable when disabled", func() {
+			const rateLimitTestInstance = "rate-limit-disabled-instance"
+			const rateLimitTestUser = "rate-limit-test-user"
+
+			By("creating a user for the rate limit test instance")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  admin: true
+  apiKeys:
+  - name: rate-limit-key
+    description: Rate limit test API key
+`, rateLimitTestUser, userNS))
+
+			By("creating an instance with rate limiting disabled")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDInstance
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  image: ghcr.io/pocket-id/pocket-id:latest
+  disableGlobalRateLimiting: true
+  auth:
+    userRef:
+      name: %s
+      namespace: %s
+    apiKeyName: rate-limit-key
+  encryptionKey:
+    valueFrom:
+      secretKeyRef:
+        name: pocket-id-encryption
+        key: key
+  appUrl: "http://%s.%s.svc.cluster.local:1411"
+`, rateLimitTestInstance, instanceNS, rateLimitTestUser, userNS, rateLimitTestInstance, instanceNS))
+
+			By("verifying DISABLE_RATE_LIMITING environment variable is set")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("deployment", rateLimitTestInstance, "-n", instanceNS,
+					"-o", "jsonpath={.spec.template.spec.containers[0].env[?(@.name=='DISABLE_RATE_LIMITING')].value}")
+				g.Expect(output).To(Equal("true"))
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying the instance becomes Available")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidinstance", rateLimitTestInstance, "-n", instanceNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Available')].status}")
+				g.Expect(output).To(Equal("True"))
+			}, 5*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("cleaning up rate limit test resources")
+			cmd := exec.Command("kubectl", "delete", "pocketidinstance", rateLimitTestInstance, "-n", instanceNS, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+			cmd = exec.Command("kubectl", "delete", "pocketiduser", rateLimitTestUser, "-n", userNS, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+		})
+
+		It("should NOT set DISABLE_RATE_LIMITING when rate limiting is enabled (default)", func() {
+			const rateLimitEnabledInstance = "rate-limit-enabled-instance"
+			const rateLimitEnabledUser = "rate-limit-enabled-user"
+
+			By("creating a user for the rate limit enabled test")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  admin: true
+  apiKeys:
+  - name: rate-limit-enabled-key
+`, rateLimitEnabledUser, userNS))
+
+			By("creating an instance with rate limiting enabled (default)")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDInstance
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  image: ghcr.io/pocket-id/pocket-id:latest
+  disableGlobalRateLimiting: false
+  auth:
+    userRef:
+      name: %s
+      namespace: %s
+    apiKeyName: rate-limit-enabled-key
+  encryptionKey:
+    valueFrom:
+      secretKeyRef:
+        name: pocket-id-encryption
+        key: key
+  appUrl: "http://%s.%s.svc.cluster.local:1411"
+`, rateLimitEnabledInstance, instanceNS, rateLimitEnabledUser, userNS, rateLimitEnabledInstance, instanceNS))
+
+			By("verifying DISABLE_RATE_LIMITING environment variable is NOT set")
+			Eventually(func(g Gomega) {
+				// Get all env vars and check DISABLE_RATE_LIMITING is not present
+				output := kubectlGet("deployment", rateLimitEnabledInstance, "-n", instanceNS,
+					"-o", "jsonpath={.spec.template.spec.containers[0].env[*].name}")
+				g.Expect(output).NotTo(ContainSubstring("DISABLE_RATE_LIMITING"))
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("cleaning up rate limit enabled test resources")
+			cmd := exec.Command("kubectl", "delete", "pocketidinstance", rateLimitEnabledInstance, "-n", instanceNS, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+			cmd = exec.Command("kubectl", "delete", "pocketiduser", rateLimitEnabledUser, "-n", userNS, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+		})
+	})
+
+	Context("Static API Key Bootstrap", func() {
+		It("should create static API key secret before bootstrap", func() {
+			const staticKeyInstance = "static-key-test-instance"
+			const staticKeyUser = "static-key-test-user"
+
+			By("creating a user for static key bootstrap test")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  admin: true
+  apiKeys:
+  - name: static-key-api-key
+`, staticKeyUser, userNS))
+
+			By("creating an instance that will trigger bootstrap")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDInstance
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  image: ghcr.io/pocket-id/pocket-id:latest
+  auth:
+    userRef:
+      name: %s
+      namespace: %s
+    apiKeyName: static-key-api-key
+  encryptionKey:
+    valueFrom:
+      secretKeyRef:
+        name: pocket-id-encryption
+        key: key
+  appUrl: "http://%s.%s.svc.cluster.local:1411"
+`, staticKeyInstance, instanceNS, staticKeyUser, userNS, staticKeyInstance, instanceNS))
+
+			By("verifying static API key secret is created")
+			var staticSecretName string
+			Eventually(func(g Gomega) {
+				staticSecretName = fmt.Sprintf("%s-static-api-key", staticKeyInstance)
+				output := kubectlGet("secret", staticSecretName, "-n", instanceNS,
+					"-o", "jsonpath={.data.token}")
+				g.Expect(output).NotTo(BeEmpty(), "Static API key secret should be created")
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying STATIC_API_KEY env var is set before bootstrap")
+			Eventually(func(g Gomega) {
+				// Check if the deployment has the STATIC_API_KEY env var
+				envVarName := kubectlGet("deployment", staticKeyInstance, "-n", instanceNS,
+					"-o", "jsonpath={.spec.template.spec.containers[0].env[?(@.name=='STATIC_API_KEY')].name}")
+				g.Expect(envVarName).To(Equal("STATIC_API_KEY"))
+
+				// Verify it references the correct secret
+				secretName := kubectlGet("deployment", staticKeyInstance, "-n", instanceNS,
+					"-o", "jsonpath={.spec.template.spec.containers[0].env[?(@.name=='STATIC_API_KEY')].valueFrom.secretKeyRef.name}")
+				g.Expect(secretName).To(Equal(staticSecretName))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("waiting for instance to bootstrap")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidinstance", staticKeyInstance, "-n", instanceNS,
+					"-o", "jsonpath={.status.bootstrapped}")
+				g.Expect(output).To(Equal("true"))
+			}, 5*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("verifying instance becomes Ready after bootstrap")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidinstance", staticKeyInstance, "-n", instanceNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(output).To(Equal("True"))
+			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("verifying STATIC_API_KEY env var is removed after bootstrap")
+			// After bootstrap, the controller should update the deployment to remove the STATIC_API_KEY
+			// This happens on the next reconcile after status.bootstrapped is set to true
+			Eventually(func(g Gomega) {
+				output := kubectlGet("deployment", staticKeyInstance, "-n", instanceNS,
+					"-o", "jsonpath={.spec.template.spec.containers[0].env[*].name}")
+				g.Expect(output).NotTo(ContainSubstring("STATIC_API_KEY"), "STATIC_API_KEY should be removed after bootstrap")
+			}, 3*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("verifying the user's API key secret was created during bootstrap")
+			var userAPIKeySecret string
+			Eventually(func(g Gomega) {
+				userAPIKeySecret = kubectlGet("pocketiduser", staticKeyUser, "-n", userNS,
+					"-o", "jsonpath={.status.apiKeys[?(@.name=='static-key-api-key')].secretName}")
+				g.Expect(userAPIKeySecret).NotTo(BeEmpty())
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying the user API key secret contains a token")
+			Eventually(func(g Gomega) {
+				token := kubectlGet("secret", userAPIKeySecret, "-n", userNS,
+					"-o", "jsonpath={.data.token}")
+				g.Expect(token).NotTo(BeEmpty())
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("cleaning up static key test resources")
+			cmd := exec.Command("kubectl", "delete", "pocketidinstance", staticKeyInstance, "-n", instanceNS, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+			cmd = exec.Command("kubectl", "delete", "pocketiduser", staticKeyUser, "-n", userNS, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+		})
+
+		It("should successfully authenticate using static API key during bootstrap", func() {
+			const authTestInstance = "static-auth-test-instance"
+			const authTestUser = "static-auth-test-user"
+
+			By("creating a user for authentication test")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  admin: true
+  email:
+    value: static-auth@example.local
+  apiKeys:
+  - name: auth-test-key
+    description: Testing static API key authentication
+`, authTestUser, userNS))
+
+			By("creating an instance to test static API key authentication")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDInstance
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  image: ghcr.io/pocket-id/pocket-id:latest
+  auth:
+    userRef:
+      name: %s
+      namespace: %s
+    apiKeyName: auth-test-key
+  encryptionKey:
+    valueFrom:
+      secretKeyRef:
+        name: pocket-id-encryption
+        key: key
+  appUrl: "http://%s.%s.svc.cluster.local:1411"
+`, authTestInstance, instanceNS, authTestUser, userNS, authTestInstance, instanceNS))
+
+			By("waiting for bootstrap to complete")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidinstance", authTestInstance, "-n", instanceNS,
+					"-o", "jsonpath={.status.bootstrapped}")
+				g.Expect(output).To(Equal("true"))
+			}, 5*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("verifying user was created in Pocket-ID with correct details")
+			Eventually(func(g Gomega) {
+				userID := kubectlGet("pocketiduser", authTestUser, "-n", userNS,
+					"-o", "jsonpath={.status.userID}")
+				g.Expect(userID).NotTo(BeEmpty())
+
+				isAdmin := kubectlGet("pocketiduser", authTestUser, "-n", userNS,
+					"-o", "jsonpath={.status.isAdmin}")
+				g.Expect(isAdmin).To(Equal("true"))
+
+				// Verify user info secret was created
+				userInfoSecret := kubectlGet("pocketiduser", authTestUser, "-n", userNS,
+					"-o", "jsonpath={.status.userInfoSecretName}")
+				g.Expect(userInfoSecret).NotTo(BeEmpty())
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying API key was created via static key authentication")
+			Eventually(func(g Gomega) {
+				apiKeyID := kubectlGet("pocketiduser", authTestUser, "-n", userNS,
+					"-o", "jsonpath={.status.apiKeys[?(@.name=='auth-test-key')].id}")
+				g.Expect(apiKeyID).NotTo(BeEmpty(), "API key should be created via static key auth")
+
+				secretName := kubectlGet("pocketiduser", authTestUser, "-n", userNS,
+					"-o", "jsonpath={.status.apiKeys[?(@.name=='auth-test-key')].secretName}")
+				g.Expect(secretName).NotTo(BeEmpty())
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying instance status reflects successful auth setup")
+			Eventually(func(g Gomega) {
+				authUserRef := kubectlGet("pocketidinstance", authTestInstance, "-n", instanceNS,
+					"-o", "jsonpath={.status.authUserRef}")
+				g.Expect(authUserRef).To(Equal(authTestUser))
+
+				authAPIKeyName := kubectlGet("pocketidinstance", authTestInstance, "-n", instanceNS,
+					"-o", "jsonpath={.status.authApiKeyName}")
+				g.Expect(authAPIKeyName).To(Equal("auth-test-key"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("cleaning up authentication test resources")
+			cmd := exec.Command("kubectl", "delete", "pocketidinstance", authTestInstance, "-n", instanceNS, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+			cmd = exec.Command("kubectl", "delete", "pocketiduser", authTestUser, "-n", userNS, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+		})
+
+		It("should handle static API key secret ownership and cleanup", func() {
+			const ownershipInstance = "ownership-test-instance"
+			const ownershipUser = "ownership-test-user"
+
+			By("creating a user for ownership test")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  admin: true
+  apiKeys:
+  - name: ownership-key
+`, ownershipUser, userNS))
+
+			By("creating an instance")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDInstance
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  image: ghcr.io/pocket-id/pocket-id:latest
+  auth:
+    userRef:
+      name: %s
+      namespace: %s
+    apiKeyName: ownership-key
+  encryptionKey:
+    valueFrom:
+      secretKeyRef:
+        name: pocket-id-encryption
+        key: key
+  appUrl: "http://%s.%s.svc.cluster.local:1411"
+`, ownershipInstance, instanceNS, ownershipUser, userNS, ownershipInstance, instanceNS))
+
+			staticSecretName := fmt.Sprintf("%s-static-api-key", ownershipInstance)
+
+			By("verifying static API key secret has correct owner reference")
+			Eventually(func(g Gomega) {
+				ownerKind := kubectlGet("secret", staticSecretName, "-n", instanceNS,
+					"-o", "jsonpath={.metadata.ownerReferences[0].kind}")
+				g.Expect(ownerKind).To(Equal("PocketIDInstance"))
+
+				ownerName := kubectlGet("secret", staticSecretName, "-n", instanceNS,
+					"-o", "jsonpath={.metadata.ownerReferences[0].name}")
+				g.Expect(ownerName).To(Equal(ownershipInstance))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("waiting for instance to become Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidinstance", ownershipInstance, "-n", instanceNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(output).To(Equal("True"))
+			}, 5*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("deleting the instance")
+			cmd := exec.Command("kubectl", "delete", "pocketidinstance", ownershipInstance, "-n", instanceNS)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("verifying static API key secret is deleted with the instance")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "secret", staticSecretName, "-n", instanceNS)
+				_, err := utils.Run(cmd)
+				g.Expect(err).To(HaveOccurred(), "Secret should be deleted when instance is deleted")
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("cleaning up ownership test user")
+			cmd = exec.Command("kubectl", "delete", "pocketiduser", ownershipUser, "-n", userNS, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+		})
+	})
 })
 
 // Helper functions

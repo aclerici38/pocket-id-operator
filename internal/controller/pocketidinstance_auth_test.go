@@ -289,13 +289,24 @@ func TestReconcileAuth_BootstrapsWhenAPIKeyNotInStatus(t *testing.T) {
 		},
 	}
 
+	// Create static API key secret (now created before bootstrap in Reconcile)
+	staticAPIKeySecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "instance-static-api-key",
+			Namespace: "default",
+		},
+		Data: map[string][]byte{
+			"token": []byte("test-static-api-key"),
+		},
+	}
+
 	client := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithObjects(instance, user).
+		WithObjects(instance, user, staticAPIKeySecret).
 		WithStatusSubresource(instance, user).
 		Build()
 
-	reconciler := &PocketIDInstanceReconciler{Client: client, Scheme: scheme}
+	reconciler := &PocketIDInstanceReconciler{Client: client, APIReader: client, Scheme: scheme}
 	_, err := reconciler.reconcileAuth(context.Background(), instance)
 
 	// Bootstrap will fail with network error since there's no running instance

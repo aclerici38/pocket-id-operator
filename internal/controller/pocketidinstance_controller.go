@@ -60,7 +60,8 @@ const (
 // PocketIDInstanceReconciler reconciles a PocketIDInstance object
 type PocketIDInstanceReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	APIReader client.Reader
+	Scheme    *runtime.Scheme
 }
 
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidinstances,verbs=get;list;watch;create;update;patch;delete
@@ -92,6 +93,13 @@ func (r *PocketIDInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	log.Info("Reconciling PocketIDInstance", "name", instance.Name)
+
+	// Ensure static API key secret exists before creating workload if not bootstrapped
+	if !instance.Status.Bootstrapped {
+		if _, err := r.ensureStaticAPIKeySecret(ctx, instance); err != nil {
+			return ctrl.Result{}, fmt.Errorf("ensure static API key secret: %w", err)
+		}
+	}
 
 	if err := r.reconcileWorkload(ctx, instance); err != nil {
 		return ctrl.Result{}, err
@@ -819,26 +827,27 @@ func (r *PocketIDInstanceReconciler) ensureStaticAPIKeySecret(ctx context.Contex
 	secretName := staticAPIKeySecretName(instance.Name)
 	secret := &corev1.Secret{}
 
+	// Check if secret already exists
 	err := r.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: secretName}, secret)
 	if err == nil {
 		// Secret exists, return the token
 		if tokenBytes, ok := secret.Data["token"]; ok {
 			return string(tokenBytes), nil
 		}
-		return "", fmt.Errorf("static API key secret %s exists but has no token field", secretName)
+		return "", fmt.Errorf("static API key secret exists but has no token field")
 	}
 
 	if !errors.IsNotFound(err) {
-		return "", fmt.Errorf("get static API key secret: %w", err)
+		return "", fmt.Errorf("failed to get static API key secret: %w", err)
 	}
 
-	// Generate new static API key
+	// Generate new token
 	token, err := generateSecureToken(32)
 	if err != nil {
-		return "", fmt.Errorf("generate static API key: %w", err)
+		return "", fmt.Errorf("failed to generate secure token: %w", err)
 	}
 
-	// Create secret
+	// Create new secret
 	secret = &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
@@ -850,11 +859,21 @@ func (r *PocketIDInstanceReconciler) ensureStaticAPIKeySecret(ctx context.Contex
 	}
 
 	if err := controllerutil.SetControllerReference(instance, secret, r.Scheme); err != nil {
-		return "", fmt.Errorf("set owner reference: %w", err)
+		return "", fmt.Errorf("failed to set controller reference: %w", err)
 	}
 
 	if err := r.Create(ctx, secret); err != nil {
-		return "", fmt.Errorf("create static API key secret: %w", err)
+		if errors.IsAlreadyExists(err) {
+			// Another reconciliation created it, retrieve and return
+			if err := r.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: secretName}, secret); err != nil {
+				return "", fmt.Errorf("failed to get existing secret after conflict: %w", err)
+			}
+			if tokenBytes, ok := secret.Data["token"]; ok {
+				return string(tokenBytes), nil
+			}
+			return "", fmt.Errorf("existing secret has no token field")
+		}
+		return "", fmt.Errorf("failed to create static API key secret: %w", err)
 	}
 
 	return token, nil
@@ -864,10 +883,16 @@ func (r *PocketIDInstanceReconciler) ensureStaticAPIKeySecret(ctx context.Contex
 func (r *PocketIDInstanceReconciler) bootstrap(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, user *pocketidinternalv1alpha1.PocketIDUser, apiKeyName string) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	// Ensure static API key secret exists
-	staticAPIKey, err := r.ensureStaticAPIKeySecret(ctx, instance)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("ensure static API key: %w", err)
+	// Get static API key from secret (created earlier in Reconcile)
+	// Use APIReader to bypass cache and read directly from API server
+	secretName := staticAPIKeySecretName(instance.Name)
+	secret := &corev1.Secret{}
+	if err := r.APIReader.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: secretName}, secret); err != nil {
+		return ctrl.Result{}, fmt.Errorf("get static API key secret: %w", err)
+	}
+	staticAPIKey, ok := secret.Data["token"]
+	if !ok {
+		return ctrl.Result{}, fmt.Errorf("static API key secret has no token field")
 	}
 
 	// Resolve user spec values
@@ -929,7 +954,7 @@ func (r *PocketIDInstanceReconciler) bootstrap(ctx context.Context, instance *po
 	// Use the new static API key bootstrap method
 	setupResp, apiKeyResp, err := bootstrapClient.BootstrapWithStaticAPIKey(
 		ctx,
-		staticAPIKey,
+		string(staticAPIKey),
 		setupReq,
 		apiKeyName,
 		apiKeyDescription,
