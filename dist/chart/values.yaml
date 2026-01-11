@@ -168,7 +168,6 @@ crd:
 # PocketIDUser configuration
 # Creates PocketIDUser custom resources
 users: []
-  # Example:
   # - name: admin-user
   #   labels: {}
   #   annotations: {}
@@ -188,3 +187,11 @@ users: []
   #       # secretRef:
   #       #   name: my-existing-secret
   #       #   key: api-key
+  #
+  # Example using userInfoSecretRef (references secret with default keys):
+  # Secret should contain keys: username, firstName, lastName, email, displayName
+  # - name: secret-user
+  #   spec:
+  #     admin: false
+  #     userInfoSecretRef:
+  #       name: user-credentials
