@@ -1,0 +1,166 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  validate:
+    name: Validate version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.validate.outputs.version }}
+      repo_owner: ${{ steps.validate.outputs.repo_owner }}
+    steps:
+      - name: Validate version format
+        id: validate
+        run: |
+          VERSION="${{ inputs.version }}"
+
+          # Ensure version starts with 'v'
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9] ]]; then
+            echo "::error::Version must be in format v0.0.0"
+            exit 1
+          fi
+
+          REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "repo_owner=${REPO_OWNER}" >> "$GITHUB_OUTPUT"
+
+  tag:
+    name: Create Git tag
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Check if tag exists
+        run: |
+          if git rev-parse "${{ needs.validate.outputs.version }}" >/dev/null 2>&1; then
+            echo "::error::Tag ${{ needs.validate.outputs.version }} already exists"
+            exit 1
+          fi
+
+      - name: Create and push tag
+        run: |
+          git tag -a "${{ needs.validate.outputs.version }}" -m "Release ${{ needs.validate.outputs.version }}"
+          git push origin "${{ needs.validate.outputs.version }}"
+
+  retag-image:
+    name: Retag Docker image
+    needs:
+      - validate
+      - tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Retag :main image as release version
+        run: |
+          docker buildx imagetools create \
+            -t ghcr.io/${{ needs.validate.outputs.repo_owner }}/pocket-id-operator:${{ needs.validate.outputs.version }} \
+            ghcr.io/${{ needs.validate.outputs.repo_owner }}/pocket-id-operator:main
+
+  publish-chart:
+    name: Publish Helm chart
+    needs:
+      - validate
+      - tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.version }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install kubebuilder
+        run: |
+          OS=$(go env GOOS)
+          ARCH=$(go env GOARCH)
+          curl -L -o kubebuilder https://github.com/kubernetes-sigs/kubebuilder/releases/download/v4.10.1/kubebuilder_${OS}_${ARCH}
+          chmod +x kubebuilder
+          sudo mv kubebuilder /usr/local/bin/kubebuilder
+
+      - name: Generate Helm chart
+        run: make helm
+
+      - name: Package chart
+        run: |
+          mkdir -p dist/chart-packages
+          VERSION="${{ needs.validate.outputs.version }}"
+          # Remove 'v' prefix for Helm version (Helm doesn't use 'v' prefix)
+          HELM_VERSION="${VERSION#v}"
+
+          helm package dist/chart \
+            --version "${HELM_VERSION}" \
+            --app-version "${{ needs.validate.outputs.version }}" \
+            --destination dist/chart-packages
+
+      - name: Log in to Helm registry
+        run: |
+          helm registry login ghcr.io \
+            --username "${{ github.actor }}" \
+            --password "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Push chart (OCI)
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          HELM_VERSION="${VERSION#v}"
+
+          helm push dist/chart-packages/pocket-id-operator-${HELM_VERSION}.tgz \
+            oci://ghcr.io/${{ needs.validate.outputs.repo_owner }}/charts
+
+  create-release:
+    name: Create GitHub Release
+    needs:
+      - validate
+      - tag
+      - retag-image
+      - publish-chart
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.version }}
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.validate.outputs.version }}
+          name: ${{ needs.validate.outputs.version }}
+          generate_release_notes: true

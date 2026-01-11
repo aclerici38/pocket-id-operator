@@ -35,7 +35,7 @@ instance:
           name: pocket-id-encryption-key
           key: encryption-key
 
-    # Database URL (optional)
+    # Database URL
     # If left as a filepath the instance will use a sqlite db
     # To use postgres configure the full uri, e.g. postgresql://user:password@host:port/dbname
     databaseUrl:
