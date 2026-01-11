@@ -728,7 +728,7 @@ func (r *PocketIDInstanceReconciler) reconcileAuth(ctx context.Context, instance
 	}
 
 	if !errors.IsNotFound(err) {
-		return ctrl.Result{}, fmt.Errorf("get API key secret: %w", err)
+		return ctrl.Result{}, fmt.Errorf("get API key secret %s: %w", keyStatus.SecretName, err)
 	}
 
 	// Secret doesn't exist - check if already bootstrapped
