@@ -1189,7 +1189,7 @@ spec:
 
 			By("adding the regenerate annotation")
 			cmd := exec.Command("kubectl", "annotate", "pocketidoidcclient", regenerateSecretClient,
-				"-n", userNS, "pocketid.internal/regenerate-secret=true", "--overwrite")
+				"-n", userNS, "pocketid.internal/regenerate-client-secret=true", "--overwrite")
 			_, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
