@@ -171,27 +171,25 @@ users: []
   # - name: admin-user
   #   labels: {}
   #   annotations: {}
-  #   spec:
-  #     admin: true
-  #     email:
-  #       value: "admin@example.com"
-  #     firstName:
-  #       value: "Admin"
-  #     displayName:
-  #       value: "Admin User"
-  #     apiKeys:
-  #     - name: admin-api-key
-  #       description: "Admin API key"
-  #       expiresAt: "2030-01-01T00:00:00Z"
-  #       # Reference to an existing apikey stored in a secret
-  #       # secretRef:
-  #       #   name: my-existing-secret
-  #       #   key: api-key
+  #   admin: true
+  #   email:
+  #     value: "admin@example.com"
+  #   firstName:
+  #     value: "Admin"
+  #   displayName:
+  #     value: "Admin User"
+  #   apiKeys:
+  #   - name: admin-api-key
+  #     description: "Admin API key"
+  #     expiresAt: "2030-01-01T00:00:00Z"
+  #     # Reference to an existing apikey stored in a secret
+  #     # secretRef:
+  #     #   name: my-existing-secret
+  #     #   key: api-key
   #
   # Example using userInfoSecretRef (references secret with default keys):
   # Secret should contain keys: username, firstName, lastName, email, displayName
   # - name: secret-user
-  #   spec:
-  #     admin: false
-  #     userInfoSecretRef:
-  #       name: user-credentials
+  #   admin: false
+  #   userInfoSecretRef:
+  #     name: user-credentials

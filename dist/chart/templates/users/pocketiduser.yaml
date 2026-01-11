@@ -18,5 +18,10 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
+  {{- if .spec }}
   {{- toYaml .spec | nindent 2 }}
+  {{- else }}
+  {{- $specFields := omit . "name" "labels" "annotations" }}
+  {{- toYaml $specFields | nindent 2 }}
+  {{- end }}
 {{- end }}

@@ -171,6 +171,11 @@ helm: ## Generate/update Helm chart under dist/chart (includes CRDs).
 			-e 's/{{- if \.Values\.certManager\.enable }}/{{- if and .Values.certManager .Values.certManager.enable }}/' \
 			"$$file" && rm -f "$$file.bak"; \
 	done
+	@echo "Fixing manager image tag to default to Chart.AppVersion..."
+	@if [ -f "dist/chart/templates/manager/manager.yaml" ]; then \
+		sed -i.bak 's/image: "{{ \.Values\.manager\.image\.repository }}:{{ \.Values\.manager\.image\.tag }}"/image: "{{ .Values.manager.image.repository }}:{{ .Values.manager.image.tag | default .Chart.AppVersion }}"/' \
+			dist/chart/templates/manager/manager.yaml && rm -f dist/chart/templates/manager/manager.yaml.bak; \
+	fi
 
 ##@ Deployment
 
