@@ -150,13 +150,15 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 helm: ## Generate/update Helm chart under dist/chart (includes CRDs).
 	kubebuilder edit --plugins=helm.kubebuilder.io/v2-alpha
 	@echo "Fixing nil-safety checks in Helm templates..."
-	@find dist/chart/templates -name "*.yaml" -type f -exec sed -i '' \
-		-e 's/{{- if \.Values\.rbacHelpers\.enable }}/{{- if and .Values.rbacHelpers .Values.rbacHelpers.enable }}/' \
-		-e 's/{{- if \.Values\.metrics\.enable }}/{{- if and .Values.metrics .Values.metrics.enable }}/' \
-		-e 's/{{- if \.Values\.prometheus\.enable }}/{{- if and .Values.prometheus .Values.prometheus.enable }}/' \
-		-e 's/{{- if \.Values\.certManager\.enable }}/{{- if and .Values.certManager .Values.certManager.enable }}/' \
-		-e 's/{{- if \.Values\.crd\.enable }}/{{- if and .Values.crd .Values.crd.enable }}/' \
-		{} \;
+	@for file in $$(find dist/chart/templates -name "*.yaml" -type f); do \
+		sed -i.bak \
+			-e 's/{{- if \.Values\.rbacHelpers\.enable }}/{{- if and .Values.rbacHelpers .Values.rbacHelpers.enable }}/' \
+			-e 's/{{- if \.Values\.metrics\.enable }}/{{- if and .Values.metrics .Values.metrics.enable }}/' \
+			-e 's/{{- if \.Values\.prometheus\.enable }}/{{- if and .Values.prometheus .Values.prometheus.enable }}/' \
+			-e 's/{{- if \.Values\.certManager\.enable }}/{{- if and .Values.certManager .Values.certManager.enable }}/' \
+			-e 's/{{- if \.Values\.crd\.enable }}/{{- if and .Values.crd .Values.crd.enable }}/' \
+			"$$file" && rm -f "$$file.bak"; \
+	done
 
 ##@ Deployment
 
