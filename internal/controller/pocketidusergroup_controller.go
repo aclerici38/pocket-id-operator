@@ -127,7 +127,41 @@ func (r *PocketIDUserGroupReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	return applyResync(ctrl.Result{}), nil
 }
 
+// pocketIDUserGroupAPI defines the minimal interface needed for user group operations
+type pocketIDUserGroupAPI interface {
+	ListUserGroups(ctx context.Context, search string) ([]*pocketid.UserGroup, error)
+	CreateUserGroup(ctx context.Context, name, friendlyName string) (*pocketid.UserGroup, error)
+	GetUserGroup(ctx context.Context, id string) (*pocketid.UserGroup, error)
+	UpdateUserGroup(ctx context.Context, id, name, friendlyName string) (*pocketid.UserGroup, error)
+	UpdateUserGroupCustomClaims(ctx context.Context, id string, claims []pocketid.CustomClaim) ([]pocketid.CustomClaim, error)
+	UpdateUserGroupUsers(ctx context.Context, id string, userIDs []string) error
+}
+
+// findExistingUserGroup checks if a user group with the given name already exists in Pocket-ID.
+// Returns the existing group if found, or nil if no matching group exists.
+func (r *PocketIDUserGroupReconciler) findExistingUserGroup(ctx context.Context, apiClient pocketIDUserGroupAPI, name string) (*pocketid.UserGroup, error) {
+	log := logf.FromContext(ctx)
+
+	log.Info("Checking if user group exists in Pocket-ID", "name", name)
+	existingGroups, err := apiClient.ListUserGroups(ctx, name)
+	if err != nil {
+		return nil, fmt.Errorf("list user groups: %w", err)
+	}
+
+	// Check if name already exists
+	for _, existingGroup := range existingGroups {
+		if existingGroup.Name == name {
+			log.Info("Found existing user group with matching name", "name", name, "groupID", existingGroup.ID)
+			return existingGroup, nil
+		}
+	}
+
+	return nil, nil
+}
+
 func (r *PocketIDUserGroupReconciler) reconcileUserGroup(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, apiClient *pocketid.Client) (*pocketid.UserGroup, error) {
+	log := logf.FromContext(ctx)
+
 	name := userGroup.Spec.Name
 	if name == "" {
 		name = userGroup.Name
@@ -140,12 +174,27 @@ func (r *PocketIDUserGroupReconciler) reconcileUserGroup(ctx context.Context, us
 	var current *pocketid.UserGroup
 	var err error
 	if userGroup.Status.GroupID == "" {
-		current, err = apiClient.CreateUserGroup(ctx, name, friendlyName)
+		// Check if user group already exists
+		existingGroup, err := r.findExistingUserGroup(ctx, apiClient, name)
+		if err != nil {
+			return nil, fmt.Errorf("find existing user group: %w", err)
+		}
+
+		if existingGroup != nil {
+			log.Info("Adopting existing user group from Pocket-ID", "name", name, "groupID", existingGroup.ID)
+			current = existingGroup
+		} else {
+			log.Info("Creating user group in Pocket-ID", "name", name)
+			current, err = apiClient.CreateUserGroup(ctx, name, friendlyName)
+			if err != nil {
+				return nil, fmt.Errorf("create user group: %w", err)
+			}
+		}
 	} else {
 		current, err = apiClient.UpdateUserGroup(ctx, userGroup.Status.GroupID, name, friendlyName)
-	}
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, fmt.Errorf("update user group: %w", err)
+		}
 	}
 
 	if userGroup.Spec.CustomClaims != nil {

@@ -138,23 +138,74 @@ func (r *PocketIDOIDCClientReconciler) Reconcile(ctx context.Context, req ctrl.R
 	return applyResync(ctrl.Result{}), nil
 }
 
+// pocketIDOIDCClientAPI defines the minimal interface needed for OIDC client operations
+type pocketIDOIDCClientAPI interface {
+	ListOIDCClients(ctx context.Context, search string) ([]*pocketid.OIDCClient, error)
+	CreateOIDCClient(ctx context.Context, input pocketid.OIDCClientInput) (*pocketid.OIDCClient, error)
+	GetOIDCClient(ctx context.Context, id string) (*pocketid.OIDCClient, error)
+	UpdateOIDCClient(ctx context.Context, id string, input pocketid.OIDCClientInput) (*pocketid.OIDCClient, error)
+	UpdateOIDCClientAllowedGroups(ctx context.Context, id string, groupIDs []string) error
+}
+
+// findExistingOIDCClient checks if an OIDC client with the given ID already exists in Pocket-ID.
+// Returns the existing client if found, or nil if no matching client exists.
+func (r *PocketIDOIDCClientReconciler) findExistingOIDCClient(ctx context.Context, apiClient pocketIDOIDCClientAPI, clientID string) (*pocketid.OIDCClient, error) {
+	log := logf.FromContext(ctx)
+
+	log.Info("Checking if OIDC client exists in Pocket-ID", "clientID", clientID)
+	existingClients, err := apiClient.ListOIDCClients(ctx, clientID)
+	if err != nil {
+		return nil, fmt.Errorf("list OIDC clients: %w", err)
+	}
+
+	// Check if ID already exists
+	for _, existingClient := range existingClients {
+		if existingClient.ID == clientID {
+			log.Info("Found existing OIDC client with matching ID", "clientID", clientID)
+			return existingClient, nil
+		}
+	}
+
+	return nil, nil
+}
+
 func (r *PocketIDOIDCClientReconciler) reconcileOIDCClient(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client) (*pocketid.OIDCClient, error) {
+	log := logf.FromContext(ctx)
+
 	input := r.oidcClientInput(oidcClient)
 
 	clientID := oidcClient.Status.ClientID
 	if clientID == "" {
 		clientID = oidcClient.Spec.ID
 	}
+	if clientID == "" {
+		clientID = oidcClient.Name
+	}
 
 	var current *pocketid.OIDCClient
 	var err error
-	if clientID == "" {
-		current, err = apiClient.CreateOIDCClient(ctx, input)
+	if oidcClient.Status.ClientID == "" {
+		// Check if OIDC client already exists
+		existingClient, err := r.findExistingOIDCClient(ctx, apiClient, clientID)
+		if err != nil {
+			return nil, fmt.Errorf("find existing OIDC client: %w", err)
+		}
+
+		if existingClient != nil {
+			log.Info("Adopting existing OIDC client from Pocket-ID", "clientID", clientID)
+			current = existingClient
+		} else {
+			log.Info("Creating OIDC client in Pocket-ID", "clientID", clientID)
+			current, err = apiClient.CreateOIDCClient(ctx, input)
+			if err != nil {
+				return nil, fmt.Errorf("create OIDC client: %w", err)
+			}
+		}
 	} else {
-		current, err = apiClient.UpdateOIDCClient(ctx, clientID, input)
-	}
-	if err != nil {
-		return nil, err
+		current, err = apiClient.UpdateOIDCClient(ctx, oidcClient.Status.ClientID, input)
+		if err != nil {
+			return nil, fmt.Errorf("update OIDC client: %w", err)
+		}
 	}
 
 	if oidcClient.Spec.AllowedUserGroups != nil {

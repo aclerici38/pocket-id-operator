@@ -428,6 +428,28 @@ func (c *Client) DeleteAPIKey(ctx context.Context, id string) error {
 
 // --- OIDC Client Operations ---
 
+// ListOIDCClients returns a list of OIDC clients matching the search term.
+// If search is empty, all OIDC clients are returned.
+func (c *Client) ListOIDCClients(ctx context.Context, search string) ([]*OIDCClient, error) {
+	params := oidc.NewGetAPIOidcClientsParams().WithContext(ctx)
+
+	if search != "" {
+		params = params.WithSearch(&search)
+	}
+
+	resp, err := c.raw.OIDc.GetAPIOidcClients(params)
+	if err != nil {
+		return nil, fmt.Errorf("list OIDC clients failed: %w", err)
+	}
+
+	clientList := make([]*OIDCClient, 0, len(resp.Payload.Data))
+	for _, dto := range resp.Payload.Data {
+		clientList = append(clientList, oidcClientFromListDTO(dto))
+	}
+
+	return clientList, nil
+}
+
 func (c *Client) CreateOIDCClient(ctx context.Context, input OIDCClientInput) (*OIDCClient, error) {
 	params := oidc.NewPostAPIOidcClientsParams().
 		WithContext(ctx).
@@ -553,6 +575,28 @@ func (c *Client) RegenerateOIDCClientSecret(ctx context.Context, id string) (str
 }
 
 // --- User Group Operations ---
+
+// ListUserGroups returns a list of user groups matching the search term.
+// If search is empty, all user groups are returned.
+func (c *Client) ListUserGroups(ctx context.Context, search string) ([]*UserGroup, error) {
+	params := user_groups.NewGetAPIUserGroupsParams().WithContext(ctx)
+
+	if search != "" {
+		params = params.WithSearch(&search)
+	}
+
+	resp, err := c.raw.UserGroups.GetAPIUserGroups(params)
+	if err != nil {
+		return nil, fmt.Errorf("list user groups failed: %w", err)
+	}
+
+	groupList := make([]*UserGroup, 0, len(resp.Payload.Data))
+	for _, dto := range resp.Payload.Data {
+		groupList = append(groupList, userGroupFromMinimalDTO(dto))
+	}
+
+	return groupList, nil
+}
 
 func (c *Client) CreateUserGroup(ctx context.Context, name, friendlyName string) (*UserGroup, error) {
 	params := user_groups.NewPostAPIUserGroupsParams().
@@ -752,6 +796,28 @@ func oidcCredentialsToDTO(credentials *OIDCClientCredentials) *models.GithubComP
 	}
 }
 
+func oidcClientFromListDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientWithAllowedGroupsCountDto) *OIDCClient {
+	if dto == nil {
+		return nil
+	}
+	return &OIDCClient{
+		ID:                       dto.ID,
+		Name:                     dto.Name,
+		CallbackURLs:             dto.CallbackURLs,
+		LogoutCallbackURLs:       dto.LogoutCallbackURLs,
+		LaunchURL:                dto.LaunchURL,
+		LogoURL:                  "",
+		DarkLogoURL:              "",
+		HasLogo:                  dto.HasLogo,
+		HasDarkLogo:              dto.HasDarkLogo,
+		IsPublic:                 dto.IsPublic,
+		IsGroupRestricted:        dto.IsGroupRestricted,
+		PKCEEnabled:              dto.PkceEnabled,
+		RequiresReauthentication: dto.RequiresReauthentication,
+		AllowedUserGroupIDs:      []string{},
+	}
+}
+
 func oidcClientFromAllowedGroupsDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientWithAllowedUserGroupsDto) *OIDCClient {
 	if dto == nil {
 		return nil
@@ -778,6 +844,21 @@ func oidcClientFromAllowedGroupsDTO(dto *models.GithubComPocketIDPocketIDBackend
 		PKCEEnabled:              dto.PkceEnabled,
 		RequiresReauthentication: dto.RequiresReauthentication,
 		AllowedUserGroupIDs:      groupIDs,
+	}
+}
+
+func userGroupFromMinimalDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoUserGroupMinimalDto) *UserGroup {
+	if dto == nil {
+		return nil
+	}
+	return &UserGroup{
+		ID:           dto.ID,
+		Name:         dto.Name,
+		FriendlyName: dto.FriendlyName,
+		CreatedAt:    dto.CreatedAt,
+		LdapID:       dto.LdapID,
+		UserCount:    0,   // Minimal DTO doesn't include users
+		CustomClaims: nil, // Minimal DTO doesn't include custom claims
 	}
 }
 
