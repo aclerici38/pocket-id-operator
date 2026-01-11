@@ -38,8 +38,8 @@ instance:
     # Database URL
     # If left as a filepath the instance will use a sqlite db
     # To use postgres configure the full uri, e.g. postgresql://user:password@host:port/dbname
-    databaseUrl:
-      value: "/app/data/pocket-id.db"
+    databaseUrl: {}
+      # value: "/app/data/pocket-id.db"
       # valueFrom:
       #   secretKeyRef:
       #     name: pocket-id-db
