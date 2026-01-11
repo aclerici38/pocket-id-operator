@@ -1511,7 +1511,7 @@ spec:
 
 			Eventually(func(g Gomega) {
 				apiKeyName := kubectlGet("pocketidinstance", instanceName, "-n", instanceNS,
-					"-o", "jsonpath={.status.authAPIKeyName}")
+					"-o", "jsonpath={.status.authApiKeyName}")
 				g.Expect(apiKeyName).To(Equal(resolveTestAPIKey))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
