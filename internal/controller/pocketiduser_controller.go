@@ -282,6 +282,51 @@ func (r *PocketIDUserReconciler) resolveStringValue(ctx context.Context, namespa
 	return ResolveStringValue(ctx, r.Client, r.APIReader, namespace, sv, fallbackSecretName, fallbackKey)
 }
 
+// pocketIDUserAPI defines the minimal interface needed for user operations
+type pocketIDUserAPI interface {
+	ListUsers(ctx context.Context, search string) ([]*pocketid.User, error)
+	CreateUser(ctx context.Context, input pocketid.UserInput) (*pocketid.User, error)
+	GetUser(ctx context.Context, id string) (*pocketid.User, error)
+	UpdateUser(ctx context.Context, id string, input pocketid.UserInput) (*pocketid.User, error)
+}
+
+// findExistingUser checks if a user with the given username or email already exists in Pocket-ID.
+// Returns the existing user if found, or nil if no matching user exists.
+func (r *PocketIDUserReconciler) findExistingUser(ctx context.Context, apiClient pocketIDUserAPI, username, email string) (*pocketid.User, error) {
+	log := logf.FromContext(ctx)
+
+	// Check if user with username already exists
+	log.Info("Checking if user exists in Pocket-ID", "username", username)
+	existingUsers, err := apiClient.ListUsers(ctx, username)
+	if err != nil {
+		return nil, fmt.Errorf("list users: %w", err)
+	}
+
+	// Check if username already exists
+	for _, existingUser := range existingUsers {
+		if existingUser.Username == username {
+			log.Info("Found existing user with matching username", "username", username, "userID", existingUser.ID)
+			return existingUser, nil
+		}
+	}
+
+	// Check if email already exists
+	if email != "" && email != fmt.Sprintf("%s@placeholder.local", username) {
+		emailUsers, err := apiClient.ListUsers(ctx, email)
+		if err != nil {
+			return nil, fmt.Errorf("list users by email: %w", err)
+		}
+		for _, existingUser := range emailUsers {
+			if existingUser.Email == email {
+				log.Info("Found existing user with matching email", "email", email, "userID", existingUser.ID)
+				return existingUser, nil
+			}
+		}
+	}
+
+	return nil, nil
+}
+
 // reconcileUser ensures the user exists in Pocket-ID with correct settings
 func (r *PocketIDUserReconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
 	log := logf.FromContext(ctx)
@@ -349,26 +394,41 @@ func (r *PocketIDUserReconciler) reconcileUser(ctx context.Context, user *pocket
 		Locale:      user.Spec.Locale,
 	}
 
-	// If we don't have a user ID, we need to create the user
+	// If we don't have a user ID, we need to check if user exists and create if not
 	if user.Status.UserID == "" {
-		log.Info("Creating user in Pocket-ID", "username", username)
-		pUser, err := apiClient.CreateUser(ctx, input)
+		// Check if user already exists
+		existingUser, err := r.findExistingUser(ctx, apiClient, username, email)
 		if err != nil {
-			return fmt.Errorf("create user: %w", err)
+			return fmt.Errorf("find existing user: %w", err)
 		}
 
+		var pUser *pocketid.User
+		if existingUser != nil {
+			// User exists, adopt it and update status
+			log.Info("Adopting existing user from Pocket-ID", "username", username, "userID", existingUser.ID)
+			pUser = existingUser
+		} else {
+			// User does not exist, create it
+			log.Info("Creating user in Pocket-ID", "username", username)
+			pUser, err = apiClient.CreateUser(ctx, input)
+			if err != nil {
+				return fmt.Errorf("create user: %w", err)
+			}
+
+			// Generate one-time login token for newly created user only
+			token, err := apiClient.CreateOneTimeAccessToken(ctx, pUser.ID, defaultLoginTokenExpiryMin)
+			if err != nil {
+				log.Error(err, "Failed to create one-time login token - user created but token not available")
+			} else {
+				if err := r.setOneTimeLoginStatus(ctx, user, instance, token.Token); err != nil {
+					return fmt.Errorf("set one-time login status: %w", err)
+				}
+			}
+		}
+
+		// Update status with user info
 		if err := r.updateUserStatus(ctx, user, pUser); err != nil {
 			return err
-		}
-
-		// Generate one-time login token for the newly created user
-		token, err := apiClient.CreateOneTimeAccessToken(ctx, pUser.ID, defaultLoginTokenExpiryMin)
-		if err != nil {
-			log.Error(err, "Failed to create one-time login token - user created but token not available")
-			return nil
-		}
-		if err := r.setOneTimeLoginStatus(ctx, user, instance, token.Token); err != nil {
-			return fmt.Errorf("set one-time login status: %w", err)
 		}
 
 		return nil

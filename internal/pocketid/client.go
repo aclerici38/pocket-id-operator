@@ -236,6 +236,28 @@ func (c *Client) GetUser(ctx context.Context, id string) (*User, error) {
 	return userFromDTO(resp.Payload), nil
 }
 
+// ListUsers returns a list of users matching the search term.
+// If search is empty, all users are returned.
+func (c *Client) ListUsers(ctx context.Context, search string) ([]*User, error) {
+	params := users.NewGetAPIUsersParams().WithContext(ctx)
+
+	if search != "" {
+		params = params.WithSearch(&search)
+	}
+
+	resp, err := c.raw.Users.GetAPIUsers(params)
+	if err != nil {
+		return nil, fmt.Errorf("list users failed: %w", err)
+	}
+
+	userList := make([]*User, 0, len(resp.Payload.Data))
+	for _, dto := range resp.Payload.Data {
+		userList = append(userList, userFromDTO(dto))
+	}
+
+	return userList, nil
+}
+
 func (c *Client) GetCurrentUser(ctx context.Context) (*User, error) {
 	params := users.NewGetAPIUsersMeParams().WithContext(ctx)
 
