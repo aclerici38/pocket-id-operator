@@ -16,7 +16,7 @@ func TestRateLimitedTransportIsUsed(t *testing.T) {
 	// Create a test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"id":"test-id","username":"test","firstName":"Test","lastName":"User","email":"test@example.com","displayName":"Test User","isAdmin":false,"disabled":false,"locale":"en"}`))
+		_, _ = w.Write([]byte(`{"id":"test-id","username":"test","firstName":"Test","lastName":"User","email":"test@example.com","displayName":"Test User","isAdmin":false,"disabled":false,"locale":"en"}`))
 	}))
 	defer server.Close()
 

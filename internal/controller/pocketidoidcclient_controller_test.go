@@ -118,6 +118,9 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 				Spec: pocketidinternalv1alpha1.PocketIDUserGroupSpec{
 					Name:         "group-name",
 					FriendlyName: "Group Name",
+					InstanceSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"nonexistent": "true"},
+					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, group)).To(Succeed())

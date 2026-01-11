@@ -29,6 +29,7 @@ import (
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -244,12 +245,21 @@ func (r *PocketIDUserReconciler) reconcileDelete(ctx context.Context, user *pock
 	}
 	if referencedByUserGroup {
 		log.Info("User is referenced by PocketIDUserGroup, blocking deletion", "user", user.Name)
-		if updated, err := EnsureFinalizer(ctx, r.Client, user, userGroupUserFinalizer); err != nil {
+		if _, err := EnsureFinalizer(ctx, r.Client, user, userGroupUserFinalizer); err != nil {
 			return ctrl.Result{}, err
-		} else if updated {
-			return ctrl.Result{Requeue: true}, nil
 		}
 		return ctrl.Result{RequeueAfter: Requeue}, nil
+	}
+
+	// Remove userGroupUserFinalizer if not referenced by any user group
+	if controllerutil.ContainsFinalizer(user, userGroupUserFinalizer) {
+		if err := RemoveFinalizers(ctx, r.Client, user, userGroupUserFinalizer); err != nil {
+			if errors.IsConflict(err) {
+				return ctrl.Result{Requeue: true}, nil
+			}
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	if user.Status.UserID != "" {

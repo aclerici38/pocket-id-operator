@@ -255,10 +255,8 @@ func (r *PocketIDUserGroupReconciler) reconcileDelete(ctx context.Context, userG
 	}
 	if referencedByOIDCClient {
 		logf.FromContext(ctx).Info("User group is referenced by PocketIDOIDCClient, blocking deletion", "userGroup", userGroup.Name)
-		if updated, err := EnsureFinalizer(ctx, r.Client, userGroup, oidcClientUserGroupFinalizer); err != nil {
+		if _, err := EnsureFinalizer(ctx, r.Client, userGroup, oidcClientUserGroupFinalizer); err != nil {
 			return ctrl.Result{}, err
-		} else if updated {
-			return ctrl.Result{Requeue: true}, nil
 		}
 		return ctrl.Result{RequeueAfter: Requeue}, nil
 	}
