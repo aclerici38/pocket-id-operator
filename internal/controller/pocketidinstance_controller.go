@@ -326,12 +326,12 @@ func buildPodSecurityContext(instance *pocketidinternalv1alpha1.PocketIDInstance
 func buildContainerSecurityContext(instance *pocketidinternalv1alpha1.PocketIDInstance) *corev1.SecurityContext {
 	allowPrivilegeEscalation := false
 	runAsNonRoot := true
-	runAsUser := int64(65534)
+	readOnlyRootFS := true
 
 	defaults := &corev1.SecurityContext{
 		AllowPrivilegeEscalation: &allowPrivilegeEscalation,
 		RunAsNonRoot:             &runAsNonRoot,
-		RunAsUser:                &runAsUser,
+		ReadOnlyRootFilesystem:   &readOnlyRootFS,
 		Capabilities: &corev1.Capabilities{
 			Drop: []corev1.Capability{"ALL"},
 		},
@@ -348,8 +348,8 @@ func buildContainerSecurityContext(instance *pocketidinternalv1alpha1.PocketIDIn
 	if merged.RunAsNonRoot == nil {
 		merged.RunAsNonRoot = defaults.RunAsNonRoot
 	}
-	if merged.RunAsUser == nil {
-		merged.RunAsUser = defaults.RunAsUser
+	if merged.ReadOnlyRootFilesystem == nil {
+		merged.ReadOnlyRootFilesystem = defaults.ReadOnlyRootFilesystem
 	}
 	if merged.Capabilities == nil {
 		merged.Capabilities = defaults.Capabilities
