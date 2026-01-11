@@ -62,6 +62,18 @@ type PersistenceConfig struct {
 	AccessModes []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
 }
 
+// NamespacedUserReference references a PocketIDUser by name and namespace.
+type NamespacedUserReference struct {
+	// Name is the name of the PocketIDUser CR
+	// +optional
+	Name string `json:"name,omitempty"`
+
+	// Namespace is the namespace of the PocketIDUser CR
+	// Defaults to the referencing resource's namespace
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+}
+
 // PocketIDInstanceSpec defines the desired state of PocketIDInstance
 // +kubebuilder:validation:XValidation:rule="self.deploymentType == oldSelf.deploymentType",message="deploymentType is immutable"
 type PocketIDInstanceSpec struct {
