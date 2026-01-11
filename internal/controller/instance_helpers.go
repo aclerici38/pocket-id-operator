@@ -46,7 +46,7 @@ func selectInstance(ctx context.Context, c client.Client, selector *metav1.Label
 
 func instanceReady(instance *pocketidinternalv1alpha1.PocketIDInstance) bool {
 	for _, cond := range instance.Status.Conditions {
-		if cond.Type == "Available" && cond.Status == metav1.ConditionTrue {
+		if cond.Type == "Ready" && cond.Status == metav1.ConditionTrue {
 			return true
 		}
 	}

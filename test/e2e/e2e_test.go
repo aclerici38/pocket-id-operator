@@ -146,6 +146,14 @@ spec:
 			}, 3*time.Minute, 5*time.Second).Should(Succeed())
 		})
 
+		It("should become Ready after bootstrap", func() {
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidinstance", instanceName, "-n", instanceNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(output).To(Equal("True"))
+			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+		})
+
 		It("should create the operator API key secret", func() {
 			var secretName string
 			By("getting secret name from user status")
@@ -1737,6 +1745,13 @@ spec:
 					"-o", "jsonpath={.status.bootstrapped}")
 				g.Expect(output).To(Equal("true"))
 			}, 3*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("verifying the secondary instance becomes Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidinstance", secondaryInstanceName, "-n", instanceNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(output).To(Equal("True"))
+			}, 2*time.Minute, 5*time.Second).Should(Succeed())
 
 			By("verifying the auth user becomes Ready")
 			Eventually(func(g Gomega) {

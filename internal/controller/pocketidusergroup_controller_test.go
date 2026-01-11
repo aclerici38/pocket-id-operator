@@ -453,6 +453,13 @@ var _ = Describe("PocketIDUserGroup Controller", func() {
 							Message:            "Instance is ready",
 							LastTransitionTime: metav1.Now(),
 						},
+						{
+							Type:               "Ready",
+							Status:             metav1.ConditionTrue,
+							Reason:             "Ready",
+							Message:            "Instance is ready with auth configured",
+							LastTransitionTime: metav1.Now(),
+						},
 					},
 				},
 			}

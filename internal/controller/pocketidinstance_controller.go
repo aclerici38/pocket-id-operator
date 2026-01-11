@@ -106,9 +106,9 @@ func (r *PocketIDInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 
-	// Attempt auth reconciliation when instance is available
+	// Attempt auth reconciliation when instance is Ready
 	// If auth is not configured, use defaults (pocket-id-operator user and API key)
-	if r.isInstanceAvailable(instance) {
+	if r.isInstanceReady(instance) {
 		result, err := r.reconcileAuth(ctx, instance)
 		if err != nil {
 			log.Error(err, "Failed to reconcile auth")
@@ -122,8 +122,10 @@ func (r *PocketIDInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	return applyResync(ctrl.Result{}), nil
 }
 
-// isInstanceAvailable checks if the instance has Available=True
-func (r *PocketIDInstanceReconciler) isInstanceAvailable(instance *pocketidinternalv1alpha1.PocketIDInstance) bool {
+// isInstanceReady checks if the instance has Available=True (workload ready)
+// We check Available rather than Ready here because auth reconciliation needs
+// Ready=True is set when auth is ready
+func (r *PocketIDInstanceReconciler) isInstanceReady(instance *pocketidinternalv1alpha1.PocketIDInstance) bool {
 	for _, cond := range instance.Status.Conditions {
 		if cond.Type == "Available" && cond.Status == metav1.ConditionTrue {
 			return true
@@ -625,6 +627,31 @@ func (r *PocketIDInstanceReconciler) updateStatus(ctx context.Context, instance 
 		Status:             available,
 		Reason:             reason,
 		Message:            message,
+		ObservedGeneration: instance.Generation,
+	})
+
+	// Set Ready condition based on Available status and auth configuration
+	readyStatus := metav1.ConditionFalse
+	readyReason := "NotAvailable"
+	readyMessage := "Instance is not available yet"
+
+	if available == metav1.ConditionTrue {
+		// Instance is available, check if auth is configured
+		if instance.Status.AuthUserRef != "" && instance.Status.AuthAPIKeyName != "" {
+			readyStatus = metav1.ConditionTrue
+			readyReason = readyConditionType
+			readyMessage = "Instance is ready with auth configured"
+		} else {
+			readyReason = "AuthNotConfigured"
+			readyMessage = "Auth configuration pending"
+		}
+	}
+
+	meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{
+		Type:               readyConditionType,
+		Status:             readyStatus,
+		Reason:             readyReason,
+		Message:            readyMessage,
 		ObservedGeneration: instance.Generation,
 	})
 
