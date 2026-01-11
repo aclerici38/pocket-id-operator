@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"encoding/base64"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -1451,10 +1452,6 @@ var _ = Describe("PocketIDInstance Controller", func() {
 						},
 					},
 					AppURL: "https://auth.example.com",
-					Auth: &pocketidinternalv1alpha1.AuthConfig{
-						UserRef:    &pocketidinternalv1alpha1.NamespacedUserReference{Name: "custom-admin"},
-						APIKeyName: "custom-key",
-					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
@@ -1477,11 +1474,6 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					Namespace: namespace,
 				}, createdInstance)
 			}, timeout, interval).Should(Succeed())
-
-			Expect(createdInstance.Spec.Auth).NotTo(BeNil())
-			Expect(createdInstance.Spec.Auth.UserRef).NotTo(BeNil())
-			Expect(createdInstance.Spec.Auth.UserRef.Name).To(Equal("custom-admin"))
-			Expect(createdInstance.Spec.Auth.APIKeyName).To(Equal("custom-key"))
 		})
 	})
 
@@ -1544,9 +1536,6 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					Namespace: namespace,
 				}, createdInstance)
 			}, timeout, interval).Should(Succeed())
-
-			// Auth is nil in spec - controller will use defaults (pocket-id-operator)
-			Expect(createdInstance.Spec.Auth).To(BeNil())
 		})
 	})
 
@@ -1586,10 +1575,6 @@ var _ = Describe("PocketIDInstance Controller", func() {
 						},
 					},
 					AppURL: "https://auth.example.com",
-					Auth: &pocketidinternalv1alpha1.AuthConfig{
-						UserRef:    &pocketidinternalv1alpha1.NamespacedUserReference{Name: "pocket-id-operator"},
-						APIKeyName: "pocket-id-operator",
-					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
@@ -1612,11 +1597,6 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					Namespace: namespace,
 				}, createdInstance)
 			}, timeout, interval).Should(Succeed())
-
-			Expect(createdInstance.Spec.Auth).NotTo(BeNil())
-			Expect(createdInstance.Spec.Auth.UserRef).NotTo(BeNil())
-			Expect(createdInstance.Spec.Auth.UserRef.Name).To(Equal("pocket-id-operator"))
-			Expect(createdInstance.Spec.Auth.APIKeyName).To(Equal("pocket-id-operator"))
 		})
 	})
 
@@ -1763,6 +1743,381 @@ var _ = Describe("PocketIDInstance Controller", func() {
 			}
 
 			Expect(rateLimitEnv).To(BeNil())
+		})
+	})
+
+	Context("Static API Key Secret Lifecycle", func() {
+		Context("When creating a PocketIDInstance", func() {
+			const instanceName = "test-static-api-key-creation"
+
+			var instance *pocketidinternalv1alpha1.PocketIDInstance
+			var secret *corev1.Secret
+
+			BeforeEach(func() {
+				secret = &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      instanceName + "-secret",
+						Namespace: namespace,
+					},
+					Data: map[string][]byte{
+						"encryption-key": []byte("test-encryption-key-value"),
+					},
+				}
+				Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+				instance = &pocketidinternalv1alpha1.PocketIDInstance{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      instanceName,
+						Namespace: namespace,
+					},
+					Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+						EncryptionKey: pocketidinternalv1alpha1.EnvValue{
+							ValueFrom: &corev1.EnvVarSource{
+								SecretKeyRef: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: secret.Name,
+									},
+									Key: "encryption-key",
+								},
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+			})
+
+			AfterEach(func() {
+				if instance != nil {
+					_ = k8sClient.Delete(ctx, instance)
+				}
+				if secret != nil {
+					_ = k8sClient.Delete(ctx, secret)
+				}
+			})
+
+			It("Should automatically create a static API key secret", func() {
+				staticSecret := &corev1.Secret{}
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{
+						Name:      instanceName + "-static-api-key",
+						Namespace: namespace,
+					}, staticSecret)
+				}, timeout, interval).Should(Succeed())
+
+				// Verify secret has a token field
+				Expect(staticSecret.Data).To(HaveKey("token"))
+				token := string(staticSecret.Data["token"])
+				Expect(token).NotTo(BeEmpty())
+
+				// Verify token is a valid base64-encoded string
+				_, err := base64.URLEncoding.DecodeString(token)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("Should set controller reference on the static API key secret", func() {
+				staticSecret := &corev1.Secret{}
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{
+						Name:      instanceName + "-static-api-key",
+						Namespace: namespace,
+					}, staticSecret)
+				}, timeout, interval).Should(Succeed())
+
+				// Verify owner reference is set
+				Expect(staticSecret.OwnerReferences).To(HaveLen(1))
+				Expect(staticSecret.OwnerReferences[0].Name).To(Equal(instanceName))
+				Expect(staticSecret.OwnerReferences[0].Kind).To(Equal("PocketIDInstance"))
+				Expect(*staticSecret.OwnerReferences[0].Controller).To(BeTrue())
+			})
+
+			It("Should inject STATIC_API_KEY env var referencing the secret", func() {
+				deployment := &appsv1.Deployment{}
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{
+						Name:      instanceName,
+						Namespace: namespace,
+					}, deployment)
+				}, timeout, interval).Should(Succeed())
+
+				envVars := deployment.Spec.Template.Spec.Containers[0].Env
+
+				var staticAPIKeyEnv *corev1.EnvVar
+				for i := range envVars {
+					if envVars[i].Name == "STATIC_API_KEY" {
+						staticAPIKeyEnv = &envVars[i]
+						break
+					}
+				}
+
+				Expect(staticAPIKeyEnv).NotTo(BeNil())
+				Expect(staticAPIKeyEnv.ValueFrom).NotTo(BeNil())
+				Expect(staticAPIKeyEnv.ValueFrom.SecretKeyRef).NotTo(BeNil())
+				Expect(staticAPIKeyEnv.ValueFrom.SecretKeyRef.Name).To(Equal(instanceName + "-static-api-key"))
+				Expect(staticAPIKeyEnv.ValueFrom.SecretKeyRef.Key).To(Equal("token"))
+			})
+		})
+
+		Context("When deleting a PocketIDInstance", func() {
+			const instanceName = "test-static-api-key-deletion"
+
+			var instance *pocketidinternalv1alpha1.PocketIDInstance
+			var secret *corev1.Secret
+
+			It("Should have owner reference set for garbage collection", func() {
+				secret = &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      instanceName + "-secret",
+						Namespace: namespace,
+					},
+					Data: map[string][]byte{
+						"encryption-key": []byte("test-encryption-key-value"),
+					},
+				}
+				Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+				instance = &pocketidinternalv1alpha1.PocketIDInstance{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      instanceName,
+						Namespace: namespace,
+					},
+					Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+						EncryptionKey: pocketidinternalv1alpha1.EnvValue{
+							ValueFrom: &corev1.EnvVarSource{
+								SecretKeyRef: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: secret.Name,
+									},
+									Key: "encryption-key",
+								},
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+				// Wait for static API key secret to be created
+				staticSecret := &corev1.Secret{}
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{
+						Name:      instanceName + "-static-api-key",
+						Namespace: namespace,
+					}, staticSecret)
+				}, timeout, interval).Should(Succeed())
+
+				// Verify owner reference ensures deletion with instance
+				Expect(staticSecret.OwnerReferences).To(HaveLen(1))
+				Expect(staticSecret.OwnerReferences[0].Name).To(Equal(instanceName))
+				Expect(*staticSecret.OwnerReferences[0].Controller).To(BeTrue())
+				Expect(*staticSecret.OwnerReferences[0].BlockOwnerDeletion).To(BeTrue())
+
+				// Clean up
+				_ = k8sClient.Delete(ctx, instance)
+				_ = k8sClient.Delete(ctx, secret)
+			})
+		})
+
+		Context("When static API key secret is deleted externally", func() {
+			const instanceName = "test-static-api-key-regeneration"
+
+			var instance *pocketidinternalv1alpha1.PocketIDInstance
+			var secret *corev1.Secret
+
+			BeforeEach(func() {
+				secret = &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      instanceName + "-secret",
+						Namespace: namespace,
+					},
+					Data: map[string][]byte{
+						"encryption-key": []byte("test-encryption-key-value"),
+					},
+				}
+				Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+				instance = &pocketidinternalv1alpha1.PocketIDInstance{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      instanceName,
+						Namespace: namespace,
+					},
+					Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+						EncryptionKey: pocketidinternalv1alpha1.EnvValue{
+							ValueFrom: &corev1.EnvVarSource{
+								SecretKeyRef: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: secret.Name,
+									},
+									Key: "encryption-key",
+								},
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+				// Wait for static API key secret to be created
+				staticSecret := &corev1.Secret{}
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{
+						Name:      instanceName + "-static-api-key",
+						Namespace: namespace,
+					}, staticSecret)
+				}, timeout, interval).Should(Succeed())
+			})
+
+			AfterEach(func() {
+				if instance != nil {
+					_ = k8sClient.Delete(ctx, instance)
+				}
+				if secret != nil {
+					_ = k8sClient.Delete(ctx, secret)
+				}
+			})
+
+			It("Should regenerate the static API key secret if deleted", func() {
+				// Get the original secret token
+				staticSecret := &corev1.Secret{}
+				Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName + "-static-api-key",
+					Namespace: namespace,
+				}, staticSecret)).To(Succeed())
+
+				originalToken := string(staticSecret.Data["token"])
+				Expect(originalToken).NotTo(BeEmpty())
+
+				// Delete the static API key secret
+				Expect(k8sClient.Delete(ctx, staticSecret)).To(Succeed())
+
+				// Verify secret is recreated by controller
+				newSecret := &corev1.Secret{}
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{
+						Name:      instanceName + "-static-api-key",
+						Namespace: namespace,
+					}, newSecret)
+				}, timeout, interval).Should(Succeed())
+
+				// Verify the new secret has a token
+				Expect(newSecret.Data).To(HaveKey("token"))
+				newToken := string(newSecret.Data["token"])
+				Expect(newToken).NotTo(BeEmpty())
+
+				// Verify it's a different token (regenerated)
+				Expect(newToken).NotTo(Equal(originalToken))
+
+				// Verify owner reference is still set
+				Expect(newSecret.OwnerReferences).To(HaveLen(1))
+				Expect(newSecret.OwnerReferences[0].Name).To(Equal(instanceName))
+			})
+
+			It("Should maintain the same secret name after regeneration", func() {
+				// Delete the static API key secret
+				staticSecret := &corev1.Secret{}
+				Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName + "-static-api-key",
+					Namespace: namespace,
+				}, staticSecret)).To(Succeed())
+
+				Expect(k8sClient.Delete(ctx, staticSecret)).To(Succeed())
+
+				// Verify secret is recreated with the same name
+				newSecret := &corev1.Secret{}
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{
+						Name:      instanceName + "-static-api-key",
+						Namespace: namespace,
+					}, newSecret)
+				}, timeout, interval).Should(Succeed())
+
+				Expect(newSecret.Name).To(Equal(instanceName + "-static-api-key"))
+			})
+		})
+
+		Context("When multiple reconciliations occur concurrently", func() {
+			const instanceName = "test-static-api-key-concurrent"
+
+			var instance *pocketidinternalv1alpha1.PocketIDInstance
+			var secret *corev1.Secret
+
+			BeforeEach(func() {
+				secret = &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      instanceName + "-secret",
+						Namespace: namespace,
+					},
+					Data: map[string][]byte{
+						"encryption-key": []byte("test-encryption-key-value"),
+					},
+				}
+				Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+				instance = &pocketidinternalv1alpha1.PocketIDInstance{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      instanceName,
+						Namespace: namespace,
+					},
+					Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+						EncryptionKey: pocketidinternalv1alpha1.EnvValue{
+							ValueFrom: &corev1.EnvVarSource{
+								SecretKeyRef: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: secret.Name,
+									},
+									Key: "encryption-key",
+								},
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+			})
+
+			AfterEach(func() {
+				if instance != nil {
+					_ = k8sClient.Delete(ctx, instance)
+				}
+				if secret != nil {
+					_ = k8sClient.Delete(ctx, secret)
+				}
+			})
+
+			It("Should only create one static API key secret", func() {
+				// Wait for secret to be created
+				staticSecret := &corev1.Secret{}
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{
+						Name:      instanceName + "-static-api-key",
+						Namespace: namespace,
+					}, staticSecret)
+				}, timeout, interval).Should(Succeed())
+
+				// Get the token
+				originalToken := string(staticSecret.Data["token"])
+				Expect(originalToken).NotTo(BeEmpty())
+
+				// Trigger another reconciliation by updating the instance
+				Eventually(func() error {
+					if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(instance), instance); err != nil {
+						return err
+					}
+					if instance.Annotations == nil {
+						instance.Annotations = make(map[string]string)
+					}
+					instance.Annotations["test"] = "trigger-reconcile"
+					return k8sClient.Update(ctx, instance)
+				}, timeout, interval).Should(Succeed())
+
+				// Wait a bit for reconciliation
+				time.Sleep(time.Second)
+
+				// Verify the token hasn't changed (same secret reused)
+				Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName + "-static-api-key",
+					Namespace: namespace,
+				}, staticSecret)).To(Succeed())
+
+				currentToken := string(staticSecret.Data["token"])
+				Expect(currentToken).To(Equal(originalToken))
+			})
 		})
 	})
 })

@@ -26,6 +26,7 @@ type ConditionedResource interface {
 // BaseReconciler provides common reconciliation utilities for all controllers
 type BaseReconciler struct {
 	client.Client
+	APIReader client.Reader
 }
 
 // EnsureClient sets the base client if it hasn't been initialized.
@@ -78,16 +79,6 @@ func (r *BaseReconciler) ValidateInstanceReady(ctx context.Context, obj Conditio
 		}
 	}
 
-	if !instance.Status.Bootstrapped {
-		_ = r.SetReadyCondition(ctx, obj, metav1.ConditionFalse, "InstanceNotBootstrapped",
-			fmt.Sprintf("Waiting for PocketID instance '%s/%s' to be bootstrapped", instance.Namespace, instance.Name))
-		return &InstanceValidationResult{
-			Instance:      instance,
-			ShouldRequeue: true,
-			RequeueAfter:  Requeue,
-		}
-	}
-
 	return &InstanceValidationResult{
 		Instance:      instance,
 		ShouldRequeue: false,
@@ -99,7 +90,7 @@ func (r *BaseReconciler) ValidateInstanceReady(ctx context.Context, obj Conditio
 func (r *BaseReconciler) GetAPIClientOrWait(ctx context.Context, obj ConditionedResource, instance *pocketidv1alpha1.PocketIDInstance) (*pocketid.Client, *ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	apiClient, err := GetAPIClient(ctx, r.Client, instance)
+	apiClient, err := GetAPIClient(ctx, r.Client, r.APIReader, instance)
 	if err != nil {
 		if stderrors.Is(err, ErrAPIClientNotReady) {
 			logger.Info("API client not ready, requeuing")
@@ -170,7 +161,7 @@ func (r *BaseReconciler) ReconcileDeleteWithPocketID(
 	}
 
 	// Get API client from pool
-	apiClient, err := GetAPIClient(ctx, r.Client, instance)
+	apiClient, err := GetAPIClient(ctx, r.Client, r.APIReader, instance)
 	if err != nil {
 		if stderrors.Is(err, ErrAPIClientNotReady) {
 			logger.Info("API client not ready for delete, requeuing", "statusID", statusID)

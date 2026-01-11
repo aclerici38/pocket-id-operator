@@ -31,12 +31,7 @@ func TestReconcileUserFinalizers_AddsAuthFinalizer(t *testing.T) {
 			Name:      "instance",
 			Namespace: "default",
 		},
-		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-			Auth: &pocketidinternalv1alpha1.AuthConfig{
-				UserRef:    &pocketidinternalv1alpha1.NamespacedUserReference{Name: "auth-user"},
-				APIKeyName: "pocket-id-operator",
-			},
-		},
+		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{},
 	}
 
 	client := fake.NewClientBuilder().
@@ -45,7 +40,7 @@ func TestReconcileUserFinalizers_AddsAuthFinalizer(t *testing.T) {
 		Build()
 
 	reconciler := &PocketIDUserReconciler{Client: client, APIReader: client, Scheme: scheme}
-	updated, err := reconciler.reconcileUserFinalizers(context.Background(), user, instance)
+	updated, err := reconciler.reconcileUserFinalizers(context.Background(), user)
 	if err != nil {
 		t.Fatalf("reconcileUserFinalizers returned error: %v", err)
 	}
@@ -57,7 +52,7 @@ func TestReconcileUserFinalizers_AddsAuthFinalizer(t *testing.T) {
 	if err := client.Get(context.Background(), types.NamespacedName{Name: user.Name, Namespace: user.Namespace}, updatedUser); err != nil {
 		t.Fatalf("failed to get updated user: %v", err)
 	}
-	if !containsFinalizer(updatedUser.Finalizers, userFinalizer) || !containsFinalizer(updatedUser.Finalizers, authUserFinalizer) {
+	if !containsFinalizer(updatedUser.Finalizers, userFinalizer) {
 		t.Fatalf("expected both finalizers to be set, got %v", updatedUser.Finalizers)
 	}
 }
@@ -78,17 +73,8 @@ func TestReconcileUserFinalizers_AddsAuthFinalizerFromStatus(t *testing.T) {
 			Name:      "instance",
 			Namespace: "default",
 		},
-		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-			Auth: &pocketidinternalv1alpha1.AuthConfig{
-				UserRef:    &pocketidinternalv1alpha1.NamespacedUserReference{Name: "other-user"},
-				APIKeyName: "pocket-id-operator",
-			},
-		},
-		Status: pocketidinternalv1alpha1.PocketIDInstanceStatus{
-			AuthUserRef:       "auth-user",
-			AuthUserNamespace: "default",
-			AuthAPIKeyName:    "pocket-id-operator",
-		},
+		Spec:   pocketidinternalv1alpha1.PocketIDInstanceSpec{},
+		Status: pocketidinternalv1alpha1.PocketIDInstanceStatus{},
 	}
 
 	client := fake.NewClientBuilder().
@@ -97,7 +83,7 @@ func TestReconcileUserFinalizers_AddsAuthFinalizerFromStatus(t *testing.T) {
 		Build()
 
 	reconciler := &PocketIDUserReconciler{Client: client, APIReader: client, Scheme: scheme}
-	updated, err := reconciler.reconcileUserFinalizers(context.Background(), user, instance)
+	updated, err := reconciler.reconcileUserFinalizers(context.Background(), user)
 	if err != nil {
 		t.Fatalf("reconcileUserFinalizers returned error: %v", err)
 	}
@@ -109,7 +95,7 @@ func TestReconcileUserFinalizers_AddsAuthFinalizerFromStatus(t *testing.T) {
 	if err := client.Get(context.Background(), types.NamespacedName{Name: user.Name, Namespace: user.Namespace}, updatedUser); err != nil {
 		t.Fatalf("failed to get updated user: %v", err)
 	}
-	if !containsFinalizer(updatedUser.Finalizers, userFinalizer) || !containsFinalizer(updatedUser.Finalizers, authUserFinalizer) {
+	if !containsFinalizer(updatedUser.Finalizers, userFinalizer) {
 		t.Fatalf("expected both finalizers to be set, got %v", updatedUser.Finalizers)
 	}
 }
@@ -130,12 +116,7 @@ func TestReconcileUserFinalizers_AddsUserGroupFinalizer(t *testing.T) {
 			Name:      "instance",
 			Namespace: "default",
 		},
-		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-			Auth: &pocketidinternalv1alpha1.AuthConfig{
-				UserRef:    &pocketidinternalv1alpha1.NamespacedUserReference{Name: "other-user"},
-				APIKeyName: "pocket-id-operator",
-			},
-		},
+		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{},
 	}
 	group := &pocketidinternalv1alpha1.PocketIDUserGroup{
 		ObjectMeta: metav1.ObjectMeta{
@@ -155,7 +136,7 @@ func TestReconcileUserFinalizers_AddsUserGroupFinalizer(t *testing.T) {
 		Build()
 
 	reconciler := &PocketIDUserReconciler{Client: client, APIReader: client, Scheme: scheme}
-	updated, err := reconciler.reconcileUserFinalizers(context.Background(), user, instance)
+	updated, err := reconciler.reconcileUserFinalizers(context.Background(), user)
 	if err != nil {
 		t.Fatalf("reconcileUserFinalizers returned error: %v", err)
 	}
@@ -169,9 +150,6 @@ func TestReconcileUserFinalizers_AddsUserGroupFinalizer(t *testing.T) {
 	}
 	if !containsFinalizer(updatedUser.Finalizers, userFinalizer) || !containsFinalizer(updatedUser.Finalizers, userGroupUserFinalizer) {
 		t.Fatalf("expected user and user-group finalizers to be set, got %v", updatedUser.Finalizers)
-	}
-	if containsFinalizer(updatedUser.Finalizers, authUserFinalizer) {
-		t.Fatalf("expected auth finalizer to be unset, got %v", updatedUser.Finalizers)
 	}
 }
 
@@ -200,7 +178,7 @@ func TestReconcileUserFinalizers_RemovesUserGroupFinalizerWhenUnreferenced(t *te
 		Build()
 
 	reconciler := &PocketIDUserReconciler{Client: client, APIReader: client, Scheme: scheme}
-	updated, err := reconciler.reconcileUserFinalizers(context.Background(), user, instance)
+	updated, err := reconciler.reconcileUserFinalizers(context.Background(), user)
 	if err != nil {
 		t.Fatalf("reconcileUserFinalizers returned error: %v", err)
 	}
@@ -217,111 +195,6 @@ func TestReconcileUserFinalizers_RemovesUserGroupFinalizerWhenUnreferenced(t *te
 	}
 }
 
-func TestReconcileDelete_BlocksWhenReferenced(t *testing.T) {
-	scheme := runtime.NewScheme()
-	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
-	_ = corev1.AddToScheme(scheme)
-
-	now := metav1.NewTime(time.Now())
-	user := &pocketidinternalv1alpha1.PocketIDUser{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:              "auth-user",
-			Namespace:         "default",
-			Finalizers:        []string{userFinalizer, authUserFinalizer},
-			DeletionTimestamp: &now,
-		},
-	}
-	instance := &pocketidinternalv1alpha1.PocketIDInstance{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "instance",
-			Namespace: "default",
-		},
-		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-			Auth: &pocketidinternalv1alpha1.AuthConfig{
-				UserRef:    &pocketidinternalv1alpha1.NamespacedUserReference{Name: "auth-user"},
-				APIKeyName: "pocket-id-operator",
-			},
-		},
-	}
-
-	client := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithObjects(user, instance).
-		Build()
-
-	reconciler := &PocketIDUserReconciler{Client: client, APIReader: client, Scheme: scheme}
-	result, err := reconciler.reconcileDelete(context.Background(), user)
-	if err != nil {
-		t.Fatalf("reconcileDelete returned error: %v", err)
-	}
-	if result.RequeueAfter <= 0 {
-		t.Fatalf("expected requeue when referenced, got %s", result.RequeueAfter)
-	}
-
-	updatedUser := &pocketidinternalv1alpha1.PocketIDUser{}
-	if err := client.Get(context.Background(), types.NamespacedName{Name: user.Name, Namespace: user.Namespace}, updatedUser); err != nil {
-		t.Fatalf("failed to get updated user: %v", err)
-	}
-	if !containsFinalizer(updatedUser.Finalizers, userFinalizer) || !containsFinalizer(updatedUser.Finalizers, authUserFinalizer) {
-		t.Fatalf("expected finalizers to remain, got %v", updatedUser.Finalizers)
-	}
-}
-
-func TestReconcileDelete_BlocksWhenStatusReferenced(t *testing.T) {
-	scheme := runtime.NewScheme()
-	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
-	_ = corev1.AddToScheme(scheme)
-
-	now := metav1.NewTime(time.Now())
-	user := &pocketidinternalv1alpha1.PocketIDUser{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:              "auth-user",
-			Namespace:         "default",
-			Finalizers:        []string{userFinalizer, authUserFinalizer},
-			DeletionTimestamp: &now,
-		},
-	}
-	instance := &pocketidinternalv1alpha1.PocketIDInstance{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "instance",
-			Namespace: "default",
-		},
-		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-			Auth: &pocketidinternalv1alpha1.AuthConfig{
-				UserRef:    &pocketidinternalv1alpha1.NamespacedUserReference{Name: "other-user"},
-				APIKeyName: "pocket-id-operator",
-			},
-		},
-		Status: pocketidinternalv1alpha1.PocketIDInstanceStatus{
-			AuthUserRef:       "auth-user",
-			AuthUserNamespace: "default",
-			AuthAPIKeyName:    "pocket-id-operator",
-		},
-	}
-
-	client := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithObjects(user, instance).
-		Build()
-
-	reconciler := &PocketIDUserReconciler{Client: client, APIReader: client, Scheme: scheme}
-	result, err := reconciler.reconcileDelete(context.Background(), user)
-	if err != nil {
-		t.Fatalf("reconcileDelete returned error: %v", err)
-	}
-	if result.RequeueAfter <= 0 {
-		t.Fatalf("expected requeue when referenced, got %s", result.RequeueAfter)
-	}
-
-	updatedUser := &pocketidinternalv1alpha1.PocketIDUser{}
-	if err := client.Get(context.Background(), types.NamespacedName{Name: user.Name, Namespace: user.Namespace}, updatedUser); err != nil {
-		t.Fatalf("failed to get updated user: %v", err)
-	}
-	if !containsFinalizer(updatedUser.Finalizers, userFinalizer) || !containsFinalizer(updatedUser.Finalizers, authUserFinalizer) {
-		t.Fatalf("expected finalizers to remain, got %v", updatedUser.Finalizers)
-	}
-}
-
 func TestReconcileDelete_RemovesFinalizersWhenUnreferenced(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
@@ -332,7 +205,7 @@ func TestReconcileDelete_RemovesFinalizersWhenUnreferenced(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              "auth-user",
 			Namespace:         "default",
-			Finalizers:        []string{userFinalizer, authUserFinalizer},
+			Finalizers:        []string{userFinalizer},
 			DeletionTimestamp: &now,
 		},
 	}
@@ -341,12 +214,7 @@ func TestReconcileDelete_RemovesFinalizersWhenUnreferenced(t *testing.T) {
 			Name:      "instance",
 			Namespace: "default",
 		},
-		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-			Auth: &pocketidinternalv1alpha1.AuthConfig{
-				UserRef:    &pocketidinternalv1alpha1.NamespacedUserReference{Name: "other-user"},
-				APIKeyName: "pocket-id-operator",
-			},
-		},
+		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{},
 	}
 
 	client := fake.NewClientBuilder().
@@ -361,7 +229,7 @@ func TestReconcileDelete_RemovesFinalizersWhenUnreferenced(t *testing.T) {
 
 	updatedUser := &pocketidinternalv1alpha1.PocketIDUser{}
 	if err := client.Get(context.Background(), types.NamespacedName{Name: user.Name, Namespace: user.Namespace}, updatedUser); err == nil {
-		if containsFinalizer(updatedUser.Finalizers, userFinalizer) || containsFinalizer(updatedUser.Finalizers, authUserFinalizer) {
+		if containsFinalizer(updatedUser.Finalizers, userFinalizer) {
 			t.Fatalf("expected finalizers to be removed, got %v", updatedUser.Finalizers)
 		}
 	} else if !errors.IsNotFound(err) {
@@ -379,7 +247,7 @@ func TestReconcileDelete_BlocksWhenUserGroupReferences(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              "group-referenced-user",
 			Namespace:         "default",
-			Finalizers:        []string{userFinalizer},
+			Finalizers:        []string{userFinalizer, userGroupUserFinalizer},
 			DeletionTimestamp: &now,
 		},
 	}

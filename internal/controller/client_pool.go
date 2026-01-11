@@ -2,13 +2,13 @@ package controller
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"sync"
 	"time"
 
 	"golang.org/x/time/rate"
+	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -40,7 +40,7 @@ func NewClientPoolManager() *ClientPoolManager {
 
 // GetClient retrieves or creates an API client for the given instance.
 // Each instance gets exactly one client with its own rate-limited HTTP transport.
-func (m *ClientPoolManager) GetClient(ctx context.Context, k8sClient client.Client, instance *pocketidinternalv1alpha1.PocketIDInstance) (*pocketid.Client, error) {
+func (m *ClientPoolManager) GetClient(ctx context.Context, k8sClient client.Client, apiReader client.Reader, instance *pocketidinternalv1alpha1.PocketIDInstance) (*pocketid.Client, error) {
 	log := logf.FromContext(ctx)
 	instanceKey := instanceKey(instance)
 
@@ -61,8 +61,8 @@ func (m *ClientPoolManager) GetClient(ctx context.Context, k8sClient client.Clie
 		return pooledClient.client, nil
 	}
 
-	// Get API key for authentication
-	apiKey, err := getAPIKeyForInstance(ctx, k8sClient, instance)
+	// Get API key for authentication using APIReader to bypass cache
+	apiKey, err := getAPIKeyForInstance(ctx, apiReader, instance)
 	if err != nil {
 		return nil, err
 	}
@@ -129,51 +129,30 @@ func instanceKey(instance *pocketidinternalv1alpha1.PocketIDInstance) string {
 	return fmt.Sprintf("%s/%s", instance.Namespace, instance.Name)
 }
 
-// getAPIKeyForInstance retrieves the API key for authenticating with the instance
-func getAPIKeyForInstance(ctx context.Context, k8sClient client.Client, instance *pocketidinternalv1alpha1.PocketIDInstance) (string, error) {
-	// Try to get API key from spec first
-	if instance.Spec.Auth != nil {
-		authUser := resolveAuthUserRef(instance)
-		apiKeyName := instance.Spec.Auth.APIKeyName
-		if apiKeyName == "" {
-			apiKeyName = defaultAuthAPIKeyName
-		}
-
-		token, err := getAPIKeyToken(ctx, k8sClient, authUser.Namespace, authUser.Name, apiKeyName)
-		if err == nil {
-			return token, nil
-		}
-
-		// Try direct secret lookup as fallback
-		token, directErr := getAPIKeyTokenDirect(ctx, k8sClient, authUser.Namespace, authUser.Name, apiKeyName)
-		if directErr == nil {
-			return token, nil
-		}
-
-		// If status is not set, check if errors indicate API key is not ready
-		if instance.Status.AuthUserRef == "" || instance.Status.AuthAPIKeyName == "" {
-			// Wrap with ErrAPIClientNotReady if it's an errAPIKeyNotReady
-			if errors.Is(err, errAPIKeyNotReady) || errors.Is(directErr, errAPIKeyNotReady) {
-				return "", fmt.Errorf("%w: %w", ErrAPIClientNotReady, err)
-			}
-			return "", err
-		}
+// getAPIKeyForInstance retrieves the static API key for authenticating with the instance
+func getAPIKeyForInstance(ctx context.Context, apiReader client.Reader, instance *pocketidinternalv1alpha1.PocketIDInstance) (string, error) {
+	// Check if apiReader is nil (can happen in tests)
+	if apiReader == nil {
+		return "", fmt.Errorf("%w: apiReader is nil", ErrAPIClientNotReady)
 	}
 
-	// Fallback to status
-	if authUser, ok := resolveAuthUserRefFromStatus(instance); ok && instance.Status.AuthAPIKeyName != "" {
-		token, err := getAPIKeyTokenDirect(ctx, k8sClient, authUser.Namespace, authUser.Name, instance.Status.AuthAPIKeyName)
-		if err != nil {
-			// Wrap with ErrAPIClientNotReady if it's an errAPIKeyNotReady
-			if errors.Is(err, errAPIKeyNotReady) {
-				return "", fmt.Errorf("%w: %w", ErrAPIClientNotReady, err)
-			}
-			return "", err
-		}
-		return token, nil
+	// Get the static API key secret name
+	secretName := staticAPIKeySecretName(instance.Name)
+
+	// Retrieve the secret using APIReader to bypass cache
+	secret := &corev1.Secret{}
+	if err := apiReader.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: secretName}, secret); err != nil {
+		// Wrap with ErrAPIClientNotReady so controllers can handle gracefully
+		return "", fmt.Errorf("%w: get static API key secret: %w", ErrAPIClientNotReady, err)
 	}
 
-	return "", fmt.Errorf("no API key configured for instance")
+	// Extract the token
+	token, ok := secret.Data["token"]
+	if !ok {
+		return "", fmt.Errorf("static API key secret has no token field")
+	}
+
+	return string(token), nil
 }
 
 // Global client pool manager instance
@@ -181,8 +160,8 @@ var globalClientPool = NewClientPoolManager()
 
 // GetAPIClient retrieves an API client for the given instance from the global pool.
 // This ensures only one client exists per instance, with rate limiting applied at the HTTP transport layer.
-func GetAPIClient(ctx context.Context, k8sClient client.Client, instance *pocketidinternalv1alpha1.PocketIDInstance) (*pocketid.Client, error) {
-	return globalClientPool.GetClient(ctx, k8sClient, instance)
+func GetAPIClient(ctx context.Context, k8sClient client.Client, apiReader client.Reader, instance *pocketidinternalv1alpha1.PocketIDInstance) (*pocketid.Client, error) {
+	return globalClientPool.GetClient(ctx, k8sClient, apiReader, instance)
 }
 
 // RemoveAPIClient removes a client from the global pool (call when instance is deleted)

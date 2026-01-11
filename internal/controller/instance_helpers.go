@@ -52,3 +52,8 @@ func instanceReady(instance *pocketidinternalv1alpha1.PocketIDInstance) bool {
 	}
 	return false
 }
+
+// internalServiceURL returns the internal Kubernetes service URL for the instance
+func internalServiceURL(instanceName, namespace string) string {
+	return fmt.Sprintf("http://%s.%s.svc.cluster.local:1411", instanceName, namespace)
+}

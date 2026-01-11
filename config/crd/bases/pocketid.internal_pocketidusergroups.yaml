@@ -127,7 +127,7 @@ spec:
                     namespace:
                       description: |-
                         Namespace is the namespace of the PocketIDUser CR
-                        Defaults to the PocketIDInstance namespace
+                        Defaults to the referencing resource's namespace
                       type: string
                   type: object
                 type: array

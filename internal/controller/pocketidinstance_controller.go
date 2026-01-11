@@ -20,12 +20,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
-	stderrors "errors"
 	"fmt"
 	"maps"
-	"net"
-	"net/url"
-	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -36,14 +32,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
-	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
 const (
@@ -94,11 +88,16 @@ func (r *PocketIDInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	log.Info("Reconciling PocketIDInstance", "name", instance.Name)
 
-	// Ensure static API key secret exists before creating workload if not bootstrapped
-	if !instance.Status.Bootstrapped {
-		if _, err := r.ensureStaticAPIKeySecret(ctx, instance); err != nil {
-			return ctrl.Result{}, fmt.Errorf("ensure static API key secret: %w", err)
-		}
+	// Ensure static API key secret exists
+	secretCreated, err := r.ensureStaticAPIKeySecret(ctx, instance)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("ensure static API key secret: %w", err)
+	}
+
+	// If we just created the secret, requeue to give kubelet time to sync it
+	if secretCreated {
+		log.Info("Static API key secret just created, requeuing to allow kubelet sync", "name", instance.Name)
+		return ctrl.Result{RequeueAfter: 2 * time.Second}, nil
 	}
 
 	if err := r.reconcileWorkload(ctx, instance); err != nil {
@@ -117,32 +116,7 @@ func (r *PocketIDInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 
-	// Attempt auth reconciliation when instance is Ready
-	// If auth is not configured, use defaults (pocket-id-operator user and API key)
-	if r.isInstanceReady(instance) {
-		result, err := r.reconcileAuth(ctx, instance)
-		if err != nil {
-			log.Error(err, "Failed to reconcile auth")
-			return result, err
-		}
-		if result.RequeueAfter > 0 {
-			return result, nil
-		}
-	}
-
 	return applyResync(ctrl.Result{}), nil
-}
-
-// isInstanceReady checks if the instance has Available=True (workload ready)
-// We check Available rather than Ready here because auth reconciliation needs
-// Ready=True is set when auth is ready
-func (r *PocketIDInstanceReconciler) isInstanceReady(instance *pocketidinternalv1alpha1.PocketIDInstance) bool {
-	for _, cond := range instance.Status.Conditions {
-		if cond.Type == "Available" && cond.Status == metav1.ConditionTrue {
-			return true
-		}
-	}
-	return false
 }
 
 // Helpers
@@ -201,21 +175,19 @@ func (r *PocketIDInstanceReconciler) buildPodTemplate(instance *pocketidinternal
 		})
 	}
 
-	// Add STATIC_API_KEY if instance is not yet bootstrapped
-	if !instance.Status.Bootstrapped {
-		staticAPIKeySecret := staticAPIKeySecretName(instance.Name)
-		env = append(env, corev1.EnvVar{
-			Name: envStaticAPIKey,
-			ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: staticAPIKeySecret,
-					},
-					Key: "token",
+	// Always add STATIC_API_KEY for operator authentication
+	staticAPIKeySecret := staticAPIKeySecretName(instance.Name)
+	env = append(env, corev1.EnvVar{
+		Name: envStaticAPIKey,
+		ValueFrom: &corev1.EnvVarSource{
+			SecretKeyRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: staticAPIKeySecret,
 				},
+				Key: "token",
 			},
-		})
-	}
+		},
+	})
 
 	// Add on any extra ENVs from CR
 	env = append(env, instance.Spec.Env...)
@@ -632,7 +604,7 @@ func (r *PocketIDInstanceReconciler) reconcileVolume(ctx context.Context, instan
 
 func (r *PocketIDInstanceReconciler) updateStatus(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
 	base := instance.DeepCopy()
-	available := metav1.ConditionFalse
+	ready := metav1.ConditionFalse
 	reason := "Progressing"
 	message := "Workload is starting up"
 
@@ -640,7 +612,7 @@ func (r *PocketIDInstanceReconciler) updateStatus(ctx context.Context, instance 
 		sts := &appsv1.StatefulSet{}
 		if err := r.Get(ctx, client.ObjectKeyFromObject(instance), sts); err == nil {
 			if sts.Status.ReadyReplicas > 0 {
-				available = metav1.ConditionTrue
+				ready = metav1.ConditionTrue
 				reason = readyConditionType
 				message = "StatefulSet has ready replicas"
 			}
@@ -649,7 +621,7 @@ func (r *PocketIDInstanceReconciler) updateStatus(ctx context.Context, instance 
 		deployment := &appsv1.Deployment{}
 		if err := r.Get(ctx, client.ObjectKeyFromObject(instance), deployment); err == nil {
 			if deployment.Status.AvailableReplicas > 0 {
-				available = metav1.ConditionTrue
+				ready = metav1.ConditionTrue
 				reason = readyConditionType
 				message = "Deployment has available replicas"
 			}
@@ -657,53 +629,27 @@ func (r *PocketIDInstanceReconciler) updateStatus(ctx context.Context, instance 
 	}
 
 	meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{
-		Type:               "Available",
-		Status:             available,
+		Type:               readyConditionType,
+		Status:             ready,
 		Reason:             reason,
 		Message:            message,
 		ObservedGeneration: instance.Generation,
 	})
 
-	// Set Ready condition based on Available status and auth configuration
-	readyStatus := metav1.ConditionFalse
-	readyReason := "NotAvailable"
-	readyMessage := "Instance is not available yet"
-
-	if available == metav1.ConditionTrue {
-		// Instance is available, check if auth is configured
-		if instance.Status.AuthUserRef != "" && instance.Status.AuthAPIKeyName != "" {
-			readyStatus = metav1.ConditionTrue
-			readyReason = readyConditionType
-			readyMessage = "Instance is ready with auth configured"
-		} else {
-			readyReason = "AuthNotConfigured"
-			readyMessage = "Auth configuration pending"
-		}
+	// Update static API key secret name in status if not set
+	staticAPIKeySecret := staticAPIKeySecretName(instance.Name)
+	if instance.Status.StaticAPIKeySecretName != staticAPIKeySecret {
+		instance.Status.StaticAPIKeySecretName = staticAPIKeySecret
 	}
-
-	meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{
-		Type:               readyConditionType,
-		Status:             readyStatus,
-		Reason:             readyReason,
-		Message:            readyMessage,
-		ObservedGeneration: instance.Generation,
-	})
 
 	return r.Status().Patch(ctx, instance, client.MergeFrom(base))
 }
 
 const (
-	defaultAuthUserRef    = "pocket-id-operator"
-	defaultAuthAPIKeyName = "pocket-id-operator"
-	readyConditionType    = "Ready"
+	readyConditionType = "Ready"
 )
 
-// apiKeySecretName returns the secret name for a user's API key: {userRef}-{apiKeyName}-key
-func apiKeySecretName(userRef, apiKeyName string) string {
-	return fmt.Sprintf("%s-%s-key", userRef, apiKeyName)
-}
-
-// staticAPIKeySecretName returns the secret name for the instance's static bootstrap API key
+// staticAPIKeySecretName returns the secret name for the instance's static API key
 func staticAPIKeySecretName(instanceName string) string {
 	return fmt.Sprintf("%s-static-api-key", instanceName)
 }
@@ -717,134 +663,30 @@ func generateSecureToken(length int) (string, error) {
 	return base64.URLEncoding.EncodeToString(bytes), nil
 }
 
-func isUserReadyStatus(user *pocketidinternalv1alpha1.PocketIDUser) bool {
-	for _, condition := range user.Status.Conditions {
-		if condition.Type == readyConditionType && condition.Status == metav1.ConditionTrue {
-			return true
-		}
-	}
-
-	return false
-}
-
-// reconcileAuth handles bootstrap and auth configuration
-func (r *PocketIDInstanceReconciler) reconcileAuth(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) (ctrl.Result, error) {
-	log := logf.FromContext(ctx)
-
-	// Get auth config - use defaults if not configured (matching kubebuilder defaults)
-	authUser := resolveAuthUserRef(instance)
-	apiKeyName := defaultAuthAPIKeyName
-	if instance.Spec.Auth != nil {
-		if instance.Spec.Auth.APIKeyName != "" {
-			apiKeyName = instance.Spec.Auth.APIKeyName
-		}
-	}
-
-	user := &pocketidinternalv1alpha1.PocketIDUser{}
-	if err := r.Get(ctx, client.ObjectKey{Namespace: authUser.Namespace, Name: authUser.Name}, user); err != nil {
-		if errors.IsNotFound(err) {
-			log.Info("Waiting for auth user CR to be created", "user", authUser.Name, "namespace", authUser.Namespace)
-			return ctrl.Result{RequeueAfter: Requeue}, nil
-		}
-		return ctrl.Result{}, fmt.Errorf("get auth user CR: %w", err)
-	}
-
-	if user.Status.UserID != "" && !user.Status.IsAdmin {
-		log.Info("Auth user is not admin; blocking reconcile", "user", authUser.Name)
-		return ctrl.Result{RequeueAfter: Requeue}, nil
-	}
-
-	if instance.Spec.Auth != nil && instance.Status.AuthUserRef != "" {
-		if instance.Status.AuthUserRef != authUser.Name || instance.Status.AuthUserNamespace != authUser.Namespace {
-			if !isUserReadyStatus(user) {
-				log.Info("Auth user not ready; delaying auth switch", "user", authUser.Name)
-				return ctrl.Result{RequeueAfter: Requeue}, nil
-			}
-		}
-	}
-
-	// Look up API key in user status
-	var keyStatus *pocketidinternalv1alpha1.APIKeyStatus
-	for i := range user.Status.APIKeys {
-		if user.Status.APIKeys[i].Name == apiKeyName {
-			keyStatus = &user.Status.APIKeys[i]
-			break
-		}
-	}
-
-	// If API key not found in status, check if we need to bootstrap
-	if keyStatus == nil {
-		if instance.Status.Bootstrapped {
-			log.Error(nil, "API key not found in user status after bootstrap", "apiKeyName", apiKeyName, "user", authUser.Name)
-			return ctrl.Result{RequeueAfter: Requeue}, fmt.Errorf("API key %s not found in user %s status but instance was bootstrapped", apiKeyName, authUser.Name)
-		}
-		// User CR exists but API key not in status - need to bootstrap
-		return r.bootstrap(ctx, instance, user, apiKeyName)
-	}
-
-	// Check if secret name is set in status
-	if keyStatus.SecretName == "" {
-		if instance.Status.Bootstrapped {
-			log.Error(nil, "API key has no secret reference after bootstrap", "apiKeyName", apiKeyName)
-			return ctrl.Result{RequeueAfter: Requeue}, fmt.Errorf("API key %s has no secret reference but instance was bootstrapped", apiKeyName)
-		}
-		// API key exists but no secret yet - requeue
-		log.Info("API key not ready yet, waiting for secret", "apiKeyName", apiKeyName)
-		return ctrl.Result{RequeueAfter: Requeue}, nil
-	}
-
-	// Verify the secret exists
-	secret := &corev1.Secret{}
-	err := r.Get(ctx, client.ObjectKey{Namespace: authUser.Namespace, Name: keyStatus.SecretName}, secret)
-
-	if err == nil {
-		// Secret exists - auth is ready, update status
-		return r.updateAuthStatus(ctx, instance, authUser, apiKeyName)
-	}
-
-	if !errors.IsNotFound(err) {
-		return ctrl.Result{}, fmt.Errorf("get API key secret %s: %w", keyStatus.SecretName, err)
-	}
-
-	// Secret doesn't exist - check if already bootstrapped
-	if instance.Status.Bootstrapped {
-		log.Error(nil, "API key secret missing after bootstrap", "secret", keyStatus.SecretName)
-		return ctrl.Result{RequeueAfter: Requeue}, fmt.Errorf("API key secret %s not found but instance was bootstrapped", keyStatus.SecretName)
-	}
-
-	// API key in status but secret doesn't exist and not bootstrapped
-	log.Info("API key secret not found, will retry", "secret", keyStatus.SecretName)
-	return ctrl.Result{RequeueAfter: Requeue}, nil
-}
-
-// internalServiceURL returns the internal Kubernetes service URL for the instance
-func internalServiceURL(instanceName, namespace string) string {
-	return fmt.Sprintf("http://%s.%s.svc.cluster.local:1411", instanceName, namespace)
-}
-
 // ensureStaticAPIKeySecret creates or retrieves the static API key secret for bootstrap
-func (r *PocketIDInstanceReconciler) ensureStaticAPIKeySecret(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) (string, error) {
+// Returns (wasCreated bool, error) where wasCreated is true if the secret was just created
+func (r *PocketIDInstanceReconciler) ensureStaticAPIKeySecret(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) (bool, error) {
 	secretName := staticAPIKeySecretName(instance.Name)
 	secret := &corev1.Secret{}
 
-	// Check if secret already exists
-	err := r.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: secretName}, secret)
+	// Check if secret already exists using APIReader to bypass cache
+	err := r.APIReader.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: secretName}, secret)
 	if err == nil {
-		// Secret exists, return the token
-		if tokenBytes, ok := secret.Data["token"]; ok {
-			return string(tokenBytes), nil
+		// Secret exists, return that it wasn't just created
+		if _, ok := secret.Data["token"]; ok {
+			return false, nil
 		}
-		return "", fmt.Errorf("static API key secret exists but has no token field")
+		return false, fmt.Errorf("static API key secret exists but has no token field")
 	}
 
 	if !errors.IsNotFound(err) {
-		return "", fmt.Errorf("failed to get static API key secret: %w", err)
+		return false, fmt.Errorf("failed to get static API key secret: %w", err)
 	}
 
 	// Generate new token
 	token, err := generateSecureToken(32)
 	if err != nil {
-		return "", fmt.Errorf("failed to generate secure token: %w", err)
+		return false, fmt.Errorf("failed to generate secure token: %w", err)
 	}
 
 	// Create new secret
@@ -859,218 +701,30 @@ func (r *PocketIDInstanceReconciler) ensureStaticAPIKeySecret(ctx context.Contex
 	}
 
 	if err := controllerutil.SetControllerReference(instance, secret, r.Scheme); err != nil {
-		return "", fmt.Errorf("failed to set controller reference: %w", err)
+		return false, fmt.Errorf("failed to set controller reference: %w", err)
 	}
 
 	if err := r.Create(ctx, secret); err != nil {
 		if errors.IsAlreadyExists(err) {
-			// Another reconciliation created it, retrieve and return
-			if err := r.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: secretName}, secret); err != nil {
-				return "", fmt.Errorf("failed to get existing secret after conflict: %w", err)
+			// Another reconciliation created it, retrieve and return using APIReader to bypass cache
+			if err := r.APIReader.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: secretName}, secret); err != nil {
+				return false, fmt.Errorf("failed to get existing secret after conflict: %w", err)
 			}
-			if tokenBytes, ok := secret.Data["token"]; ok {
-				return string(tokenBytes), nil
+			if _, ok := secret.Data["token"]; ok {
+				return false, nil
 			}
-			return "", fmt.Errorf("existing secret has no token field")
+			return false, fmt.Errorf("existing secret has no token field")
 		}
-		return "", fmt.Errorf("failed to create static API key secret: %w", err)
+		return false, fmt.Errorf("failed to create static API key secret: %w", err)
 	}
 
-	return token, nil
-}
-
-// bootstrap performs the initial setup of Pocket-ID using the provided User CR's spec
-func (r *PocketIDInstanceReconciler) bootstrap(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, user *pocketidinternalv1alpha1.PocketIDUser, apiKeyName string) (ctrl.Result, error) {
-	log := logf.FromContext(ctx)
-
-	// Get static API key from secret (created earlier in Reconcile)
-	// Use APIReader to bypass cache and read directly from API server
-	secretName := staticAPIKeySecretName(instance.Name)
-	secret := &corev1.Secret{}
+	// Verify the secret was created successfully by reading it back with APIReader
 	if err := r.APIReader.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: secretName}, secret); err != nil {
-		return ctrl.Result{}, fmt.Errorf("get static API key secret: %w", err)
-	}
-	staticAPIKey, ok := secret.Data["token"]
-	if !ok {
-		return ctrl.Result{}, fmt.Errorf("static API key secret has no token field")
+		return false, fmt.Errorf("failed to verify created secret: %w", err)
 	}
 
-	// Resolve user spec values
-	userInfoInputSecret := userInfoInputSecretName(user)
-	username, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.Username, userInfoInputSecret, userInfoSecretKeyUsername)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("resolve username: %w", err)
-	}
-	if username == "" {
-		username = user.Name // Default to CR name
-	}
-
-	firstName, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.FirstName, userInfoInputSecret, userInfoSecretKeyFirstName)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("resolve firstName: %w", err)
-	}
-	if firstName == "" {
-		firstName = username // Default to username
-	}
-
-	lastName, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.LastName, userInfoInputSecret, userInfoSecretKeyLastName)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("resolve lastName: %w", err)
-	}
-
-	email, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.Email, userInfoInputSecret, userInfoSecretKeyEmail)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("resolve email: %w", err)
-	}
-	if email == "" {
-		// Generate a default email if not provided
-		email = fmt.Sprintf("%s@operator.local", username)
-	}
-
-	// Use internal service URL for operator-to-instance communication
-	serviceURL := internalServiceURL(instance.Name, instance.Namespace)
-	log.Info("Starting bootstrap", "user", user.Name, "username", username, "apiKey", apiKeyName, "serviceURL", serviceURL)
-
-	// Create bootstrap client using internal service URL
-	bootstrapClient := pocketid.NewBootstrapClient(serviceURL)
-
-	// Perform bootstrap using the User CR's spec values
-	setupReq := pocketid.SetupRequest{
-		Username:  username,
-		FirstName: firstName,
-		LastName:  lastName,
-		Email:     email,
-	}
-
-	// Find the API key description from the user spec
-	apiKeyDescription := ""
-	for _, k := range user.Spec.APIKeys {
-		if k.Name == apiKeyName {
-			apiKeyDescription = k.Description
-			break
-		}
-	}
-
-	// Use the new static API key bootstrap method
-	setupResp, apiKeyResp, err := bootstrapClient.BootstrapWithStaticAPIKey(
-		ctx,
-		string(staticAPIKey),
-		setupReq,
-		apiKeyName,
-		apiKeyDescription,
-		pocketid.DefaultAPIKeyExpiry(),
-	)
-	if err != nil {
-		if bootstrapNotReady(err) {
-			log.Info("Pocket-ID not ready for bootstrap, requeuing", "error", err)
-			return ctrl.Result{RequeueAfter: Requeue}, nil
-		}
-		log.Error(err, "Bootstrap failed")
-		return ctrl.Result{}, err
-	}
-
-	// Create the API key secret
-	apiKeySecret := apiKeySecretName(user.Name, apiKeyName)
-	if err := ensureAPIKeySecret(ctx, r.Client, r.Scheme, user, apiKeySecret, apiKeyResp.Token); err != nil {
-		return ctrl.Result{}, fmt.Errorf("create API key secret: %w", err)
-	}
-
-	pUser := &pocketid.User{
-		ID:          setupResp.ID,
-		Username:    setupResp.Username,
-		FirstName:   setupResp.FirstName,
-		LastName:    setupResp.LastName,
-		Email:       setupResp.Email,
-		DisplayName: setupResp.DisplayName,
-		IsAdmin:     setupResp.IsAdmin,
-	}
-
-	// Update user status with user info and API key
-	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		if err := r.Get(ctx, client.ObjectKeyFromObject(user), user); err != nil {
-			return err
-		}
-		userInfoSecret := userInfoOutputSecretName(user.Name)
-		if err := ensureUserInfoSecret(ctx, r.Client, r.Scheme, user, userInfoSecret, pUser); err != nil {
-			return fmt.Errorf("ensure user info secret: %w", err)
-		}
-		user.Status.UserID = setupResp.ID
-		user.Status.UserInfoSecretName = userInfoSecret
-		user.Status.IsAdmin = setupResp.IsAdmin
-		mergeAPIKeyStatus(user, pocketidinternalv1alpha1.APIKeyStatus{
-			Name:       apiKeyName,
-			ID:         apiKeyResp.APIKey.ID,
-			CreatedAt:  apiKeyResp.APIKey.CreatedAt,
-			ExpiresAt:  apiKeyResp.APIKey.ExpiresAt,
-			SecretName: apiKeySecret,
-			SecretKey:  apiKeySecretKey,
-		})
-		return r.Status().Update(ctx, user)
-	})
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("update user status: %w", err)
-	}
-
-	// Update instance status
-	base := instance.DeepCopy()
-	instance.Status.Bootstrapped = true
-	instance.Status.BootstrappedAt = time.Now().Format(time.RFC3339)
-	instance.Status.AuthUserRef = user.Name
-	instance.Status.AuthUserNamespace = user.Namespace
-	instance.Status.AuthAPIKeyName = apiKeyName
-
-	if err := r.Status().Patch(ctx, instance, client.MergeFrom(base)); err != nil {
-		return ctrl.Result{}, fmt.Errorf("update instance status: %w", err)
-	}
-
-	log.Info("Bootstrap successful")
-	return ctrl.Result{}, nil
-}
-
-func bootstrapNotReady(err error) bool {
-	if err == nil {
-		return false
-	}
-	if stderrors.Is(err, context.DeadlineExceeded) || stderrors.Is(err, context.Canceled) {
-		return true
-	}
-	var netErr net.Error
-	if stderrors.As(err, &netErr) && netErr.Timeout() {
-		return true
-	}
-	var urlErr *url.Error
-	if stderrors.As(err, &urlErr) && urlErr.Timeout() {
-		return true
-	}
-	msg := err.Error()
-	if strings.Contains(msg, "connection refused") || strings.Contains(msg, "Client.Timeout exceeded") {
-		return true
-	}
-	return false
-}
-
-// updateAuthStatus updates the instance status with auth info
-func (r *PocketIDInstanceReconciler) updateAuthStatus(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, userRef authUserRef, apiKeyName string) (ctrl.Result, error) {
-	if instance.Status.AuthUserRef == userRef.Name && instance.Status.AuthUserNamespace == userRef.Namespace && instance.Status.AuthAPIKeyName == apiKeyName {
-		return ctrl.Result{}, nil
-	}
-
-	base := instance.DeepCopy()
-	instance.Status.AuthUserRef = userRef.Name
-	instance.Status.AuthUserNamespace = userRef.Namespace
-	instance.Status.AuthAPIKeyName = apiKeyName
-
-	if err := r.Status().Patch(ctx, instance, client.MergeFrom(base)); err != nil {
-		return ctrl.Result{}, fmt.Errorf("update auth status: %w", err)
-	}
-
-	return ctrl.Result{}, nil
-}
-
-// resolveStringValue is a convenience wrapper around the shared helper
-// The instance controller uses cached client (no APIReader) since it only reads controller-owned secrets
-func (r *PocketIDInstanceReconciler) resolveStringValue(ctx context.Context, namespace string, sv pocketidinternalv1alpha1.StringValue, fallbackSecretName, fallbackKey string) (string, error) {
-	return ResolveStringValue(ctx, r.Client, nil, namespace, sv, fallbackSecretName, fallbackKey)
+	// Return true to indicate the secret was just created
+	return true, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -1081,7 +735,7 @@ func (r *PocketIDInstanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&appsv1.StatefulSet{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
-		Owns(&pocketidinternalv1alpha1.PocketIDUser{}).
+		Owns(&corev1.Secret{}).
 		Named("pocketidinstance").
 		Complete(r)
 }

@@ -207,7 +207,7 @@ func main() {
 	}
 	if err := (&controller.PocketIDUserReconciler{
 		Client:         mgr.GetClient(),
-		BaseReconciler: controller.BaseReconciler{Client: mgr.GetClient()},
+		BaseReconciler: controller.BaseReconciler{Client: mgr.GetClient(), APIReader: mgr.GetAPIReader()},
 		APIReader:      mgr.GetAPIReader(),
 		Scheme:         mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
@@ -216,7 +216,8 @@ func main() {
 	}
 	if err := (&controller.PocketIDOIDCClientReconciler{
 		Client:         mgr.GetClient(),
-		BaseReconciler: controller.BaseReconciler{Client: mgr.GetClient()},
+		BaseReconciler: controller.BaseReconciler{Client: mgr.GetClient(), APIReader: mgr.GetAPIReader()},
+		APIReader:      mgr.GetAPIReader(),
 		Scheme:         mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PocketIDOIDCClient")
@@ -224,7 +225,8 @@ func main() {
 	}
 	if err := (&controller.PocketIDUserGroupReconciler{
 		Client:         mgr.GetClient(),
-		BaseReconciler: controller.BaseReconciler{Client: mgr.GetClient()},
+		BaseReconciler: controller.BaseReconciler{Client: mgr.GetClient(), APIReader: mgr.GetAPIReader()},
+		APIReader:      mgr.GetAPIReader(),
 		Scheme:         mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PocketIDUserGroup")

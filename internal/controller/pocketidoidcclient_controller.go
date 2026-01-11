@@ -44,7 +44,8 @@ const (
 type PocketIDOIDCClientReconciler struct {
 	client.Client
 	BaseReconciler
-	Scheme *runtime.Scheme
+	APIReader client.Reader
+	Scheme    *runtime.Scheme
 }
 
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidoidcclients,verbs=get;list;watch;create;update;patch;delete

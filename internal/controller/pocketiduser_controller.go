@@ -40,7 +40,6 @@ import (
 
 const (
 	userFinalizer              = "pocketid.internal/user-finalizer"
-	authUserFinalizer          = "pocketid.internal/auth-user-finalizer"
 	userGroupUserFinalizer     = "pocketid.internal/user-group-finalizer"
 	apiKeySecretKey            = "token"
 	defaultAPIKeyName          = "pocket-id-operator"
@@ -89,7 +88,7 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{RequeueAfter: Requeue}, nil
 	}
 
-	updatedFinalizers, err := r.reconcileUserFinalizers(ctx, user, instance)
+	updatedFinalizers, err := r.reconcileUserFinalizers(ctx, user)
 	if err != nil {
 		log.Error(err, "Failed to reconcile user finalizers")
 		return ctrl.Result{RequeueAfter: Requeue}, nil
@@ -143,49 +142,18 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	return applyResync(ctrl.Result{}), nil
 }
 
-func (r *PocketIDUserReconciler) reconcileUserFinalizers(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, instance *pocketidinternalv1alpha1.PocketIDInstance) (bool, error) {
-	isAuthUser := isAuthUserReference(instance, user.Name, user.Namespace)
-
+func (r *PocketIDUserReconciler) reconcileUserFinalizers(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser) (bool, error) {
 	referencedByUserGroup, err := r.isUserReferencedByUserGroup(ctx, user.Name, user.Namespace)
 	if err != nil {
 		return false, err
 	}
 
 	updates := []FinalizerUpdate{
-		{Name: authUserFinalizer, ShouldAdd: isAuthUser},
 		{Name: userFinalizer, ShouldAdd: true},
 		{Name: userGroupUserFinalizer, ShouldAdd: referencedByUserGroup},
 	}
 
 	return ReconcileFinalizers(ctx, r.Client, user, updates)
-}
-
-func isAuthUserReference(instance *pocketidinternalv1alpha1.PocketIDInstance, userName, userNamespace string) bool {
-	authUser := resolveAuthUserRef(instance)
-	if authUser.Name == userName && authUser.Namespace == userNamespace {
-		return true
-	}
-	if statusUser, ok := resolveAuthUserRefFromStatus(instance); ok {
-		if statusUser.Name == userName && statusUser.Namespace == userNamespace {
-			return true
-		}
-	}
-	return false
-}
-
-func (r *PocketIDUserReconciler) isUserReferencedByInstance(ctx context.Context, userName, userNamespace string) (bool, error) {
-	instances := &pocketidinternalv1alpha1.PocketIDInstanceList{}
-	if err := r.List(ctx, instances); err != nil {
-		return false, err
-	}
-
-	for i := range instances.Items {
-		if isAuthUserReference(&instances.Items[i], userName, userNamespace) {
-			return true, nil
-		}
-	}
-
-	return false, nil
 }
 
 func (r *PocketIDUserReconciler) isUserReferencedByUserGroup(ctx context.Context, userName, userNamespace string) (bool, error) {
@@ -228,9 +196,10 @@ func userGroupHasUserRef(group *pocketidinternalv1alpha1.PocketIDUserGroup, user
 func (r *PocketIDUserReconciler) reconcileDelete(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	referenced, err := r.isUserReferencedByInstance(ctx, user.Name, user.Namespace)
+	// Check if user is referenced by user groups
+	referenced, err := r.isUserReferencedByUserGroup(ctx, user.Name, user.Namespace)
 	if err != nil {
-		log.Error(err, "Failed to check PocketIDInstance references")
+		log.Error(err, "Failed to check PocketIDUserGroup references")
 		return ctrl.Result{RequeueAfter: Requeue}, nil
 	}
 	if referenced {
@@ -272,7 +241,7 @@ func (r *PocketIDUserReconciler) reconcileDelete(ctx context.Context, user *pock
 				return ctrl.Result{}, err
 			}
 		} else {
-			apiClient, err := GetAPIClient(ctx, r.Client, instance)
+			apiClient, err := GetAPIClient(ctx, r.Client, r.APIReader, instance)
 			if err != nil {
 				if stderrors.Is(err, ErrAPIClientNotReady) {
 					log.Info("API client not ready for delete, requeuing", "userID", user.Status.UserID)
@@ -301,7 +270,7 @@ func (r *PocketIDUserReconciler) reconcileDelete(ctx context.Context, user *pock
 	}
 
 	// Remove finalizers
-	if err := RemoveFinalizers(ctx, r.Client, user, authUserFinalizer, userFinalizer, userGroupUserFinalizer); err != nil {
+	if err := RemoveFinalizers(ctx, r.Client, user, userFinalizer, userGroupUserFinalizer); err != nil {
 		return ctrl.Result{}, err
 	}
 

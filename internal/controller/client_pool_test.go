@@ -23,40 +23,18 @@ func TestClientPool_SingletonPerInstance(t *testing.T) {
 			Image: "test:latest",
 		},
 		Status: pocketidinternalv1alpha1.PocketIDInstanceStatus{
-			Bootstrapped:      true,
-			AuthUserRef:       "test-user",
-			AuthUserNamespace: "default",
-			AuthAPIKeyName:    "test-key",
+			StaticAPIKeySecretName: "test-instance-static-api-key",
 		},
 	}
 
-	// Create test user with API key
-	user := &pocketidinternalv1alpha1.PocketIDUser{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-user",
-			Namespace: "default",
-		},
-		Status: pocketidinternalv1alpha1.PocketIDUserStatus{
-			UserID: "test-user-id",
-			APIKeys: []pocketidinternalv1alpha1.APIKeyStatus{
-				{
-					Name:       "test-key",
-					ID:         "test-key-id",
-					SecretName: "test-user-test-key-key",
-					SecretKey:  "token",
-				},
-			},
-		},
-	}
-
-	// Create test secret with API key
+	// Create static API key secret
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-user-test-key-key",
+			Name:      "test-instance-static-api-key",
 			Namespace: "default",
 		},
 		Data: map[string][]byte{
-			"token": []byte("test-api-key-token"),
+			"token": []byte("test-static-api-key-token"),
 		},
 	}
 
@@ -67,7 +45,7 @@ func TestClientPool_SingletonPerInstance(t *testing.T) {
 
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithObjects(instance, user, secret).
+		WithObjects(instance, secret).
 		Build()
 
 	// Create a new pool for this test
@@ -75,12 +53,12 @@ func TestClientPool_SingletonPerInstance(t *testing.T) {
 	ctx := context.Background()
 
 	// Get client multiple times - should return same instance
-	client1, err := pool.GetClient(ctx, k8sClient, instance)
+	client1, err := pool.GetClient(ctx, k8sClient, k8sClient, instance)
 	if err != nil {
 		t.Fatalf("Failed to get client 1: %v", err)
 	}
 
-	client2, err := pool.GetClient(ctx, k8sClient, instance)
+	client2, err := pool.GetClient(ctx, k8sClient, k8sClient, instance)
 	if err != nil {
 		t.Fatalf("Failed to get client 2: %v", err)
 	}

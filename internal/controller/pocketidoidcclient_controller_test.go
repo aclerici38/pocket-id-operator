@@ -424,30 +424,24 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					Auth: &pocketidinternalv1alpha1.AuthConfig{
-						UserRef:    &pocketidinternalv1alpha1.NamespacedUserReference{Name: "missing-user"},
-						APIKeyName: "missing-key",
-					},
 					EncryptionKey: pocketidinternalv1alpha1.EnvValue{Value: "0123456789abcdef"},
 				},
-				Status: pocketidinternalv1alpha1.PocketIDInstanceStatus{
-					Bootstrapped: true,
-					Conditions: []metav1.Condition{
-						{
-							Type:               "Available",
-							Status:             metav1.ConditionTrue,
-							Reason:             "Ready",
-							Message:            "Instance is ready",
-							LastTransitionTime: metav1.Now(),
-						},
-						{
-							Type:               "Ready",
-							Status:             metav1.ConditionTrue,
-							Reason:             "Ready",
-							Message:            "Instance is ready with auth configured",
-							LastTransitionTime: metav1.Now(),
-						},
+				Status: pocketidinternalv1alpha1.PocketIDInstanceStatus{Conditions: []metav1.Condition{
+					{
+						Type:               "Available",
+						Status:             metav1.ConditionTrue,
+						Reason:             "Ready",
+						Message:            "Instance is ready",
+						LastTransitionTime: metav1.Now(),
 					},
+					{
+						Type:               "Ready",
+						Status:             metav1.ConditionTrue,
+						Reason:             "Ready",
+						Message:            "Instance is ready with auth configured",
+						LastTransitionTime: metav1.Now(),
+					},
+				},
 				},
 			}
 
@@ -892,10 +886,6 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					Auth: &pocketidinternalv1alpha1.AuthConfig{
-						UserRef:    &pocketidinternalv1alpha1.NamespacedUserReference{Name: "missing-user"},
-						APIKeyName: "missing-key",
-					},
 					EncryptionKey: pocketidinternalv1alpha1.EnvValue{Value: "0123456789abcdef"},
 				},
 			}

@@ -98,26 +98,33 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	err = (&PocketIDInstanceReconciler{
-		Client: k8sManager.GetClient(),
-		Scheme: k8sManager.GetScheme(),
+		Client:    k8sManager.GetClient(),
+		APIReader: k8sManager.GetAPIReader(),
+		Scheme:    k8sManager.GetScheme(),
 	}).SetupWithManager(k8sManager)
 	Expect(err).NotTo(HaveOccurred())
 
 	err = (&PocketIDUserReconciler{
-		Client: k8sManager.GetClient(),
-		Scheme: k8sManager.GetScheme(),
+		Client:         k8sManager.GetClient(),
+		BaseReconciler: BaseReconciler{Client: k8sManager.GetClient(), APIReader: k8sManager.GetAPIReader()},
+		APIReader:      k8sManager.GetAPIReader(),
+		Scheme:         k8sManager.GetScheme(),
 	}).SetupWithManager(k8sManager)
 	Expect(err).NotTo(HaveOccurred())
 
 	err = (&PocketIDOIDCClientReconciler{
-		Client: k8sManager.GetClient(),
-		Scheme: k8sManager.GetScheme(),
+		Client:         k8sManager.GetClient(),
+		BaseReconciler: BaseReconciler{Client: k8sManager.GetClient(), APIReader: k8sManager.GetAPIReader()},
+		APIReader:      k8sManager.GetAPIReader(),
+		Scheme:         k8sManager.GetScheme(),
 	}).SetupWithManager(k8sManager)
 	Expect(err).NotTo(HaveOccurred())
 
 	err = (&PocketIDUserGroupReconciler{
-		Client: k8sManager.GetClient(),
-		Scheme: k8sManager.GetScheme(),
+		Client:         k8sManager.GetClient(),
+		BaseReconciler: BaseReconciler{Client: k8sManager.GetClient(), APIReader: k8sManager.GetAPIReader()},
+		APIReader:      k8sManager.GetAPIReader(),
+		Scheme:         k8sManager.GetScheme(),
 	}).SetupWithManager(k8sManager)
 	Expect(err).NotTo(HaveOccurred())
 

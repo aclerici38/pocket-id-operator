@@ -69,23 +69,9 @@ type NamespacedUserReference struct {
 	Name string `json:"name,omitempty"`
 
 	// Namespace is the namespace of the PocketIDUser CR
-	// Defaults to the PocketIDInstance namespace
+	// Defaults to the referencing resource's namespace
 	// +optional
 	Namespace string `json:"namespace,omitempty"`
-}
-
-// AuthConfig specifies how the operator authenticates with the instance
-type AuthConfig struct {
-	// UserRef references the PocketIDUser CR to use for authentication
-	// Defaults to "pocket-id-operator" in the PocketIDInstance namespace
-	// +optional
-	UserRef *NamespacedUserReference `json:"userRef,omitempty"`
-
-	// APIKeyName is the name of the API key to use from the referenced user
-	// If the key exists in PocketIDUser.status.apiKeys, that key will be used
-	// Otherwise the operator will attempt to bootstrap the instance and create a new key
-	// +kubebuilder:default="pocket-id-operator"
-	APIKeyName string `json:"apiKeyName"`
 }
 
 // PocketIDInstanceSpec defines the desired state of PocketIDInstance
@@ -168,10 +154,6 @@ type PocketIDInstanceSpec struct {
 	// +optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 
-	// How the operator authenticates with the instance
-	// +optional
-	Auth *AuthConfig `json:"auth,omitempty"`
-
 	// DisableGlobalRateLimiting disables the global rate limiting in Pocket-ID
 	// Sets the DISABLE_RATE_LIMITING environment variable
 	// +kubebuilder:default=false
@@ -181,26 +163,9 @@ type PocketIDInstanceSpec struct {
 
 // PocketIDInstanceStatus defines the observed state of PocketIDInstance.
 type PocketIDInstanceStatus struct {
-	// Bootstrapped indicates whether the instance has been bootstrapped
-	// (initial admin user and API key created)
+	// StaticAPIKeySecretName is the name of the secret containing the STATIC_API_KEY
 	// +optional
-	Bootstrapped bool `json:"bootstrapped,omitempty"`
-
-	// BootstrappedAt is the timestamp when bootstrap completed
-	// +optional
-	BootstrappedAt string `json:"bootstrappedAt,omitempty"`
-
-	// AuthUserRef is the name of the PocketIDUser CR being used for authentication
-	// +optional
-	AuthUserRef string `json:"authUserRef,omitempty"`
-
-	// AuthUserNamespace is the namespace of the PocketIDUser CR being used for authentication
-	// +optional
-	AuthUserNamespace string `json:"authUserNamespace,omitempty"`
-
-	// AuthAPIKeyName is the name of the API key being used for authentication
-	// +optional
-	AuthAPIKeyName string `json:"authApiKeyName,omitempty"`
+	StaticAPIKeySecretName string `json:"staticApiKeySecretName,omitempty"`
 
 	// Conditions represent the current state of the Instance resource.
 	// +listType=map
