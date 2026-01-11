@@ -4,7 +4,21 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".gitignore"
+      - "dist/chart/**"
+      - ".github"
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".gitignore"
+      - "dist/chart/**"
+      - ".github/**"
   workflow_dispatch:
 
 permissions:
