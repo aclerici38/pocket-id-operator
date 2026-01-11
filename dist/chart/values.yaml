@@ -15,7 +15,7 @@ instance:
 
     # Container image to run
     image: ghcr.io/pocket-id/pocket-id:latest
-    
+
     # How the operator authenticates with the instance
     # Technically optional but required to manage pocket-id via custom resources
     # auth:
@@ -163,4 +163,38 @@ manager:
 # Custom Resource Definitions
 crd:
   enable: true # Install CRDs with the chart
-  keep: true # Keep CRDs when uninstalling
+  keep: false # Keep CRDs when uninstalling
+
+# Extra Kubernetes manifests to deploy
+# Supports templating with Helm values
+extraManifests: []
+  # Example:
+  # - |
+  #   apiVersion: v1
+  #   kind: Secret
+  #   metadata:
+  #     name: {{ .Values.instance.name }}-encryption-key
+  #     namespace: {{ .Release.Namespace }}
+  #   stringData:
+  #     encryption-key: "my-secret-encryption-key"
+  #
+
+  # - |
+  #   apiVersion: pocketid.internal/v1alpha1
+  #   kind: PocketIDUser
+  #   metadata:
+  #     name: admin-user
+  #     namespace: {{ .Release.Namespace }}
+  #   spec:
+  #     admin: true
+  #     email:
+  #       value: "admin@example.com"
+  #     apiKeys:
+  #     - name: admin-api-key
+  #       description: "Admin API key"
+  #       expiresAt: "2030-01-01T00:00:00Z"
+  # 
+  #       reference to an existing apikey stored in a secret
+  #       secretRef:
+  #         name: my-existing-secret
+  #         key: api-key
