@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -83,7 +82,7 @@ func (r *PocketIDUserGroupReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	updatedFinalizers, err := r.reconcileUserGroupFinalizers(ctx, userGroup)
 	if err != nil {
 		log.Error(err, "Failed to reconcile user group finalizers")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: Requeue}, nil
 	}
 	if updatedFinalizers {
 		return ctrl.Result{Requeue: true}, nil
@@ -93,7 +92,7 @@ func (r *PocketIDUserGroupReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	if err != nil {
 		log.Error(err, "Failed to select PocketIDInstance")
 		_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "InstanceSelectionError", err.Error())
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: Requeue}, nil
 	}
 
 	// Validate instance is ready using base reconciler
@@ -114,12 +113,12 @@ func (r *PocketIDUserGroupReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			log.Error(updateErr, "Failed to update user group status")
 		}
 		_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "ReconcileError", err.Error())
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: Requeue}, nil
 	}
 
 	if err := r.updateUserGroupStatus(ctx, userGroup, current); err != nil {
 		log.Error(err, "Failed to update user group status")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: Requeue}, nil
 	}
 
 	_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionTrue, "Reconciled", "User group is in sync")
@@ -198,39 +197,17 @@ func (r *PocketIDUserGroupReconciler) updateUserGroupStatus(ctx context.Context,
 }
 
 func (r *PocketIDUserGroupReconciler) reconcileUserGroupFinalizers(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup) (bool, error) {
-	needsUpdate := false
-
-	if !controllerutil.ContainsFinalizer(userGroup, userGroupFinalizer) {
-		controllerutil.AddFinalizer(userGroup, userGroupFinalizer)
-		needsUpdate = true
-	}
-
 	referencedByOIDCClient, err := r.isUserGroupReferencedByOIDCClient(ctx, userGroup)
 	if err != nil {
 		return false, err
 	}
-	if referencedByOIDCClient {
-		if !controllerutil.ContainsFinalizer(userGroup, oidcClientUserGroupFinalizer) {
-			controllerutil.AddFinalizer(userGroup, oidcClientUserGroupFinalizer)
-			needsUpdate = true
-		}
-	} else if controllerutil.ContainsFinalizer(userGroup, oidcClientUserGroupFinalizer) {
-		controllerutil.RemoveFinalizer(userGroup, oidcClientUserGroupFinalizer)
-		needsUpdate = true
+
+	updates := []FinalizerUpdate{
+		{Name: userGroupFinalizer, ShouldAdd: true},
+		{Name: oidcClientUserGroupFinalizer, ShouldAdd: referencedByOIDCClient},
 	}
 
-	if !needsUpdate {
-		return false, nil
-	}
-
-	if err := r.Update(ctx, userGroup); err != nil {
-		if errors.IsConflict(err) {
-			return true, nil
-		}
-		return false, err
-	}
-
-	return true, nil
+	return ReconcileFinalizers(ctx, r.Client, userGroup, updates)
 }
 
 func (r *PocketIDUserGroupReconciler) isUserGroupReferencedByOIDCClient(ctx context.Context, group *pocketidinternalv1alpha1.PocketIDUserGroup) (bool, error) {
@@ -274,21 +251,21 @@ func (r *PocketIDUserGroupReconciler) reconcileDelete(ctx context.Context, userG
 	referencedByOIDCClient, err := r.isUserGroupReferencedByOIDCClient(ctx, userGroup)
 	if err != nil {
 		logf.FromContext(ctx).Error(err, "Failed to check PocketIDOIDCClient references")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: Requeue}, nil
 	}
 	if referencedByOIDCClient {
 		logf.FromContext(ctx).Info("User group is referenced by PocketIDOIDCClient, blocking deletion", "userGroup", userGroup.Name)
-		if !controllerutil.ContainsFinalizer(userGroup, oidcClientUserGroupFinalizer) {
-			controllerutil.AddFinalizer(userGroup, oidcClientUserGroupFinalizer)
-			if err := r.Update(ctx, userGroup); err != nil {
-				return ctrl.Result{}, err
-			}
+		if updated, err := EnsureFinalizer(ctx, r.Client, userGroup, oidcClientUserGroupFinalizer); err != nil {
+			return ctrl.Result{}, err
+		} else if updated {
+			return ctrl.Result{Requeue: true}, nil
 		}
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: Requeue}, nil
 	}
+
+	// Remove oidcClientUserGroupFinalizer if not referenced
 	if controllerutil.ContainsFinalizer(userGroup, oidcClientUserGroupFinalizer) {
-		controllerutil.RemoveFinalizer(userGroup, oidcClientUserGroupFinalizer)
-		if err := r.Update(ctx, userGroup); err != nil {
+		if err := RemoveFinalizers(ctx, r.Client, userGroup, oidcClientUserGroupFinalizer); err != nil {
 			if errors.IsConflict(err) {
 				return ctrl.Result{Requeue: true}, nil
 			}

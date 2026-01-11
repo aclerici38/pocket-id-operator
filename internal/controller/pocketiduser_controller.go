@@ -29,7 +29,6 @@ import (
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -86,13 +85,13 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	if err != nil {
 		log.Error(err, "Failed to select PocketIDInstance")
 		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "InstanceSelectionError", err.Error())
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: Requeue}, nil
 	}
 
 	updatedFinalizers, err := r.reconcileUserFinalizers(ctx, user, instance)
 	if err != nil {
 		log.Error(err, "Failed to reconcile user finalizers")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: Requeue}, nil
 	}
 	if updatedFinalizers {
 		return ctrl.Result{Requeue: true}, nil
@@ -113,19 +112,19 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	if err := r.reconcileUser(ctx, user, apiClient, instance); err != nil {
 		log.Error(err, "Failed to reconcile user")
 		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "ReconcileError", err.Error())
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: Requeue}, nil
 	}
 
 	// Reconcile API keys
 	if err := r.reconcileAPIKeys(ctx, user, apiClient); err != nil {
 		log.Error(err, "Failed to reconcile API keys")
 		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "APIKeyError", err.Error())
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: Requeue}, nil
 	}
 
 	if err := r.ensureOneTimeLoginStatus(ctx, user, apiClient, instance); err != nil {
 		log.Error(err, "Failed to ensure one-time login status")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: Requeue}, nil
 	}
 
 	_ = r.SetReadyCondition(ctx, user, metav1.ConditionTrue, "Reconciled", "User and API keys are in sync")
@@ -133,7 +132,7 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	cleanupResult, err := r.reconcileOneTimeLoginStatus(ctx, user)
 	if err != nil {
 		log.Error(err, "Failed to reconcile one-time login status")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: Requeue}, nil
 	}
 
 	if cleanupResult.RequeueAfter > 0 {
@@ -145,49 +144,19 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 func (r *PocketIDUserReconciler) reconcileUserFinalizers(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, instance *pocketidinternalv1alpha1.PocketIDInstance) (bool, error) {
 	isAuthUser := isAuthUserReference(instance, user.Name, user.Namespace)
-	needsUpdate := false
-
-	if isAuthUser {
-		if !controllerutil.ContainsFinalizer(user, authUserFinalizer) {
-			controllerutil.AddFinalizer(user, authUserFinalizer)
-			needsUpdate = true
-		}
-	} else if controllerutil.ContainsFinalizer(user, authUserFinalizer) {
-		controllerutil.RemoveFinalizer(user, authUserFinalizer)
-		needsUpdate = true
-	}
-
-	if !controllerutil.ContainsFinalizer(user, userFinalizer) {
-		controllerutil.AddFinalizer(user, userFinalizer)
-		needsUpdate = true
-	}
 
 	referencedByUserGroup, err := r.isUserReferencedByUserGroup(ctx, user.Name, user.Namespace)
 	if err != nil {
 		return false, err
 	}
-	if referencedByUserGroup {
-		if !controllerutil.ContainsFinalizer(user, userGroupUserFinalizer) {
-			controllerutil.AddFinalizer(user, userGroupUserFinalizer)
-			needsUpdate = true
-		}
-	} else if controllerutil.ContainsFinalizer(user, userGroupUserFinalizer) {
-		controllerutil.RemoveFinalizer(user, userGroupUserFinalizer)
-		needsUpdate = true
+
+	updates := []FinalizerUpdate{
+		{Name: authUserFinalizer, ShouldAdd: isAuthUser},
+		{Name: userFinalizer, ShouldAdd: true},
+		{Name: userGroupUserFinalizer, ShouldAdd: referencedByUserGroup},
 	}
 
-	if !needsUpdate {
-		return false, nil
-	}
-
-	if err := r.Update(ctx, user); err != nil {
-		if errors.IsConflict(err) {
-			return true, nil
-		}
-		return false, err
-	}
-
-	return true, nil
+	return ReconcileFinalizers(ctx, r.Client, user, updates)
 }
 
 func isAuthUserReference(instance *pocketidinternalv1alpha1.PocketIDInstance, userName, userNamespace string) bool {
@@ -261,27 +230,26 @@ func (r *PocketIDUserReconciler) reconcileDelete(ctx context.Context, user *pock
 	referenced, err := r.isUserReferencedByInstance(ctx, user.Name, user.Namespace)
 	if err != nil {
 		log.Error(err, "Failed to check PocketIDInstance references")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: Requeue}, nil
 	}
 	if referenced {
 		log.Info("User is referenced by PocketIDInstance, blocking deletion", "user", user.Name)
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: Requeue}, nil
 	}
 
 	referencedByUserGroup, err := r.isUserReferencedByUserGroup(ctx, user.Name, user.Namespace)
 	if err != nil {
 		log.Error(err, "Failed to check PocketIDUserGroup references")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: Requeue}, nil
 	}
 	if referencedByUserGroup {
 		log.Info("User is referenced by PocketIDUserGroup, blocking deletion", "user", user.Name)
-		if !controllerutil.ContainsFinalizer(user, userGroupUserFinalizer) {
-			controllerutil.AddFinalizer(user, userGroupUserFinalizer)
-			if err := r.Update(ctx, user); err != nil {
-				return ctrl.Result{}, err
-			}
+		if updated, err := EnsureFinalizer(ctx, r.Client, user, userGroupUserFinalizer); err != nil {
+			return ctrl.Result{}, err
+		} else if updated {
+			return ctrl.Result{Requeue: true}, nil
 		}
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: Requeue}, nil
 	}
 
 	if user.Status.UserID != "" {
@@ -298,7 +266,7 @@ func (r *PocketIDUserReconciler) reconcileDelete(ctx context.Context, user *pock
 			if err != nil {
 				if stderrors.Is(err, ErrAPIClientNotReady) {
 					log.Info("API client not ready for delete, requeuing", "userID", user.Status.UserID)
-					return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+					return ctrl.Result{RequeueAfter: Requeue}, nil
 				}
 				log.Error(err, "Failed to get API client for delete")
 				return ctrl.Result{}, err
@@ -312,25 +280,18 @@ func (r *PocketIDUserReconciler) reconcileDelete(ctx context.Context, user *pock
 	}
 
 	// Delete associated secrets
+	secretNames := make([]string, 0, len(user.Status.APIKeys))
 	for _, keyStatus := range user.Status.APIKeys {
 		if keyStatus.SecretName != "" {
-			secret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      keyStatus.SecretName,
-					Namespace: user.Namespace,
-				},
-			}
-			if err := r.Delete(ctx, secret); err != nil && !errors.IsNotFound(err) {
-				log.Error(err, "Failed to delete secret", "secret", keyStatus.SecretName)
-			}
+			secretNames = append(secretNames, keyStatus.SecretName)
 		}
 	}
+	if err := DeleteSecretsIfExist(ctx, r.Client, user.Namespace, secretNames); err != nil {
+		log.Error(err, "Failed to delete secrets")
+	}
 
-	// Remove finalizer
-	controllerutil.RemoveFinalizer(user, authUserFinalizer)
-	controllerutil.RemoveFinalizer(user, userFinalizer)
-	controllerutil.RemoveFinalizer(user, userGroupUserFinalizer)
-	if err := r.Update(ctx, user); err != nil {
+	// Remove finalizers
+	if err := RemoveFinalizers(ctx, r.Client, user, authUserFinalizer, userFinalizer, userGroupUserFinalizer); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -676,13 +637,7 @@ func (r *PocketIDUserReconciler) reconcileAPIKeys(ctx context.Context, user *poc
 
 		// Delete secret
 		if keyStatus.SecretName != "" {
-			secret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      keyStatus.SecretName,
-					Namespace: user.Namespace,
-				},
-			}
-			if err := r.Delete(ctx, secret); err != nil && !errors.IsNotFound(err) {
+			if err := DeleteSecretIfExists(ctx, r.Client, user.Namespace, keyStatus.SecretName); err != nil {
 				log.Error(err, "Failed to delete secret", "name", keyStatus.SecretName)
 			}
 		}

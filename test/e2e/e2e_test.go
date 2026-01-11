@@ -939,7 +939,7 @@ spec:
 			customSecretClientName = "test-oidc-custom-secret"
 			publicClientName       = "test-oidc-public-client"
 			disabledSecretClient   = "test-oidc-disabled-secret"
-			regenerateSecretClient = "test-oidc-regenerate-secret"
+			regenerateSecretClient = "test-oidc-regenerate-client-secret"
 		)
 
 		It("should create a secret with default name and keys", func() {
@@ -1203,7 +1203,7 @@ spec:
 			By("verifying the annotation is removed")
 			Eventually(func(g Gomega) {
 				output := kubectlGet("pocketidoidcclient", regenerateSecretClient, "-n", userNS,
-					"-o", "jsonpath={.metadata.annotations.pocketid\\.internal/regenerate-secret}")
+					"-o", "jsonpath={.metadata.annotations.pocketid\\.internal/regenerate-client-secret}")
 				g.Expect(output).To(BeEmpty())
 			}, time.Minute, 2*time.Second).Should(Succeed())
 		})

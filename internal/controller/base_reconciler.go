@@ -74,7 +74,7 @@ func (r *BaseReconciler) ValidateInstanceReady(ctx context.Context, obj Conditio
 		return &InstanceValidationResult{
 			Instance:      instance,
 			ShouldRequeue: true,
-			RequeueAfter:  10 * time.Second,
+			RequeueAfter:  Requeue,
 		}
 	}
 
@@ -84,7 +84,7 @@ func (r *BaseReconciler) ValidateInstanceReady(ctx context.Context, obj Conditio
 		return &InstanceValidationResult{
 			Instance:      instance,
 			ShouldRequeue: true,
-			RequeueAfter:  10 * time.Second,
+			RequeueAfter:  Requeue,
 		}
 	}
 
@@ -105,12 +105,12 @@ func (r *BaseReconciler) GetAPIClientOrWait(ctx context.Context, obj Conditioned
 			logger.Info("API client not ready, requeuing")
 			_ = r.SetReadyCondition(ctx, obj, metav1.ConditionFalse, "APIClientNotReady",
 				fmt.Sprintf("Waiting for API client for instance '%s/%s'", instance.Namespace, instance.Name))
-			return nil, &ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+			return nil, &ctrl.Result{RequeueAfter: Requeue}, nil
 		}
 
 		logger.Error(err, "Failed to get API client")
 		_ = r.SetReadyCondition(ctx, obj, metav1.ConditionFalse, "APIClientError", err.Error())
-		return nil, &ctrl.Result{RequeueAfter: 30 * time.Second}, err
+		return nil, &ctrl.Result{RequeueAfter: Requeue}, err
 	}
 
 	return apiClient, nil, nil
@@ -174,7 +174,7 @@ func (r *BaseReconciler) ReconcileDeleteWithPocketID(
 	if err != nil {
 		if stderrors.Is(err, ErrAPIClientNotReady) {
 			logger.Info("API client not ready for delete, requeuing", "statusID", statusID)
-			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+			return ctrl.Result{RequeueAfter: Requeue}, nil
 		}
 		logger.Error(err, "Failed to get API client for delete")
 		return ctrl.Result{}, err

@@ -20,7 +20,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -80,11 +79,9 @@ func (r *PocketIDOIDCClientReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return r.reconcileDelete(ctx, oidcClient)
 	}
 
-	if !controllerutil.ContainsFinalizer(oidcClient, oidcClientFinalizer) {
-		controllerutil.AddFinalizer(oidcClient, oidcClientFinalizer)
-		if err := r.Update(ctx, oidcClient); err != nil {
-			return ctrl.Result{}, err
-		}
+	if updated, err := EnsureFinalizer(ctx, r.Client, oidcClient, oidcClientFinalizer); err != nil {
+		return ctrl.Result{}, err
+	} else if updated {
 		return ctrl.Result{Requeue: true}, nil
 	}
 
@@ -92,7 +89,7 @@ func (r *PocketIDOIDCClientReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if err != nil {
 		log.Error(err, "Failed to select PocketIDInstance")
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "InstanceSelectionError", err.Error())
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: Requeue}, nil
 	}
 
 	// Validate instance is ready using base reconciler
@@ -113,27 +110,26 @@ func (r *PocketIDOIDCClientReconciler) Reconcile(ctx context.Context, req ctrl.R
 			log.Error(updateErr, "Failed to update OIDC client status")
 		}
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "ReconcileError", err.Error())
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: Requeue}, nil
 	}
 
 	if err := r.updateOIDCClientStatus(ctx, oidcClient, current); err != nil {
 		log.Error(err, "Failed to update OIDC client status")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: Requeue}, nil
 	}
 
 	if err := r.reconcileSecret(ctx, oidcClient, instance, apiClient); err != nil {
 		log.Error(err, "Failed to reconcile OIDC client secret")
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "SecretReconcileError", err.Error())
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: Requeue}, nil
 	}
 
-	// Remove regenerate-secret annotation if it exists
-	if oidcClient.Annotations["pocketid.internal/regenerate-client-secret"] == "true" {
-		delete(oidcClient.Annotations, "pocketid.internal/regenerate-client-secret")
-		if err := r.Update(ctx, oidcClient); err != nil {
-			log.Error(err, "Failed to remove regenerate-secret annotation")
-			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
-		}
+	// Remove regenerate-client-secret annotation if it exists
+	if removed, err := CheckAndRemoveAnnotation(ctx, r.Client, oidcClient, "pocketid.internal/regenerate-client-secret", "true"); err != nil {
+		log.Error(err, "Failed to remove regenerate-client-secret annotation")
+		return ctrl.Result{RequeueAfter: Requeue}, nil
+	} else if removed {
+		log.Info("Removed regenerate-client-secret annotation after secret regeneration")
 	}
 
 	_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionTrue, "Reconciled", "OIDC client is in sync")
@@ -286,7 +282,7 @@ func (r *PocketIDOIDCClientReconciler) reconcileSecret(ctx context.Context, oidc
 		} else if _, exists := existingSecret.Data[keys.ClientSecret]; !exists {
 			// Secret exists but doesn't have the client_secret key
 			shouldRegenerateSecret = true
-		} else if oidcClient.Annotations["pocketid.internal/regenerate-client-secret"] == "true" {
+		} else if HasAnnotation(oidcClient, "pocketid.internal/regenerate-client-secret", "true") {
 			// User explicitly requested regeneration via annotation
 			shouldRegenerateSecret = true
 		}

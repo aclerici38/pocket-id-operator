@@ -739,21 +739,21 @@ func (r *PocketIDInstanceReconciler) reconcileAuth(ctx context.Context, instance
 	if err := r.Get(ctx, client.ObjectKey{Namespace: authUser.Namespace, Name: authUser.Name}, user); err != nil {
 		if errors.IsNotFound(err) {
 			log.Info("Waiting for auth user CR to be created", "user", authUser.Name, "namespace", authUser.Namespace)
-			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+			return ctrl.Result{RequeueAfter: Requeue}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("get auth user CR: %w", err)
 	}
 
 	if user.Status.UserID != "" && !user.Status.IsAdmin {
 		log.Info("Auth user is not admin; blocking reconcile", "user", authUser.Name)
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: Requeue}, nil
 	}
 
 	if instance.Spec.Auth != nil && instance.Status.AuthUserRef != "" {
 		if instance.Status.AuthUserRef != authUser.Name || instance.Status.AuthUserNamespace != authUser.Namespace {
 			if !isUserReadyStatus(user) {
 				log.Info("Auth user not ready; delaying auth switch", "user", authUser.Name)
-				return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+				return ctrl.Result{RequeueAfter: Requeue}, nil
 			}
 		}
 	}
@@ -775,7 +775,7 @@ func (r *PocketIDInstanceReconciler) reconcileAuth(ctx context.Context, instance
 	// Secret doesn't exist - check if already bootstrapped
 	if instance.Status.Bootstrapped {
 		log.Error(nil, "API key secret missing after bootstrap", "secret", secretName)
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, fmt.Errorf("API key secret %s not found but instance was bootstrapped", secretName)
+		return ctrl.Result{RequeueAfter: Requeue}, fmt.Errorf("API key secret %s not found but instance was bootstrapped", secretName)
 	}
 
 	// User CR exists but secret doesn't - need to bootstrap
@@ -857,7 +857,7 @@ func (r *PocketIDInstanceReconciler) bootstrap(ctx context.Context, instance *po
 	if err != nil {
 		if bootstrapNotReady(err) {
 			log.Info("Pocket-ID not ready for bootstrap, requeuing", "error", err)
-			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+			return ctrl.Result{RequeueAfter: Requeue}, nil
 		}
 		log.Error(err, "Bootstrap failed")
 		return ctrl.Result{}, err
