@@ -101,7 +101,7 @@ func (r *PocketIDUserGroupReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{RequeueAfter: validationResult.RequeueAfter}, validationResult.Error
 	}
 
-	// Get API client using base reconciler
+	// Get API client from pool
 	apiClient, result, err := r.GetAPIClientOrWait(ctx, userGroup, instance)
 	if result != nil {
 		return *result, err

@@ -94,11 +94,12 @@ func (r *BaseReconciler) ValidateInstanceReady(ctx context.Context, obj Conditio
 	}
 }
 
-// GetAPIClientOrWait retrieves an API client for the instance, handling common error cases
+// GetAPIClientOrWait retrieves an API client for the instance from the pool
+// The returned client has rate limiting applied at the HTTP transport layer.
 func (r *BaseReconciler) GetAPIClientOrWait(ctx context.Context, obj ConditionedResource, instance *pocketidv1alpha1.PocketIDInstance) (*pocketid.Client, *ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	apiClient, err := apiClientForInstance(ctx, r.Client, instance)
+	apiClient, err := GetAPIClient(ctx, r.Client, instance)
 	if err != nil {
 		if stderrors.Is(err, ErrAPIClientNotReady) {
 			logger.Info("API client not ready, requeuing")
@@ -168,8 +169,8 @@ func (r *BaseReconciler) ReconcileDeleteWithPocketID(
 		return ctrl.Result{}, err
 	}
 
-	// Get API client
-	apiClient, err := apiClientForInstance(ctx, r.Client, instance)
+	// Get API client from pool
+	apiClient, err := GetAPIClient(ctx, r.Client, instance)
 	if err != nil {
 		if stderrors.Is(err, ErrAPIClientNotReady) {
 			logger.Info("API client not ready for delete, requeuing", "statusID", statusID)

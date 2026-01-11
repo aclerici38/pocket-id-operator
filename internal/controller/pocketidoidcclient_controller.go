@@ -100,7 +100,7 @@ func (r *PocketIDOIDCClientReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{RequeueAfter: validationResult.RequeueAfter}, validationResult.Error
 	}
 
-	// Get API client using base reconciler
+	// Get API client from pool
 	apiClient, result, err := r.GetAPIClientOrWait(ctx, oidcClient, instance)
 	if result != nil {
 		return *result, err
@@ -253,6 +253,7 @@ func (r *PocketIDOIDCClientReconciler) reconcileSecret(ctx context.Context, oidc
 
 	if !enabled {
 		// Delete the secret if it exists but is now disabled
+		// Note: apiClient can be nil here since we don't need to call the API
 		secret := &corev1.Secret{}
 		err := r.Get(ctx, client.ObjectKey{Name: secretName, Namespace: oidcClient.Namespace}, secret)
 		if err == nil {
@@ -291,6 +292,11 @@ func (r *PocketIDOIDCClientReconciler) reconcileSecret(ctx context.Context, oidc
 		}
 
 		if shouldRegenerateSecret {
+			// apiClient is required to regenerate client secret
+			if apiClient == nil {
+				return fmt.Errorf("apiClient is required to regenerate client secret for non-public clients")
+			}
+
 			clientSecret, err := apiClient.RegenerateOIDCClientSecret(ctx, oidcClient.Status.ClientID)
 			if err != nil {
 				return fmt.Errorf("failed to get client secret: %w", err)

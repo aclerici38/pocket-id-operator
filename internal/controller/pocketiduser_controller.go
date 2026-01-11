@@ -103,7 +103,7 @@ func (r *PocketIDUserReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{RequeueAfter: validationResult.RequeueAfter}, validationResult.Error
 	}
 
-	// Get API client using base reconciler
+	// Get API client from pool
 	apiClient, result, err := r.GetAPIClientOrWait(ctx, user, instance)
 	if result != nil {
 		return *result, err
@@ -294,7 +294,7 @@ func (r *PocketIDUserReconciler) reconcileDelete(ctx context.Context, user *pock
 				return ctrl.Result{}, err
 			}
 		} else {
-			apiClient, err := apiClientForInstance(ctx, r.Client, instance)
+			apiClient, err := GetAPIClient(ctx, r.Client, instance)
 			if err != nil {
 				if stderrors.Is(err, ErrAPIClientNotReady) {
 					log.Info("API client not ready for delete, requeuing", "userID", user.Status.UserID)
