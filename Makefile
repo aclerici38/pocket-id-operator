@@ -149,6 +149,19 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 .PHONY: helm
 helm: ## Generate/update Helm chart under dist/chart (includes CRDs).
 	kubebuilder edit --plugins=helm.kubebuilder.io/v2-alpha
+	@echo "Moving CRDs to crds/ directory..."
+	@mkdir -p dist/chart/crds
+	@if [ -d "dist/chart/templates/crd" ]; then \
+		for crdfile in dist/chart/templates/crd/*.yaml; do \
+			[ -f "$$crdfile" ] || continue; \
+			grep -v '{{- if and \.Values\.crd \.Values\.crd\.enable }}' "$$crdfile" | \
+			grep -v '{{- if \.Values\.crd\.enable }}' | \
+			sed '$${/{{- end }}/d;}' > "dist/chart/crds/$$(basename "$$crdfile")"; \
+		done; \
+		rm -rf dist/chart/templates/crd; \
+	fi
+	@echo "Cleaning up temporary files..."
+	@rm -f dist/chart/crds/*.tmp dist/chart/crds/*.bak dist/chart/crds/*.bak2
 	@echo "Fixing nil-safety checks in Helm templates..."
 	@for file in $$(find dist/chart/templates -name "*.yaml" -type f); do \
 		sed -i.bak \
@@ -156,7 +169,6 @@ helm: ## Generate/update Helm chart under dist/chart (includes CRDs).
 			-e 's/{{- if \.Values\.metrics\.enable }}/{{- if and .Values.metrics .Values.metrics.enable }}/' \
 			-e 's/{{- if \.Values\.prometheus\.enable }}/{{- if and .Values.prometheus .Values.prometheus.enable }}/' \
 			-e 's/{{- if \.Values\.certManager\.enable }}/{{- if and .Values.certManager .Values.certManager.enable }}/' \
-			-e 's/{{- if \.Values\.crd\.enable }}/{{- if and .Values.crd .Values.crd.enable }}/' \
 			"$$file" && rm -f "$$file.bak"; \
 	done
 
