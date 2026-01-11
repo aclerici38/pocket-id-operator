@@ -1,5 +1,6 @@
 # PocketIDInstance configuration
 # Creates a PocketIDInstance custom resource when enabled
+# At least 1 PocketIDInstance is required. If disabled create the resource manually
 instance:
   enabled: true
   name: pocket-id
@@ -15,10 +16,11 @@ instance:
     # Container image to run
     image: ghcr.io/pocket-id/pocket-id:latest
 
+    #
+
     # Encryption Key (required)
     # Use either 'value' for a plain text value (16 byte minimum) or 'valueFrom' for a reference
     encryptionKey:
-      # Plain text value
       # value: "your-encryption-key-here"
 
       # Source the value from a secret/configMap/etc
@@ -31,7 +33,7 @@ instance:
     # If left as a filepath the instance will use a sqlite db
     # To use postgres configure the full uri, e.g. postgresql://user:password@host:port/dbname
     databaseUrl:
-      value: "data/pocket-id.db"
+      value: "/app/data/pocket-id.db"
       # valueFrom:
       #   secretKeyRef:
       #     name: pocket-id-db
@@ -53,6 +55,8 @@ instance:
     #       key: password
 
     # Persistence configuration
+    # Mounts to /app/data. If spec.deploymentType is StatefulSet will be mounted as a VolumeClaimTemplate
+    # if not enabled will mount emptyDir. It is possible to run stateless if using postgres
     persistence:
       enabled: false
       # existingClaim: ""
@@ -71,30 +75,36 @@ instance:
     #   limits:
     #     memory: 512Mi
 
-# HTTPRoute
-# Creates an HTTPRoute for the PocketIDInstance when enabled
-route:
-  enabled: false
+    # How the operator authenticates with the instance
+    # Technically optional but required to manage pocket-id via custom resources
+    # auth:
+    #   userRef:
+    #     name: pocket-id-operator
+    #     # namespace: default  # Defaults to instance namespace
+    #   apiKeyName: pocket-id-operator
 
-  # Name of the HTTPRoute (defaults to instance name if not set)
-  # name: ""
+  # HTTPRoute configuration (Gateway API)
+  # Creates an HTTPRoute for the PocketIDInstance when enabled
+  route:
+    enabled: false
 
-  # Labels to apply to the HTTPRoute
-  labels: {}
+    # Name of the HTTPRoute (defaults to instance name if not set)
+    # name: ""
 
-  # Annotations to apply to the HTTPRoute
-  annotations: {}
+    labels: {}
 
-  # Gateway parent references
-  parentRefs:
-    - name: gateway
-      # namespace: default
-      # sectionName: https
+    annotations: {}
 
-  # Hostnames for the route
-  # Will be automatically set to the hostname from instance.spec.appUrl if not specified
-  hostnames: []
-  # - auth.example.com
+    # Gateway parent references
+    parentRefs:
+      - name: gateway
+        # namespace: default
+        # sectionName: https
+
+    # Hostnames for the route
+    # Will be automatically set to the hostname from instance.spec.appUrl if not specified
+    hostnames: []
+    # - auth.example.com
 
 # Configure the controller manager deployment
 manager:

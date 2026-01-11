@@ -115,7 +115,7 @@ type PocketIDInstanceSpec struct {
 
 	// URL to access database at
 	// See the official documentation for DB_CONNECTION_STRING
-	// For sqlite only add the filepath e.g. "data/pocket-id.db"
+	// For sqlite only add the filepath e.g. "/app/data/pocket-id.db"
 	// Uses application default if empty
 	// +optional
 	DatabaseUrl *EnvValue `json:"databaseUrl,omitempty"`

@@ -1,28 +1,28 @@
-{{- if and .Values.instance.enabled .Values.route.enabled }}
+{{- if and .Values.instance.enabled .Values.instance.route.enabled }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: {{ .Values.route.name | default .Values.instance.name | default "pocket-id" }}
+  name: {{ .Values.instance.route.name | default .Values.instance.name | default "pocket-id" }}
   namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/name: pocket-id
     app.kubernetes.io/instance: {{ .Values.instance.name | default "pocket-id" }}
     app.kubernetes.io/managed-by: {{ .Release.Service }}
     helm.sh/chart: {{ include "chart.name" . }}
-    {{- with .Values.route.labels }}
+    {{- with .Values.instance.route.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
-  {{- with .Values.route.annotations }}
+  {{- with .Values.instance.route.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
   parentRefs:
-    {{- toYaml .Values.route.parentRefs | nindent 4 }}
-  {{- if or .Values.route.hostnames .Values.instance.spec.appUrl }}
+    {{- toYaml .Values.instance.route.parentRefs | nindent 4 }}
+  {{- if or .Values.instance.route.hostnames .Values.instance.spec.appUrl }}
   hostnames:
-    {{- if .Values.route.hostnames }}
-    {{- toYaml .Values.route.hostnames | nindent 4 }}
+    {{- if .Values.instance.route.hostnames }}
+    {{- toYaml .Values.instance.route.hostnames | nindent 4 }}
     {{- else if .Values.instance.spec.appUrl }}
     {{- $url := urlParse .Values.instance.spec.appUrl }}
     - {{ $url.host | quote }}
