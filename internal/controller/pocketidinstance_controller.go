@@ -18,6 +18,8 @@ package controller
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	stderrors "errors"
 	"fmt"
 	"maps"
@@ -49,6 +51,7 @@ const (
 	envEncryptionKey      = "ENCRYPTION_KEY"
 	envDBConnectionString = "DB_CONNECTION_STRING"
 	envAppURL             = "APP_URL"
+	envStaticAPIKey       = "STATIC_API_KEY"
 
 	deploymentTypeDeployment  = "Deployment"
 	deploymentTypeStatefulSet = "StatefulSet"
@@ -187,6 +190,22 @@ func (r *PocketIDInstanceReconciler) buildPodTemplate(instance *pocketidinternal
 		env = append(env, corev1.EnvVar{
 			Name:  "DISABLE_RATE_LIMITING",
 			Value: "true",
+		})
+	}
+
+	// Add STATIC_API_KEY if instance is not yet bootstrapped
+	if !instance.Status.Bootstrapped {
+		staticAPIKeySecret := staticAPIKeySecretName(instance.Name)
+		env = append(env, corev1.EnvVar{
+			Name: envStaticAPIKey,
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: staticAPIKeySecret,
+					},
+					Key: "token",
+				},
+			},
 		})
 	}
 
@@ -676,6 +695,20 @@ func apiKeySecretName(userRef, apiKeyName string) string {
 	return fmt.Sprintf("%s-%s-key", userRef, apiKeyName)
 }
 
+// staticAPIKeySecretName returns the secret name for the instance's static bootstrap API key
+func staticAPIKeySecretName(instanceName string) string {
+	return fmt.Sprintf("%s-static-api-key", instanceName)
+}
+
+// generateSecureToken generates a cryptographically secure random token
+func generateSecureToken(length int) (string, error) {
+	bytes := make([]byte, length)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("generate random bytes: %w", err)
+	}
+	return base64.URLEncoding.EncodeToString(bytes), nil
+}
+
 func isUserReadyStatus(user *pocketidinternalv1alpha1.PocketIDUser) bool {
 	for _, condition := range user.Status.Conditions {
 		if condition.Type == readyConditionType && condition.Status == metav1.ConditionTrue {
@@ -781,9 +814,61 @@ func internalServiceURL(instanceName, namespace string) string {
 	return fmt.Sprintf("http://%s.%s.svc.cluster.local:1411", instanceName, namespace)
 }
 
+// ensureStaticAPIKeySecret creates or retrieves the static API key secret for bootstrap
+func (r *PocketIDInstanceReconciler) ensureStaticAPIKeySecret(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) (string, error) {
+	secretName := staticAPIKeySecretName(instance.Name)
+	secret := &corev1.Secret{}
+
+	err := r.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: secretName}, secret)
+	if err == nil {
+		// Secret exists, return the token
+		if tokenBytes, ok := secret.Data["token"]; ok {
+			return string(tokenBytes), nil
+		}
+		return "", fmt.Errorf("static API key secret %s exists but has no token field", secretName)
+	}
+
+	if !errors.IsNotFound(err) {
+		return "", fmt.Errorf("get static API key secret: %w", err)
+	}
+
+	// Generate new static API key
+	token, err := generateSecureToken(32)
+	if err != nil {
+		return "", fmt.Errorf("generate static API key: %w", err)
+	}
+
+	// Create secret
+	secret = &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      secretName,
+			Namespace: instance.Namespace,
+		},
+		Data: map[string][]byte{
+			"token": []byte(token),
+		},
+	}
+
+	if err := controllerutil.SetControllerReference(instance, secret, r.Scheme); err != nil {
+		return "", fmt.Errorf("set owner reference: %w", err)
+	}
+
+	if err := r.Create(ctx, secret); err != nil {
+		return "", fmt.Errorf("create static API key secret: %w", err)
+	}
+
+	return token, nil
+}
+
 // bootstrap performs the initial setup of Pocket-ID using the provided User CR's spec
 func (r *PocketIDInstanceReconciler) bootstrap(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, user *pocketidinternalv1alpha1.PocketIDUser, apiKeyName string) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
+
+	// Ensure static API key secret exists
+	staticAPIKey, err := r.ensureStaticAPIKeySecret(ctx, instance)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("ensure static API key: %w", err)
+	}
 
 	// Resolve user spec values
 	userInfoInputSecret := userInfoInputSecretName(user)
@@ -841,8 +926,10 @@ func (r *PocketIDInstanceReconciler) bootstrap(ctx context.Context, instance *po
 		}
 	}
 
-	setupResp, apiKeyResp, err := bootstrapClient.Bootstrap(
+	// Use the new static API key bootstrap method
+	setupResp, apiKeyResp, err := bootstrapClient.BootstrapWithStaticAPIKey(
 		ctx,
+		staticAPIKey,
 		setupReq,
 		apiKeyName,
 		apiKeyDescription,

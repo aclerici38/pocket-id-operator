@@ -103,6 +103,43 @@ func (b *BootstrapClient) Bootstrap(ctx context.Context, user SetupRequest, apiK
 	return setupResp, apiKeyResp, nil
 }
 
+// BootstrapWithStaticAPIKey performs bootstrap using a pre-configured static API key.
+// This uses the STATIC_API_KEY environment variable set on the Pocket-ID instance.
+// 1. Creates the initial admin user (setup endpoint doesn't require auth)
+// 2. Uses the static API key to create an operator API key
+// Returns the user, API key details, and the API key token.
+func (b *BootstrapClient) BootstrapWithStaticAPIKey(ctx context.Context, staticAPIKey string, user SetupRequest, apiKeyName, apiKeyDescription string, apiKeyExpiry time.Time) (*SetupResponse, *CreateAPIKeyResponse, error) {
+	// Setup initial admin (doesn't require auth)
+	setupResp, _, err := b.Setup(ctx, user)
+	if err != nil {
+		return nil, nil, fmt.Errorf("setup: %w", err)
+	}
+
+	// Create a client authenticated with the static API key
+	client, err := NewClient(b.baseURL, staticAPIKey, b.httpClient.Transport)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create authenticated client: %w", err)
+	}
+
+	// Create API key using the static API key for authentication
+	apiKeyWithToken, err := client.CreateAPIKey(ctx, apiKeyName, apiKeyExpiry.Format(time.RFC3339), apiKeyDescription)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create API key: %w", err)
+	}
+
+	// Convert to CreateAPIKeyResponse format
+	apiKeyResp := &CreateAPIKeyResponse{
+		Token: apiKeyWithToken.Token,
+	}
+	apiKeyResp.APIKey.ID = apiKeyWithToken.ID
+	apiKeyResp.APIKey.Name = apiKeyWithToken.Name
+	apiKeyResp.APIKey.Description = apiKeyWithToken.Description
+	apiKeyResp.APIKey.CreatedAt = apiKeyWithToken.CreatedAt
+	apiKeyResp.APIKey.ExpiresAt = apiKeyWithToken.ExpiresAt
+
+	return setupResp, apiKeyResp, nil
+}
+
 // DefaultAPIKeyExpiry returns a default expiry time (10 years from now).
 func DefaultAPIKeyExpiry() time.Time {
 	return time.Now().AddDate(10, 0, 0)
