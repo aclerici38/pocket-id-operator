@@ -147,8 +147,15 @@ spec:
 		})
 
 		It("should create the operator API key secret", func() {
-			// Secret name format: {userRef}-{apiKeyName}-key
-			secretName := "pocket-id-operator-pocket-id-operator-key"
+			var secretName string
+			By("getting secret name from user status")
+			Eventually(func(g Gomega) {
+				secretName = kubectlGet("pocketiduser", operatorUserName, "-n", userNS,
+					"-o", "jsonpath={.status.apiKeys[?(@.name=='pocket-id-operator')].secretName}")
+				g.Expect(secretName).NotTo(BeEmpty(), "Secret name should be in user status")
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying the secret exists with API token")
 			Eventually(func(g Gomega) {
 				output := kubectlGet("secret", secretName, "-n", userNS,
 					"-o", "jsonpath={.data.token}")
@@ -498,18 +505,17 @@ spec:
 				"-o", "jsonpath={.status.apiKeys[0].id}")
 			Expect(output).NotTo(BeEmpty(), "API key should have ID from Pocket-ID")
 
+			By("verifying secret reference in status")
+			secretName := kubectlGet("pocketiduser", userName, "-n", userNS,
+				"-o", "jsonpath={.status.apiKeys[0].secretName}")
+			Expect(secretName).NotTo(BeEmpty(), "Secret name should be in status")
+
 			By("verifying secret was created with token")
-			secretName := fmt.Sprintf("%s-%s-key", userName, apiKeyName)
 			Eventually(func(g Gomega) {
 				output := kubectlGet("secret", secretName, "-n", userNS,
 					"-o", "jsonpath={.data.token}")
 				g.Expect(output).NotTo(BeEmpty(), "Secret should contain token")
 			}).Should(Succeed())
-
-			By("verifying secret reference in status")
-			output = kubectlGet("pocketiduser", userName, "-n", userNS,
-				"-o", "jsonpath={.status.apiKeys[0].secretName}")
-			Expect(output).To(Equal(secretName))
 		})
 
 		It("should create an API key owned by the target user", func() {
@@ -538,7 +544,11 @@ spec:
 				g.Expect(output).To(Equal("True"))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
-			secretName := fmt.Sprintf("%s-%s-key", userName, apiKeyName)
+			By("getting secret name from user status")
+			secretName := kubectlGet("pocketiduser", userName, "-n", userNS,
+				"-o", fmt.Sprintf("jsonpath={.status.apiKeys[?(@.name=='%s')].secretName}", apiKeyName))
+			Expect(secretName).NotTo(BeEmpty())
+
 			var tokenBase64 string
 			By("reading the API key token from the secret")
 			Eventually(func(g Gomega) {
@@ -1444,23 +1454,11 @@ data:
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 		})
 
-		It("should resolve API key from user status with custom secret name", func() {
-			const customSecretUser = "custom-secret-user"
-			const customAPIKeyName = "custom-key"
-			const customSecretName = "my-custom-secret"
+		It("should resolve API key secret name from user status", func() {
+			const resolveTestUser = "resolve-test-user"
+			const resolveTestAPIKey = "resolve-key"
 
-			By("creating a secret with custom name")
-			applyYAML(fmt.Sprintf(`
-apiVersion: v1
-kind: Secret
-metadata:
-  name: %s
-  namespace: %s
-stringData:
-  token: custom-api-key-token
-`, customSecretName, userNS))
-
-			By("creating a user with API key referencing the custom secret")
+			By("creating a user with an API key")
 			applyYAML(fmt.Sprintf(`
 apiVersion: pocketid.internal/v1alpha1
 kind: PocketIDUser
@@ -1470,47 +1468,54 @@ metadata:
 spec:
   admin: true
   email:
-    value: custom@example.local
+    value: resolve@example.local
   apiKeys:
   - name: %s
-    description: Custom secret API key
-    secretRef:
-      name: %s
-      key: token
-`, customSecretUser, userNS, customAPIKeyName, customSecretName))
+    description: API key for testing secret resolution
+`, resolveTestUser, userNS, resolveTestAPIKey))
 
 			By("verifying user becomes Ready")
 			Eventually(func(g Gomega) {
-				output := kubectlGet("pocketiduser", customSecretUser, "-n", userNS,
+				output := kubectlGet("pocketiduser", resolveTestUser, "-n", userNS,
 					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
 				g.Expect(output).To(Equal("True"))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
-			By("verifying user status has API key with custom secret name")
+			By("getting the secret name from user status")
+			var actualSecretName string
 			Eventually(func(g Gomega) {
-				secretNameInStatus := kubectlGet("pocketiduser", customSecretUser, "-n", userNS,
-					"-o", fmt.Sprintf("jsonpath={.status.apiKeys[?(@.name=='%s')].secretName}", customAPIKeyName))
-				g.Expect(secretNameInStatus).To(Equal(customSecretName))
+				actualSecretName = kubectlGet("pocketiduser", resolveTestUser, "-n", userNS,
+					"-o", fmt.Sprintf("jsonpath={.status.apiKeys[?(@.name=='%s')].secretName}", resolveTestAPIKey))
+				g.Expect(actualSecretName).NotTo(BeEmpty())
 			}, time.Minute, 2*time.Second).Should(Succeed())
 
-			By("switching instance auth to user with custom secret")
+			By("verifying the secret exists with the name from status")
+			Eventually(func(g Gomega) {
+				token := kubectlGetSecretData(actualSecretName, userNS, "token")
+				g.Expect(token).NotTo(BeEmpty())
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("switching instance auth to user - controller should resolve secret from status")
 			patch := fmt.Sprintf(`{"spec":{"auth":{"userRef":{"name":"%s","namespace":"%s"},"apiKeyName":"%s"}}}`,
-				customSecretUser, userNS, customAPIKeyName)
+				resolveTestUser, userNS, resolveTestAPIKey)
 			cmd := exec.Command("kubectl", "patch", "pocketidinstance", instanceName, "-n", instanceNS, "--type=merge", "-p", patch)
 			_, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("verifying auth switch completes successfully")
+			By("verifying auth switch completes - proving controller used status.apiKeys[].secretName")
 			Eventually(func(g Gomega) {
 				userRef := kubectlGet("pocketidinstance", instanceName, "-n", instanceNS,
 					"-o", "jsonpath={.status.authUserRef}")
-				apiKeyName := kubectlGet("pocketidinstance", instanceName, "-n", instanceNS,
-					"-o", "jsonpath={.status.authAPIKeyName}")
-				g.Expect(userRef).To(Equal(customSecretUser))
-				g.Expect(apiKeyName).To(Equal(customAPIKeyName))
+				g.Expect(userRef).To(Equal(resolveTestUser))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
-			By("verifying instance remains Ready with custom secret")
+			Eventually(func(g Gomega) {
+				apiKeyName := kubectlGet("pocketidinstance", instanceName, "-n", instanceNS,
+					"-o", "jsonpath={.status.authAPIKeyName}")
+				g.Expect(apiKeyName).To(Equal(resolveTestAPIKey))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying instance remains Ready")
 			Consistently(func(g Gomega) {
 				ready := kubectlGet("pocketidinstance", instanceName, "-n", instanceNS,
 					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
@@ -1552,9 +1557,16 @@ spec:
 				g.Expect(output).To(Equal("True"))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
+			By("verifying API key secret name is in user status")
+			var secretName string
+			Eventually(func(g Gomega) {
+				secretName = kubectlGet("pocketiduser", crossNSUser, "-n", userNS,
+					"-o", fmt.Sprintf("jsonpath={.status.apiKeys[?(@.name=='%s')].secretName}", crossNSAPIKey))
+				g.Expect(secretName).NotTo(BeEmpty())
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
 			By("verifying API key secret is created in user namespace")
 			Eventually(func(g Gomega) {
-				secretName := fmt.Sprintf("%s-%s-key", crossNSUser, crossNSAPIKey)
 				output := kubectlGet("secret", secretName, "-n", userNS,
 					"-o", "jsonpath={.data.token}")
 				g.Expect(output).NotTo(BeEmpty())
@@ -1571,9 +1583,12 @@ spec:
 			Eventually(func(g Gomega) {
 				userRef := kubectlGet("pocketidinstance", instanceName, "-n", instanceNS,
 					"-o", "jsonpath={.status.authUserRef}")
+				g.Expect(userRef).To(Equal(crossNSUser))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			Eventually(func(g Gomega) {
 				userNSInStatus := kubectlGet("pocketidinstance", instanceName, "-n", instanceNS,
 					"-o", "jsonpath={.status.authUserNamespace}")
-				g.Expect(userRef).To(Equal(crossNSUser))
 				g.Expect(userNSInStatus).To(Equal(userNS))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
@@ -1611,8 +1626,15 @@ spec:
 				g.Expect(output).To(Equal("True"))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
+			By("getting secret name from new auth user status")
+			var secretName string
+			Eventually(func(g Gomega) {
+				secretName = kubectlGet("pocketiduser", newUserName, "-n", userNS,
+					"-o", fmt.Sprintf("jsonpath={.status.apiKeys[?(@.name=='%s')].secretName}", newAPIKeyName))
+				g.Expect(secretName).NotTo(BeEmpty())
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
 			By("verifying new auth user API key secret exists")
-			secretName := fmt.Sprintf("%s-%s-key", newUserName, newAPIKeyName)
 			Eventually(func(g Gomega) {
 				output := kubectlGet("secret", secretName, "-n", userNS,
 					"-o", "jsonpath={.data.token}")
@@ -1723,8 +1745,15 @@ spec:
 				g.Expect(output).To(Equal("True"))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
+			By("getting secret name from auth user status")
+			var secretName string
+			Eventually(func(g Gomega) {
+				secretName = kubectlGet("pocketiduser", secondaryUserName, "-n", userNS,
+					"-o", fmt.Sprintf("jsonpath={.status.apiKeys[?(@.name=='%s')].secretName}", secondaryAPIKeyName))
+				g.Expect(secretName).NotTo(BeEmpty())
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
 			By("verifying the auth user API key secret exists")
-			secretName := fmt.Sprintf("%s-%s-key", secondaryUserName, secondaryAPIKeyName)
 			Eventually(func(g Gomega) {
 				output := kubectlGet("secret", secretName, "-n", userNS,
 					"-o", "jsonpath={.data.token}")
