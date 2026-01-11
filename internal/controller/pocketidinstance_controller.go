@@ -39,7 +39,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
@@ -71,7 +70,6 @@ type PocketIDInstanceReconciler struct {
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -97,10 +95,6 @@ func (r *PocketIDInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	if err := r.reconcileService(ctx, instance); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	if err := r.reconcileRoute(ctx, instance); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -544,70 +538,6 @@ func (r *PocketIDInstanceReconciler) reconcileService(ctx context.Context, insta
 	return r.Patch(ctx, service, client.Apply, client.FieldOwner("pocket-id-operator"))
 }
 
-func (r *PocketIDInstanceReconciler) reconcileRoute(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
-	route := &gwapiv1.HTTPRoute{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      instance.Name,
-			Namespace: instance.Namespace,
-		},
-	}
-
-	// If route is disabled, try to delete it if it exists
-	if !instance.Spec.Route.Enabled {
-		if err := r.Delete(ctx, route); err != nil {
-			// Ignore NotFound and NoMatchError (CRD not installed)
-			if !errors.IsNotFound(err) && !meta.IsNoMatchError(err) {
-				return err
-			}
-		}
-		return nil
-	}
-
-	port := gwapiv1.PortNumber(1411)
-
-	var hostnames []gwapiv1.Hostname
-	if instance.Spec.AppURL != "" {
-		parsedURL, err := url.Parse(instance.Spec.AppURL)
-		if err != nil {
-			return err
-		}
-		hostnames = []gwapiv1.Hostname{gwapiv1.Hostname(parsedURL.Hostname())}
-	}
-
-	route.TypeMeta = metav1.TypeMeta{
-		APIVersion: "gateway.networking.k8s.io/v1",
-		Kind:       "HTTPRoute",
-	}
-	route.Spec = gwapiv1.HTTPRouteSpec{
-		CommonRouteSpec: gwapiv1.CommonRouteSpec{
-			ParentRefs: instance.Spec.Route.ParentRefs,
-		},
-		Hostnames: hostnames,
-		Rules: []gwapiv1.HTTPRouteRule{
-			{
-				BackendRefs: []gwapiv1.HTTPBackendRef{
-					{
-						BackendRef: gwapiv1.BackendRef{
-							BackendObjectReference: gwapiv1.BackendObjectReference{
-								Name: gwapiv1.ObjectName(instance.Name),
-								Port: &port,
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	if err := controllerutil.SetControllerReference(instance, route, r.Scheme); err != nil {
-		return err
-	}
-
-	return r.Patch(ctx, route, client.Apply,
-		client.FieldOwner("pocket-id-operator"),
-	)
-}
-
 func (r *PocketIDInstanceReconciler) reconcileVolume(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
 	pvc := &corev1.PersistentVolumeClaim{
 		TypeMeta: metav1.TypeMeta{
@@ -975,7 +905,6 @@ func (r *PocketIDInstanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&appsv1.StatefulSet{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
-		// HTTPRoute is not watched so the operator doesn't have to depend on CRDs
 		Owns(&pocketidinternalv1alpha1.PocketIDUser{}).
 		Named("pocketidinstance").
 		Complete(r)

@@ -1,0 +1,21 @@
+{{- if .Values.instance.enabled }}
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDInstance
+metadata:
+  name: {{ .Values.instance.name | default "pocket-id" }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: pocket-id
+    app.kubernetes.io/instance: {{ .Values.instance.name | default "pocket-id" }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    helm.sh/chart: {{ include "chart.name" . }}
+    {{- with .Values.instance.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.instance.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- toYaml .Values.instance.spec | nindent 2 }}
+{{- end }}

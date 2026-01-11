@@ -20,22 +20,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
-// HTTPRoute config
-type HttpRouteConfig struct {
-	// Creates the route
-	// +kubebuilder:default=false
-	Enabled bool `json:"enabled"`
-
-	// ParentRefs to attach the route to a Gateway
-	// +optional
-	ParentRefs []gwapiv1.ParentReference `json:"parentRefs,omitempty"`
-}
 
 // Environment variable value that can be either a plain value or from a Kubernetes resource
 type EnvValue struct {
@@ -141,10 +129,6 @@ type PocketIDInstanceSpec struct {
 	// Uses k8s env var syntax (includes secretKeyRef, configMapKeyRef, etc.)
 	// +optional
 	Env []corev1.EnvVar `json:"env,omitempty"`
-
-	// Configures a httpRoute to expose pocket-id
-	// +optional
-	Route HttpRouteConfig `json:"route,omitempty"`
 
 	// Configures persistence for Pocket-ID
 	// Pocket-ID can be run statelessly if using Postgres as a file and db backend

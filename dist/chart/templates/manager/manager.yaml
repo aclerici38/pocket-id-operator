@@ -21,6 +21,20 @@ spec:
                 app.kubernetes.io/name: pocket-id-operator
                 control-plane: controller-manager
         spec:
+            affinity:
+                nodeAffinity:
+                    requiredDuringSchedulingIgnoredDuringExecution:
+                        nodeSelectorTerms:
+                            - matchExpressions:
+                                - key: kubernetes.io/arch
+                                  operator: In
+                                  values:
+                                    - amd64
+                                    - arm64
+                                - key: kubernetes.io/os
+                                  operator: In
+                                  values:
+                                    - linux
             containers:
                 - args:
                     {{- if .Values.metrics.enable }}
@@ -35,7 +49,7 @@ spec:
                     {{- end }}
                   command:
                     - /manager
-                  image: "{{ .Values.manager.image.repository }}:{{ default .Chart.AppVersion .Values.manager.image.tag }}"
+                  image: "{{ .Values.manager.image.repository }}:{{ .Values.manager.image.tag }}"
                   imagePullPolicy: {{ .Values.manager.image.pullPolicy }}
                   livenessProbe:
                     httpGet:

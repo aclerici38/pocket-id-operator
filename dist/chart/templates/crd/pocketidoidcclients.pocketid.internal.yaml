@@ -155,6 +155,45 @@ spec:
                                 default: false
                                 description: Requires reauthentication on login
                                 type: boolean
+                            secret:
+                                description: Secret defines how OIDC client credentials should be stored in a Kubernetes Secret.
+                                properties:
+                                    enabled:
+                                        default: true
+                                        description: |-
+                                            Enabled controls whether to create a secret with OIDC client credentials.
+                                            If false, no secret will be created.
+                                        type: boolean
+                                    keys:
+                                        description: Keys allows customization of the secret keys for each credential field.
+                                        properties:
+                                            callbackUrls:
+                                                default: callback_urls
+                                                description: CallbackURLs is the key name for the callback URLs.
+                                                type: string
+                                            clientId:
+                                                default: client_id
+                                                description: ClientID is the key name for the OIDC client ID.
+                                                type: string
+                                            clientSecret:
+                                                default: client_secret
+                                                description: ClientSecret is the key name for the OIDC client secret.
+                                                type: string
+                                            issuerUrl:
+                                                default: issuer_url
+                                                description: IssuerURL is the key name for the OIDC issuer URL.
+                                                type: string
+                                            logoutCallbackUrls:
+                                                default: logout_callback_urls
+                                                description: LogoutCallbackURLs is the key name for the logout callback URLs.
+                                                type: string
+                                        type: object
+                                    name:
+                                        description: |-
+                                            Name is the name of the secret to create.
+                                            Defaults to metadata.name + "-oidc-credentials"
+                                        type: string
+                                type: object
                         type: object
                     status:
                         description: status defines the observed state of PocketIDOIDCClient

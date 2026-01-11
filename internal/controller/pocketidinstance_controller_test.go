@@ -28,7 +28,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 )
@@ -243,80 +242,6 @@ var _ = Describe("PocketIDInstance Controller", func() {
 				Namespace: namespace,
 			}, deployment)
 			Expect(err).To(HaveOccurred())
-		})
-	})
-
-	Context("When creating a PocketIDInstance with HTTPRoute enabled", func() {
-		const instanceName = "test-route-instance"
-
-		var instance *pocketidinternalv1alpha1.PocketIDInstance
-		var secret *corev1.Secret
-
-		BeforeEach(func() {
-			secret = &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      instanceName + "-secret",
-					Namespace: namespace,
-				},
-				Data: map[string][]byte{
-					"encryption-key": []byte("test-encryption-key-value"),
-				},
-			}
-			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
-
-			gatewayName := gwapiv1.ObjectName("my-gateway")
-			instance = &pocketidinternalv1alpha1.PocketIDInstance{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      instanceName,
-					Namespace: namespace,
-				},
-				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
-						ValueFrom: &corev1.EnvVarSource{
-							SecretKeyRef: &corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: secret.Name,
-								},
-								Key: "encryption-key",
-							},
-						},
-					},
-					Route: pocketidinternalv1alpha1.HttpRouteConfig{
-						Enabled: true,
-						ParentRefs: []gwapiv1.ParentReference{
-							{
-								Name: gatewayName,
-							},
-						},
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
-		})
-
-		AfterEach(func() {
-			if instance != nil {
-				_ = k8sClient.Delete(ctx, instance)
-			}
-			if secret != nil {
-				_ = k8sClient.Delete(ctx, secret)
-			}
-		})
-
-		It("Should create an HTTPRoute", func() {
-			httpRoute := &gwapiv1.HTTPRoute{}
-			Eventually(func() error {
-				return k8sClient.Get(ctx, types.NamespacedName{
-					Name:      instanceName,
-					Namespace: namespace,
-				}, httpRoute)
-			}, timeout, interval).Should(Succeed())
-
-			Expect(httpRoute.Spec.ParentRefs).To(HaveLen(1))
-			Expect(httpRoute.Spec.ParentRefs[0].Name).To(Equal(gwapiv1.ObjectName("my-gateway")))
-			Expect(httpRoute.Spec.Rules).To(HaveLen(1))
-			Expect(httpRoute.Spec.Rules[0].BackendRefs).To(HaveLen(1))
-			Expect(httpRoute.Spec.Rules[0].BackendRefs[0].Name).To(Equal(gwapiv1.ObjectName(instanceName)))
 		})
 	})
 
@@ -1141,93 +1066,6 @@ var _ = Describe("PocketIDInstance Controller", func() {
 				}
 				instance.Spec.DeploymentType = "StatefulSet"
 				return k8sClient.Update(ctx, instance)
-			}, timeout, interval).ShouldNot(Succeed())
-		})
-	})
-
-	Context("When disabling route after it was enabled", func() {
-		const instanceName = "test-disable-route"
-
-		var instance *pocketidinternalv1alpha1.PocketIDInstance
-		var secret *corev1.Secret
-
-		BeforeEach(func() {
-			secret = &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      instanceName + "-secret",
-					Namespace: namespace,
-				},
-				Data: map[string][]byte{
-					"encryption-key": []byte("test-encryption-key-value"),
-				},
-			}
-			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
-
-			gatewayName := gwapiv1.ObjectName("my-gateway")
-			instance = &pocketidinternalv1alpha1.PocketIDInstance{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      instanceName,
-					Namespace: namespace,
-				},
-				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
-						ValueFrom: &corev1.EnvVarSource{
-							SecretKeyRef: &corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: secret.Name,
-								},
-								Key: "encryption-key",
-							},
-						},
-					},
-					Route: pocketidinternalv1alpha1.HttpRouteConfig{
-						Enabled: true,
-						ParentRefs: []gwapiv1.ParentReference{
-							{
-								Name: gatewayName,
-							},
-						},
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
-
-			// Wait for HTTPRoute to be created
-			httpRoute := &gwapiv1.HTTPRoute{}
-			Eventually(func() error {
-				return k8sClient.Get(ctx, types.NamespacedName{
-					Name:      instanceName,
-					Namespace: namespace,
-				}, httpRoute)
-			}, timeout, interval).Should(Succeed())
-		})
-
-		AfterEach(func() {
-			if instance != nil {
-				_ = k8sClient.Delete(ctx, instance)
-			}
-			if secret != nil {
-				_ = k8sClient.Delete(ctx, secret)
-			}
-		})
-
-		It("Should delete the HTTPRoute when route is disabled", func() {
-			// Disable the route
-			Eventually(func() error {
-				if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(instance), instance); err != nil {
-					return err
-				}
-				instance.Spec.Route.Enabled = false
-				return k8sClient.Update(ctx, instance)
-			}, timeout, interval).Should(Succeed())
-
-			// Verify HTTPRoute is deleted
-			httpRoute := &gwapiv1.HTTPRoute{}
-			Eventually(func() error {
-				return k8sClient.Get(ctx, types.NamespacedName{
-					Name:      instanceName,
-					Namespace: namespace,
-				}, httpRoute)
 			}, timeout, interval).ShouldNot(Succeed())
 		})
 	})

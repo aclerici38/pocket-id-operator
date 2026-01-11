@@ -1,3 +1,101 @@
+# PocketIDInstance configuration
+# Creates a PocketIDInstance custom resource when enabled
+instance:
+  enabled: true
+  name: pocket-id
+  labels: {}
+  annotations: {}
+
+  # PocketIDInstance spec configuration
+  # Anything from PocketIDInstance.spec can be added here
+  spec:
+    # Kind of workload to create, Deployment or StatefulSet
+    deploymentType: Deployment
+
+    # Container image to run
+    image: ghcr.io/pocket-id/pocket-id:latest
+
+    # Encryption Key (required)
+    # Use either 'value' for a plain text value (16 byte minimum) or 'valueFrom' for a reference
+    encryptionKey:
+      # Plain text value
+      # value: "your-encryption-key-here"
+
+      # Source the value from a secret/configMap/etc
+      valueFrom:
+        secretKeyRef:
+          name: pocket-id-encryption-key
+          key: encryption-key
+
+    # Database URL (optional)
+    # If left as a filepath the instance will use a sqlite db
+    # To use postgres configure the full uri, e.g. postgresql://user:password@host:port/dbname
+    databaseUrl:
+      value: "data/pocket-id.db"
+      # valueFrom:
+      #   secretKeyRef:
+      #     name: pocket-id-db
+      #     key: uri
+
+    # External URL Pocket-ID can be reached at
+    # appUrl: "https://auth.example.com"
+
+    # Additional environment variables
+    env: []
+    # - name: LOG_LEVEL
+    #   value: "debug"
+    # - name: SMTP_HOST
+    #   value: "smtp.example.com"
+    # - name: SMTP_PASSWORD
+    #   valueFrom:
+    #     secretKeyRef:
+    #       name: smtp-credentials
+    #       key: password
+
+    # Persistence configuration
+    persistence:
+      enabled: false
+      # existingClaim: ""
+      # storageClass: ""
+      size: 1Gi
+      accessModes:
+        - ReadWriteOnce
+
+    # podSecurityContext: {}
+    # containerSecurityContext: {}
+
+    # resources:
+    #   requests:
+    #     cpu: 50m
+    #     memory: 128Mi
+    #   limits:
+    #     memory: 512Mi
+
+# HTTPRoute
+# Creates an HTTPRoute for the PocketIDInstance when enabled
+route:
+  enabled: false
+
+  # Name of the HTTPRoute (defaults to instance name if not set)
+  # name: ""
+
+  # Labels to apply to the HTTPRoute
+  labels: {}
+
+  # Annotations to apply to the HTTPRoute
+  annotations: {}
+
+  # Gateway parent references
+  parentRefs:
+    - name: gateway
+      # namespace: default
+      # sectionName: https
+
+  # Hostnames for the route
+  # Will be automatically set to the hostname from instance.spec.appUrl if not specified
+  hostnames: []
+  # - auth.example.com
+
 # Configure the controller manager deployment
 manager:
   replicas: 1
@@ -37,33 +135,7 @@ manager:
       cpu: 10m
       memory: 64Mi
 
-# Essential RBAC permissions (required for controller operation)
-# These include ServiceAccount, controller permissions, leader election, and metrics access
-# Note: Essential RBAC is always enabled as it's required for the controller to function
-
-# Helper RBAC roles for managing custom resources
-# These provide convenient admin/editor/viewer roles for each CRD type
-# Useful for giving users different levels of access to your custom resources
-rbacHelpers:
-  enable: false # Install convenience admin/editor/viewer roles for CRDs
-
 # Custom Resource Definitions
 crd:
   enable: true # Install CRDs with the chart
   keep: true # Keep CRDs when uninstalling
-
-# Controller metrics endpoint.
-# Enable to expose /metrics endpoint with RBAC protection.
-metrics:
-  enable: true
-  port: 8443 # Metrics server port
-
-# Cert-manager integration for TLS certificates.
-# Required for webhook certificates and metrics endpoint certificates.
-certManager:
-  enable: false
-
-# Prometheus ServiceMonitor for metrics scraping.
-# Requires prometheus-operator to be installed in the cluster.
-prometheus:
-  enable: false

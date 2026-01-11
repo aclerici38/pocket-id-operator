@@ -18,9 +18,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -36,7 +33,6 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
-	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	// +kubebuilder:scaffold:imports
@@ -68,20 +64,12 @@ var _ = BeforeSuite(func() {
 	err = pocketidinternalv1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
-	err = gwapiv1.Install(scheme.Scheme)
-	Expect(err).NotTo(HaveOccurred())
-
 	// +kubebuilder:scaffold:scheme
-
-	By("downloading Gateway API CRDs")
-	gatewayAPICRDPath, err := downloadGatewayAPICRDs()
-	Expect(err).NotTo(HaveOccurred())
 
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "..", "config", "crd", "bases"),
-			gatewayAPICRDPath,
 		},
 		ErrorIfCRDPathMissing: true,
 	}
@@ -168,35 +156,4 @@ func getFirstFoundEnvTestBinaryDir() string {
 		}
 	}
 	return ""
-}
-
-// downloadGatewayAPICRDs downloads the Gateway API CRDs to a temporary file
-func downloadGatewayAPICRDs() (string, error) {
-	gatewayAPIVersion := os.Getenv("GATEWAY_API_VERSION")
-
-	url := fmt.Sprintf("https://github.com/kubernetes-sigs/gateway-api/releases/download/%s/standard-install.yaml", gatewayAPIVersion)
-
-	resp, err := http.Get(url)
-	if err != nil {
-		return "", fmt.Errorf("failed to download Gateway API CRDs: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("failed to download Gateway API CRDs: status %d", resp.StatusCode)
-	}
-
-	tmpFile, err := os.CreateTemp("", "gateway-api-*.yaml")
-	if err != nil {
-		return "", fmt.Errorf("failed to create temp file: %w", err)
-	}
-	defer func() { _ = tmpFile.Close() }()
-
-	_, err = io.Copy(tmpFile, resp.Body)
-	if err != nil {
-		_ = os.Remove(tmpFile.Name())
-		return "", fmt.Errorf("failed to write Gateway API CRDs: %w", err)
-	}
-
-	return tmpFile.Name(), nil
 }
