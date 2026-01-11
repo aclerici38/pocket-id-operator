@@ -183,6 +183,13 @@ func (r *PocketIDInstanceReconciler) buildPodTemplate(instance *pocketidinternal
 		})
 	}
 
+	if instance.Spec.DisableGlobalRateLimiting {
+		env = append(env, corev1.EnvVar{
+			Name:  "DISABLE_RATE_LIMITING",
+			Value: "true",
+		})
+	}
+
 	// Add on any extra ENVs from CR
 	env = append(env, instance.Spec.Env...)
 

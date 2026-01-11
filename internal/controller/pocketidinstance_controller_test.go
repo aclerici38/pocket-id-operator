@@ -1619,4 +1619,150 @@ var _ = Describe("PocketIDInstance Controller", func() {
 			Expect(createdInstance.Spec.Auth.APIKeyName).To(Equal("pocket-id-operator"))
 		})
 	})
+
+	Context("When creating a PocketIDInstance with disableGlobalRateLimiting", func() {
+		const instanceName = "test-disable-rate-limiting"
+
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
+		var secret *corev1.Secret
+
+		BeforeEach(func() {
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName + "-secret",
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"encryption-key": []byte("test-encryption-key-value"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
+						ValueFrom: &corev1.EnvVarSource{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: secret.Name,
+								},
+								Key: "encryption-key",
+							},
+						},
+					},
+					DisableGlobalRateLimiting: true,
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if instance != nil {
+				_ = k8sClient.Delete(ctx, instance)
+			}
+			if secret != nil {
+				_ = k8sClient.Delete(ctx, secret)
+			}
+		})
+
+		It("Should set DISABLE_RATE_LIMITING environment variable to true", func() {
+			deployment := &appsv1.Deployment{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName,
+					Namespace: namespace,
+				}, deployment)
+			}, timeout, interval).Should(Succeed())
+
+			envVars := deployment.Spec.Template.Spec.Containers[0].Env
+
+			var rateLimitEnv *corev1.EnvVar
+			for i := range envVars {
+				if envVars[i].Name == "DISABLE_RATE_LIMITING" {
+					rateLimitEnv = &envVars[i]
+					break
+				}
+			}
+
+			Expect(rateLimitEnv).NotTo(BeNil())
+			Expect(rateLimitEnv.Value).To(Equal("true"))
+			Expect(rateLimitEnv.ValueFrom).To(BeNil())
+		})
+	})
+
+	Context("When creating a PocketIDInstance with rate limiting enabled (default)", func() {
+		const instanceName = "test-rate-limiting-enabled"
+
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
+		var secret *corev1.Secret
+
+		BeforeEach(func() {
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName + "-secret",
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"encryption-key": []byte("test-encryption-key-value"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
+						ValueFrom: &corev1.EnvVarSource{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: secret.Name,
+								},
+								Key: "encryption-key",
+							},
+						},
+					},
+					DisableGlobalRateLimiting: false,
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if instance != nil {
+				_ = k8sClient.Delete(ctx, instance)
+			}
+			if secret != nil {
+				_ = k8sClient.Delete(ctx, secret)
+			}
+		})
+
+		It("Should NOT set DISABLE_RATE_LIMITING environment variable", func() {
+			deployment := &appsv1.Deployment{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName,
+					Namespace: namespace,
+				}, deployment)
+			}, timeout, interval).Should(Succeed())
+
+			envVars := deployment.Spec.Template.Spec.Containers[0].Env
+
+			var rateLimitEnv *corev1.EnvVar
+			for i := range envVars {
+				if envVars[i].Name == "DISABLE_RATE_LIMITING" {
+					rateLimitEnv = &envVars[i]
+					break
+				}
+			}
+
+			Expect(rateLimitEnv).To(BeNil())
+		})
+	})
 })

@@ -171,6 +171,12 @@ type PocketIDInstanceSpec struct {
 	// How the operator authenticates with the instance
 	// +optional
 	Auth *AuthConfig `json:"auth,omitempty"`
+
+	// DisableGlobalRateLimiting disables the global rate limiting in Pocket-ID
+	// Sets the DISABLE_RATE_LIMITING environment variable
+	// +kubebuilder:default=false
+	// +optional
+	DisableGlobalRateLimiting bool `json:"disableGlobalRateLimiting,omitempty"`
 }
 
 // PocketIDInstanceStatus defines the observed state of PocketIDInstance.

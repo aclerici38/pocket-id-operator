@@ -416,6 +416,12 @@ spec:
                 - Deployment
                 - StatefulSet
                 type: string
+              disableGlobalRateLimiting:
+                default: false
+                description: |-
+                  DisableGlobalRateLimiting disables the global rate limiting in Pocket-ID
+                  Sets the DISABLE_RATE_LIMITING environment variable
+                type: boolean
               encryptionKey:
                 description: |-
                   Encryption Key

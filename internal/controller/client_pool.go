@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -60,23 +61,30 @@ func (m *ClientPoolManager) GetClient(ctx context.Context, k8sClient client.Clie
 		return pooledClient.client, nil
 	}
 
-	log.Info("Creating pooled API client with rate limiting", "instance", instanceKey)
-
 	// Get API key for authentication
 	apiKey, err := getAPIKeyForInstance(ctx, k8sClient, instance)
 	if err != nil {
 		return nil, err
 	}
 
-	// Create rate-limited HTTP transport
-	// Conservative rate limit: 1 request per second with burst of 2
-	// This prevents overwhelming the PocketID instance with concurrent reconciliations
-	qps := 0.8
-	burst := 10
-	rateLimiter := rate.NewLimiter(rate.Limit(qps), burst)
-	httpTransport := pocketid.NewRateLimitedTransport(qps, burst)
+	var httpTransport http.RoundTripper
+	var rateLimiter *rate.Limiter
 
-	// Create the PocketID client with the rate-limited transport
+	// Only create rate-limited transport if rate limiting is not disabled
+	if instance.Spec.DisableGlobalRateLimiting {
+		log.Info("Creating pooled API client without rate limiting (disabled by spec)", "instance", instanceKey)
+		httpTransport = http.DefaultTransport
+	} else {
+		log.Info("Creating pooled API client with rate limiting", "instance", instanceKey)
+		// Conservative rate limit: 0.8 request per second with burst of 10
+		// This prevents overwhelming the PocketID instance with concurrent reconciliations
+		qps := 0.8
+		burst := 10
+		rateLimiter = rate.NewLimiter(rate.Limit(qps), burst)
+		httpTransport = pocketid.NewRateLimitedTransport(qps, burst)
+	}
+
+	// Create the PocketID client with the transport
 	serviceURL := internalServiceURL(instance.Name, instance.Namespace)
 	apiClient, err := pocketid.NewClient(serviceURL, apiKey, httpTransport)
 	if err != nil {
@@ -92,11 +100,15 @@ func (m *ClientPoolManager) GetClient(ctx context.Context, k8sClient client.Clie
 
 	m.clients[instanceKey] = pooledClient
 
-	log.Info("Pooled API client created",
-		"instance", instanceKey,
-		"qps", qps,
-		"burst", burst,
-	)
+	if instance.Spec.DisableGlobalRateLimiting {
+		log.Info("Pooled API client created without rate limiting", "instance", instanceKey)
+	} else {
+		log.Info("Pooled API client created with rate limiting",
+			"instance", instanceKey,
+			"qps", 0.8,
+			"burst", 10,
+		)
+	}
 
 	return pooledClient.client, nil
 }
