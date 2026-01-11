@@ -25,10 +25,11 @@ type ClientPoolManager struct {
 
 // pooledClient wraps a pocketid.Client with metadata
 type pooledClient struct {
-	client      *pocketid.Client
-	rateLimiter *rate.Limiter
-	instanceKey string
-	createdAt   time.Time
+	client              *pocketid.Client
+	rateLimiter         *rate.Limiter
+	instanceKey         string
+	createdAt           time.Time
+	rateLimitingEnabled bool
 }
 
 // NewClientPoolManager creates a new client pool manager
@@ -47,8 +48,18 @@ func (m *ClientPoolManager) GetClient(ctx context.Context, k8sClient client.Clie
 	// Fast path: check if client exists with read lock
 	m.mu.RLock()
 	if pooledClient, exists := m.clients[instanceKey]; exists {
-		m.mu.RUnlock()
-		return pooledClient.client, nil
+		// Check if rate limiting configuration has changed
+		rateLimitingEnabled := !instance.Spec.DisableGlobalRateLimiting
+		if pooledClient.rateLimitingEnabled == rateLimitingEnabled {
+			m.mu.RUnlock()
+			return pooledClient.client, nil
+		}
+		// Configuration changed, need to recreate client
+		log.Info("Rate limiting configuration changed, recreating client",
+			"instance", instanceKey,
+			"oldRateLimitingEnabled", pooledClient.rateLimitingEnabled,
+			"newRateLimitingEnabled", rateLimitingEnabled,
+		)
 	}
 	m.mu.RUnlock()
 
@@ -69,6 +80,7 @@ func (m *ClientPoolManager) GetClient(ctx context.Context, k8sClient client.Clie
 
 	var httpTransport http.RoundTripper
 	var rateLimiter *rate.Limiter
+	rateLimitingEnabled := !instance.Spec.DisableGlobalRateLimiting
 
 	// Only create rate-limited transport if rate limiting is not disabled
 	if instance.Spec.DisableGlobalRateLimiting {
@@ -92,10 +104,11 @@ func (m *ClientPoolManager) GetClient(ctx context.Context, k8sClient client.Clie
 	}
 
 	pooledClient := &pooledClient{
-		client:      apiClient,
-		rateLimiter: rateLimiter,
-		instanceKey: instanceKey,
-		createdAt:   time.Now(),
+		client:              apiClient,
+		rateLimiter:         rateLimiter,
+		instanceKey:         instanceKey,
+		createdAt:           time.Now(),
+		rateLimitingEnabled: rateLimitingEnabled,
 	}
 
 	m.clients[instanceKey] = pooledClient
