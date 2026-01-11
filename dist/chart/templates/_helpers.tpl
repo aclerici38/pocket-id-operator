@@ -76,3 +76,19 @@ Only includes name and instance for consistent selection.
 app.kubernetes.io/name: {{ include "chart.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
+
+{{/*
+Stringify env var values to prevent type errors.
+Converts all env var values to strings to avoid integer/boolean interpretation issues.
+*/}}
+{{- define "instance.stringifyEnv" -}}
+{{- range . }}
+- name: {{ .name }}
+  {{- if .value }}
+  value: {{ .value | quote }}
+  {{- else if .valueFrom }}
+  valueFrom:
+    {{- toYaml .valueFrom | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}
