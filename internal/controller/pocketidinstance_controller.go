@@ -688,10 +688,39 @@ func (r *PocketIDInstanceReconciler) reconcileAuth(ctx context.Context, instance
 		}
 	}
 
-	// Check if the API key secret exists
-	secretName := apiKeySecretName(authUser.Name, apiKeyName)
+	// Look up API key in user status
+	var keyStatus *pocketidinternalv1alpha1.APIKeyStatus
+	for i := range user.Status.APIKeys {
+		if user.Status.APIKeys[i].Name == apiKeyName {
+			keyStatus = &user.Status.APIKeys[i]
+			break
+		}
+	}
+
+	// If API key not found in status, check if we need to bootstrap
+	if keyStatus == nil {
+		if instance.Status.Bootstrapped {
+			log.Error(nil, "API key not found in user status after bootstrap", "apiKeyName", apiKeyName, "user", authUser.Name)
+			return ctrl.Result{RequeueAfter: Requeue}, fmt.Errorf("API key %s not found in user %s status but instance was bootstrapped", apiKeyName, authUser.Name)
+		}
+		// User CR exists but API key not in status - need to bootstrap
+		return r.bootstrap(ctx, instance, user, apiKeyName)
+	}
+
+	// Check if secret name is set in status
+	if keyStatus.SecretName == "" {
+		if instance.Status.Bootstrapped {
+			log.Error(nil, "API key has no secret reference after bootstrap", "apiKeyName", apiKeyName)
+			return ctrl.Result{RequeueAfter: Requeue}, fmt.Errorf("API key %s has no secret reference but instance was bootstrapped", apiKeyName)
+		}
+		// API key exists but no secret yet - requeue
+		log.Info("API key not ready yet, waiting for secret", "apiKeyName", apiKeyName)
+		return ctrl.Result{RequeueAfter: Requeue}, nil
+	}
+
+	// Verify the secret exists
 	secret := &corev1.Secret{}
-	err := r.Get(ctx, client.ObjectKey{Namespace: authUser.Namespace, Name: secretName}, secret)
+	err := r.Get(ctx, client.ObjectKey{Namespace: authUser.Namespace, Name: keyStatus.SecretName}, secret)
 
 	if err == nil {
 		// Secret exists - auth is ready, update status
@@ -704,12 +733,13 @@ func (r *PocketIDInstanceReconciler) reconcileAuth(ctx context.Context, instance
 
 	// Secret doesn't exist - check if already bootstrapped
 	if instance.Status.Bootstrapped {
-		log.Error(nil, "API key secret missing after bootstrap", "secret", secretName)
-		return ctrl.Result{RequeueAfter: Requeue}, fmt.Errorf("API key secret %s not found but instance was bootstrapped", secretName)
+		log.Error(nil, "API key secret missing after bootstrap", "secret", keyStatus.SecretName)
+		return ctrl.Result{RequeueAfter: Requeue}, fmt.Errorf("API key secret %s not found but instance was bootstrapped", keyStatus.SecretName)
 	}
 
-	// User CR exists but secret doesn't - need to bootstrap
-	return r.bootstrap(ctx, instance, user, apiKeyName)
+	// API key in status but secret doesn't exist and not bootstrapped
+	log.Info("API key secret not found, will retry", "secret", keyStatus.SecretName)
+	return ctrl.Result{RequeueAfter: Requeue}, nil
 }
 
 // internalServiceURL returns the internal Kubernetes service URL for the instance

@@ -1443,6 +1443,147 @@ data:
 				g.Expect(userRef).To(Equal(operatorUserName))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 		})
+
+		It("should resolve API key from user status with custom secret name", func() {
+			const customSecretUser = "custom-secret-user"
+			const customAPIKeyName = "custom-key"
+			const customSecretName = "my-custom-secret"
+
+			By("creating a secret with custom name")
+			applyYAML(fmt.Sprintf(`
+apiVersion: v1
+kind: Secret
+metadata:
+  name: %s
+  namespace: %s
+stringData:
+  token: custom-api-key-token
+`, customSecretName, userNS))
+
+			By("creating a user with API key referencing the custom secret")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  admin: true
+  email:
+    value: custom@example.local
+  apiKeys:
+  - name: %s
+    description: Custom secret API key
+    secretRef:
+      name: %s
+      key: token
+`, customSecretUser, userNS, customAPIKeyName, customSecretName))
+
+			By("verifying user becomes Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketiduser", customSecretUser, "-n", userNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(output).To(Equal("True"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying user status has API key with custom secret name")
+			Eventually(func(g Gomega) {
+				secretNameInStatus := kubectlGet("pocketiduser", customSecretUser, "-n", userNS,
+					"-o", fmt.Sprintf("jsonpath={.status.apiKeys[?(@.name=='%s')].secretName}", customAPIKeyName))
+				g.Expect(secretNameInStatus).To(Equal(customSecretName))
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("switching instance auth to user with custom secret")
+			patch := fmt.Sprintf(`{"spec":{"auth":{"userRef":{"name":"%s","namespace":"%s"},"apiKeyName":"%s"}}}`,
+				customSecretUser, userNS, customAPIKeyName)
+			cmd := exec.Command("kubectl", "patch", "pocketidinstance", instanceName, "-n", instanceNS, "--type=merge", "-p", patch)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("verifying auth switch completes successfully")
+			Eventually(func(g Gomega) {
+				userRef := kubectlGet("pocketidinstance", instanceName, "-n", instanceNS,
+					"-o", "jsonpath={.status.authUserRef}")
+				apiKeyName := kubectlGet("pocketidinstance", instanceName, "-n", instanceNS,
+					"-o", "jsonpath={.status.authAPIKeyName}")
+				g.Expect(userRef).To(Equal(customSecretUser))
+				g.Expect(apiKeyName).To(Equal(customAPIKeyName))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying instance remains Ready with custom secret")
+			Consistently(func(g Gomega) {
+				ready := kubectlGet("pocketidinstance", instanceName, "-n", instanceNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(ready).To(Equal("True"))
+			}, 30*time.Second, 2*time.Second).Should(Succeed())
+
+			By("switching instance auth back to the operator user")
+			patch = fmt.Sprintf(`{"spec":{"auth":{"userRef":{"name":"%s","namespace":"%s"},"apiKeyName":"%s"}}}`,
+				operatorUserName, userNS, "pocket-id-operator")
+			cmd = exec.Command("kubectl", "patch", "pocketidinstance", instanceName, "-n", instanceNS, "--type=merge", "-p", patch)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should handle API key lookup across different namespaces", func() {
+			const crossNSUser = "cross-namespace-user"
+			const crossNSAPIKey = "cross-ns-key"
+
+			By("creating user in different namespace than instance")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  admin: true
+  email:
+    value: crossns@example.local
+  apiKeys:
+  - name: %s
+    description: Cross-namespace API key
+`, crossNSUser, userNS, crossNSAPIKey))
+
+			By("verifying user becomes Ready in user namespace")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketiduser", crossNSUser, "-n", userNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(output).To(Equal("True"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying API key secret is created in user namespace")
+			Eventually(func(g Gomega) {
+				secretName := fmt.Sprintf("%s-%s-key", crossNSUser, crossNSAPIKey)
+				output := kubectlGet("secret", secretName, "-n", userNS,
+					"-o", "jsonpath={.data.token}")
+				g.Expect(output).NotTo(BeEmpty())
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("switching instance in different namespace to cross-namespace user")
+			patch := fmt.Sprintf(`{"spec":{"auth":{"userRef":{"name":"%s","namespace":"%s"},"apiKeyName":"%s"}}}`,
+				crossNSUser, userNS, crossNSAPIKey)
+			cmd := exec.Command("kubectl", "patch", "pocketidinstance", instanceName, "-n", instanceNS, "--type=merge", "-p", patch)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("verifying instance resolves API key from user's namespace")
+			Eventually(func(g Gomega) {
+				userRef := kubectlGet("pocketidinstance", instanceName, "-n", instanceNS,
+					"-o", "jsonpath={.status.authUserRef}")
+				userNSInStatus := kubectlGet("pocketidinstance", instanceName, "-n", instanceNS,
+					"-o", "jsonpath={.status.authUserNamespace}")
+				g.Expect(userRef).To(Equal(crossNSUser))
+				g.Expect(userNSInStatus).To(Equal(userNS))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("switching instance auth back to the operator user")
+			patch = fmt.Sprintf(`{"spec":{"auth":{"userRef":{"name":"%s","namespace":"%s"},"apiKeyName":"%s"}}}`,
+				operatorUserName, userNS, "pocket-id-operator")
+			cmd = exec.Command("kubectl", "patch", "pocketidinstance", instanceName, "-n", instanceNS, "--type=merge", "-p", patch)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+		})
 	})
 
 	Context("Auth User Finalizer", func() {
