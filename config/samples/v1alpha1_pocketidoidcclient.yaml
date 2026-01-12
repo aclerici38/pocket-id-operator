@@ -6,6 +6,10 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: pocketidoidcclient-sample
 spec:
+  # Optional: Specify a custom OIDC client ID
+  # By default, uses metadata.name as the client ID
+  # clientId: my-custom-client-id
+
   callbackUrls:
     - https://example.com/callback
   logoutCallbackUrls:

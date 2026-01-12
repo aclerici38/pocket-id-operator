@@ -176,7 +176,7 @@ func (r *PocketIDOIDCClientReconciler) reconcileOIDCClient(ctx context.Context, 
 
 	clientID := oidcClient.Status.ClientID
 	if clientID == "" {
-		clientID = oidcClient.Spec.ID
+		clientID = oidcClient.Spec.ClientID
 	}
 	if clientID == "" {
 		clientID = oidcClient.Name
@@ -244,7 +244,7 @@ func (r *PocketIDOIDCClientReconciler) oidcClientInput(oidcClient *pocketidinter
 	isGroupRestricted := len(oidcClient.Spec.AllowedUserGroups) > 0
 
 	return pocketid.OIDCClientInput{
-		ID:                       oidcClient.Spec.ID,
+		ID:                       oidcClient.Spec.ClientID,
 		Name:                     name,
 		CallbackURLs:             oidcClient.Spec.CallbackURLs,
 		LogoutCallbackURLs:       oidcClient.Spec.LogoutCallbackURLs,

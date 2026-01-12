@@ -61,6 +61,12 @@ spec:
                 items:
                   type: string
                 type: array
+              clientId:
+                description: ClientID is the optional OIDC client ID to use instead
+                  of a generated one
+                maxLength: 128
+                minLength: 2
+                type: string
               darkLogoUrl:
                 description: Dark logo URL for the client
                 type: string
@@ -84,12 +90,6 @@ spec:
                       type: string
                   type: object
                 type: array
-              id:
-                description: ID is the optional client ID to use instead of a generated
-                  one
-                maxLength: 128
-                minLength: 2
-                type: string
               instanceSelector:
                 description: |-
                   InstanceSelector selects the PocketIDInstance to reconcile against.

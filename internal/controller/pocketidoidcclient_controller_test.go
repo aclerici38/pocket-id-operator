@@ -487,7 +487,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 					Name: "fallback-name",
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-					ID:                       "client-id",
+					ClientID:                 "client-id",
 					CallbackURLs:             []string{"https://example.com/callback"},
 					LogoutCallbackURLs:       []string{"https://example.com/logout"},
 					LaunchURL:                "https://example.com",
