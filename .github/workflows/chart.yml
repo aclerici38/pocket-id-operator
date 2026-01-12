@@ -99,9 +99,9 @@ jobs:
       - name: Create kind cluster
         run: kind create cluster
 
-      - name: Build operator image
+      - name: Pull operator image
         run: |
-          docker build -t ghcr.io/${{ inputs.repo_owner }}/pocket-id-operator:ci-$(git rev-parse --short HEAD) .
+          docker pull ghcr.io/${{ inputs.repo_owner }}/pocket-id-operator:ci-$(git rev-parse --short HEAD)
 
       - name: Pull Pocket-ID application image
         run: |
@@ -122,6 +122,20 @@ jobs:
             --set instance.spec.encryptionKey.value="test-key-16chars" \
             --wait \
             --timeout 2m
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          echo "=== Manager Pod Logs ==="
+          kubectl logs -n pocket-id-operator-system -l control-plane=controller-manager --tail=100 || true
+          echo "=== PocketIDInstance Status ==="
+          kubectl get pocketidinstance -n pocket-id-operator-system -o yaml || true
+          echo "=== Pocket-ID Pod Logs ==="
+          kubectl logs -n pocket-id-operator-system -l app.kubernetes.io/name=pocket-id --tail=100 || true
+          echo "=== All Resources ==="
+          kubectl get all -n pocket-id-operator-system || true
+          echo "=== Pod Describe ==="
+          kubectl describe pods -n pocket-id-operator-system || true
 
       - name: Verify chart installation
         run: |
