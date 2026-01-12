@@ -22,6 +22,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"maps"
+	"reflect"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -583,6 +584,7 @@ func (r *PocketIDInstanceReconciler) reconcileVolume(ctx context.Context, instan
 			return err
 		}
 
+		// PVC doesn't exist, create it
 		accessModes := instance.Spec.Persistence.AccessModes
 		if len(accessModes) == 0 {
 			accessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
@@ -597,9 +599,17 @@ func (r *PocketIDInstanceReconciler) reconcileVolume(ctx context.Context, instan
 				},
 			},
 		}
+
+		return r.Patch(ctx, pvc, client.Apply, client.FieldOwner("pocket-id-operator"))
 	}
 
-	return r.Patch(ctx, pvc, client.Apply, client.FieldOwner("pocket-id-operator"))
+	// PVC already exists - PVC specs are immutable, only update labels if needed
+	if !reflect.DeepEqual(existing.Labels, pvc.Labels) {
+		existing.Labels = pvc.Labels
+		return r.Update(ctx, existing)
+	}
+
+	return nil
 }
 
 func (r *PocketIDInstanceReconciler) updateStatus(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
