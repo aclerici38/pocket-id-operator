@@ -11,6 +11,9 @@ spec:
     kind: PocketIDUser
     listKind: PocketIDUserList
     plural: pocketidusers
+    shortNames:
+    - piduser
+    - puser
     singular: pocketiduser
   scope: Namespaced
   versions:

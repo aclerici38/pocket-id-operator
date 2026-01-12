@@ -194,6 +194,7 @@ type PocketIDUserStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:shortName=piduser;
 
 // PocketIDUser is the Schema for the pocketidusers API
 type PocketIDUser struct {

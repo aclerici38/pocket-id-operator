@@ -107,6 +107,7 @@ type PocketIDUserGroupStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:shortName=usergroup;
 
 // PocketIDUserGroup is the Schema for the pocketidusergroups API
 type PocketIDUserGroup struct {

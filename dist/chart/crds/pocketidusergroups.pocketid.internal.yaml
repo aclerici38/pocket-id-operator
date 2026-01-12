@@ -10,6 +10,9 @@ spec:
         kind: PocketIDUserGroup
         listKind: PocketIDUserGroupList
         plural: pocketidusergroups
+        shortNames:
+            - pidusergroup
+            - pgroup
         singular: pocketidusergroup
     scope: Namespaced
     versions:

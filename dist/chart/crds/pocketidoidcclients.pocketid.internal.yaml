@@ -10,6 +10,9 @@ spec:
         kind: PocketIDOIDCClient
         listKind: PocketIDOIDCClientList
         plural: pocketidoidcclients
+        shortNames:
+            - oidcclient
+            - oidc
         singular: pocketidoidcclient
     scope: Namespaced
     versions:

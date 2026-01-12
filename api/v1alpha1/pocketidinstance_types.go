@@ -178,6 +178,7 @@ type PocketIDInstanceStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:shortName=pidinstance;
 
 // PocketIDInstance is the Schema for the pocketidinstances API
 type PocketIDInstance struct {

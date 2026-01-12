@@ -19,6 +19,9 @@ spec:
     kind: PocketIDInstance
     listKind: PocketIDInstanceList
     plural: pocketidinstances
+    shortNames:
+    - pidinstance
+    - pinstance
     singular: pocketidinstance
   scope: Namespaced
   versions:
@@ -1443,6 +1446,9 @@ spec:
     kind: PocketIDOIDCClient
     listKind: PocketIDOIDCClientList
     plural: pocketidoidcclients
+    shortNames:
+    - oidcclient
+    - oidc
     singular: pocketidoidcclient
   scope: Namespaced
   versions:
@@ -1770,6 +1776,9 @@ spec:
     kind: PocketIDUserGroup
     listKind: PocketIDUserGroupList
     plural: pocketidusergroups
+    shortNames:
+    - pidusergroup
+    - pgroup
     singular: pocketidusergroup
   scope: Namespaced
   versions:
@@ -2012,6 +2021,9 @@ spec:
     kind: PocketIDUser
     listKind: PocketIDUserList
     plural: pocketidusers
+    shortNames:
+    - piduser
+    - puser
     singular: pocketiduser
   scope: Namespaced
   versions:

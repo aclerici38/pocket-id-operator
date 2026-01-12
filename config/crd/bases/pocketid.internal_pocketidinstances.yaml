@@ -11,6 +11,9 @@ spec:
     kind: PocketIDInstance
     listKind: PocketIDInstanceList
     plural: pocketidinstances
+    shortNames:
+    - pidinstance
+    - pinstance
     singular: pocketidinstance
   scope: Namespaced
   versions:

@@ -224,6 +224,7 @@ type PocketIDOIDCClientStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:shortName=oidcclient;
 
 // PocketIDOIDCClient is the Schema for the pocketidoidcclients API
 type PocketIDOIDCClient struct {
