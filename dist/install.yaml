@@ -57,33 +57,6 @@ spec:
                   External URL Pocket-id can be reached at
                   See the official documentation for APP_URL
                 type: string
-              auth:
-                description: How the operator authenticates with the instance
-                properties:
-                  apiKeyName:
-                    default: pocket-id-operator
-                    description: |-
-                      APIKeyName is the name of the API key to use from the referenced user
-                      If the key exists in PocketIDUser.status.apiKeys, that key will be used
-                      Otherwise the operator will attempt to bootstrap the instance and create a new key
-                    type: string
-                  userRef:
-                    description: |-
-                      UserRef references the PocketIDUser CR to use for authentication
-                      Defaults to "pocket-id-operator" in the PocketIDInstance namespace
-                    properties:
-                      name:
-                        description: Name is the name of the PocketIDUser CR
-                        type: string
-                      namespace:
-                        description: |-
-                          Namespace is the namespace of the PocketIDUser CR
-                          Defaults to the PocketIDInstance namespace
-                        type: string
-                    type: object
-                required:
-                - apiKeyName
-                type: object
               containerSecurityContext:
                 description: Container security context
                 properties:
@@ -424,6 +397,14 @@ spec:
                 - Deployment
                 - StatefulSet
                 type: string
+              disableGlobalRateLimiting:
+                default: false
+                description: |-
+                  DisableGlobalRateLimiting disables the global rate limiting in Pocket-ID
+                  Sets the DISABLE_RATE_LIMITING environment variable
+                  The controller includes its own ratelimiting logic to prevent pocket-id's ratelimiter from triggering
+                  Only use to speed up reconciles
+                type: boolean
               encryptionKey:
                 description: |-
                   Encryption Key
@@ -1376,26 +1357,6 @@ spec:
           status:
             description: status defines the observed state of PocketIDInstance
             properties:
-              authApiKeyName:
-                description: AuthAPIKeyName is the name of the API key being used
-                  for authentication
-                type: string
-              authUserNamespace:
-                description: AuthUserNamespace is the namespace of the PocketIDUser
-                  CR being used for authentication
-                type: string
-              authUserRef:
-                description: AuthUserRef is the name of the PocketIDUser CR being
-                  used for authentication
-                type: string
-              bootstrapped:
-                description: |-
-                  Bootstrapped indicates whether the instance has been bootstrapped
-                  (initial admin user and API key created)
-                type: boolean
-              bootstrappedAt:
-                description: BootstrappedAt is the timestamp when bootstrap completed
-                type: string
               conditions:
                 description: Conditions represent the current state of the Instance
                   resource.
@@ -1457,6 +1418,10 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              staticApiKeySecretName:
+                description: StaticAPIKeySecretName is the name of the secret containing
+                  the STATIC_API_KEY
+                type: string
             type: object
         required:
         - spec
@@ -1891,7 +1856,7 @@ spec:
                     namespace:
                       description: |-
                         Namespace is the namespace of the PocketIDUser CR
-                        Defaults to the PocketIDInstance namespace
+                        Defaults to the referencing resource's namespace
                       type: string
                   type: object
                 type: array

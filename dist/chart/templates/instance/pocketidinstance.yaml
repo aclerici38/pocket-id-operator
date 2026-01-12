@@ -17,12 +17,19 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
+  {{- $specWithoutSpecial := omit .Values.instance.spec "env" "encryptionKey" }}
+  {{- toYaml $specWithoutSpecial | nindent 2 }}
+  {{- if .Values.instance.spec.encryptionKey }}
+  encryptionKey:
+    {{- if .Values.instance.spec.encryptionKey.value }}
+    value: {{ .Values.instance.spec.encryptionKey.value | quote }}
+    {{- else if .Values.instance.spec.encryptionKey.valueFrom }}
+    valueFrom:
+      {{- toYaml .Values.instance.spec.encryptionKey.valueFrom | nindent 6 }}
+    {{- end }}
+  {{- end }}
   {{- if .Values.instance.spec.env }}
-  {{- $specWithoutEnv := omit .Values.instance.spec "env" }}
-  {{- toYaml $specWithoutEnv | nindent 2 }}
   env:
     {{- include "instance.stringifyEnv" .Values.instance.spec.env | nindent 4 }}
-  {{- else }}
-  {{- toYaml .Values.instance.spec | nindent 2 }}
   {{- end }}
 {{- end }}
