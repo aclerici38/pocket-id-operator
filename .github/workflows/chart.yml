@@ -99,6 +99,19 @@ jobs:
       - name: Create kind cluster
         run: kind create cluster
 
+      - name: Build operator image
+        run: |
+          docker build -t ghcr.io/${{ inputs.repo_owner }}/pocket-id-operator:ci-$(git rev-parse --short HEAD) .
+
+      - name: Pull Pocket-ID application image
+        run: |
+          docker pull ghcr.io/pocket-id/pocket-id:latest
+
+      - name: Load images into kind
+        run: |
+          kind load docker-image ghcr.io/${{ inputs.repo_owner }}/pocket-id-operator:ci-$(git rev-parse --short HEAD)
+          kind load docker-image ghcr.io/pocket-id/pocket-id:latest
+
       - name: Test chart installation
         run: |
           helm install test-release dist/chart-packages/*.tgz \
