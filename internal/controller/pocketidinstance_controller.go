@@ -584,7 +584,7 @@ func (r *PocketIDInstanceReconciler) reconcileVolume(ctx context.Context, instan
 			return err
 		}
 
-		// PVC doesn't exist, create it
+		// PVC doesn't exist
 		accessModes := instance.Spec.Persistence.AccessModes
 		if len(accessModes) == 0 {
 			accessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
@@ -603,7 +603,7 @@ func (r *PocketIDInstanceReconciler) reconcileVolume(ctx context.Context, instan
 		return r.Patch(ctx, pvc, client.Apply, client.FieldOwner("pocket-id-operator"))
 	}
 
-	// PVC already exists - PVC specs are immutable, only update labels if needed
+	// PVC already exists: only update labels if needed
 	if !reflect.DeepEqual(existing.Labels, pvc.Labels) {
 		existing.Labels = pvc.Labels
 		return r.Update(ctx, existing)
