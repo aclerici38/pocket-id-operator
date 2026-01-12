@@ -166,6 +166,10 @@ spec:
                                     keys:
                                         description: Keys allows customization of the secret keys for each credential field.
                                         properties:
+                                            authorizationUrl:
+                                                default: authorization_url
+                                                description: AuthorizationURL is the key name for the OIDC authorization endpoint URL.
+                                                type: string
                                             callbackUrls:
                                                 default: callback_urls
                                                 description: CallbackURLs is the key name for the callback URLs.
@@ -178,13 +182,33 @@ spec:
                                                 default: client_secret
                                                 description: ClientSecret is the key name for the OIDC client secret.
                                                 type: string
+                                            discoveryUrl:
+                                                default: discovery_url
+                                                description: DiscoveryURL is the key name for the OIDC discovery URL.
+                                                type: string
+                                            endSessionUrl:
+                                                default: end_session_url
+                                                description: EndSessionURL is the key name for the OIDC end session (logout) endpoint URL.
+                                                type: string
                                             issuerUrl:
                                                 default: issuer_url
                                                 description: IssuerURL is the key name for the OIDC issuer URL.
                                                 type: string
+                                            jwksUrl:
+                                                default: jwks_url
+                                                description: JwksURL is the key name for the OIDC JWKS (JSON Web Key Set) endpoint URL.
+                                                type: string
                                             logoutCallbackUrls:
                                                 default: logout_callback_urls
                                                 description: LogoutCallbackURLs is the key name for the logout callback URLs.
+                                                type: string
+                                            tokenUrl:
+                                                default: token_url
+                                                description: TokenURL is the key name for the OIDC token endpoint URL.
+                                                type: string
+                                            userinfoUrl:
+                                                default: userinfo_url
+                                                description: UserinfoURL is the key name for the OIDC userinfo endpoint URL.
                                                 type: string
                                         type: object
                                     name:

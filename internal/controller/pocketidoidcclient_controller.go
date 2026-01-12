@@ -376,6 +376,16 @@ func (r *PocketIDOIDCClientReconciler) reconcileSecret(ctx context.Context, oidc
 		secretData[keys.LogoutCallbackURLs] = logoutCallbackURLsJSON
 	}
 
+	if instance.Spec.AppURL != "" {
+		baseURL := instance.Spec.AppURL
+		secretData[keys.DiscoveryURL] = []byte(baseURL + "/.well-known/openid-configuration")
+		secretData[keys.AuthorizationURL] = []byte(baseURL + "/authorize")
+		secretData[keys.TokenURL] = []byte(baseURL + "/api/oidc/token")
+		secretData[keys.UserinfoURL] = []byte(baseURL + "/api/oidc/userinfo")
+		secretData[keys.JwksURL] = []byte(baseURL + "/.well-known/jwks.json")
+		secretData[keys.EndSessionURL] = []byte(baseURL + "/api/oidc/end-session")
+	}
+
 	// Create or update the secret
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -417,6 +427,12 @@ func (r *PocketIDOIDCClientReconciler) getSecretKeys(oidcClient *pocketidinterna
 		IssuerURL:          "issuer_url",
 		CallbackURLs:       "callback_urls",
 		LogoutCallbackURLs: "logout_callback_urls",
+		DiscoveryURL:       "discovery_url",
+		AuthorizationURL:   "authorization_url",
+		TokenURL:           "token_url",
+		UserinfoURL:        "userinfo_url",
+		JwksURL:            "jwks_url",
+		EndSessionURL:      "end_session_url",
 	}
 
 	if oidcClient.Spec.Secret == nil || oidcClient.Spec.Secret.Keys == nil {
@@ -439,6 +455,24 @@ func (r *PocketIDOIDCClientReconciler) getSecretKeys(oidcClient *pocketidinterna
 	}
 	if keys.LogoutCallbackURLs == "" {
 		keys.LogoutCallbackURLs = defaults.LogoutCallbackURLs
+	}
+	if keys.DiscoveryURL == "" {
+		keys.DiscoveryURL = defaults.DiscoveryURL
+	}
+	if keys.AuthorizationURL == "" {
+		keys.AuthorizationURL = defaults.AuthorizationURL
+	}
+	if keys.TokenURL == "" {
+		keys.TokenURL = defaults.TokenURL
+	}
+	if keys.UserinfoURL == "" {
+		keys.UserinfoURL = defaults.UserinfoURL
+	}
+	if keys.JwksURL == "" {
+		keys.JwksURL = defaults.JwksURL
+	}
+	if keys.EndSessionURL == "" {
+		keys.EndSessionURL = defaults.EndSessionURL
 	}
 
 	return keys

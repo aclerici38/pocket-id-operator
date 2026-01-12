@@ -98,6 +98,36 @@ type OIDCClientSecretKeys struct {
 	// +kubebuilder:default="logout_callback_urls"
 	// +optional
 	LogoutCallbackURLs string `json:"logoutCallbackUrls,omitempty"`
+
+	// DiscoveryURL is the key name for the OIDC discovery URL.
+	// +kubebuilder:default="discovery_url"
+	// +optional
+	DiscoveryURL string `json:"discoveryUrl,omitempty"`
+
+	// AuthorizationURL is the key name for the OIDC authorization endpoint URL.
+	// +kubebuilder:default="authorization_url"
+	// +optional
+	AuthorizationURL string `json:"authorizationUrl,omitempty"`
+
+	// TokenURL is the key name for the OIDC token endpoint URL.
+	// +kubebuilder:default="token_url"
+	// +optional
+	TokenURL string `json:"tokenUrl,omitempty"`
+
+	// UserinfoURL is the key name for the OIDC userinfo endpoint URL.
+	// +kubebuilder:default="userinfo_url"
+	// +optional
+	UserinfoURL string `json:"userinfoUrl,omitempty"`
+
+	// JwksURL is the key name for the OIDC JWKS (JSON Web Key Set) endpoint URL.
+	// +kubebuilder:default="jwks_url"
+	// +optional
+	JwksURL string `json:"jwksUrl,omitempty"`
+
+	// EndSessionURL is the key name for the OIDC end session (logout) endpoint URL.
+	// +kubebuilder:default="end_session_url"
+	// +optional
+	EndSessionURL string `json:"endSessionUrl,omitempty"`
 }
 
 // PocketIDOIDCClientSpec defines the desired state of PocketIDOIDCClient
