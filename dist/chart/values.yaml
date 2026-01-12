@@ -140,7 +140,7 @@ users: []
   #       #   key: api-key
   #
   # Example using userInfoSecretRef (references secret with default keys):
-  # Secret should contain keys: username, firstName, lastName, email, displayName
+  # Secret can contain keys: username, firstName, lastName, email, displayName
   # - name: secret-user
   #   spec:
   #     admin: false

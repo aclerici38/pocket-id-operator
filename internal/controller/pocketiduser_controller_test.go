@@ -637,4 +637,255 @@ var _ = Describe("PocketIDUser Controller", func() {
 			Expect(updatedUser.Spec.Admin).To(BeTrue())
 		})
 	})
+
+	Context("When creating a PocketIDUser with userInfoSecretRef", func() {
+		const userName = "test-user-userinfo-secret"
+		const secretName = "user-info-secret"
+
+		var user *pocketidinternalv1alpha1.PocketIDUser
+		var secret *corev1.Secret
+
+		BeforeEach(func() {
+			// Create secret with all user fields
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      secretName,
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"username":    []byte("secretuser"),
+					"firstName":   []byte("Secret"),
+					"lastName":    []byte("User"),
+					"email":       []byte("secret@example.com"),
+					"displayName": []byte("Secret User Display"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			user = &pocketidinternalv1alpha1.PocketIDUser{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      userName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDUserSpec{
+					UserInfoSecretRef: &corev1.LocalObjectReference{
+						Name: secretName,
+					},
+					Admin: false,
+				},
+			}
+			Expect(k8sClient.Create(ctx, user)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if user != nil {
+				_ = k8sClient.Delete(ctx, user)
+			}
+			if secret != nil {
+				_ = k8sClient.Delete(ctx, secret)
+			}
+		})
+
+		It("Should create the PocketIDUser resource", func() {
+			createdUser := &pocketidinternalv1alpha1.PocketIDUser{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      userName,
+					Namespace: namespace,
+				}, createdUser)
+			}, timeout, interval).Should(Succeed())
+
+			Expect(createdUser.Spec.UserInfoSecretRef.Name).To(Equal(secretName))
+		})
+	})
+
+	Context("When creating a PocketIDUser with partial userInfoSecretRef", func() {
+		const userName = "test-user-partial-secret"
+		const secretName = "partial-user-secret"
+
+		var user *pocketidinternalv1alpha1.PocketIDUser
+		var secret *corev1.Secret
+
+		BeforeEach(func() {
+			// Create secret with only some fields - missing username and displayName
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      secretName,
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"firstName": []byte("Partial"),
+					"lastName":  []byte("User"),
+					"email":     []byte("partial@example.com"),
+					// username and displayName are intentionally missing
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			user = &pocketidinternalv1alpha1.PocketIDUser{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      userName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDUserSpec{
+					UserInfoSecretRef: &corev1.LocalObjectReference{
+						Name: secretName,
+					},
+					Admin: false,
+				},
+			}
+			Expect(k8sClient.Create(ctx, user)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if user != nil {
+				_ = k8sClient.Delete(ctx, user)
+			}
+			if secret != nil {
+				_ = k8sClient.Delete(ctx, secret)
+			}
+		})
+
+		It("Should create the PocketIDUser with defaults for missing fields", func() {
+			createdUser := &pocketidinternalv1alpha1.PocketIDUser{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      userName,
+					Namespace: namespace,
+				}, createdUser)
+			}, timeout, interval).Should(Succeed())
+
+			// Should use the secret for fields that exist
+			Expect(createdUser.Spec.UserInfoSecretRef.Name).To(Equal(secretName))
+			// Note: We can't directly test the resolved values here since they're
+			// resolved during reconciliation, but the controller should not error
+		})
+	})
+
+	Context("When creating a PocketIDUser with userInfoSecretRef and explicit overrides", func() {
+		const userName = "test-user-override"
+		const secretName = "base-user-secret"
+
+		var user *pocketidinternalv1alpha1.PocketIDUser
+		var secret *corev1.Secret
+
+		BeforeEach(func() {
+			// Create secret with base values
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      secretName,
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"username":  []byte("secretuser"),
+					"firstName": []byte("Secret"),
+					"lastName":  []byte("User"),
+					"email":     []byte("secret@example.com"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			user = &pocketidinternalv1alpha1.PocketIDUser{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      userName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDUserSpec{
+					UserInfoSecretRef: &corev1.LocalObjectReference{
+						Name: secretName,
+					},
+					// Override firstName with explicit value
+					FirstName: pocketidinternalv1alpha1.StringValue{
+						Value: "Override",
+					},
+					Admin: true,
+				},
+			}
+			Expect(k8sClient.Create(ctx, user)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if user != nil {
+				_ = k8sClient.Delete(ctx, user)
+			}
+			if secret != nil {
+				_ = k8sClient.Delete(ctx, secret)
+			}
+		})
+
+		It("Should use explicit value over secret value", func() {
+			createdUser := &pocketidinternalv1alpha1.PocketIDUser{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      userName,
+					Namespace: namespace,
+				}, createdUser)
+			}, timeout, interval).Should(Succeed())
+
+			// Explicit firstName should override the secret value
+			Expect(createdUser.Spec.FirstName.Value).To(Equal("Override"))
+			Expect(createdUser.Spec.UserInfoSecretRef.Name).To(Equal(secretName))
+		})
+	})
+
+	Context("When creating a PocketIDUser with empty userInfoSecretRef", func() {
+		const userName = "test-user-empty-secret"
+		const secretName = "empty-user-secret"
+
+		var user *pocketidinternalv1alpha1.PocketIDUser
+		var secret *corev1.Secret
+
+		BeforeEach(func() {
+			// Create secret with empty values
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      secretName,
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"username":  []byte(""),
+					"firstName": []byte(""),
+					"lastName":  []byte(""),
+					"email":     []byte(""),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			user = &pocketidinternalv1alpha1.PocketIDUser{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      userName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDUserSpec{
+					UserInfoSecretRef: &corev1.LocalObjectReference{
+						Name: secretName,
+					},
+					Admin: false,
+				},
+			}
+			Expect(k8sClient.Create(ctx, user)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if user != nil {
+				_ = k8sClient.Delete(ctx, user)
+			}
+			if secret != nil {
+				_ = k8sClient.Delete(ctx, secret)
+			}
+		})
+
+		It("Should create the PocketIDUser with defaults for empty values", func() {
+			createdUser := &pocketidinternalv1alpha1.PocketIDUser{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      userName,
+					Namespace: namespace,
+				}, createdUser)
+			}, timeout, interval).Should(Succeed())
+
+			Expect(createdUser.Spec.UserInfoSecretRef.Name).To(Equal(secretName))
+			// Controller should apply defaults for empty values
+		})
+	})
 })

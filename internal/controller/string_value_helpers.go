@@ -33,13 +33,15 @@ func ResolveStringValue(
 	}
 
 	// Case 2: Value from secret reference (user-provided, use APIReader)
+	// This is an explicit reference, so missing keys should error
 	if sv.ValueFrom != nil {
-		return getSecretValue(ctx, c, apiReader, namespace, sv.ValueFrom.Name, sv.ValueFrom.Key)
+		return getSecretValue(ctx, c, apiReader, namespace, sv.ValueFrom.Name, sv.ValueFrom.Key, false)
 	}
 
 	// Case 3: Fallback secret (user-provided, use APIReader)
+	// This is a convenience fallback, so missing keys should return empty string
 	if fallbackSecretName != "" && fallbackKey != "" {
-		return getSecretValue(ctx, c, apiReader, namespace, fallbackSecretName, fallbackKey)
+		return getSecretValue(ctx, c, apiReader, namespace, fallbackSecretName, fallbackKey, true)
 	}
 
 	// No value found
@@ -47,6 +49,7 @@ func ResolveStringValue(
 }
 
 // getSecretValue retrieves a value from a secret, preferring apiReader for fresh reads
+// If optional is true, missing keys return an empty string rather than an error
 func getSecretValue(
 	ctx context.Context,
 	c client.Client,
@@ -54,6 +57,7 @@ func getSecretValue(
 	namespace string,
 	secretName string,
 	key string,
+	optional bool,
 ) (string, error) {
 	// Use APIReader for direct reads if available, otherwise use cached client
 	reader := apiReader
@@ -68,6 +72,10 @@ func getSecretValue(
 
 	val, ok := secret.Data[key]
 	if !ok {
+		if optional {
+			// For optional keys (fallback secrets), return empty string to trigger defaults
+			return "", nil
+		}
 		return "", fmt.Errorf("secret %s missing key %s", secretName, key)
 	}
 

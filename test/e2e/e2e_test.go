@@ -527,6 +527,113 @@ spec:
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 		})
 
+		It("should handle partial userInfoSecretRef and apply defaults for missing keys", func() {
+			const userName = "test-partial-secret-user"
+			const secretName = "partial-user-info"
+
+			By("creating a secret with only some user fields")
+			applyYAML(fmt.Sprintf(`
+apiVersion: v1
+kind: Secret
+metadata:
+  name: %s
+  namespace: %s
+type: Opaque
+stringData:
+  firstName: Partial
+  lastName: User
+  email: partial@example.com
+  # username and displayName are intentionally missing
+`, secretName, userNS))
+
+			By("creating a user referencing the partial secret")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  userInfoSecretRef:
+    name: %s
+`, userName, userNS, secretName))
+
+			By("verifying user becomes Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketiduser", userName, "-n", userNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(output).To(Equal("True"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying output secret reflects secret values and defaults for missing keys")
+			Eventually(func(g Gomega) {
+				outSecret := kubectlGet("pocketiduser", userName, "-n", userNS,
+					"-o", "jsonpath={.status.userInfoSecretName}")
+				g.Expect(outSecret).To(Equal(userName + "-user-data"))
+
+				// Values from secret
+				g.Expect(kubectlGetSecretData(outSecret, userNS, "firstName")).To(Equal("Partial"))
+				g.Expect(kubectlGetSecretData(outSecret, userNS, "lastName")).To(Equal("User"))
+				g.Expect(kubectlGetSecretData(outSecret, userNS, "email")).To(Equal("partial@example.com"))
+
+				// Default values for missing keys
+				g.Expect(kubectlGetSecretData(outSecret, userNS, "username")).To(Equal(userName))
+				g.Expect(kubectlGetSecretData(outSecret, userNS, "displayName")).To(Equal("Partial User"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+
+		It("should handle empty userInfoSecretRef keys and apply defaults", func() {
+			const userName = "test-empty-secret-user"
+			const secretName = "empty-user-info"
+
+			By("creating a secret with empty string values")
+			applyYAML(fmt.Sprintf(`
+apiVersion: v1
+kind: Secret
+metadata:
+  name: %s
+  namespace: %s
+type: Opaque
+stringData:
+  username: ""
+  firstName: ""
+  lastName: ""
+  email: ""
+  displayName: ""
+`, secretName, userNS))
+
+			By("creating a user referencing the empty secret")
+			applyYAML(fmt.Sprintf(`
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  userInfoSecretRef:
+    name: %s
+`, userName, userNS, secretName))
+
+			By("verifying user becomes Ready")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketiduser", userName, "-n", userNS,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				g.Expect(output).To(Equal("True"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying output secret has defaults for all empty values")
+			Eventually(func(g Gomega) {
+				outSecret := kubectlGet("pocketiduser", userName, "-n", userNS,
+					"-o", "jsonpath={.status.userInfoSecretName}")
+				g.Expect(outSecret).To(Equal(userName + "-user-data"))
+
+				// All should get defaults since secret values are empty
+				g.Expect(kubectlGetSecretData(outSecret, userNS, "username")).To(Equal(userName))
+				g.Expect(kubectlGetSecretData(outSecret, userNS, "firstName")).To(Equal(userName))
+				g.Expect(kubectlGetSecretData(outSecret, userNS, "email")).To(Equal(userName + "@placeholder.local"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+
 		It("should create a user with API key and store token in secret", func() {
 			const userName = "test-apikey-user"
 			const apiKeyName = "my-api-key"
