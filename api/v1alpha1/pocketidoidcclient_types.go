@@ -57,7 +57,7 @@ type OIDCClientFederatedIdentity struct {
 // OIDCClientSecretSpec defines how credentials should be stored in a Secret.
 type OIDCClientSecretSpec struct {
 	// Enabled controls whether to create a secret with OIDC client credentials.
-	// If false, no secret will be created.
+	// If false, no secret will be created. Defaults to true
 	// +kubebuilder:default=true
 	// +optional
 	Enabled *bool `json:"enabled,omitempty"`
@@ -75,56 +75,67 @@ type OIDCClientSecretSpec struct {
 // OIDCClientSecretKeys defines customizable keys for secret data fields.
 type OIDCClientSecretKeys struct {
 	// ClientID is the key name for the OIDC client ID.
+	// Defaults to client_id
 	// +kubebuilder:default="client_id"
 	// +optional
 	ClientID string `json:"clientId,omitempty"`
 
 	// ClientSecret is the key name for the OIDC client secret.
 	// +kubebuilder:default="client_secret"
+	// Defaults to client_secret
 	// +optional
 	ClientSecret string `json:"clientSecret,omitempty"`
 
 	// IssuerURL is the key name for the OIDC issuer URL.
+	// Defaults to issuer_url
 	// +kubebuilder:default="issuer_url"
 	// +optional
 	IssuerURL string `json:"issuerUrl,omitempty"`
 
 	// CallbackURLs is the key name for the callback URLs.
+	// Defaults to callback_urls
 	// +kubebuilder:default="callback_urls"
 	// +optional
 	CallbackURLs string `json:"callbackUrls,omitempty"`
 
 	// LogoutCallbackURLs is the key name for the logout callback URLs.
+	// Defaults to logout_callback_urls
 	// +kubebuilder:default="logout_callback_urls"
 	// +optional
 	LogoutCallbackURLs string `json:"logoutCallbackUrls,omitempty"`
 
 	// DiscoveryURL is the key name for the OIDC discovery URL.
+	// Defaults to discovery_url
 	// +kubebuilder:default="discovery_url"
 	// +optional
 	DiscoveryURL string `json:"discoveryUrl,omitempty"`
 
 	// AuthorizationURL is the key name for the OIDC authorization endpoint URL.
+	// Defaults to authorization_url
 	// +kubebuilder:default="authorization_url"
 	// +optional
 	AuthorizationURL string `json:"authorizationUrl,omitempty"`
 
 	// TokenURL is the key name for the OIDC token endpoint URL.
+	// Defaults to token_url
 	// +kubebuilder:default="token_url"
 	// +optional
 	TokenURL string `json:"tokenUrl,omitempty"`
 
 	// UserinfoURL is the key name for the OIDC userinfo endpoint URL.
+	// Defaults to userinfo_url
 	// +kubebuilder:default="userinfo_url"
 	// +optional
 	UserinfoURL string `json:"userinfoUrl,omitempty"`
 
 	// JwksURL is the key name for the OIDC JWKS (JSON Web Key Set) endpoint URL.
+	// Defaults to jwks_url
 	// +kubebuilder:default="jwks_url"
 	// +optional
 	JwksURL string `json:"jwksUrl,omitempty"`
 
 	// EndSessionURL is the key name for the OIDC end session (logout) endpoint URL.
+	// Defaults to end_session_url
 	// +kubebuilder:default="end_session_url"
 	// +optional
 	EndSessionURL string `json:"endSessionUrl,omitempty"`
@@ -144,6 +155,7 @@ type PocketIDOIDCClientSpec struct {
 	ClientID string `json:"clientId,omitempty"`
 
 	// Callback URLs for the client
+	// Note: a feature of pocket-id is to autosave the callback URL based on the url params passed by the client.
 	// +optional
 	CallbackURLs []string `json:"callbackUrls,omitempty"`
 

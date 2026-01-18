@@ -34,6 +34,18 @@ type CustomClaim struct {
 	Value string `json:"value"`
 }
 
+// UserReference references a PocketIDUser by name and namespace.
+type UserReference struct {
+	// Name is the name of the PocketIDUser CR
+	// +optional
+	Name string `json:"name,omitempty"`
+
+	// Namespace is the namespace of the PocketIDUser CR
+	// Defaults to the referencing resource's namespace
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+}
+
 // PocketIDUserGroupSpec defines the desired state of PocketIDUserGroup
 type PocketIDUserGroupSpec struct {
 	// InstanceSelector selects the PocketIDInstance to reconcile against.
@@ -57,9 +69,9 @@ type PocketIDUserGroupSpec struct {
 	// +optional
 	CustomClaims []CustomClaim `json:"customClaims,omitempty"`
 
-	// UserRefs are PocketIDUser resources to add to this group
+	// UserRefs are PocketIDUser custom resources to add to this group
 	// +optional
-	UserRefs []NamespacedUserReference `json:"userRefs,omitempty"`
+	UserRefs []UserReference `json:"userRefs,omitempty"`
 }
 
 // PocketIDUserGroupStatus defines the observed state of PocketIDUserGroup.

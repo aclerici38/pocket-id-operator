@@ -62,18 +62,6 @@ type PersistenceConfig struct {
 	AccessModes []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
 }
 
-// NamespacedUserReference references a PocketIDUser by name and namespace.
-type NamespacedUserReference struct {
-	// Name is the name of the PocketIDUser CR
-	// +optional
-	Name string `json:"name,omitempty"`
-
-	// Namespace is the namespace of the PocketIDUser CR
-	// Defaults to the referencing resource's namespace
-	// +optional
-	Namespace string `json:"namespace,omitempty"`
-}
-
 // PocketIDInstanceSpec defines the desired state of PocketIDInstance
 // +kubebuilder:validation:XValidation:rule="self.deploymentType == oldSelf.deploymentType",message="deploymentType is immutable"
 type PocketIDInstanceSpec struct {
@@ -95,14 +83,14 @@ type PocketIDInstanceSpec struct {
 
 	// Encryption Key
 	// Required since Pocket-ID v2
-	// See the official documentation for ENCRYPTION_KEY
+	// See the official documentation for ENCRYPTION_KEY environment variable
 	// +kubebuilder:validation:Required
 	EncryptionKey EnvValue `json:"encryptionKey"`
 
 	// URL to access database at
 	// See the official documentation for DB_CONNECTION_STRING
 	// For sqlite only add the filepath e.g. "/app/data/pocket-id.db"
-	// Uses application default if empty
+	// Uses application default (/app/data/pocket-id.db) if empty
 	// +optional
 	DatabaseUrl *EnvValue `json:"databaseUrl,omitempty"`
 
@@ -117,7 +105,7 @@ type PocketIDInstanceSpec struct {
 	Env []corev1.EnvVar `json:"env,omitempty"`
 
 	// Configures persistence for Pocket-ID
-	// Pocket-ID can be run statelessly if using Postgres as a file and db backend
+	// Note: Pocket-ID can be run statelessly if using Postgres as a file and db backend
 	// If not enabled mounts an emptydir instead
 	Persistence PersistenceConfig `json:"persistence,omitempty"`
 
@@ -156,7 +144,7 @@ type PocketIDInstanceSpec struct {
 
 	// DisableGlobalRateLimiting disables the global rate limiting in Pocket-ID
 	// Sets the DISABLE_RATE_LIMITING environment variable
-	// The controller includes its own ratelimiting logic to prevent pocket-id's ratelimiter from triggering
+	// This controller includes its own ratelimiting logic to prevent pocket-id's ratelimiter from triggering
 	// Only use to speed up reconciles
 	// +kubebuilder:default=false
 	// +optional

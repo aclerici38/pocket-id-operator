@@ -97,7 +97,7 @@ type PocketIDUserSpec struct {
 
 	// First name of the user
 	// Can be a plain value or reference a secret
-	// Defaults to name of the Resource
+	// Defaults to metadata.name of the Resource
 	// +optional
 	FirstName StringValue `json:"firstName,omitempty"`
 
@@ -108,11 +108,12 @@ type PocketIDUserSpec struct {
 
 	// Email of the user
 	// Can be a plain value or reference a secret
+	// Required unless email is disabled in pocket-id
 	// +optional
 	Email StringValue `json:"email,omitempty"`
 
 	// DisplayName of the user
-	// Defaults to "FirstName LastName"
+	// Defaults to "spec.FirstName spec.LastName"
 	// +optional
 	DisplayName StringValue `json:"displayName,omitempty"`
 
