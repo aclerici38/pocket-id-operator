@@ -121,8 +121,8 @@ spec:
                 description: UserRefs are PocketIDUser custom resources to add to
                   this group
                 items:
-                  description: UserReference references a PocketIDUser by name and
-                    namespace.
+                  description: NamespacedUserReference references a PocketIDUser by
+                    name and namespace.
                   properties:
                     name:
                       description: Name is the name of the PocketIDUser CR
