@@ -1,29 +1,13 @@
 //go:build e2e
 // +build e2e
 
-/*
-Copyright 2026.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package e2e
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,29 +33,25 @@ func TestE2E(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	projectImage = resolveProjectImage()
-	var (
-		cmd *exec.Cmd
-		err error
-	)
 
 	By("building the operator image")
 	if os.Getenv("IMG") == "" {
-		cmd = exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
-		_, err = utils.Run(cmd)
+		cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
+		_, err := utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to build operator image")
 	} else {
 		By("skipping build because IMG is set")
 	}
 
 	By("loading the operator image into Kind")
-	err = utils.LoadImageToKindClusterWithName(projectImage)
+	err := utils.LoadImageToKindClusterWithName(projectImage)
 	Expect(err).NotTo(HaveOccurred(), "Failed to load operator image into Kind")
 
 	By("cleaning up any resources from previous runs")
 	cleanupAllResources()
 
 	By("installing CRDs")
-	cmd = exec.Command("make", "install")
+	cmd := exec.Command("make", "install")
 	_, err = utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
 
@@ -88,10 +68,39 @@ var _ = BeforeSuite(func() {
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(output).To(Equal("1"))
 	}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+	By("creating test namespaces")
+	createNamespace(instanceNS)
+	createNamespace(userNS)
+
+	By("creating encryption key secret")
+	applyYAML(createSecretYAML("pocket-id-encryption", instanceNS, map[string]string{
+		"key": "e2e-test-encryption-key-32chars!",
+	}))
+
+	By("creating the shared e2e instance")
+	createInstance(InstanceOptions{
+		DisableGlobalRateLimiting: boolPtr(true),
+	})
+
+	By("waiting for the shared instance to be Ready")
+	Eventually(func(g Gomega) {
+		output := kubectlGet("pocketidinstance", instanceName, "-n", instanceNS,
+			"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+		g.Expect(output).To(Equal("True"))
+	}, 5*time.Minute, 5*time.Second).Should(Succeed())
 })
 
 var _ = AfterSuite(func() {
-	By("cleaning up all test resources")
+	By("cleaning up test namespace resources")
+	removeFinalizers(userNS)
+	removeFinalizers(instanceNS)
+
+	By("deleting test namespaces")
+	deleteNamespace(userNS)
+	deleteNamespace(instanceNS)
+
+	By("cleaning up all resources")
 	cleanupAllResources()
 
 	By("undeploying the operator")
@@ -103,123 +112,57 @@ var _ = AfterSuite(func() {
 	_, _ = utils.Run(cmd)
 })
 
-func cleanupAllResources() {
-	// Remove finalizers from all PocketIDUsers first
-	cmd := exec.Command("kubectl", "get", "pocketidusers", "-A",
-		"-o", "jsonpath={range .items[*]}{.metadata.namespace}/{.metadata.name}{\"\\n\"}{end}")
-	if output, err := utils.Run(cmd); err == nil && output != "" {
-		for _, item := range utils.GetNonEmptyLines(output) {
-			parts := splitNamespacedName(item)
-			if len(parts) == 2 {
-				patchCmd := exec.Command("kubectl", "patch", "pocketiduser", parts[1],
-					"-n", parts[0], "--type=merge", "-p", `{"metadata":{"finalizers":null}}`)
-				_, _ = utils.Run(patchCmd)
-			}
-		}
-	}
-
-	// Remove finalizers from all PocketIDUserGroups
-	cmd = exec.Command("kubectl", "get", "pocketidusergroups", "-A",
-		"-o", "jsonpath={range .items[*]}{.metadata.namespace}/{.metadata.name}{\"\\n\"}{end}")
-	if output, err := utils.Run(cmd); err == nil && output != "" {
-		for _, item := range utils.GetNonEmptyLines(output) {
-			parts := splitNamespacedName(item)
-			if len(parts) == 2 {
-				patchCmd := exec.Command("kubectl", "patch", "pocketidusergroup", parts[1],
-					"-n", parts[0], "--type=merge", "-p", `{"metadata":{"finalizers":null}}`)
-				_, _ = utils.Run(patchCmd)
-			}
-		}
-	}
-
-	// Remove finalizers from all PocketIDOIDCClients
-	cmd = exec.Command("kubectl", "get", "pocketidoidcclients", "-A",
-		"-o", "jsonpath={range .items[*]}{.metadata.namespace}/{.metadata.name}{\"\\n\"}{end}")
-	if output, err := utils.Run(cmd); err == nil && output != "" {
-		for _, item := range utils.GetNonEmptyLines(output) {
-			parts := splitNamespacedName(item)
-			if len(parts) == 2 {
-				patchCmd := exec.Command("kubectl", "patch", "pocketidoidcclient", parts[1],
-					"-n", parts[0], "--type=merge", "-p", `{"metadata":{"finalizers":null}}`)
-				_, _ = utils.Run(patchCmd)
-			}
-		}
-	}
-
-	// Remove finalizers from all PocketIDInstances
-	cmd = exec.Command("kubectl", "get", "pocketidinstances", "-A",
-		"-o", "jsonpath={range .items[*]}{.metadata.namespace}/{.metadata.name}{\"\\n\"}{end}")
-	if output, err := utils.Run(cmd); err == nil && output != "" {
-		for _, item := range utils.GetNonEmptyLines(output) {
-			parts := splitNamespacedName(item)
-			if len(parts) == 2 {
-				patchCmd := exec.Command("kubectl", "patch", "pocketidinstance", parts[1],
-					"-n", parts[0], "--type=merge", "-p", `{"metadata":{"finalizers":null}}`)
-				_, _ = utils.Run(patchCmd)
-			}
-		}
-	}
-
-	// Delete all PocketIDUsers
-	cmd = exec.Command("kubectl", "delete", "pocketidusers", "--all", "-A",
-		"--ignore-not-found", "--wait=true", "--timeout=30s")
-	_, _ = utils.Run(cmd)
-
-	// Delete all PocketIDUserGroups
-	cmd = exec.Command("kubectl", "delete", "pocketidusergroups", "--all", "-A",
-		"--ignore-not-found", "--wait=true", "--timeout=30s")
-	_, _ = utils.Run(cmd)
-
-	// Delete all PocketIDOIDCClients
-	cmd = exec.Command("kubectl", "delete", "pocketidoidcclients", "--all", "-A",
-		"--ignore-not-found", "--wait=true", "--timeout=30s")
-	_, _ = utils.Run(cmd)
-
-	// Delete all PocketIDInstances
-	cmd = exec.Command("kubectl", "delete", "pocketidinstances", "--all", "-A",
-		"--ignore-not-found", "--wait=true", "--timeout=30s")
-	_, _ = utils.Run(cmd)
-
-	// Also delete any test namespaces from previous runs
-	cmd = exec.Command("kubectl", "delete", "ns", "pocket-id-e2e-test",
-		"--ignore-not-found", "--timeout=30s")
-	_, _ = utils.Run(cmd)
-}
-
 func resolveProjectImage() string {
 	if img := os.Getenv("IMG"); img != "" {
 		return img
 	}
-
 	return defaultProjectImage
 }
 
-func splitNamespacedName(s string) []string {
-	var parts []string
-	for i := 0; i < len(s); i++ {
-		if s[i] == '/' {
-			parts = append(parts, s[:i])
-			parts = append(parts, s[i+1:])
-			return parts
+func createNamespace(ns string) {
+	cmd := exec.Command("kubectl", "create", "ns", ns, "--dry-run=client", "-o", "yaml")
+	output, err := utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+
+	cmd = exec.Command("kubectl", "apply", "-f", "-")
+	cmd.Stdin = strings.NewReader(output)
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+}
+
+func deleteNamespace(ns string) {
+	cmd := exec.Command("kubectl", "delete", "ns", ns, "--ignore-not-found", "--timeout=30s")
+	_, _ = utils.Run(cmd)
+}
+
+func cleanupAllResources() {
+	resources := []string{"pocketidusers", "pocketidusergroups", "pocketidoidcclients", "pocketidinstances"}
+
+	// Remove finalizers from all resources
+	for _, resource := range resources {
+		cmd := exec.Command("kubectl", "get", resource, "-A",
+			"-o", "jsonpath={range .items[*]}{.metadata.namespace}/{.metadata.name}{\"\\n\"}{end}")
+		if output, err := utils.Run(cmd); err == nil && output != "" {
+			for _, item := range utils.GetNonEmptyLines(output) {
+				ns, name, found := strings.Cut(item, "/")
+				if found {
+					singularResource := strings.TrimSuffix(resource, "s")
+					patchCmd := exec.Command("kubectl", "patch", singularResource, name,
+						"-n", ns, "--type=merge", "-p", `{"metadata":{"finalizers":null}}`)
+					_, _ = utils.Run(patchCmd)
+				}
+			}
 		}
 	}
-	return parts
-}
 
-func stringReader(s string) *stringReaderImpl {
-	return &stringReaderImpl{s: s, i: 0}
-}
-
-type stringReaderImpl struct {
-	s string
-	i int
-}
-
-func (r *stringReaderImpl) Read(p []byte) (n int, err error) {
-	if r.i >= len(r.s) {
-		return 0, io.EOF
+	// Delete all resources
+	for _, resource := range resources {
+		cmd := exec.Command("kubectl", "delete", resource, "--all", "-A",
+			"--ignore-not-found", "--wait=true", "--timeout=30s")
+		_, _ = utils.Run(cmd)
 	}
-	n = copy(p, r.s[r.i:])
-	r.i += n
-	return n, nil
+
+	// Delete test namespaces
+	deleteNamespace(instanceNS)
+	deleteNamespace(userNS)
 }
