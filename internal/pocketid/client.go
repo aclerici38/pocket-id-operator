@@ -161,67 +161,7 @@ func NewClient(baseURL string, apiKey string, httpTransport http.RoundTripper) (
 	}, nil
 }
 
-// NewClientWithCookie creates a new Pocket-ID client authenticated with a session cookie.
-// Used for bootstrapping and generating user-scoped API keys
-func NewClientWithCookie(baseURL string, cookie *http.Cookie, httpTransport http.RoundTripper) (*Client, error) {
-	parsed, err := url.Parse(baseURL)
-	if err != nil {
-		return nil, fmt.Errorf("parse base URL: %w", err)
-	}
-
-	// Create HTTP client with the provided or default transport
-	if httpTransport == nil {
-		httpTransport = &http.Transport{}
-	}
-
-	httpClient := &http.Client{
-		Transport: httpTransport,
-		Timeout:   30 * time.Second,
-	}
-
-	// Create go-openapi runtime using NewWithClient
-	transport := httptransport.NewWithClient(parsed.Host, "/", []string{parsed.Scheme}, httpClient)
-
-	transport.DefaultAuthentication = runtime.ClientAuthInfoWriterFunc(
-		func(req runtime.ClientRequest, reg strfmt.Registry) error {
-			return req.SetHeaderParam("Cookie", cookie.String())
-		},
-	)
-
-	raw := apiclient.New(transport, strfmt.Default)
-
-	return &Client{
-		raw:       raw,
-		baseURL:   parsed.Scheme + "://" + parsed.Host,
-		transport: httpTransport,
-	}, nil
-}
-
 // --- User Operations ---
-
-// Setup creates the initial admin user on a fresh Pocket-ID instance.
-// This only works if no users exist yet.
-// Returns the created user and a session cookie for subsequent authenticated requests.
-func (c *Client) Setup(ctx context.Context, username, firstName, lastName, email string) (*User, *http.Cookie, error) {
-	params := users.NewPostAPISignupSetupParams().
-		WithContext(ctx).
-		WithBody(&models.GithubComPocketIDPocketIDBackendInternalDtoSignUpDto{
-			Username:  &username,
-			FirstName: &firstName,
-			LastName:  lastName,
-			Email:     email,
-		})
-
-	resp, err := c.raw.Users.PostAPISignupSetup(params)
-	if err != nil {
-		return nil, nil, fmt.Errorf("setup failed: %w", err)
-	}
-
-	user := userFromDTO(resp.Payload)
-
-	// Cookie extracted in bootstrap.go
-	return user, nil, nil
-}
 
 func (c *Client) GetUser(ctx context.Context, id string) (*User, error) {
 	params := users.NewGetAPIUsersIDParams().
@@ -256,17 +196,6 @@ func (c *Client) ListUsers(ctx context.Context, search string) ([]*User, error) 
 	}
 
 	return userList, nil
-}
-
-func (c *Client) GetCurrentUser(ctx context.Context) (*User, error) {
-	params := users.NewGetAPIUsersMeParams().WithContext(ctx)
-
-	resp, err := c.raw.Users.GetAPIUsersMe(params)
-	if err != nil {
-		return nil, fmt.Errorf("get current user failed: %w", err)
-	}
-
-	return userFromDTO(resp.Payload), nil
 }
 
 // UserInput contains the fields for creating or updating a user.
@@ -341,43 +270,6 @@ func (c *Client) DeleteUser(ctx context.Context, id string) error {
 }
 
 // --- API Key Operations ---
-
-func (c *Client) ListAPIKeys(ctx context.Context) ([]APIKey, error) {
-	params := api_keys.NewGetAPIAPIKeysParams().WithContext(ctx)
-
-	resp, err := c.raw.APIKeys.GetAPIAPIKeys(params)
-	if err != nil {
-		return nil, fmt.Errorf("list API keys failed: %w", err)
-	}
-
-	keys := make([]APIKey, 0, len(resp.Payload.Data))
-	for _, k := range resp.Payload.Data {
-		keys = append(keys, apiKeyFromDTO(k))
-	}
-
-	return keys, nil
-}
-
-// CreateAPIKey creates a new API key. The token is only returned once.
-func (c *Client) CreateAPIKey(ctx context.Context, name, expiresAt, description string) (*APIKeyWithToken, error) {
-	params := api_keys.NewPostAPIAPIKeysParams().
-		WithContext(ctx).
-		WithAPIKey(&models.GithubComPocketIDPocketIDBackendInternalDtoAPIKeyCreateDto{
-			Name:        &name,
-			ExpiresAt:   &expiresAt,
-			Description: description,
-		})
-
-	resp, err := c.raw.APIKeys.PostAPIAPIKeys(params)
-	if err != nil {
-		return nil, fmt.Errorf("create API key failed: %w", err)
-	}
-
-	return &APIKeyWithToken{
-		APIKey: apiKeyFromDTO(resp.Payload.APIKey),
-		Token:  resp.Payload.Token,
-	}, nil
-}
 
 // CreateAPIKeyForUser creates an API key for the specified user by exchanging a one-time access token for a session.
 func (c *Client) CreateAPIKeyForUser(ctx context.Context, userID, name, expiresAt, description string, tokenTTLMinutes int) (*APIKeyWithToken, error) {
@@ -734,6 +626,11 @@ func (c *Client) CreateOneTimeAccessToken(ctx context.Context, userID string, ex
 
 // --- Helpers ---
 
+// DefaultAPIKeyExpiry returns a default expiry time of 1 year from now for API keys.
+func DefaultAPIKeyExpiry() time.Time {
+	return time.Now().AddDate(1, 0, 0)
+}
+
 func userFromDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoUserDto) *User {
 	if dto == nil {
 		return nil
@@ -748,20 +645,6 @@ func userFromDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoUserDto)
 		IsAdmin:     dto.IsAdmin,
 		Disabled:    dto.Disabled,
 		Locale:      dto.Locale,
-	}
-}
-
-func apiKeyFromDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoAPIKeyDto) APIKey {
-	if dto == nil {
-		return APIKey{}
-	}
-	return APIKey{
-		ID:          dto.ID,
-		Name:        dto.Name,
-		Description: dto.Description,
-		CreatedAt:   dto.CreatedAt,
-		ExpiresAt:   dto.ExpiresAt,
-		LastUsedAt:  dto.LastUsedAt,
 	}
 }
 
