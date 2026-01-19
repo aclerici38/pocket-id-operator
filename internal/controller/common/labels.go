@@ -1,4 +1,5 @@
 package common
+import "maps"
 
 const (
 	ManagedByLabelKey   = "managed-by"
@@ -7,9 +8,7 @@ const (
 
 func ManagedByLabels(labels map[string]string) map[string]string {
 	merged := make(map[string]string, len(labels)+1)
-	for key, value := range labels {
-		merged[key] = value
-	}
+	maps.Copy(merged, labels)
 	merged[ManagedByLabelKey] = ManagedByLabelValue
 	return merged
 }
