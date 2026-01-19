@@ -52,7 +52,7 @@ type APIKey struct {
 	LastUsedAt  string
 }
 
-// APIKeyWithToken is returned when creating an API key (token only available once).
+// APIKeyWithToken is returned when creating an API key. The token is a one-time token.
 type APIKeyWithToken struct {
 	APIKey
 	Token string
@@ -453,7 +453,7 @@ func (c *Client) RegenerateOIDCClientSecret(ctx context.Context, id string) (str
 	}
 
 	// The response payload is `any` type, so we need to type assert
-	payload, ok := resp.GetPayload().(map[string]interface{})
+	payload, ok := resp.GetPayload().(map[string]any)
 	if !ok {
 		return "", fmt.Errorf("unexpected response format")
 	}
@@ -600,7 +600,7 @@ func (c *Client) CreateOneTimeAccessToken(ctx context.Context, userID string, ex
 	params := users.NewPostAPIUsersIDOneTimeAccessTokenParams().
 		WithContext(ctx).
 		WithID(userID).
-		WithBody(map[string]interface{}{
+		WithBody(map[string]any{
 			"userId": userID,
 			"ttl":    fmt.Sprintf("%dm", expiresInMinutes),
 		})
@@ -611,7 +611,7 @@ func (c *Client) CreateOneTimeAccessToken(ctx context.Context, userID string, ex
 	}
 
 	// The response payload is `any` type, so we need to type assert
-	payload, ok := resp.Payload.(map[string]interface{})
+	payload, ok := resp.Payload.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("unexpected response format")
 	}

@@ -47,7 +47,7 @@ func newSessionClient(baseURL string, httpClient *http.Client) *sessionClient {
 	}
 }
 
-func (s *sessionClient) doJSONRequest(ctx context.Context, method, path string, requestBody interface{}, cookies []*http.Cookie) (int, []*http.Cookie, []byte, error) {
+func (s *sessionClient) doJSONRequest(ctx context.Context, method, path string, requestBody any, cookies []*http.Cookie) (int, []*http.Cookie, []byte, error) {
 	var bodyReader io.Reader
 	if requestBody != nil {
 		body, err := json.Marshal(requestBody)
