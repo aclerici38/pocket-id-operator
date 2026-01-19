@@ -117,23 +117,40 @@ spec:
                 maxLength: 255
                 minLength: 2
                 type: string
-              userRefs:
-                description: UserRefs are PocketIDUser custom resources to add to
-                  this group
-                items:
-                  description: NamespacedUserReference references a PocketIDUser by
-                    name and namespace.
-                  properties:
-                    name:
-                      description: Name is the name of the PocketIDUser CR
+              users:
+                description: Users defines the users to add to this group
+                properties:
+                  userIds:
+                    description: UserIds are Pocket-ID user IDs to add directly to
+                      this group.
+                    items:
                       type: string
-                    namespace:
-                      description: |-
-                        Namespace is the namespace of the PocketIDUser CR
-                        Defaults to the referencing resource's namespace
+                    type: array
+                  userRefs:
+                    description: UserRefs are PocketIDUser custom resources to add
+                      to this group
+                    items:
+                      description: NamespacedUserReference references a PocketIDUser
+                        by name and namespace.
+                      properties:
+                        name:
+                          description: Name is the name of the PocketIDUser CR
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace is the namespace of the PocketIDUser CR
+                            Defaults to the referencing resource's namespace
+                          type: string
+                      type: object
+                    type: array
+                  usernames:
+                    description: |-
+                      Usernames are Pocket-ID usernames to add to this group.
+                      The controller will look up the user ID from Pocket-ID by username.
+                    items:
                       type: string
-                  type: object
-                type: array
+                    type: array
+                type: object
             type: object
           status:
             description: status defines the observed state of PocketIDUserGroup

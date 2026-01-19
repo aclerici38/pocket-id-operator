@@ -238,11 +238,12 @@ func buildUserGroupYAML(opts UserGroupOptions) string {
 	}
 
 	if len(opts.UserRefs) > 0 {
-		spec.WriteString("  userRefs:\n")
+		spec.WriteString("  users:\n")
+		spec.WriteString("    userRefs:\n")
 		for _, ref := range opts.UserRefs {
-			spec.WriteString(fmt.Sprintf("  - name: %s\n", ref.Name))
+			spec.WriteString(fmt.Sprintf("    - name: %s\n", ref.Name))
 			if ref.Namespace != "" {
-				spec.WriteString(fmt.Sprintf("    namespace: %s\n", ref.Namespace))
+				spec.WriteString(fmt.Sprintf("      namespace: %s\n", ref.Namespace))
 			}
 		}
 	}
