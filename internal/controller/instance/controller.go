@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"maps"
 	"reflect"
-	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -86,15 +85,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	log.Info("Reconciling PocketIDInstance", "name", instance.Name)
 
 	// Ensure static API key secret exists
-	secretCreated, err := r.ensureStaticAPIKeySecret(ctx, instance)
-	if err != nil {
+	if err := r.ensureStaticAPIKeySecret(ctx, instance); err != nil {
 		return ctrl.Result{}, fmt.Errorf("ensure static API key secret: %w", err)
-	}
-
-	// If we just created the secret, requeue to give kubelet time to sync it
-	if secretCreated {
-		log.Info("Static API key secret just created, requeuing to allow kubelet sync", "name", instance.Name)
-		return ctrl.Result{RequeueAfter: 2 * time.Second}, nil
 	}
 
 	if err := r.reconcileWorkload(ctx, instance); err != nil {
@@ -642,7 +634,6 @@ func (r *Reconciler) updateStatus(ctx context.Context, instance *pocketidinterna
 		ObservedGeneration: instance.Generation,
 	})
 
-	// Update static API key secret name in status if not set
 	staticAPIKeySecret := common.StaticAPIKeySecretName(instance.Name)
 	if instance.Status.StaticAPIKeySecretName != staticAPIKeySecret {
 		instance.Status.StaticAPIKeySecretName = staticAPIKeySecret
@@ -660,33 +651,29 @@ func generateSecureToken(length int) (string, error) {
 	return base64.URLEncoding.EncodeToString(bytes), nil
 }
 
-// ensureStaticAPIKeySecret creates or retrieves the static API key secret for bootstrap
-// Returns (wasCreated bool, error) where wasCreated is true if the secret was just created
-func (r *Reconciler) ensureStaticAPIKeySecret(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) (bool, error) {
+// ensureStaticAPIKeySecret creates the static API key secret if it doesn't exist.
+func (r *Reconciler) ensureStaticAPIKeySecret(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
 	secretName := common.StaticAPIKeySecretName(instance.Name)
 	secret := &corev1.Secret{}
 
 	// Check if secret already exists using APIReader to bypass cache
 	err := r.APIReader.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: secretName}, secret)
 	if err == nil {
-		// Secret exists, return that it wasn't just created
 		if _, ok := secret.Data["token"]; ok {
-			return false, nil
+			return nil
 		}
-		return false, fmt.Errorf("static API key secret exists but has no token field")
+		return fmt.Errorf("static API key secret exists but has no token field")
 	}
 
 	if !errors.IsNotFound(err) {
-		return false, fmt.Errorf("failed to get static API key secret: %w", err)
+		return fmt.Errorf("failed to get static API key secret: %w", err)
 	}
 
-	// Generate new token
 	token, err := generateSecureToken(32)
 	if err != nil {
-		return false, fmt.Errorf("failed to generate secure token: %w", err)
+		return fmt.Errorf("failed to generate secure token: %w", err)
 	}
 
-	// Create new secret
 	secret = &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
@@ -698,30 +685,18 @@ func (r *Reconciler) ensureStaticAPIKeySecret(ctx context.Context, instance *poc
 	}
 
 	if err := controllerutil.SetControllerReference(instance, secret, r.Scheme); err != nil {
-		return false, fmt.Errorf("failed to set controller reference: %w", err)
+		return fmt.Errorf("failed to set controller reference: %w", err)
 	}
 
 	if err := r.Create(ctx, secret); err != nil {
 		if errors.IsAlreadyExists(err) {
-			// Another reconciliation created it, retrieve and return using APIReader to bypass cache
-			if err := r.APIReader.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: secretName}, secret); err != nil {
-				return false, fmt.Errorf("failed to get existing secret after conflict: %w", err)
-			}
-			if _, ok := secret.Data["token"]; ok {
-				return false, nil
-			}
-			return false, fmt.Errorf("existing secret has no token field")
+			// Another reconciliation created it, that's fine
+			return nil
 		}
-		return false, fmt.Errorf("failed to create static API key secret: %w", err)
+		return fmt.Errorf("failed to create static API key secret: %w", err)
 	}
 
-	// Verify the secret was created successfully by reading it back with APIReader
-	if err := r.APIReader.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: secretName}, secret); err != nil {
-		return false, fmt.Errorf("failed to verify created secret: %w", err)
-	}
-
-	// Return true to indicate the secret was just created
-	return true, nil
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

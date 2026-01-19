@@ -63,8 +63,6 @@ type Reconciler struct {
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidoidcclients,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	r.EnsureClient(r.Client)
@@ -101,7 +99,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: validationResult.RequeueAfter}, validationResult.Error
 	}
 
-	// Get API client from pool
 	apiClient, result, err := r.GetAPIClientOrWait(ctx, userGroup, instance)
 	if result != nil {
 		return *result, err
@@ -148,7 +145,6 @@ func (r *Reconciler) FindExistingUserGroup(ctx context.Context, apiClient Pocket
 		return nil, fmt.Errorf("list user groups: %w", err)
 	}
 
-	// Check if name already exists
 	for _, existingGroup := range existingGroups {
 		if existingGroup.Name == name {
 			log.Info("Found existing user group with matching name", "name", name, "groupID", existingGroup.ID)
@@ -174,7 +170,6 @@ func (r *Reconciler) reconcileUserGroup(ctx context.Context, userGroup *pocketid
 	var current *pocketid.UserGroup
 	var err error
 	if userGroup.Status.GroupID == "" {
-		// Check if user group already exists
 		existingGroup, err := r.FindExistingUserGroup(ctx, apiClient, name)
 		if err != nil {
 			return nil, fmt.Errorf("find existing user group: %w", err)

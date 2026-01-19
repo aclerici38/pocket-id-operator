@@ -69,7 +69,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	log := logf.FromContext(ctx)
 	r.EnsureClient(r.Client)
 
-	// Fetch the User CR
 	user := &pocketidinternalv1alpha1.PocketIDUser{}
 	if err := r.Get(ctx, req.NamespacedName, user); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
@@ -81,7 +80,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return r.ReconcileDelete(ctx, user)
 	}
 
-	// Get the PocketIDInstance to know where to connect
 	instance, err := common.SelectInstance(ctx, r.Client, user.Spec.InstanceSelector)
 	if err != nil {
 		log.Error(err, "Failed to select PocketIDInstance")
@@ -109,14 +107,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return *result, err
 	}
 
-	// Reconcile the user in Pocket-ID
 	if err := r.reconcileUser(ctx, user, apiClient, instance); err != nil {
 		log.Error(err, "Failed to reconcile user")
 		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
-	// Reconcile API keys
 	if err := r.reconcileAPIKeys(ctx, user, apiClient); err != nil {
 		log.Error(err, "Failed to reconcile API keys")
 		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "APIKeyError", err.Error())
@@ -278,11 +274,6 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, user *pocketidinternal
 	return ctrl.Result{}, nil
 }
 
-// resolveStringValue is a convenience wrapper around the shared helper
-func (r *Reconciler) resolveStringValue(ctx context.Context, namespace string, sv pocketidinternalv1alpha1.StringValue, fallbackSecretName, fallbackKey string) (string, error) {
-	return helpers.ResolveStringValue(ctx, r.Client, r.APIReader, namespace, sv, fallbackSecretName, fallbackKey)
-}
-
 // PocketIDUserAPI defines the minimal interface needed for user operations
 type PocketIDUserAPI interface {
 	ListUsers(ctx context.Context, search string) ([]*pocketid.User, error)
@@ -332,9 +323,8 @@ func (r *Reconciler) FindExistingUser(ctx context.Context, apiClient PocketIDUse
 func (r *Reconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
 	log := logf.FromContext(ctx)
 
-	// Resolve all StringValue fields
 	userInfoInputSecret := userInfoInputSecretName(user)
-	username, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.Username, userInfoInputSecret, UserInfoSecretKeyUsername)
+	username, err := helpers.ResolveStringValue(ctx, r.Client, r.APIReader, user.Namespace, user.Spec.Username, userInfoInputSecret, UserInfoSecretKeyUsername)
 	if err != nil {
 		return fmt.Errorf("resolve username: %w", err)
 	}
@@ -342,7 +332,7 @@ func (r *Reconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1
 		username = user.Name
 	}
 
-	firstName, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.FirstName, userInfoInputSecret, UserInfoSecretKeyFirstName)
+	firstName, err := helpers.ResolveStringValue(ctx, r.Client, r.APIReader, user.Namespace, user.Spec.FirstName, userInfoInputSecret, UserInfoSecretKeyFirstName)
 	if err != nil {
 		return fmt.Errorf("resolve firstName: %w", err)
 	}
@@ -351,21 +341,21 @@ func (r *Reconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1
 		firstName = username
 	}
 
-	lastName, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.LastName, userInfoInputSecret, UserInfoSecretKeyLastName)
+	lastName, err := helpers.ResolveStringValue(ctx, r.Client, r.APIReader, user.Namespace, user.Spec.LastName, userInfoInputSecret, UserInfoSecretKeyLastName)
 	if err != nil {
 		return fmt.Errorf("resolve lastName: %w", err)
 	}
 
-	email, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.Email, userInfoInputSecret, UserInfoSecretKeyEmail)
+	email, err := helpers.ResolveStringValue(ctx, r.Client, r.APIReader, user.Namespace, user.Spec.Email, userInfoInputSecret, UserInfoSecretKeyEmail)
 	if err != nil {
 		return fmt.Errorf("resolve email: %w", err)
 	}
-	// Email is required by Pocket-ID, generate a placeholder if not set
+	// Email is required by Pocket-ID by default, generate a placeholder if not set
 	if email == "" {
 		email = fmt.Sprintf("%s@placeholder.local", username)
 	}
 
-	displayName, err := r.resolveStringValue(ctx, user.Namespace, user.Spec.DisplayName, userInfoInputSecret, UserInfoSecretKeyDisplayName)
+	displayName, err := helpers.ResolveStringValue(ctx, r.Client, r.APIReader, user.Namespace, user.Spec.DisplayName, userInfoInputSecret, UserInfoSecretKeyDisplayName)
 	if err != nil {
 		return fmt.Errorf("resolve displayName: %w", err)
 	}
@@ -397,7 +387,6 @@ func (r *Reconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1
 
 	// If we don't have a user ID, we need to check if user exists and create if not
 	if user.Status.UserID == "" {
-		// Check if user already exists
 		existingUser, err := r.FindExistingUser(ctx, apiClient, username, email)
 		if err != nil {
 			return fmt.Errorf("find existing user: %w", err)
@@ -405,11 +394,9 @@ func (r *Reconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1
 
 		var pUser *pocketid.User
 		if existingUser != nil {
-			// User exists, adopt it and update status
 			log.Info("Adopting existing user from Pocket-ID", "username", username, "userID", existingUser.ID)
 			pUser = existingUser
 		} else {
-			// User does not exist, create it
 			log.Info("Creating user in Pocket-ID", "username", username)
 			pUser, err = apiClient.CreateUser(ctx, input)
 			if err != nil {
@@ -427,7 +414,6 @@ func (r *Reconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1
 			}
 		}
 
-		// Update status with user info
 		if err := r.updateUserStatus(ctx, user, pUser); err != nil {
 			return err
 		}
@@ -569,7 +555,6 @@ func (r *Reconciler) clearOneTimeLoginStatus(ctx context.Context, user *pocketid
 func (r *Reconciler) reconcileAPIKeys(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client) error {
 	log := logf.FromContext(ctx)
 
-	// Build map of existing keys by name
 	existingKeys := make(map[string]*pocketidinternalv1alpha1.APIKeyStatus)
 	for i := range user.Status.APIKeys {
 		existingKeys[user.Status.APIKeys[i].Name] = &user.Status.APIKeys[i]
@@ -581,7 +566,6 @@ func (r *Reconciler) reconcileAPIKeys(ctx context.Context, user *pocketidinterna
 		wantedKeys[spec.Name] = true
 	}
 
-	// Create missing keys
 	for _, spec := range user.Spec.APIKeys {
 		if _, exists := existingKeys[spec.Name]; exists {
 			continue
@@ -591,7 +575,6 @@ func (r *Reconciler) reconcileAPIKeys(ctx context.Context, user *pocketidinterna
 		if spec.SecretRef != nil {
 			log.Info("Using existing secret for API key", "name", spec.Name, "secret", spec.SecretRef.Name)
 
-			// Verify the secret exists (use APIReader for fresh read of user-provided secret)
 			reader := r.APIReader
 			if reader == nil {
 				reader = r.Client
@@ -606,7 +589,6 @@ func (r *Reconciler) reconcileAPIKeys(ctx context.Context, user *pocketidinterna
 				return fmt.Errorf("secret %s missing key %s for API key %s", spec.SecretRef.Name, secretKey, spec.Name)
 			}
 
-			// Update status with secret reference (no Pocket-ID ID since we didn't create it)
 			keyStatus := pocketidinternalv1alpha1.APIKeyStatus{
 				Name:       spec.Name,
 				SecretName: spec.SecretRef.Name,
@@ -643,7 +625,6 @@ func (r *Reconciler) reconcileAPIKeys(ctx context.Context, user *pocketidinterna
 			return fmt.Errorf("create secret for API key %s: %w", spec.Name, err)
 		}
 
-		// Update status
 		keyStatus := pocketidinternalv1alpha1.APIKeyStatus{
 			Name:       spec.Name,
 			ID:         apiKey.ID,
@@ -660,7 +641,6 @@ func (r *Reconciler) reconcileAPIKeys(ctx context.Context, user *pocketidinterna
 		}
 	}
 
-	// Delete keys that are no longer wanted
 	for name, keyStatus := range existingKeys {
 		if wantedKeys[name] {
 			continue

@@ -90,7 +90,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
-	// Validate instance is ready using base reconciler
 	if validationResult := r.ValidateInstanceReady(ctx, oidcClient, instance); validationResult.ShouldRequeue {
 		return ctrl.Result{RequeueAfter: validationResult.RequeueAfter}, validationResult.Error
 	}
@@ -122,7 +121,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
-	// Remove regenerate-client-secret annotation if it exists
 	if removed, err := helpers.CheckAndRemoveAnnotation(ctx, r.Client, oidcClient, "pocketid.internal/regenerate-client-secret", "true"); err != nil {
 		log.Error(err, "Failed to remove regenerate-client-secret annotation")
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
@@ -182,7 +180,6 @@ func (r *Reconciler) reconcileOIDCClient(ctx context.Context, oidcClient *pocket
 	var current *pocketid.OIDCClient
 	var err error
 	if oidcClient.Status.ClientID == "" {
-		// Check if OIDC client already exists
 		existingClient, err := r.FindExistingOIDCClient(ctx, apiClient, clientID)
 		if err != nil {
 			return nil, fmt.Errorf("find existing OIDC client: %w", err)
@@ -298,7 +295,6 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 
 	if !enabled {
 		// Delete the secret if it exists but is now disabled
-		// Note: apiClient can be nil here since we don't need to call the API
 		secret := &corev1.Secret{}
 		err := r.Get(ctx, client.ObjectKey{Name: secretName, Namespace: oidcClient.Namespace}, secret)
 		if err == nil {
@@ -311,7 +307,6 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 
 	keys := r.GetSecretKeys(oidcClient)
 
-	// Build secret data
 	secretData := make(map[string][]byte)
 
 	if oidcClient.Status.ClientID != "" {
@@ -337,9 +332,8 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 		}
 
 		if shouldRegenerateSecret {
-			// apiClient is required to regenerate client secret
 			if apiClient == nil {
-				return fmt.Errorf("apiClient is required to regenerate client secret for non-public clients")
+				return fmt.Errorf("apiClient is required to regenerate client secret")
 			}
 
 			clientSecret, err := apiClient.RegenerateOIDCClientSecret(ctx, oidcClient.Status.ClientID)

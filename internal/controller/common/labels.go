@@ -1,4 +1,5 @@
 package common
+
 import "maps"
 
 const (
