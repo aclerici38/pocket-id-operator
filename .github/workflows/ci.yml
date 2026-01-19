@@ -94,6 +94,9 @@ jobs:
     needs:
       - meta
       - e2e
+      - test
+      - lint
+      - build
     if: ${{ github.event_name == 'push' && needs.e2e.result == 'success' }}
     uses: ./.github/workflows/publish.yml
     with:
