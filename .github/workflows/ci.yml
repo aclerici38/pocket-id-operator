@@ -83,10 +83,7 @@ jobs:
     name: E2E Tests
     needs:
       - meta
-      - test
-      - lint
       - build
-    if: ${{ github.event_name != 'pull_request' }}
     uses: ./.github/workflows/test-e2e.yml
     with:
       image: ${{ needs.meta.outputs.build_image }}

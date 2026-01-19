@@ -1,15 +1,15 @@
-package controller
+package common
+
+import "maps"
 
 const (
 	ManagedByLabelKey   = "managed-by"
 	ManagedByLabelValue = "pocket-id-operator"
 )
 
-func managedByLabels(labels map[string]string) map[string]string {
+func ManagedByLabels(labels map[string]string) map[string]string {
 	merged := make(map[string]string, len(labels)+1)
-	for key, value := range labels {
-		merged[key] = value
-	}
+	maps.Copy(merged, labels)
 	merged[ManagedByLabelKey] = ManagedByLabelValue
 	return merged
 }

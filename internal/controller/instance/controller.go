@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package controller
+package instance
 
 import (
 	"context"
@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"maps"
 	"reflect"
-	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -39,6 +38,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 )
 
 const (
@@ -50,10 +50,12 @@ const (
 
 	deploymentTypeDeployment  = "Deployment"
 	deploymentTypeStatefulSet = "StatefulSet"
+
+	readyConditionType = "Ready"
 )
 
-// PocketIDInstanceReconciler reconciles a PocketIDInstance object
-type PocketIDInstanceReconciler struct {
+// Reconciler reconciles a PocketIDInstance object
+type Reconciler struct {
 	client.Client
 	APIReader client.Reader
 	Scheme    *runtime.Scheme
@@ -72,14 +74,7 @@ type PocketIDInstanceReconciler struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the PocketIDInstance object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.22.4/pkg/reconcile
-func (r *PocketIDInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	instance := &pocketidinternalv1alpha1.PocketIDInstance{}
@@ -90,15 +85,8 @@ func (r *PocketIDInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	log.Info("Reconciling PocketIDInstance", "name", instance.Name)
 
 	// Ensure static API key secret exists
-	secretCreated, err := r.ensureStaticAPIKeySecret(ctx, instance)
-	if err != nil {
+	if err := r.ensureStaticAPIKeySecret(ctx, instance); err != nil {
 		return ctrl.Result{}, fmt.Errorf("ensure static API key secret: %w", err)
-	}
-
-	// If we just created the secret, requeue to give kubelet time to sync it
-	if secretCreated {
-		log.Info("Static API key secret just created, requeuing to allow kubelet sync", "name", instance.Name)
-		return ctrl.Result{RequeueAfter: 2 * time.Second}, nil
 	}
 
 	if err := r.reconcileWorkload(ctx, instance); err != nil {
@@ -117,11 +105,11 @@ func (r *PocketIDInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 
-	return applyResync(ctrl.Result{}), nil
+	return common.ApplyResync(ctrl.Result{}), nil
 }
 
 // Helpers
-func (r *PocketIDInstanceReconciler) reconcileWorkload(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
+func (r *Reconciler) reconcileWorkload(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
 	podTemplate := r.buildPodTemplate(instance)
 
 	if instance.Spec.DeploymentType == deploymentTypeStatefulSet {
@@ -130,8 +118,8 @@ func (r *PocketIDInstanceReconciler) reconcileWorkload(ctx context.Context, inst
 	return r.reconcileDeployment(ctx, instance, podTemplate)
 }
 
-func (r *PocketIDInstanceReconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketIDInstance) corev1.PodTemplateSpec {
-	labels := managedByLabels(instance.Spec.Labels)
+func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketIDInstance) corev1.PodTemplateSpec {
+	labels := common.ManagedByLabels(instance.Spec.Labels)
 	labels["app.kubernetes.io/name"] = "pocket-id"
 	labels["app.kubernetes.io/instance"] = instance.Name
 	labels["app.kubernetes.io/managed-by"] = "pocket-id-operator"
@@ -177,7 +165,7 @@ func (r *PocketIDInstanceReconciler) buildPodTemplate(instance *pocketidinternal
 	}
 
 	// Always add STATIC_API_KEY for operator authentication
-	staticAPIKeySecret := staticAPIKeySecretName(instance.Name)
+	staticAPIKeySecret := common.StaticAPIKeySecretName(instance.Name)
 	env = append(env, corev1.EnvVar{
 		Name: envStaticAPIKey,
 		ValueFrom: &corev1.EnvVarSource{
@@ -367,7 +355,7 @@ func buildContainerSecurityContext(instance *pocketidinternalv1alpha1.PocketIDIn
 	return merged
 }
 
-func (r *PocketIDInstanceReconciler) reconcileDeployment(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, podTemplate corev1.PodTemplateSpec) error {
+func (r *Reconciler) reconcileDeployment(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, podTemplate corev1.PodTemplateSpec) error {
 	replicas := int32(1)
 
 	if instance.Spec.Persistence.Enabled {
@@ -407,7 +395,7 @@ func (r *PocketIDInstanceReconciler) reconcileDeployment(ctx context.Context, in
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        instance.Name,
 			Namespace:   instance.Namespace,
-			Labels:      managedByLabels(instance.Spec.Labels),
+			Labels:      common.ManagedByLabels(instance.Spec.Labels),
 			Annotations: instance.Spec.Annotations,
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -428,7 +416,7 @@ func (r *PocketIDInstanceReconciler) reconcileDeployment(ctx context.Context, in
 	return r.Patch(ctx, deployment, client.Apply, client.FieldOwner("pocket-id-operator"))
 }
 
-func (r *PocketIDInstanceReconciler) reconcileStatefulSet(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, podTemplate corev1.PodTemplateSpec) error {
+func (r *Reconciler) reconcileStatefulSet(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, podTemplate corev1.PodTemplateSpec) error {
 	replicas := int32(1)
 
 	selector := map[string]string{
@@ -476,7 +464,7 @@ func (r *PocketIDInstanceReconciler) reconcileStatefulSet(ctx context.Context, i
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:   "data",
-						Labels: managedByLabels(instance.Spec.Labels),
+						Labels: common.ManagedByLabels(instance.Spec.Labels),
 					},
 					Spec: corev1.PersistentVolumeClaimSpec{
 						AccessModes:      instance.Spec.Persistence.AccessModes,
@@ -500,7 +488,7 @@ func (r *PocketIDInstanceReconciler) reconcileStatefulSet(ctx context.Context, i
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        instance.Name,
 			Namespace:   instance.Namespace,
-			Labels:      managedByLabels(instance.Spec.Labels),
+			Labels:      common.ManagedByLabels(instance.Spec.Labels),
 			Annotations: instance.Spec.Annotations,
 		},
 		Spec: *stsSpec,
@@ -512,7 +500,7 @@ func (r *PocketIDInstanceReconciler) reconcileStatefulSet(ctx context.Context, i
 	return r.Patch(ctx, sts, client.Apply, client.FieldOwner("pocket-id-operator"))
 }
 
-func (r *PocketIDInstanceReconciler) reconcileService(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
+func (r *Reconciler) reconcileService(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
 	service := &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
@@ -521,7 +509,7 @@ func (r *PocketIDInstanceReconciler) reconcileService(ctx context.Context, insta
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        instance.Name,
 			Namespace:   instance.Namespace,
-			Labels:      managedByLabels(instance.Spec.Labels),
+			Labels:      common.ManagedByLabels(instance.Spec.Labels),
 			Annotations: instance.Spec.Annotations,
 		},
 		Spec: corev1.ServiceSpec{
@@ -547,7 +535,7 @@ func (r *PocketIDInstanceReconciler) reconcileService(ctx context.Context, insta
 	return r.Patch(ctx, service, client.Apply, client.FieldOwner("pocket-id-operator"))
 }
 
-func (r *PocketIDInstanceReconciler) reconcileVolume(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
+func (r *Reconciler) reconcileVolume(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
 	pvc := &corev1.PersistentVolumeClaim{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
@@ -572,7 +560,7 @@ func (r *PocketIDInstanceReconciler) reconcileVolume(ctx context.Context, instan
 		scn = &sc
 	}
 
-	pvc.Labels = managedByLabels(instance.Spec.Labels)
+	pvc.Labels = common.ManagedByLabels(instance.Spec.Labels)
 
 	if err := controllerutil.SetControllerReference(instance, pvc, r.Scheme); err != nil {
 		return err
@@ -612,7 +600,7 @@ func (r *PocketIDInstanceReconciler) reconcileVolume(ctx context.Context, instan
 	return nil
 }
 
-func (r *PocketIDInstanceReconciler) updateStatus(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
+func (r *Reconciler) updateStatus(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
 	base := instance.DeepCopy()
 	ready := metav1.ConditionFalse
 	reason := "Progressing"
@@ -646,22 +634,12 @@ func (r *PocketIDInstanceReconciler) updateStatus(ctx context.Context, instance 
 		ObservedGeneration: instance.Generation,
 	})
 
-	// Update static API key secret name in status if not set
-	staticAPIKeySecret := staticAPIKeySecretName(instance.Name)
+	staticAPIKeySecret := common.StaticAPIKeySecretName(instance.Name)
 	if instance.Status.StaticAPIKeySecretName != staticAPIKeySecret {
 		instance.Status.StaticAPIKeySecretName = staticAPIKeySecret
 	}
 
 	return r.Status().Patch(ctx, instance, client.MergeFrom(base))
-}
-
-const (
-	readyConditionType = "Ready"
-)
-
-// staticAPIKeySecretName returns the secret name for the instance's static API key
-func staticAPIKeySecretName(instanceName string) string {
-	return fmt.Sprintf("%s-static-api-key", instanceName)
 }
 
 // generateSecureToken generates a cryptographically secure random token
@@ -673,33 +651,29 @@ func generateSecureToken(length int) (string, error) {
 	return base64.URLEncoding.EncodeToString(bytes), nil
 }
 
-// ensureStaticAPIKeySecret creates or retrieves the static API key secret for bootstrap
-// Returns (wasCreated bool, error) where wasCreated is true if the secret was just created
-func (r *PocketIDInstanceReconciler) ensureStaticAPIKeySecret(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) (bool, error) {
-	secretName := staticAPIKeySecretName(instance.Name)
+// ensureStaticAPIKeySecret creates the static API key secret if it doesn't exist.
+func (r *Reconciler) ensureStaticAPIKeySecret(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
+	secretName := common.StaticAPIKeySecretName(instance.Name)
 	secret := &corev1.Secret{}
 
 	// Check if secret already exists using APIReader to bypass cache
 	err := r.APIReader.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: secretName}, secret)
 	if err == nil {
-		// Secret exists, return that it wasn't just created
 		if _, ok := secret.Data["token"]; ok {
-			return false, nil
+			return nil
 		}
-		return false, fmt.Errorf("static API key secret exists but has no token field")
+		return fmt.Errorf("static API key secret exists but has no token field")
 	}
 
 	if !errors.IsNotFound(err) {
-		return false, fmt.Errorf("failed to get static API key secret: %w", err)
+		return fmt.Errorf("failed to get static API key secret: %w", err)
 	}
 
-	// Generate new token
 	token, err := generateSecureToken(32)
 	if err != nil {
-		return false, fmt.Errorf("failed to generate secure token: %w", err)
+		return fmt.Errorf("failed to generate secure token: %w", err)
 	}
 
-	// Create new secret
 	secret = &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
@@ -711,34 +685,22 @@ func (r *PocketIDInstanceReconciler) ensureStaticAPIKeySecret(ctx context.Contex
 	}
 
 	if err := controllerutil.SetControllerReference(instance, secret, r.Scheme); err != nil {
-		return false, fmt.Errorf("failed to set controller reference: %w", err)
+		return fmt.Errorf("failed to set controller reference: %w", err)
 	}
 
 	if err := r.Create(ctx, secret); err != nil {
 		if errors.IsAlreadyExists(err) {
-			// Another reconciliation created it, retrieve and return using APIReader to bypass cache
-			if err := r.APIReader.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: secretName}, secret); err != nil {
-				return false, fmt.Errorf("failed to get existing secret after conflict: %w", err)
-			}
-			if _, ok := secret.Data["token"]; ok {
-				return false, nil
-			}
-			return false, fmt.Errorf("existing secret has no token field")
+			// Another reconciliation created it, that's fine
+			return nil
 		}
-		return false, fmt.Errorf("failed to create static API key secret: %w", err)
+		return fmt.Errorf("failed to create static API key secret: %w", err)
 	}
 
-	// Verify the secret was created successfully by reading it back with APIReader
-	if err := r.APIReader.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: secretName}, secret); err != nil {
-		return false, fmt.Errorf("failed to verify created secret: %w", err)
-	}
-
-	// Return true to indicate the secret was just created
-	return true, nil
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *PocketIDInstanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&pocketidinternalv1alpha1.PocketIDInstance{}).
 		Owns(&appsv1.Deployment{}).

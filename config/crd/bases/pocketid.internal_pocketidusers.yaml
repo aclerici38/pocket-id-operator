@@ -13,7 +13,6 @@ spec:
     plural: pocketidusers
     shortNames:
     - piduser
-    - puser
     singular: pocketiduser
   scope: Namespaced
   versions:
@@ -102,7 +101,7 @@ spec:
               displayName:
                 description: |-
                   DisplayName of the user
-                  Defaults to "FirstName LastName"
+                  Defaults to "spec.FirstName spec.LastName"
                 properties:
                   value:
                     description: Plain text value
@@ -136,6 +135,7 @@ spec:
                 description: |-
                   Email of the user
                   Can be a plain value or reference a secret
+                  Required unless email is disabled in pocket-id
                 properties:
                   value:
                     description: Plain text value
@@ -169,7 +169,7 @@ spec:
                 description: |-
                   First name of the user
                   Can be a plain value or reference a secret
-                  Defaults to name of the Resource
+                  Defaults to metadata.name of the Resource
                 properties:
                   value:
                     description: Plain text value

@@ -13,7 +13,6 @@ spec:
     plural: pocketidoidcclients
     shortNames:
     - oidcclient
-    - oidc
     singular: pocketidoidcclient
   scope: Namespaced
   versions:
@@ -60,7 +59,9 @@ spec:
                   type: object
                 type: array
               callbackUrls:
-                description: Callback URLs for the client
+                description: |-
+                  Callback URLs for the client
+                  Note: a feature of pocket-id is to autosave the callback URL based on the url params passed by the client.
                 items:
                   type: string
                 type: array
@@ -172,7 +173,7 @@ spec:
                     default: true
                     description: |-
                       Enabled controls whether to create a secret with OIDC client credentials.
-                      If false, no secret will be created.
+                      If false, no secret will be created. Defaults to true
                     type: boolean
                   keys:
                     description: Keys allows customization of the secret keys for
@@ -180,58 +181,69 @@ spec:
                     properties:
                       authorizationUrl:
                         default: authorization_url
-                        description: AuthorizationURL is the key name for the OIDC
-                          authorization endpoint URL.
+                        description: |-
+                          AuthorizationURL is the key name for the OIDC authorization endpoint URL.
+                          Defaults to authorization_url
                         type: string
                       callbackUrls:
                         default: callback_urls
-                        description: CallbackURLs is the key name for the callback
-                          URLs.
+                        description: |-
+                          CallbackURLs is the key name for the callback URLs.
+                          Defaults to callback_urls
                         type: string
                       clientId:
                         default: client_id
-                        description: ClientID is the key name for the OIDC client
-                          ID.
+                        description: |-
+                          ClientID is the key name for the OIDC client ID.
+                          Defaults to client_id
                         type: string
                       clientSecret:
                         default: client_secret
-                        description: ClientSecret is the key name for the OIDC client
-                          secret.
+                        description: |-
+                          ClientSecret is the key name for the OIDC client secret.
+                          Defaults to client_secret
                         type: string
                       discoveryUrl:
                         default: discovery_url
-                        description: DiscoveryURL is the key name for the OIDC discovery
-                          URL.
+                        description: |-
+                          DiscoveryURL is the key name for the OIDC discovery URL.
+                          Defaults to discovery_url
                         type: string
                       endSessionUrl:
                         default: end_session_url
-                        description: EndSessionURL is the key name for the OIDC end
-                          session (logout) endpoint URL.
+                        description: |-
+                          EndSessionURL is the key name for the OIDC end session (logout) endpoint URL.
+                          Defaults to end_session_url
                         type: string
                       issuerUrl:
                         default: issuer_url
-                        description: IssuerURL is the key name for the OIDC issuer
-                          URL.
+                        description: |-
+                          IssuerURL is the key name for the OIDC issuer URL.
+                          Defaults to issuer_url
                         type: string
                       jwksUrl:
                         default: jwks_url
-                        description: JwksURL is the key name for the OIDC JWKS (JSON
-                          Web Key Set) endpoint URL.
+                        description: |-
+                          JwksURL is the key name for the OIDC JWKS (JSON Web Key Set) endpoint URL.
+                          Defaults to jwks_url
                         type: string
                       logoutCallbackUrls:
                         default: logout_callback_urls
-                        description: LogoutCallbackURLs is the key name for the logout
-                          callback URLs.
+                        description: |-
+                          LogoutCallbackURLs is the key name for the logout callback URLs.
+                          Defaults to logout_callback_urls
                         type: string
                       tokenUrl:
                         default: token_url
-                        description: TokenURL is the key name for the OIDC token endpoint
-                          URL.
+                        description: |-
+                          TokenURL is the key name for the OIDC token endpoint URL.
+                          Defaults to token_url
                         type: string
                       userinfoUrl:
                         default: userinfo_url
-                        description: UserinfoURL is the key name for the OIDC userinfo
-                          endpoint URL.
+                        description: |-
+                          UserinfoURL is the key name for the OIDC userinfo endpoint URL.
+                          Defaults to userinfo_url
                         type: string
                     type: object
                   name:

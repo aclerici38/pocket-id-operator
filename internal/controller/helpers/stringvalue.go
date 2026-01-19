@@ -1,4 +1,4 @@
-package controller
+package helpers
 
 import (
 	"context"
@@ -32,13 +32,12 @@ func ResolveStringValue(
 		return sv.Value, nil
 	}
 
-	// Case 2: Value from secret reference (user-provided, use APIReader)
-	// This is an explicit reference, so missing keys should error
+	// Case 2: Value from secret reference
 	if sv.ValueFrom != nil {
 		return getSecretValue(ctx, c, apiReader, namespace, sv.ValueFrom.Name, sv.ValueFrom.Key, false)
 	}
 
-	// Case 3: Fallback secret (user-provided, use APIReader)
+	// Case 3: Fallback secret
 	// This is a convenience fallback, so missing keys should return empty string
 	if fallbackSecretName != "" && fallbackKey != "" {
 		return getSecretValue(ctx, c, apiReader, namespace, fallbackSecretName, fallbackKey, true)
@@ -73,7 +72,6 @@ func getSecretValue(
 	val, ok := secret.Data[key]
 	if !ok {
 		if optional {
-			// For optional keys (fallback secrets), return empty string to trigger defaults
 			return "", nil
 		}
 		return "", fmt.Errorf("secret %s missing key %s", secretName, key)

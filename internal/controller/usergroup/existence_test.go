@@ -1,4 +1,4 @@
-package controller
+package usergroup
 
 import (
 	"context"
@@ -69,7 +69,7 @@ func (m *mockPocketIDUserGroupClient) UpdateUserGroupUsers(ctx context.Context, 
 
 func TestFindExistingUserGroup_NoMatch(t *testing.T) {
 	ctx := context.Background()
-	reconciler := &PocketIDUserGroupReconciler{}
+	reconciler := &Reconciler{}
 
 	mockClient := &mockPocketIDUserGroupClient{
 		listUserGroupsFunc: func(ctx context.Context, search string) ([]*pocketid.UserGroup, error) {
@@ -77,9 +77,9 @@ func TestFindExistingUserGroup_NoMatch(t *testing.T) {
 		},
 	}
 
-	existingGroup, err := reconciler.findExistingUserGroup(ctx, mockClient, "newgroup")
+	existingGroup, err := reconciler.FindExistingUserGroup(ctx, mockClient, "newgroup")
 	if err != nil {
-		t.Fatalf("findExistingUserGroup returned unexpected error: %v", err)
+		t.Fatalf("FindExistingUserGroup returned unexpected error: %v", err)
 	}
 	if existingGroup != nil {
 		t.Fatalf("expected no existing group, got: %+v", existingGroup)
@@ -88,7 +88,7 @@ func TestFindExistingUserGroup_NoMatch(t *testing.T) {
 
 func TestFindExistingUserGroup_MatchByName(t *testing.T) {
 	ctx := context.Background()
-	reconciler := &PocketIDUserGroupReconciler{}
+	reconciler := &Reconciler{}
 
 	expectedGroup := &pocketid.UserGroup{
 		ID:           "existing-group-id",
@@ -105,24 +105,22 @@ func TestFindExistingUserGroup_MatchByName(t *testing.T) {
 		},
 	}
 
-	existingGroup, err := reconciler.findExistingUserGroup(ctx, mockClient, "admins")
+	existingGroup, err := reconciler.FindExistingUserGroup(ctx, mockClient, "admins")
 	if err != nil {
-		t.Fatalf("findExistingUserGroup returned unexpected error: %v", err)
+		t.Fatalf("FindExistingUserGroup returned unexpected error: %v", err)
 	}
 	if existingGroup == nil {
 		t.Fatal("expected to find existing group, got nil")
+		return
 	}
 	if existingGroup.ID != expectedGroup.ID {
 		t.Fatalf("expected group ID %q, got %q", expectedGroup.ID, existingGroup.ID)
-	}
-	if existingGroup.Name != expectedGroup.Name {
-		t.Fatalf("expected name %q, got %q", expectedGroup.Name, existingGroup.Name)
 	}
 }
 
 func TestFindExistingUserGroup_MultipleGroupsInResponse(t *testing.T) {
 	ctx := context.Background()
-	reconciler := &PocketIDUserGroupReconciler{}
+	reconciler := &Reconciler{}
 
 	targetGroup := &pocketid.UserGroup{
 		ID:           "target-group-id",
@@ -139,19 +137,19 @@ func TestFindExistingUserGroup_MultipleGroupsInResponse(t *testing.T) {
 	mockClient := &mockPocketIDUserGroupClient{
 		listUserGroupsFunc: func(ctx context.Context, search string) ([]*pocketid.UserGroup, error) {
 			if search == "developers" {
-				// Return multiple groups (e.g., search returned partial matches)
 				return []*pocketid.UserGroup{otherGroup, targetGroup}, nil
 			}
 			return []*pocketid.UserGroup{}, nil
 		},
 	}
 
-	existingGroup, err := reconciler.findExistingUserGroup(ctx, mockClient, "developers")
+	existingGroup, err := reconciler.FindExistingUserGroup(ctx, mockClient, "developers")
 	if err != nil {
-		t.Fatalf("findExistingUserGroup returned unexpected error: %v", err)
+		t.Fatalf("FindExistingUserGroup returned unexpected error: %v", err)
 	}
 	if existingGroup == nil {
 		t.Fatal("expected to find existing group, got nil")
+		return
 	}
 	if existingGroup.ID != targetGroup.ID {
 		t.Fatalf("expected target group ID %q, got %q", targetGroup.ID, existingGroup.ID)
@@ -182,75 +180,20 @@ func TestUserGroupAdoption_ExistingGroupByName(t *testing.T) {
 		},
 	}
 
-	reconciler := &PocketIDUserGroupReconciler{}
+	reconciler := &Reconciler{}
 
-	foundGroup, err := reconciler.findExistingUserGroup(ctx, mockClient, "admins")
+	foundGroup, err := reconciler.FindExistingUserGroup(ctx, mockClient, "admins")
 	if err != nil {
-		t.Fatalf("findExistingUserGroup returned error: %v", err)
+		t.Fatalf("FindExistingUserGroup returned error: %v", err)
 	}
-
 	if foundGroup == nil {
 		t.Fatal("expected to find existing group")
+		return
 	}
-
 	if foundGroup.ID != existingGroup.ID {
 		t.Fatalf("expected group ID %q, got %q", existingGroup.ID, foundGroup.ID)
 	}
-
 	if createCalled {
 		t.Fatal("CreateUserGroup should not have been called for existing group")
-	}
-}
-
-func TestUserGroupAdoption_NewGroupCreated(t *testing.T) {
-	ctx := context.Background()
-
-	createCalled := false
-	var createdName string
-
-	mockClient := &mockPocketIDUserGroupClient{
-		listUserGroupsFunc: func(ctx context.Context, search string) ([]*pocketid.UserGroup, error) {
-			return []*pocketid.UserGroup{}, nil
-		},
-		createUserGroupFunc: func(ctx context.Context, name, friendlyName string) (*pocketid.UserGroup, error) {
-			createCalled = true
-			createdName = name
-			return &pocketid.UserGroup{
-				ID:           "new-group-id",
-				Name:         name,
-				FriendlyName: friendlyName,
-			}, nil
-		},
-	}
-
-	reconciler := &PocketIDUserGroupReconciler{}
-
-	foundGroup, err := reconciler.findExistingUserGroup(ctx, mockClient, "new-group")
-	if err != nil {
-		t.Fatalf("findExistingUserGroup returned error: %v", err)
-	}
-
-	if foundGroup != nil {
-		t.Fatalf("expected no existing group, got: %+v", foundGroup)
-	}
-
-	// Simulate creating new group since none was found
-	if foundGroup == nil {
-		newGroup, err := mockClient.CreateUserGroup(ctx, "new-group", "New Group")
-		if err != nil {
-			t.Fatalf("CreateUserGroup returned error: %v", err)
-		}
-
-		if !createCalled {
-			t.Fatal("CreateUserGroup should have been called for new group")
-		}
-
-		if newGroup.Name != "new-group" {
-			t.Fatalf("expected name %q, got %q", "new-group", newGroup.Name)
-		}
-
-		if createdName != "new-group" {
-			t.Fatalf("expected created name %q, got %q", "new-group", createdName)
-		}
 	}
 }

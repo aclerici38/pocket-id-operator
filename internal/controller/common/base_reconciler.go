@@ -1,4 +1,4 @@
-package controller
+package common
 
 import (
 	"context"
@@ -69,7 +69,7 @@ type InstanceValidationResult struct {
 
 // ValidateInstanceReady performs the common instance validation flow
 func (r *BaseReconciler) ValidateInstanceReady(ctx context.Context, obj ConditionedResource, instance *pocketidv1alpha1.PocketIDInstance) *InstanceValidationResult {
-	if !instanceReady(instance) {
+	if !InstanceReady(instance) {
 		_ = r.SetReadyCondition(ctx, obj, metav1.ConditionFalse, "InstanceNotReady",
 			fmt.Sprintf("Waiting for PocketID instance '%s/%s' to be ready", instance.Namespace, instance.Name))
 		return &InstanceValidationResult{
@@ -146,9 +146,9 @@ func (r *BaseReconciler) ReconcileDeleteWithPocketID(
 	}
 
 	// Select the instance
-	instance, err := selectInstance(ctx, r.Client, instanceSelector)
+	instance, err := SelectInstance(ctx, r.Client, instanceSelector)
 	if err != nil {
-		if stderrors.Is(err, errNoInstance) {
+		if stderrors.Is(err, ErrNoInstance) {
 			logger.Info("No PocketIDInstance found, removing finalizer without API call", "statusID", statusID)
 			if err := removeFinalizer(ctx, r.Client, obj, finalizerName); err != nil {
 				logger.Error(err, "Failed to remove finalizer")
@@ -186,4 +186,48 @@ func (r *BaseReconciler) ReconcileDeleteWithPocketID(
 
 	logger.Info("Successfully deleted")
 	return ctrl.Result{}, nil
+}
+
+// InstanceReady checks if a PocketIDInstance has the Ready condition set to True
+func InstanceReady(instance *pocketidv1alpha1.PocketIDInstance) bool {
+	for _, cond := range instance.Status.Conditions {
+		if cond.Type == "Ready" && cond.Status == metav1.ConditionTrue {
+			return true
+		}
+	}
+	return false
+}
+
+var (
+	ErrNoInstance       = stderrors.New("no PocketIDInstance found")
+	ErrMultipleInstance = stderrors.New("multiple PocketIDInstances found")
+)
+
+// SelectInstance finds a PocketIDInstance by label selector
+func SelectInstance(ctx context.Context, c client.Client, selector *metav1.LabelSelector) (*pocketidv1alpha1.PocketIDInstance, error) {
+	instances := &pocketidv1alpha1.PocketIDInstanceList{}
+	listOpts := []client.ListOption{}
+
+	selectorString := "default instance"
+	if selector != nil {
+		parsed, err := metav1.LabelSelectorAsSelector(selector)
+		if err != nil {
+			return nil, fmt.Errorf("invalid instanceSelector: %w", err)
+		}
+		selectorString = parsed.String()
+		listOpts = append(listOpts, client.MatchingLabelsSelector{Selector: parsed})
+	}
+
+	if err := c.List(ctx, instances, listOpts...); err != nil {
+		return nil, err
+	}
+
+	if len(instances.Items) == 0 {
+		return nil, fmt.Errorf("%w for selector %q", ErrNoInstance, selectorString)
+	}
+	if len(instances.Items) > 1 {
+		return nil, fmt.Errorf("%w for selector %q", ErrMultipleInstance, selectorString)
+	}
+
+	return &instances.Items[0], nil
 }

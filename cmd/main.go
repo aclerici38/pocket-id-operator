@@ -41,7 +41,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
-	"github.com/aclerici38/pocket-id-operator/internal/controller"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/instance"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/oidcclient"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/user"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/usergroup"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -160,7 +164,7 @@ func main() {
 	}
 
 	managedBySelector := labels.SelectorFromSet(labels.Set{
-		controller.ManagedByLabelKey: controller.ManagedByLabelValue,
+		common.ManagedByLabelKey: common.ManagedByLabelValue,
 	})
 	cacheOptions := cache.Options{
 		ByObject: map[client.Object]cache.ByObject{
@@ -197,7 +201,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := (&controller.PocketIDInstanceReconciler{
+	if err := (&instance.Reconciler{
 		Client:    mgr.GetClient(),
 		APIReader: mgr.GetAPIReader(),
 		Scheme:    mgr.GetScheme(),
@@ -205,27 +209,27 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "PocketIDInstance")
 		os.Exit(1)
 	}
-	if err := (&controller.PocketIDUserReconciler{
+	if err := (&user.Reconciler{
 		Client:         mgr.GetClient(),
-		BaseReconciler: controller.BaseReconciler{Client: mgr.GetClient(), APIReader: mgr.GetAPIReader()},
+		BaseReconciler: common.BaseReconciler{Client: mgr.GetClient(), APIReader: mgr.GetAPIReader()},
 		APIReader:      mgr.GetAPIReader(),
 		Scheme:         mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PocketIDUser")
 		os.Exit(1)
 	}
-	if err := (&controller.PocketIDOIDCClientReconciler{
+	if err := (&oidcclient.Reconciler{
 		Client:         mgr.GetClient(),
-		BaseReconciler: controller.BaseReconciler{Client: mgr.GetClient(), APIReader: mgr.GetAPIReader()},
+		BaseReconciler: common.BaseReconciler{Client: mgr.GetClient(), APIReader: mgr.GetAPIReader()},
 		APIReader:      mgr.GetAPIReader(),
 		Scheme:         mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PocketIDOIDCClient")
 		os.Exit(1)
 	}
-	if err := (&controller.PocketIDUserGroupReconciler{
+	if err := (&usergroup.Reconciler{
 		Client:         mgr.GetClient(),
-		BaseReconciler: controller.BaseReconciler{Client: mgr.GetClient(), APIReader: mgr.GetAPIReader()},
+		BaseReconciler: common.BaseReconciler{Client: mgr.GetClient(), APIReader: mgr.GetAPIReader()},
 		APIReader:      mgr.GetAPIReader(),
 		Scheme:         mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {

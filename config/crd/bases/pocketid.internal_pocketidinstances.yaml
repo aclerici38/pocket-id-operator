@@ -13,7 +13,6 @@ spec:
     plural: pocketidinstances
     shortNames:
     - pidinstance
-    - pinstance
     singular: pocketidinstance
   scope: Namespaced
   versions:
@@ -247,7 +246,7 @@ spec:
                   URL to access database at
                   See the official documentation for DB_CONNECTION_STRING
                   For sqlite only add the filepath e.g. "/app/data/pocket-id.db"
-                  Uses application default if empty
+                  Uses application default (/app/data/pocket-id.db) if empty
                 properties:
                   value:
                     description: Plain text value 16 byte minimum
@@ -397,14 +396,14 @@ spec:
                 description: |-
                   DisableGlobalRateLimiting disables the global rate limiting in Pocket-ID
                   Sets the DISABLE_RATE_LIMITING environment variable
-                  The controller includes its own ratelimiting logic to prevent pocket-id's ratelimiter from triggering
+                  This controller includes its own ratelimiting logic to prevent pocket-id's ratelimiter from triggering
                   Only use to speed up reconciles
                 type: boolean
               encryptionKey:
                 description: |-
                   Encryption Key
                   Required since Pocket-ID v2
-                  See the official documentation for ENCRYPTION_KEY
+                  See the official documentation for ENCRYPTION_KEY environment variable
                 properties:
                   value:
                     description: Plain text value 16 byte minimum
@@ -870,7 +869,7 @@ spec:
               persistence:
                 description: |-
                   Configures persistence for Pocket-ID
-                  Pocket-ID can be run statelessly if using Postgres as a file and db backend
+                  Note: Pocket-ID can be run statelessly if using Postgres as a file and db backend
                   If not enabled mounts an emptydir instead
                 properties:
                   accessModes:

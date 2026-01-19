@@ -1,4 +1,4 @@
-package controller
+package common
 
 import (
 	"context"
@@ -43,7 +43,7 @@ func NewClientPoolManager() *ClientPoolManager {
 // Each instance gets exactly one client with its own rate-limited HTTP transport.
 func (m *ClientPoolManager) GetClient(ctx context.Context, k8sClient client.Client, apiReader client.Reader, instance *pocketidinternalv1alpha1.PocketIDInstance) (*pocketid.Client, error) {
 	log := logf.FromContext(ctx)
-	instanceKey := instanceKey(instance)
+	instanceKey := InstanceKey(instance)
 
 	// Fast path: check if client exists with read lock
 	m.mu.RLock()
@@ -54,7 +54,6 @@ func (m *ClientPoolManager) GetClient(ctx context.Context, k8sClient client.Clie
 			m.mu.RUnlock()
 			return pooledClient.client, nil
 		}
-		// Configuration changed, need to recreate client
 		log.Info("Rate limiting configuration changed, recreating client",
 			"instance", instanceKey,
 			"oldRateLimitingEnabled", pooledClient.rateLimitingEnabled,
@@ -67,9 +66,13 @@ func (m *ClientPoolManager) GetClient(ctx context.Context, k8sClient client.Clie
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Double-check in case another goroutine created it
+	// Double-check in case another goroutine created it with matching config
+	rateLimitingEnabled := !instance.Spec.DisableGlobalRateLimiting
 	if pooledClient, exists := m.clients[instanceKey]; exists {
-		return pooledClient.client, nil
+		if pooledClient.rateLimitingEnabled == rateLimitingEnabled {
+			return pooledClient.client, nil
+		}
+		// Config doesn't match, continue to recreate
 	}
 
 	// Get API key for authentication using APIReader to bypass cache
@@ -80,24 +83,20 @@ func (m *ClientPoolManager) GetClient(ctx context.Context, k8sClient client.Clie
 
 	var httpTransport http.RoundTripper
 	var rateLimiter *rate.Limiter
-	rateLimitingEnabled := !instance.Spec.DisableGlobalRateLimiting
 
-	// Only create rate-limited transport if rate limiting is not disabled
 	if instance.Spec.DisableGlobalRateLimiting {
 		log.Info("Creating pooled API client without rate limiting (disabled by spec)", "instance", instanceKey)
 		httpTransport = http.DefaultTransport
 	} else {
 		log.Info("Creating pooled API client with rate limiting", "instance", instanceKey)
-		// Conservative rate limit: 0.8 request per second with burst of 10
-		// This prevents overwhelming the PocketID instance with concurrent reconciliations
+		// Pocket-id has a very aggressive rate-limiter we do not want to trigger
 		qps := 0.8
 		burst := 10
 		rateLimiter = rate.NewLimiter(rate.Limit(qps), burst)
 		httpTransport = pocketid.NewRateLimitedTransport(qps, burst)
 	}
 
-	// Create the PocketID client with the transport
-	serviceURL := internalServiceURL(instance.Name, instance.Namespace)
+	serviceURL := InternalServiceURL(instance.Name, instance.Namespace)
 	apiClient, err := pocketid.NewClient(serviceURL, apiKey, httpTransport)
 	if err != nil {
 		return nil, fmt.Errorf("create pocketid client: %w", err)
@@ -130,27 +129,25 @@ func (m *ClientPoolManager) GetClient(ctx context.Context, k8sClient client.Clie
 func (m *ClientPoolManager) RemoveClient(instance *pocketidinternalv1alpha1.PocketIDInstance) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	key := instanceKey(instance)
+	key := InstanceKey(instance)
 	if _, exists := m.clients[key]; exists {
 		delete(m.clients, key)
 		logf.Log.Info("Removed client from pool", "instance", key)
 	}
 }
 
-// instanceKey generates a unique key for a PocketIDInstance
-func instanceKey(instance *pocketidinternalv1alpha1.PocketIDInstance) string {
+// InstanceKey generates a unique key for a PocketIDInstance
+func InstanceKey(instance *pocketidinternalv1alpha1.PocketIDInstance) string {
 	return fmt.Sprintf("%s/%s", instance.Namespace, instance.Name)
 }
 
 // getAPIKeyForInstance retrieves the static API key for authenticating with the instance
 func getAPIKeyForInstance(ctx context.Context, apiReader client.Reader, instance *pocketidinternalv1alpha1.PocketIDInstance) (string, error) {
-	// Check if apiReader is nil (can happen in tests)
 	if apiReader == nil {
 		return "", fmt.Errorf("%w: apiReader is nil", ErrAPIClientNotReady)
 	}
 
-	// Get the static API key secret name
-	secretName := staticAPIKeySecretName(instance.Name)
+	secretName := StaticAPIKeySecretName(instance.Name)
 
 	// Retrieve the secret using APIReader to bypass cache
 	secret := &corev1.Secret{}
@@ -159,13 +156,22 @@ func getAPIKeyForInstance(ctx context.Context, apiReader client.Reader, instance
 		return "", fmt.Errorf("%w: get static API key secret: %w", ErrAPIClientNotReady, err)
 	}
 
-	// Extract the token
 	token, ok := secret.Data["token"]
 	if !ok {
 		return "", fmt.Errorf("static API key secret has no token field")
 	}
 
 	return string(token), nil
+}
+
+// StaticAPIKeySecretName returns the secret name for the instance's static API key
+func StaticAPIKeySecretName(instanceName string) string {
+	return fmt.Sprintf("%s-static-api-key", instanceName)
+}
+
+// InternalServiceURL returns the internal Kubernetes service URL for the instance
+func InternalServiceURL(instanceName, namespace string) string {
+	return fmt.Sprintf("http://%s.%s.svc.cluster.local:1411", instanceName, namespace)
 }
 
 // Global client pool manager instance
@@ -177,7 +183,7 @@ func GetAPIClient(ctx context.Context, k8sClient client.Client, apiReader client
 	return globalClientPool.GetClient(ctx, k8sClient, apiReader, instance)
 }
 
-// RemoveAPIClient removes a client from the global pool (call when instance is deleted)
+// RemoveAPIClient removes a client from the global pool
 func RemoveAPIClient(instance *pocketidinternalv1alpha1.PocketIDInstance) {
 	globalClientPool.RemoveClient(instance)
 }

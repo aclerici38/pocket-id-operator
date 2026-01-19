@@ -12,8 +12,7 @@ spec:
     listKind: PocketIDUserGroupList
     plural: pocketidusergroups
     shortNames:
-    - pidusergroup
-    - pgroup
+    - usergroup
     singular: pocketidusergroup
   scope: Namespaced
   versions:
@@ -119,7 +118,8 @@ spec:
                 minLength: 2
                 type: string
               userRefs:
-                description: UserRefs are PocketIDUser resources to add to this group
+                description: UserRefs are PocketIDUser custom resources to add to
+                  this group
                 items:
                   description: NamespacedUserReference references a PocketIDUser by
                     name and namespace.

@@ -17,6 +17,25 @@ type sessionClient struct {
 	httpClient *http.Client
 }
 
+// CreateAPIKeyRequest is the request body for creating an API key via session auth.
+type CreateAPIKeyRequest struct {
+	Name        string `json:"name"`
+	ExpiresAt   string `json:"expiresAt"`
+	Description string `json:"description"`
+}
+
+// CreateAPIKeyResponse is the response from creating an API key.
+type CreateAPIKeyResponse struct {
+	APIKey struct {
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		CreatedAt   string `json:"createdAt"`
+		ExpiresAt   string `json:"expiresAt"`
+	} `json:"apiKey"`
+	Token string `json:"token"`
+}
+
 func newSessionClient(baseURL string, httpClient *http.Client) *sessionClient {
 	trimmed := strings.TrimRight(baseURL, "/")
 	if httpClient == nil {
@@ -28,7 +47,7 @@ func newSessionClient(baseURL string, httpClient *http.Client) *sessionClient {
 	}
 }
 
-func (s *sessionClient) doJSONRequest(ctx context.Context, method, path string, requestBody interface{}, cookies []*http.Cookie) (int, []*http.Cookie, []byte, error) {
+func (s *sessionClient) doJSONRequest(ctx context.Context, method, path string, requestBody any, cookies []*http.Cookie) (int, []*http.Cookie, []byte, error) {
 	var bodyReader io.Reader
 	if requestBody != nil {
 		body, err := json.Marshal(requestBody)
@@ -62,23 +81,6 @@ func (s *sessionClient) doJSONRequest(ctx context.Context, method, path string, 
 	}
 
 	return resp.StatusCode, resp.Cookies(), respBody, nil
-}
-
-func (s *sessionClient) setup(ctx context.Context, req SetupRequest) (*SetupResponse, []*http.Cookie, error) {
-	status, cookies, respBody, err := s.doJSONRequest(ctx, http.MethodPost, "/api/signup/setup", req, nil)
-	if err != nil {
-		return nil, nil, err
-	}
-	if status != http.StatusOK {
-		return nil, nil, fmt.Errorf("setup failed with status %d: %s", status, string(respBody))
-	}
-
-	var setupResp SetupResponse
-	if err := json.Unmarshal(respBody, &setupResp); err != nil {
-		return nil, nil, fmt.Errorf("unmarshal response: %w", err)
-	}
-
-	return &setupResp, cookies, nil
 }
 
 func (s *sessionClient) exchangeOneTimeAccessToken(ctx context.Context, token string) ([]*http.Cookie, error) {

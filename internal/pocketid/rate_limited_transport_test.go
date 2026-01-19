@@ -165,8 +165,8 @@ func TestClientUsesRateLimitedTransport(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 
 		// Return appropriate response based on endpoint
-		if r.URL.Path == "/api/users/me" {
-			_, _ = w.Write([]byte(`{"id":"test-user","username":"testuser","firstName":"Test","lastName":"User","email":"test@test.com","displayName":"Test User","isAdmin":true,"disabled":false,"locale":"en"}`))
+		if r.URL.Path == "/api/users" {
+			_, _ = w.Write([]byte(`{"data":[],"pagination":{"totalItems":0,"totalPages":0,"currentPage":1,"itemsPerPage":10}}`))
 		} else {
 			_, _ = w.Write([]byte(`{}`))
 		}
@@ -188,7 +188,7 @@ func TestClientUsesRateLimitedTransport(t *testing.T) {
 	start := time.Now()
 
 	for i := 0; i < 3; i++ {
-		_, _ = client.GetCurrentUser(ctx)
+		_, _ = client.ListUsers(ctx, "")
 	}
 
 	elapsed := time.Since(start)
