@@ -142,6 +142,7 @@ type OIDCClientSecretKeys struct {
 }
 
 // PocketIDOIDCClientSpec defines the desired state of PocketIDOIDCClient
+// +kubebuilder:validation:XValidation:rule="has(self.clientId) == has(oldSelf.clientId) && (!has(self.clientId) || self.clientId == oldSelf.clientId)",message="clientId is immutable"
 type PocketIDOIDCClientSpec struct {
 	// InstanceSelector selects the PocketIDInstance to reconcile against.
 	// If omitted, the controller expects exactly one instance in the cluster.
@@ -149,6 +150,7 @@ type PocketIDOIDCClientSpec struct {
 	InstanceSelector *metav1.LabelSelector `json:"instanceSelector,omitempty"`
 
 	// ClientID is the optional OIDC client ID to use instead of a generated one
+	// The Client ID is immutable and cannot be changed once the oidc client is created
 	// +kubebuilder:validation:MinLength=2
 	// +kubebuilder:validation:MaxLength=128
 	// +optional

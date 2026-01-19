@@ -23,6 +23,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -403,6 +404,64 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 				}
 				return cond.Reason
 			}, timeout, interval).Should(Equal("InstanceSelectionError"))
+		})
+	})
+
+	Context("ClientID immutability", func() {
+		It("should reject updates when clientId is changed", func() {
+			clientName := "test-oidc-clientid-change"
+			resource := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      clientName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+					ClientID: "client-one",
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			DeferCleanup(func() {
+				_ = k8sClient.Delete(ctx, resource)
+			})
+
+			err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				current := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: clientName, Namespace: namespace}, current); err != nil {
+					return err
+				}
+				current.Spec.ClientID = "client-two"
+				return k8sClient.Update(ctx, current)
+			})
+
+			Expect(err).To(HaveOccurred())
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+		})
+
+		It("should reject updates when clientId is set after creation", func() {
+			clientName := "test-oidc-clientid-set"
+			resource := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      clientName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			DeferCleanup(func() {
+				_ = k8sClient.Delete(ctx, resource)
+			})
+
+			err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				current := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: clientName, Namespace: namespace}, current); err != nil {
+					return err
+				}
+				current.Spec.ClientID = "client-new"
+				return k8sClient.Update(ctx, current)
+			})
+
+			Expect(err).To(HaveOccurred())
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
 		})
 	})
 

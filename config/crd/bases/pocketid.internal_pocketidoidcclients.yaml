@@ -66,8 +66,9 @@ spec:
                   type: string
                 type: array
               clientId:
-                description: ClientID is the optional OIDC client ID to use instead
-                  of a generated one
+                description: |-
+                  ClientID is the optional OIDC client ID to use instead of a generated one
+                  The Client ID is immutable and cannot be changed once the oidc client is created
                 maxLength: 128
                 minLength: 2
                 type: string
@@ -253,6 +254,10 @@ spec:
                     type: string
                 type: object
             type: object
+            x-kubernetes-validations:
+            - message: clientId is immutable
+              rule: has(self.clientId) == has(oldSelf.clientId) && (!has(self.clientId)
+                || self.clientId == oldSelf.clientId)
           status:
             description: status defines the observed state of PocketIDOIDCClient
             properties:
