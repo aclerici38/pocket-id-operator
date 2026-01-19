@@ -83,8 +83,6 @@ jobs:
     name: E2E Tests
     needs:
       - meta
-      - test
-      - lint
       - build
     uses: ./.github/workflows/test-e2e.yml
     with:
