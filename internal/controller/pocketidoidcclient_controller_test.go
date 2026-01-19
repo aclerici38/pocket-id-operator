@@ -118,9 +118,6 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 				Spec: pocketidinternalv1alpha1.PocketIDUserGroupSpec{
 					Name:         "group-name",
 					FriendlyName: "Group Name",
-					InstanceSelector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{"nonexistent": "true"},
-					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, group)).To(Succeed())
@@ -129,6 +126,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 				return k8sClient.Get(ctx, types.NamespacedName{Name: groupName, Namespace: namespace}, group)
 			}, timeout, interval).Should(Succeed())
 
+			// Set up the status - use Eventually because the controller may be racing with us
 			Eventually(func() error {
 				return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 					if err := k8sClient.Get(ctx, types.NamespacedName{Name: groupName, Namespace: namespace}, group); err != nil {
@@ -159,9 +157,10 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 				},
 			}
 
-			ids, err := reconciler.ResolveAllowedUserGroups(ctx, client)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(ids).To(Equal([]string{"group-id-1"}))
+			// Use Eventually because the controller may overwrite our status update
+			Eventually(func() ([]string, error) {
+				return reconciler.ResolveAllowedUserGroups(ctx, client)
+			}, timeout, interval).Should(Equal([]string{"group-id-1"}))
 		})
 
 		It("should error when a group is missing", func() {
