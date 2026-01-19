@@ -35,6 +35,11 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/instance"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/oidcclient"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/user"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/usergroup"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -97,32 +102,32 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).NotTo(HaveOccurred())
 
-	err = (&PocketIDInstanceReconciler{
+	err = (&instance.Reconciler{
 		Client:    k8sManager.GetClient(),
 		APIReader: k8sManager.GetAPIReader(),
 		Scheme:    k8sManager.GetScheme(),
 	}).SetupWithManager(k8sManager)
 	Expect(err).NotTo(HaveOccurred())
 
-	err = (&PocketIDUserReconciler{
+	err = (&user.Reconciler{
 		Client:         k8sManager.GetClient(),
-		BaseReconciler: BaseReconciler{Client: k8sManager.GetClient(), APIReader: k8sManager.GetAPIReader()},
+		BaseReconciler: common.BaseReconciler{Client: k8sManager.GetClient(), APIReader: k8sManager.GetAPIReader()},
 		APIReader:      k8sManager.GetAPIReader(),
 		Scheme:         k8sManager.GetScheme(),
 	}).SetupWithManager(k8sManager)
 	Expect(err).NotTo(HaveOccurred())
 
-	err = (&PocketIDOIDCClientReconciler{
+	err = (&oidcclient.Reconciler{
 		Client:         k8sManager.GetClient(),
-		BaseReconciler: BaseReconciler{Client: k8sManager.GetClient(), APIReader: k8sManager.GetAPIReader()},
+		BaseReconciler: common.BaseReconciler{Client: k8sManager.GetClient(), APIReader: k8sManager.GetAPIReader()},
 		APIReader:      k8sManager.GetAPIReader(),
 		Scheme:         k8sManager.GetScheme(),
 	}).SetupWithManager(k8sManager)
 	Expect(err).NotTo(HaveOccurred())
 
-	err = (&PocketIDUserGroupReconciler{
+	err = (&usergroup.Reconciler{
 		Client:         k8sManager.GetClient(),
-		BaseReconciler: BaseReconciler{Client: k8sManager.GetClient(), APIReader: k8sManager.GetAPIReader()},
+		BaseReconciler: common.BaseReconciler{Client: k8sManager.GetClient(), APIReader: k8sManager.GetAPIReader()},
 		APIReader:      k8sManager.GetAPIReader(),
 		Scheme:         k8sManager.GetScheme(),
 	}).SetupWithManager(k8sManager)

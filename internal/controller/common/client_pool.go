@@ -1,4 +1,4 @@
-package controller
+package common
 
 import (
 	"context"
@@ -43,7 +43,7 @@ func NewClientPoolManager() *ClientPoolManager {
 // Each instance gets exactly one client with its own rate-limited HTTP transport.
 func (m *ClientPoolManager) GetClient(ctx context.Context, k8sClient client.Client, apiReader client.Reader, instance *pocketidinternalv1alpha1.PocketIDInstance) (*pocketid.Client, error) {
 	log := logf.FromContext(ctx)
-	instanceKey := instanceKey(instance)
+	instanceKey := InstanceKey(instance)
 
 	// Fast path: check if client exists with read lock
 	m.mu.RLock()
@@ -97,7 +97,7 @@ func (m *ClientPoolManager) GetClient(ctx context.Context, k8sClient client.Clie
 	}
 
 	// Create the PocketID client with the transport
-	serviceURL := internalServiceURL(instance.Name, instance.Namespace)
+	serviceURL := InternalServiceURL(instance.Name, instance.Namespace)
 	apiClient, err := pocketid.NewClient(serviceURL, apiKey, httpTransport)
 	if err != nil {
 		return nil, fmt.Errorf("create pocketid client: %w", err)
@@ -130,15 +130,15 @@ func (m *ClientPoolManager) GetClient(ctx context.Context, k8sClient client.Clie
 func (m *ClientPoolManager) RemoveClient(instance *pocketidinternalv1alpha1.PocketIDInstance) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	key := instanceKey(instance)
+	key := InstanceKey(instance)
 	if _, exists := m.clients[key]; exists {
 		delete(m.clients, key)
 		logf.Log.Info("Removed client from pool", "instance", key)
 	}
 }
 
-// instanceKey generates a unique key for a PocketIDInstance
-func instanceKey(instance *pocketidinternalv1alpha1.PocketIDInstance) string {
+// InstanceKey generates a unique key for a PocketIDInstance
+func InstanceKey(instance *pocketidinternalv1alpha1.PocketIDInstance) string {
 	return fmt.Sprintf("%s/%s", instance.Namespace, instance.Name)
 }
 
@@ -150,7 +150,7 @@ func getAPIKeyForInstance(ctx context.Context, apiReader client.Reader, instance
 	}
 
 	// Get the static API key secret name
-	secretName := staticAPIKeySecretName(instance.Name)
+	secretName := StaticAPIKeySecretName(instance.Name)
 
 	// Retrieve the secret using APIReader to bypass cache
 	secret := &corev1.Secret{}
@@ -166,6 +166,16 @@ func getAPIKeyForInstance(ctx context.Context, apiReader client.Reader, instance
 	}
 
 	return string(token), nil
+}
+
+// StaticAPIKeySecretName returns the secret name for the instance's static API key
+func StaticAPIKeySecretName(instanceName string) string {
+	return fmt.Sprintf("%s-static-api-key", instanceName)
+}
+
+// InternalServiceURL returns the internal Kubernetes service URL for the instance
+func InternalServiceURL(instanceName, namespace string) string {
+	return fmt.Sprintf("http://%s.%s.svc.cluster.local:1411", instanceName, namespace)
 }
 
 // Global client pool manager instance

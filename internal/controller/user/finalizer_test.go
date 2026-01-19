@@ -1,4 +1,4 @@
-package controller
+package user
 
 import (
 	"context"
@@ -39,10 +39,10 @@ func TestReconcileUserFinalizers_AddsAuthFinalizer(t *testing.T) {
 		WithObjects(user, instance).
 		Build()
 
-	reconciler := &PocketIDUserReconciler{Client: client, APIReader: client, Scheme: scheme}
-	updated, err := reconciler.reconcileUserFinalizers(context.Background(), user)
+	reconciler := &Reconciler{Client: client, APIReader: client, Scheme: scheme}
+	updated, err := reconciler.ReconcileUserFinalizers(context.Background(), user)
 	if err != nil {
-		t.Fatalf("reconcileUserFinalizers returned error: %v", err)
+		t.Fatalf("ReconcileUserFinalizers returned error: %v", err)
 	}
 	if !updated {
 		t.Fatal("expected finalizers to be updated")
@@ -52,51 +52,8 @@ func TestReconcileUserFinalizers_AddsAuthFinalizer(t *testing.T) {
 	if err := client.Get(context.Background(), types.NamespacedName{Name: user.Name, Namespace: user.Namespace}, updatedUser); err != nil {
 		t.Fatalf("failed to get updated user: %v", err)
 	}
-	if !containsFinalizer(updatedUser.Finalizers, userFinalizer) {
-		t.Fatalf("expected both finalizers to be set, got %v", updatedUser.Finalizers)
-	}
-}
-
-func TestReconcileUserFinalizers_AddsAuthFinalizerFromStatus(t *testing.T) {
-	scheme := runtime.NewScheme()
-	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
-	_ = corev1.AddToScheme(scheme)
-
-	user := &pocketidinternalv1alpha1.PocketIDUser{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "auth-user",
-			Namespace: "default",
-		},
-	}
-	instance := &pocketidinternalv1alpha1.PocketIDInstance{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "instance",
-			Namespace: "default",
-		},
-		Spec:   pocketidinternalv1alpha1.PocketIDInstanceSpec{},
-		Status: pocketidinternalv1alpha1.PocketIDInstanceStatus{},
-	}
-
-	client := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithObjects(user, instance).
-		Build()
-
-	reconciler := &PocketIDUserReconciler{Client: client, APIReader: client, Scheme: scheme}
-	updated, err := reconciler.reconcileUserFinalizers(context.Background(), user)
-	if err != nil {
-		t.Fatalf("reconcileUserFinalizers returned error: %v", err)
-	}
-	if !updated {
-		t.Fatal("expected finalizers to be updated")
-	}
-
-	updatedUser := &pocketidinternalv1alpha1.PocketIDUser{}
-	if err := client.Get(context.Background(), types.NamespacedName{Name: user.Name, Namespace: user.Namespace}, updatedUser); err != nil {
-		t.Fatalf("failed to get updated user: %v", err)
-	}
-	if !containsFinalizer(updatedUser.Finalizers, userFinalizer) {
-		t.Fatalf("expected both finalizers to be set, got %v", updatedUser.Finalizers)
+	if !containsFinalizer(updatedUser.Finalizers, UserFinalizer) {
+		t.Fatalf("expected finalizer to be set, got %v", updatedUser.Finalizers)
 	}
 }
 
@@ -135,10 +92,10 @@ func TestReconcileUserFinalizers_AddsUserGroupFinalizer(t *testing.T) {
 		WithObjects(user, instance, group).
 		Build()
 
-	reconciler := &PocketIDUserReconciler{Client: client, APIReader: client, Scheme: scheme}
-	updated, err := reconciler.reconcileUserFinalizers(context.Background(), user)
+	reconciler := &Reconciler{Client: client, APIReader: client, Scheme: scheme}
+	updated, err := reconciler.ReconcileUserFinalizers(context.Background(), user)
 	if err != nil {
-		t.Fatalf("reconcileUserFinalizers returned error: %v", err)
+		t.Fatalf("ReconcileUserFinalizers returned error: %v", err)
 	}
 	if !updated {
 		t.Fatal("expected finalizers to be updated")
@@ -148,7 +105,7 @@ func TestReconcileUserFinalizers_AddsUserGroupFinalizer(t *testing.T) {
 	if err := client.Get(context.Background(), types.NamespacedName{Name: user.Name, Namespace: user.Namespace}, updatedUser); err != nil {
 		t.Fatalf("failed to get updated user: %v", err)
 	}
-	if !containsFinalizer(updatedUser.Finalizers, userFinalizer) || !containsFinalizer(updatedUser.Finalizers, userGroupUserFinalizer) {
+	if !containsFinalizer(updatedUser.Finalizers, UserFinalizer) || !containsFinalizer(updatedUser.Finalizers, UserGroupUserFinalizer) {
 		t.Fatalf("expected user and user-group finalizers to be set, got %v", updatedUser.Finalizers)
 	}
 }
@@ -162,7 +119,7 @@ func TestReconcileUserFinalizers_RemovesUserGroupFinalizerWhenUnreferenced(t *te
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       "group-user-cleanup",
 			Namespace:  "default",
-			Finalizers: []string{userFinalizer, userGroupUserFinalizer},
+			Finalizers: []string{UserFinalizer, UserGroupUserFinalizer},
 		},
 	}
 	instance := &pocketidinternalv1alpha1.PocketIDInstance{
@@ -177,10 +134,10 @@ func TestReconcileUserFinalizers_RemovesUserGroupFinalizerWhenUnreferenced(t *te
 		WithObjects(user, instance).
 		Build()
 
-	reconciler := &PocketIDUserReconciler{Client: client, APIReader: client, Scheme: scheme}
-	updated, err := reconciler.reconcileUserFinalizers(context.Background(), user)
+	reconciler := &Reconciler{Client: client, APIReader: client, Scheme: scheme}
+	updated, err := reconciler.ReconcileUserFinalizers(context.Background(), user)
 	if err != nil {
-		t.Fatalf("reconcileUserFinalizers returned error: %v", err)
+		t.Fatalf("ReconcileUserFinalizers returned error: %v", err)
 	}
 	if !updated {
 		t.Fatal("expected finalizers to be updated")
@@ -190,7 +147,7 @@ func TestReconcileUserFinalizers_RemovesUserGroupFinalizerWhenUnreferenced(t *te
 	if err := client.Get(context.Background(), types.NamespacedName{Name: user.Name, Namespace: user.Namespace}, updatedUser); err != nil {
 		t.Fatalf("failed to get updated user: %v", err)
 	}
-	if containsFinalizer(updatedUser.Finalizers, userGroupUserFinalizer) {
+	if containsFinalizer(updatedUser.Finalizers, UserGroupUserFinalizer) {
 		t.Fatalf("expected user-group finalizer to be removed, got %v", updatedUser.Finalizers)
 	}
 }
@@ -205,7 +162,7 @@ func TestReconcileDelete_RemovesFinalizersWhenUnreferenced(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              "auth-user",
 			Namespace:         "default",
-			Finalizers:        []string{userFinalizer},
+			Finalizers:        []string{UserFinalizer},
 			DeletionTimestamp: &now,
 		},
 	}
@@ -222,14 +179,14 @@ func TestReconcileDelete_RemovesFinalizersWhenUnreferenced(t *testing.T) {
 		WithObjects(user, instance).
 		Build()
 
-	reconciler := &PocketIDUserReconciler{Client: client, APIReader: client, Scheme: scheme}
-	if _, err := reconciler.reconcileDelete(context.Background(), user); err != nil {
-		t.Fatalf("reconcileDelete returned error: %v", err)
+	reconciler := &Reconciler{Client: client, APIReader: client, Scheme: scheme}
+	if _, err := reconciler.ReconcileDelete(context.Background(), user); err != nil {
+		t.Fatalf("ReconcileDelete returned error: %v", err)
 	}
 
 	updatedUser := &pocketidinternalv1alpha1.PocketIDUser{}
 	if err := client.Get(context.Background(), types.NamespacedName{Name: user.Name, Namespace: user.Namespace}, updatedUser); err == nil {
-		if containsFinalizer(updatedUser.Finalizers, userFinalizer) {
+		if containsFinalizer(updatedUser.Finalizers, UserFinalizer) {
 			t.Fatalf("expected finalizers to be removed, got %v", updatedUser.Finalizers)
 		}
 	} else if !errors.IsNotFound(err) {
@@ -247,7 +204,7 @@ func TestReconcileDelete_BlocksWhenUserGroupReferences(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              "group-referenced-user",
 			Namespace:         "default",
-			Finalizers:        []string{userFinalizer, userGroupUserFinalizer},
+			Finalizers:        []string{UserFinalizer, UserGroupUserFinalizer},
 			DeletionTimestamp: &now,
 		},
 	}
@@ -268,10 +225,10 @@ func TestReconcileDelete_BlocksWhenUserGroupReferences(t *testing.T) {
 		WithObjects(user, group).
 		Build()
 
-	reconciler := &PocketIDUserReconciler{Client: client, APIReader: client, Scheme: scheme}
-	result, err := reconciler.reconcileDelete(context.Background(), user)
+	reconciler := &Reconciler{Client: client, APIReader: client, Scheme: scheme}
+	result, err := reconciler.ReconcileDelete(context.Background(), user)
 	if err != nil {
-		t.Fatalf("reconcileDelete returned error: %v", err)
+		t.Fatalf("ReconcileDelete returned error: %v", err)
 	}
 	if result.RequeueAfter <= 0 {
 		t.Fatalf("expected requeue when referenced by user group, got %s", result.RequeueAfter)
@@ -281,7 +238,7 @@ func TestReconcileDelete_BlocksWhenUserGroupReferences(t *testing.T) {
 	if err := client.Get(context.Background(), types.NamespacedName{Name: user.Name, Namespace: user.Namespace}, updatedUser); err != nil {
 		t.Fatalf("failed to get updated user: %v", err)
 	}
-	if !containsFinalizer(updatedUser.Finalizers, userGroupUserFinalizer) {
+	if !containsFinalizer(updatedUser.Finalizers, UserGroupUserFinalizer) {
 		t.Fatalf("expected user-group finalizer to remain, got %v", updatedUser.Finalizers)
 	}
 }

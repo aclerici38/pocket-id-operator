@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 )
 
 var _ = Describe("PocketIDUser Controller", func() {
@@ -333,7 +334,7 @@ var _ = Describe("PocketIDUser Controller", func() {
 				},
 			}
 
-			selected, err := selectInstance(ctx, k8sClient, user.Spec.InstanceSelector)
+			selected, err := common.SelectInstance(ctx, k8sClient, user.Spec.InstanceSelector)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(selected.Name).To(Equal(instanceNameB))
 			Expect(selected.Namespace).To(Equal(instanceNSB))

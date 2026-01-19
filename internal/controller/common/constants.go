@@ -1,4 +1,4 @@
-package controller
+package common
 
 import (
 	"errors"
@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	// Standard requeue delay for consistent error handling across controllers
+	// Requeue is the standard requeue delay for consistent error handling across controllers
 	Requeue = 5 * time.Second
 )
 

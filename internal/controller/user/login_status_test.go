@@ -1,4 +1,4 @@
-package controller
+package user
 
 import (
 	"context"
@@ -38,9 +38,9 @@ func TestReconcileOneTimeLoginStatus_ExpiredClears(t *testing.T) {
 		WithObjects(user).
 		Build()
 
-	reconciler := &PocketIDUserReconciler{Client: client, APIReader: client, Scheme: scheme}
-	if _, err := reconciler.reconcileOneTimeLoginStatus(context.Background(), user); err != nil {
-		t.Fatalf("reconcileOneTimeLoginStatus returned error: %v", err)
+	reconciler := &Reconciler{Client: client, APIReader: client, Scheme: scheme}
+	if _, err := reconciler.ReconcileOneTimeLoginStatus(context.Background(), user); err != nil {
+		t.Fatalf("ReconcileOneTimeLoginStatus returned error: %v", err)
 	}
 
 	updated := &pocketidinternalv1alpha1.PocketIDUser{}
@@ -77,10 +77,10 @@ func TestReconcileOneTimeLoginStatus_FutureRequeues(t *testing.T) {
 		WithObjects(user).
 		Build()
 
-	reconciler := &PocketIDUserReconciler{Client: client, APIReader: client, Scheme: scheme}
-	result, err := reconciler.reconcileOneTimeLoginStatus(context.Background(), user)
+	reconciler := &Reconciler{Client: client, APIReader: client, Scheme: scheme}
+	result, err := reconciler.ReconcileOneTimeLoginStatus(context.Background(), user)
 	if err != nil {
-		t.Fatalf("reconcileOneTimeLoginStatus returned error: %v", err)
+		t.Fatalf("ReconcileOneTimeLoginStatus returned error: %v", err)
 	}
 	if result.RequeueAfter <= 0 {
 		t.Fatalf("expected positive RequeueAfter, got %s", result.RequeueAfter)
@@ -119,9 +119,9 @@ func TestReconcileOneTimeLoginStatus_InvalidTimestampClears(t *testing.T) {
 		WithObjects(user).
 		Build()
 
-	reconciler := &PocketIDUserReconciler{Client: client, APIReader: client, Scheme: scheme}
-	if _, err := reconciler.reconcileOneTimeLoginStatus(context.Background(), user); err != nil {
-		t.Fatalf("reconcileOneTimeLoginStatus returned error: %v", err)
+	reconciler := &Reconciler{Client: client, APIReader: client, Scheme: scheme}
+	if _, err := reconciler.ReconcileOneTimeLoginStatus(context.Background(), user); err != nil {
+		t.Fatalf("ReconcileOneTimeLoginStatus returned error: %v", err)
 	}
 
 	updated := &pocketidinternalv1alpha1.PocketIDUser{}
@@ -161,10 +161,10 @@ func TestSetOneTimeLoginStatus_SetsTokenURLAndExpiry(t *testing.T) {
 		WithObjects(user).
 		Build()
 
-	reconciler := &PocketIDUserReconciler{Client: client, APIReader: client, Scheme: scheme}
+	reconciler := &Reconciler{Client: client, APIReader: client, Scheme: scheme}
 	now := time.Now().UTC()
-	if err := reconciler.setOneTimeLoginStatus(context.Background(), user, instance, "token123"); err != nil {
-		t.Fatalf("setOneTimeLoginStatus returned error: %v", err)
+	if err := reconciler.SetOneTimeLoginStatus(context.Background(), user, instance, "token123"); err != nil {
+		t.Fatalf("SetOneTimeLoginStatus returned error: %v", err)
 	}
 
 	updated := &pocketidinternalv1alpha1.PocketIDUser{}
@@ -186,8 +186,8 @@ func TestSetOneTimeLoginStatus_SetsTokenURLAndExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to parse expiresAt: %v", err)
 	}
-	minExpiry := now.Add(time.Duration(defaultLoginTokenExpiryMin-1) * time.Minute)
-	maxExpiry := now.Add(time.Duration(defaultLoginTokenExpiryMin+1) * time.Minute)
+	minExpiry := now.Add(time.Duration(DefaultLoginTokenExpiryMin-1) * time.Minute)
+	maxExpiry := now.Add(time.Duration(DefaultLoginTokenExpiryMin+1) * time.Minute)
 	if parsed.Before(minExpiry) || parsed.After(maxExpiry) {
 		t.Fatalf("expected expiresAt within %s and %s, got %s", minExpiry, maxExpiry, parsed)
 	}

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package controller
+package usergroup
 
 import (
 	"context"
@@ -31,19 +31,26 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/helpers"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
 const (
-	userGroupFinalizer           = "pocketid.internal/user-group-finalizer"
-	oidcClientUserGroupFinalizer = "pocketid.internal/oidc-client-finalizer"
-	userGroupUserRefIndexKey     = "pocketidusergroup.userRef"
+	UserGroupFinalizer           = "pocketid.internal/user-group-finalizer"
+	OIDCClientUserGroupFinalizer = "pocketid.internal/oidc-client-finalizer"
 )
 
-// PocketIDUserGroupReconciler reconciles a PocketIDUserGroup object
-type PocketIDUserGroupReconciler struct {
+// OIDCClientAllowedGroupIndexKey is the index key for OIDC client allowed groups
+const OIDCClientAllowedGroupIndexKey = "pocketidoidcclient.allowedGroup"
+
+// UserGroupUserRefIndexKey is the index key for user group user references
+const UserGroupUserRefIndexKey = "pocketidusergroup.userRef"
+
+// Reconciler reconciles a PocketIDUserGroup object
+type Reconciler struct {
 	client.Client
-	BaseReconciler
+	common.BaseReconciler
 	APIReader client.Reader
 	Scheme    *runtime.Scheme
 }
@@ -58,14 +65,7 @@ type PocketIDUserGroupReconciler struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the PocketIDUserGroup object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.22.4/pkg/reconcile
-func (r *PocketIDUserGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	r.EnsureClient(r.Client)
 
@@ -77,23 +77,23 @@ func (r *PocketIDUserGroupReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	log.Info("Reconciling PocketIDUserGroup", "name", userGroup.Name)
 
 	if !userGroup.DeletionTimestamp.IsZero() {
-		return r.reconcileDelete(ctx, userGroup)
+		return r.ReconcileDelete(ctx, userGroup)
 	}
 
-	updatedFinalizers, err := r.reconcileUserGroupFinalizers(ctx, userGroup)
+	updatedFinalizers, err := r.ReconcileUserGroupFinalizers(ctx, userGroup)
 	if err != nil {
 		log.Error(err, "Failed to reconcile user group finalizers")
-		return ctrl.Result{RequeueAfter: Requeue}, nil
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 	if updatedFinalizers {
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	instance, err := selectInstance(ctx, r.Client, userGroup.Spec.InstanceSelector)
+	instance, err := common.SelectInstance(ctx, r.Client, userGroup.Spec.InstanceSelector)
 	if err != nil {
 		log.Error(err, "Failed to select PocketIDInstance")
 		_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "InstanceSelectionError", err.Error())
-		return ctrl.Result{RequeueAfter: Requeue}, nil
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
 	// Validate instance is ready using base reconciler
@@ -114,21 +114,21 @@ func (r *PocketIDUserGroupReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			log.Error(updateErr, "Failed to update user group status")
 		}
 		_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "ReconcileError", err.Error())
-		return ctrl.Result{RequeueAfter: Requeue}, nil
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
 	if err := r.updateUserGroupStatus(ctx, userGroup, current); err != nil {
 		log.Error(err, "Failed to update user group status")
-		return ctrl.Result{RequeueAfter: Requeue}, nil
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
 	_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionTrue, "Reconciled", "User group is in sync")
 
-	return applyResync(ctrl.Result{}), nil
+	return common.ApplyResync(ctrl.Result{}), nil
 }
 
 // pocketIDUserGroupAPI defines the minimal interface needed for user group operations
-type pocketIDUserGroupAPI interface {
+type PocketIDUserGroupAPI interface {
 	ListUserGroups(ctx context.Context, search string) ([]*pocketid.UserGroup, error)
 	CreateUserGroup(ctx context.Context, name, friendlyName string) (*pocketid.UserGroup, error)
 	GetUserGroup(ctx context.Context, id string) (*pocketid.UserGroup, error)
@@ -137,9 +137,9 @@ type pocketIDUserGroupAPI interface {
 	UpdateUserGroupUsers(ctx context.Context, id string, userIDs []string) error
 }
 
-// findExistingUserGroup checks if a user group with the given name already exists in Pocket-ID.
+// FindExistingUserGroup checks if a user group with the given name already exists in Pocket-ID.
 // Returns the existing group if found, or nil if no matching group exists.
-func (r *PocketIDUserGroupReconciler) findExistingUserGroup(ctx context.Context, apiClient pocketIDUserGroupAPI, name string) (*pocketid.UserGroup, error) {
+func (r *Reconciler) FindExistingUserGroup(ctx context.Context, apiClient PocketIDUserGroupAPI, name string) (*pocketid.UserGroup, error) {
 	log := logf.FromContext(ctx)
 
 	log.Info("Checking if user group exists in Pocket-ID", "name", name)
@@ -159,7 +159,7 @@ func (r *PocketIDUserGroupReconciler) findExistingUserGroup(ctx context.Context,
 	return nil, nil
 }
 
-func (r *PocketIDUserGroupReconciler) reconcileUserGroup(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, apiClient *pocketid.Client) (*pocketid.UserGroup, error) {
+func (r *Reconciler) reconcileUserGroup(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, apiClient *pocketid.Client) (*pocketid.UserGroup, error) {
 	log := logf.FromContext(ctx)
 
 	name := userGroup.Spec.Name
@@ -175,7 +175,7 @@ func (r *PocketIDUserGroupReconciler) reconcileUserGroup(ctx context.Context, us
 	var err error
 	if userGroup.Status.GroupID == "" {
 		// Check if user group already exists
-		existingGroup, err := r.findExistingUserGroup(ctx, apiClient, name)
+		existingGroup, err := r.FindExistingUserGroup(ctx, apiClient, name)
 		if err != nil {
 			return nil, fmt.Errorf("find existing user group: %w", err)
 		}
@@ -227,11 +227,11 @@ func (r *PocketIDUserGroupReconciler) reconcileUserGroup(ctx context.Context, us
 	return latest, nil
 }
 
-func (r *PocketIDUserGroupReconciler) resolveUserRefs(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup) ([]string, error) {
-	return ResolveUserReferences(ctx, r.Client, userGroup.Spec.UserRefs, userGroup.Namespace)
+func (r *Reconciler) resolveUserRefs(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup) ([]string, error) {
+	return helpers.ResolveUserReferences(ctx, r.Client, userGroup.Spec.UserRefs, userGroup.Namespace)
 }
 
-func (r *PocketIDUserGroupReconciler) updateUserGroupStatus(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, current *pocketid.UserGroup) error {
+func (r *Reconciler) updateUserGroupStatus(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, current *pocketid.UserGroup) error {
 	if current == nil {
 		return nil
 	}
@@ -246,24 +246,24 @@ func (r *PocketIDUserGroupReconciler) updateUserGroupStatus(ctx context.Context,
 	return r.Status().Patch(ctx, userGroup, client.MergeFrom(base))
 }
 
-func (r *PocketIDUserGroupReconciler) reconcileUserGroupFinalizers(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup) (bool, error) {
+func (r *Reconciler) ReconcileUserGroupFinalizers(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup) (bool, error) {
 	referencedByOIDCClient, err := r.isUserGroupReferencedByOIDCClient(ctx, userGroup)
 	if err != nil {
 		return false, err
 	}
 
-	updates := []FinalizerUpdate{
-		{Name: userGroupFinalizer, ShouldAdd: true},
-		{Name: oidcClientUserGroupFinalizer, ShouldAdd: referencedByOIDCClient},
+	updates := []helpers.FinalizerUpdate{
+		{Name: UserGroupFinalizer, ShouldAdd: true},
+		{Name: OIDCClientUserGroupFinalizer, ShouldAdd: referencedByOIDCClient},
 	}
 
-	return ReconcileFinalizers(ctx, r.Client, userGroup, updates)
+	return helpers.ReconcileFinalizers(ctx, r.Client, userGroup, updates)
 }
 
-func (r *PocketIDUserGroupReconciler) isUserGroupReferencedByOIDCClient(ctx context.Context, group *pocketidinternalv1alpha1.PocketIDUserGroup) (bool, error) {
+func (r *Reconciler) isUserGroupReferencedByOIDCClient(ctx context.Context, group *pocketidinternalv1alpha1.PocketIDUserGroup) (bool, error) {
 	groupKey := fmt.Sprintf("%s/%s", group.Namespace, group.Name)
 	clients := &pocketidinternalv1alpha1.PocketIDOIDCClientList{}
-	if err := r.List(ctx, clients, client.MatchingFields{oidcClientAllowedGroupIndexKey: groupKey}); err == nil {
+	if err := r.List(ctx, clients, client.MatchingFields{OIDCClientAllowedGroupIndexKey: groupKey}); err == nil {
 		return len(clients.Items) > 0, nil
 	}
 
@@ -296,24 +296,24 @@ func oidcClientAllowsGroup(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClie
 	return false
 }
 
-func (r *PocketIDUserGroupReconciler) reconcileDelete(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup) (ctrl.Result, error) {
+func (r *Reconciler) ReconcileDelete(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup) (ctrl.Result, error) {
 	r.EnsureClient(r.Client)
 	referencedByOIDCClient, err := r.isUserGroupReferencedByOIDCClient(ctx, userGroup)
 	if err != nil {
 		logf.FromContext(ctx).Error(err, "Failed to check PocketIDOIDCClient references")
-		return ctrl.Result{RequeueAfter: Requeue}, nil
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 	if referencedByOIDCClient {
 		logf.FromContext(ctx).Info("User group is referenced by PocketIDOIDCClient, blocking deletion", "userGroup", userGroup.Name)
-		if _, err := EnsureFinalizer(ctx, r.Client, userGroup, oidcClientUserGroupFinalizer); err != nil {
+		if _, err := helpers.EnsureFinalizer(ctx, r.Client, userGroup, OIDCClientUserGroupFinalizer); err != nil {
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{RequeueAfter: Requeue}, nil
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
-	// Remove oidcClientUserGroupFinalizer if not referenced
-	if controllerutil.ContainsFinalizer(userGroup, oidcClientUserGroupFinalizer) {
-		if err := RemoveFinalizers(ctx, r.Client, userGroup, oidcClientUserGroupFinalizer); err != nil {
+	// Remove OIDCClientUserGroupFinalizer if not referenced
+	if controllerutil.ContainsFinalizer(userGroup, OIDCClientUserGroupFinalizer) {
+		if err := helpers.RemoveFinalizers(ctx, r.Client, userGroup, OIDCClientUserGroupFinalizer); err != nil {
 			if errors.IsConflict(err) {
 				return ctrl.Result{Requeue: true}, nil
 			}
@@ -327,14 +327,14 @@ func (r *PocketIDUserGroupReconciler) reconcileDelete(ctx context.Context, userG
 		userGroup,
 		userGroup.Status.GroupID,
 		userGroup.Spec.InstanceSelector,
-		userGroupFinalizer,
+		UserGroupFinalizer,
 		func(ctx context.Context, client *pocketid.Client, id string) error {
 			return client.DeleteUserGroup(ctx, id)
 		},
 	)
 }
 
-func (r *PocketIDUserGroupReconciler) requestsForUser(ctx context.Context, obj client.Object) []reconcile.Request {
+func (r *Reconciler) requestsForUser(ctx context.Context, obj client.Object) []reconcile.Request {
 	user, ok := obj.(*pocketidinternalv1alpha1.PocketIDUser)
 	if !ok {
 		return nil
@@ -342,7 +342,7 @@ func (r *PocketIDUserGroupReconciler) requestsForUser(ctx context.Context, obj c
 
 	userGroups := &pocketidinternalv1alpha1.PocketIDUserGroupList{}
 	if err := r.List(ctx, userGroups, client.MatchingFields{
-		userGroupUserRefIndexKey: client.ObjectKeyFromObject(user).String(),
+		UserGroupUserRefIndexKey: client.ObjectKeyFromObject(user).String(),
 	}); err != nil {
 		logf.FromContext(ctx).Error(err, "Failed to list user groups for user", "user", client.ObjectKeyFromObject(user))
 		return nil
@@ -358,7 +358,7 @@ func (r *PocketIDUserGroupReconciler) requestsForUser(ctx context.Context, obj c
 	return requests
 }
 
-func (r *PocketIDUserGroupReconciler) requestsForOIDCClient(ctx context.Context, obj client.Object) []reconcile.Request {
+func (r *Reconciler) requestsForOIDCClient(ctx context.Context, obj client.Object) []reconcile.Request {
 	oidcClient, ok := obj.(*pocketidinternalv1alpha1.PocketIDOIDCClient)
 	if !ok {
 		return nil
@@ -400,9 +400,9 @@ func toCustomClaims(claims []pocketid.CustomClaim) []pocketidinternalv1alpha1.Cu
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *PocketIDUserGroupReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	ctx := context.Background()
-	if err := mgr.GetFieldIndexer().IndexField(ctx, &pocketidinternalv1alpha1.PocketIDUserGroup{}, userGroupUserRefIndexKey, func(raw client.Object) []string {
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &pocketidinternalv1alpha1.PocketIDUserGroup{}, UserGroupUserRefIndexKey, func(raw client.Object) []string {
 		userGroup, ok := raw.(*pocketidinternalv1alpha1.PocketIDUserGroup)
 		if !ok {
 			return nil

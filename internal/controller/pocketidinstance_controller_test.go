@@ -33,6 +33,13 @@ import (
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 )
 
+// Environment variable names used in tests (mirrors instance controller constants)
+const (
+	envEncryptionKey      = "ENCRYPTION_KEY"
+	envDBConnectionString = "DB_CONNECTION_STRING"
+	envAppURL             = "APP_URL"
+)
+
 var _ = Describe("PocketIDInstance Controller", func() {
 	const (
 		timeout  = time.Second * 10

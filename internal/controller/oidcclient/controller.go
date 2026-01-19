@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package controller
+package oidcclient
 
 import (
 	"context"
@@ -32,18 +32,22 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/helpers"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
 const (
-	oidcClientFinalizer            = "pocketid.internal/oidc-client-finalizer"
-	oidcClientAllowedGroupIndexKey = "pocketidoidcclient.allowedGroup"
+	oidcClientFinalizer = "pocketid.internal/oidc-client-finalizer"
 )
 
-// PocketIDOIDCClientReconciler reconciles a PocketIDOIDCClient object
-type PocketIDOIDCClientReconciler struct {
+// OIDCClientAllowedGroupIndexKey is the index key for OIDC client allowed groups
+const OIDCClientAllowedGroupIndexKey = "pocketidoidcclient.allowedGroup"
+
+// Reconciler reconciles a PocketIDOIDCClient object
+type Reconciler struct {
 	client.Client
-	BaseReconciler
+	common.BaseReconciler
 	APIReader client.Reader
 	Scheme    *runtime.Scheme
 }
@@ -58,14 +62,7 @@ type PocketIDOIDCClientReconciler struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the PocketIDOIDCClient object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.22.4/pkg/reconcile
-func (r *PocketIDOIDCClientReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	r.EnsureClient(r.Client)
 
@@ -77,20 +74,20 @@ func (r *PocketIDOIDCClientReconciler) Reconcile(ctx context.Context, req ctrl.R
 	log.Info("Reconciling PocketIDOIDCClient", "name", oidcClient.Name)
 
 	if !oidcClient.DeletionTimestamp.IsZero() {
-		return r.reconcileDelete(ctx, oidcClient)
+		return r.ReconcileDelete(ctx, oidcClient)
 	}
 
-	if updated, err := EnsureFinalizer(ctx, r.Client, oidcClient, oidcClientFinalizer); err != nil {
+	if updated, err := helpers.EnsureFinalizer(ctx, r.Client, oidcClient, oidcClientFinalizer); err != nil {
 		return ctrl.Result{}, err
 	} else if updated {
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	instance, err := selectInstance(ctx, r.Client, oidcClient.Spec.InstanceSelector)
+	instance, err := common.SelectInstance(ctx, r.Client, oidcClient.Spec.InstanceSelector)
 	if err != nil {
 		log.Error(err, "Failed to select PocketIDInstance")
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "InstanceSelectionError", err.Error())
-		return ctrl.Result{RequeueAfter: Requeue}, nil
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
 	// Validate instance is ready using base reconciler
@@ -107,35 +104,35 @@ func (r *PocketIDOIDCClientReconciler) Reconcile(ctx context.Context, req ctrl.R
 	current, err := r.reconcileOIDCClient(ctx, oidcClient, apiClient)
 	if err != nil {
 		log.Error(err, "Failed to reconcile OIDC client")
-		if updateErr := r.updateOIDCClientStatus(ctx, oidcClient, current); updateErr != nil {
+		if updateErr := r.UpdateOIDCClientStatus(ctx, oidcClient, current); updateErr != nil {
 			log.Error(updateErr, "Failed to update OIDC client status")
 		}
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "ReconcileError", err.Error())
-		return ctrl.Result{RequeueAfter: Requeue}, nil
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
-	if err := r.updateOIDCClientStatus(ctx, oidcClient, current); err != nil {
+	if err := r.UpdateOIDCClientStatus(ctx, oidcClient, current); err != nil {
 		log.Error(err, "Failed to update OIDC client status")
-		return ctrl.Result{RequeueAfter: Requeue}, nil
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
-	if err := r.reconcileSecret(ctx, oidcClient, instance, apiClient); err != nil {
+	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient); err != nil {
 		log.Error(err, "Failed to reconcile OIDC client secret")
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "SecretReconcileError", err.Error())
-		return ctrl.Result{RequeueAfter: Requeue}, nil
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
 	// Remove regenerate-client-secret annotation if it exists
-	if removed, err := CheckAndRemoveAnnotation(ctx, r.Client, oidcClient, "pocketid.internal/regenerate-client-secret", "true"); err != nil {
+	if removed, err := helpers.CheckAndRemoveAnnotation(ctx, r.Client, oidcClient, "pocketid.internal/regenerate-client-secret", "true"); err != nil {
 		log.Error(err, "Failed to remove regenerate-client-secret annotation")
-		return ctrl.Result{RequeueAfter: Requeue}, nil
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	} else if removed {
 		log.Info("Removed regenerate-client-secret annotation after secret regeneration")
 	}
 
 	_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionTrue, "Reconciled", "OIDC client is in sync")
 
-	return applyResync(ctrl.Result{}), nil
+	return common.ApplyResync(ctrl.Result{}), nil
 }
 
 // pocketIDOIDCClientAPI defines the minimal interface needed for OIDC client operations
@@ -149,7 +146,7 @@ type pocketIDOIDCClientAPI interface {
 
 // findExistingOIDCClient checks if an OIDC client with the given ID already exists in Pocket-ID.
 // Returns the existing client if found, or nil if no matching client exists.
-func (r *PocketIDOIDCClientReconciler) findExistingOIDCClient(ctx context.Context, apiClient pocketIDOIDCClientAPI, clientID string) (*pocketid.OIDCClient, error) {
+func (r *Reconciler) FindExistingOIDCClient(ctx context.Context, apiClient pocketIDOIDCClientAPI, clientID string) (*pocketid.OIDCClient, error) {
 	log := logf.FromContext(ctx)
 
 	log.Info("Checking if OIDC client exists in Pocket-ID", "clientID", clientID)
@@ -169,10 +166,10 @@ func (r *PocketIDOIDCClientReconciler) findExistingOIDCClient(ctx context.Contex
 	return nil, nil
 }
 
-func (r *PocketIDOIDCClientReconciler) reconcileOIDCClient(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client) (*pocketid.OIDCClient, error) {
+func (r *Reconciler) reconcileOIDCClient(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client) (*pocketid.OIDCClient, error) {
 	log := logf.FromContext(ctx)
 
-	input := r.oidcClientInput(oidcClient)
+	input := r.OidcClientInput(oidcClient)
 
 	clientID := oidcClient.Status.ClientID
 	if clientID == "" {
@@ -186,7 +183,7 @@ func (r *PocketIDOIDCClientReconciler) reconcileOIDCClient(ctx context.Context, 
 	var err error
 	if oidcClient.Status.ClientID == "" {
 		// Check if OIDC client already exists
-		existingClient, err := r.findExistingOIDCClient(ctx, apiClient, clientID)
+		existingClient, err := r.FindExistingOIDCClient(ctx, apiClient, clientID)
 		if err != nil {
 			return nil, fmt.Errorf("find existing OIDC client: %w", err)
 		}
@@ -209,7 +206,7 @@ func (r *PocketIDOIDCClientReconciler) reconcileOIDCClient(ctx context.Context, 
 	}
 
 	if oidcClient.Spec.AllowedUserGroups != nil {
-		groupIDs, err := r.resolveAllowedUserGroups(ctx, oidcClient)
+		groupIDs, err := r.ResolveAllowedUserGroups(ctx, oidcClient)
 		if err != nil {
 			return current, err
 		}
@@ -222,7 +219,7 @@ func (r *PocketIDOIDCClientReconciler) reconcileOIDCClient(ctx context.Context, 
 	return current, nil
 }
 
-func (r *PocketIDOIDCClientReconciler) oidcClientInput(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) pocketid.OIDCClientInput {
+func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) pocketid.OIDCClientInput {
 	name := oidcClient.Name
 
 	var credentials *pocketid.OIDCClientCredentials
@@ -261,12 +258,12 @@ func (r *PocketIDOIDCClientReconciler) oidcClientInput(oidcClient *pocketidinter
 	}
 }
 
-func (r *PocketIDOIDCClientReconciler) resolveAllowedUserGroups(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) ([]string, error) {
-	return ResolveUserGroupReferences(ctx, r.Client, oidcClient.Spec.AllowedUserGroups, oidcClient.Namespace)
+func (r *Reconciler) ResolveAllowedUserGroups(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) ([]string, error) {
+	return helpers.ResolveUserGroupReferences(ctx, r.Client, oidcClient.Spec.AllowedUserGroups, oidcClient.Namespace)
 }
 
-// Updates the OIDCClient status with values returned from pocket-id
-func (r *PocketIDOIDCClientReconciler) updateOIDCClientStatus(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, current *pocketid.OIDCClient) error {
+// UpdateOIDCClientStatus updates the OIDCClient status with values returned from pocket-id
+func (r *Reconciler) UpdateOIDCClientStatus(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, current *pocketid.OIDCClient) error {
 	if current == nil {
 		return nil
 	}
@@ -277,7 +274,7 @@ func (r *PocketIDOIDCClientReconciler) updateOIDCClientStatus(ctx context.Contex
 	return r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
 }
 
-func (r *PocketIDOIDCClientReconciler) reconcileDelete(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) (ctrl.Result, error) {
+func (r *Reconciler) ReconcileDelete(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) (ctrl.Result, error) {
 	r.EnsureClient(r.Client)
 	return r.ReconcileDeleteWithPocketID(
 		ctx,
@@ -291,13 +288,13 @@ func (r *PocketIDOIDCClientReconciler) reconcileDelete(ctx context.Context, oidc
 	)
 }
 
-func (r *PocketIDOIDCClientReconciler) reconcileSecret(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, instance *pocketidinternalv1alpha1.PocketIDInstance, apiClient *pocketid.Client) error {
+func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, instance *pocketidinternalv1alpha1.PocketIDInstance, apiClient *pocketid.Client) error {
 	enabled := true
 	if oidcClient.Spec.Secret != nil && oidcClient.Spec.Secret.Enabled != nil {
 		enabled = *oidcClient.Spec.Secret.Enabled
 	}
 
-	secretName := r.getSecretName(oidcClient)
+	secretName := r.GetSecretName(oidcClient)
 
 	if !enabled {
 		// Delete the secret if it exists but is now disabled
@@ -312,7 +309,7 @@ func (r *PocketIDOIDCClientReconciler) reconcileSecret(ctx context.Context, oidc
 		return nil
 	}
 
-	keys := r.getSecretKeys(oidcClient)
+	keys := r.GetSecretKeys(oidcClient)
 
 	// Build secret data
 	secretData := make(map[string][]byte)
@@ -334,7 +331,7 @@ func (r *PocketIDOIDCClientReconciler) reconcileSecret(ctx context.Context, oidc
 		} else if _, exists := existingSecret.Data[keys.ClientSecret]; !exists {
 			// Secret exists but doesn't have the client_secret key
 			shouldRegenerateSecret = true
-		} else if HasAnnotation(oidcClient, "pocketid.internal/regenerate-client-secret", "true") {
+		} else if helpers.HasAnnotation(oidcClient, "pocketid.internal/regenerate-client-secret", "true") {
 			// User explicitly requested regeneration via annotation
 			shouldRegenerateSecret = true
 		}
@@ -391,7 +388,7 @@ func (r *PocketIDOIDCClientReconciler) reconcileSecret(ctx context.Context, oidc
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
 			Namespace: oidcClient.Namespace,
-			Labels:    managedByLabels(nil),
+			Labels:    common.ManagedByLabels(nil),
 		},
 	}
 
@@ -413,14 +410,14 @@ func (r *PocketIDOIDCClientReconciler) reconcileSecret(ctx context.Context, oidc
 	return nil
 }
 
-func (r *PocketIDOIDCClientReconciler) getSecretName(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) string {
+func (r *Reconciler) GetSecretName(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) string {
 	if oidcClient.Spec.Secret != nil && oidcClient.Spec.Secret.Name != "" {
 		return oidcClient.Spec.Secret.Name
 	}
 	return oidcClient.Name + "-oidc-credentials"
 }
 
-func (r *PocketIDOIDCClientReconciler) getSecretKeys(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) pocketidinternalv1alpha1.OIDCClientSecretKeys {
+func (r *Reconciler) GetSecretKeys(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) pocketidinternalv1alpha1.OIDCClientSecretKeys {
 	defaults := pocketidinternalv1alpha1.OIDCClientSecretKeys{
 		ClientID:           "client_id",
 		ClientSecret:       "client_secret",
@@ -478,7 +475,7 @@ func (r *PocketIDOIDCClientReconciler) getSecretKeys(oidcClient *pocketidinterna
 	return keys
 }
 
-func (r *PocketIDOIDCClientReconciler) requestsForUserGroup(ctx context.Context, obj client.Object) []reconcile.Request {
+func (r *Reconciler) requestsForUserGroup(ctx context.Context, obj client.Object) []reconcile.Request {
 	group, ok := obj.(*pocketidinternalv1alpha1.PocketIDUserGroup)
 	if !ok {
 		return nil
@@ -486,7 +483,7 @@ func (r *PocketIDOIDCClientReconciler) requestsForUserGroup(ctx context.Context,
 
 	clients := &pocketidinternalv1alpha1.PocketIDOIDCClientList{}
 	if err := r.List(ctx, clients, client.MatchingFields{
-		oidcClientAllowedGroupIndexKey: client.ObjectKeyFromObject(group).String(),
+		OIDCClientAllowedGroupIndexKey: client.ObjectKeyFromObject(group).String(),
 	}); err != nil {
 		logf.FromContext(ctx).Error(err, "Failed to list OIDC clients for user group", "userGroup", client.ObjectKeyFromObject(group))
 		return nil
@@ -503,9 +500,9 @@ func (r *PocketIDOIDCClientReconciler) requestsForUserGroup(ctx context.Context,
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *PocketIDOIDCClientReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	ctx := context.Background()
-	if err := mgr.GetFieldIndexer().IndexField(ctx, &pocketidinternalv1alpha1.PocketIDOIDCClient{}, oidcClientAllowedGroupIndexKey, func(raw client.Object) []string {
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &pocketidinternalv1alpha1.PocketIDOIDCClient{}, OIDCClientAllowedGroupIndexKey, func(raw client.Object) []string {
 		oidcClient, ok := raw.(*pocketidinternalv1alpha1.PocketIDOIDCClient)
 		if !ok {
 			return nil
