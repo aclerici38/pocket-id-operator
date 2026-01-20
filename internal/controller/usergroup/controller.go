@@ -188,6 +188,13 @@ func (r *Reconciler) reconcileUserGroup(ctx context.Context, userGroup *pocketid
 	} else {
 		current, err = apiClient.UpdateUserGroup(ctx, userGroup.Status.GroupID, name, friendlyName)
 		if err != nil {
+			if pocketid.IsNotFoundError(err) {
+				log.Info("User group was deleted externally, will recreate", "groupID", userGroup.Status.GroupID)
+				if clearErr := r.clearGroupStatus(ctx, userGroup); clearErr != nil {
+					return nil, fmt.Errorf("clear group status after external deletion: %w", clearErr)
+				}
+				return nil, nil // Requeue will recreate
+			}
 			return nil, fmt.Errorf("update user group: %w", err)
 		}
 	}
@@ -287,6 +294,13 @@ func (r *Reconciler) resolveUsername(ctx context.Context, apiClient *pocketid.Cl
 	}
 
 	return "", fmt.Errorf("user with username %q not found in Pocket-ID", username)
+}
+
+// clearGroupStatus clears the GroupID from status, triggering recreation on next reconcile.
+func (r *Reconciler) clearGroupStatus(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup) error {
+	base := userGroup.DeepCopy()
+	userGroup.Status.GroupID = ""
+	return r.Status().Patch(ctx, userGroup, client.MergeFrom(base))
 }
 
 func (r *Reconciler) updateUserGroupStatus(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, current *pocketid.UserGroup) error {

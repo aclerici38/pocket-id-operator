@@ -2,9 +2,11 @@ package oidcclient
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
+	"github.com/go-openapi/runtime"
 )
 
 // mockPocketIDOIDCClientClient is a mock implementation for testing OIDC client operations
@@ -181,5 +183,21 @@ func TestOIDCClientAdoption_ExistingClientByID(t *testing.T) {
 	}
 	if createCalled {
 		t.Fatal("CreateOIDCClient should not have been called for existing client")
+	}
+}
+
+func TestIsNotFoundError_DetectsAPIError404(t *testing.T) {
+	err := runtime.NewAPIError("PutAPIOidcClientsID", nil, http.StatusNotFound)
+
+	if !pocketid.IsNotFoundError(err) {
+		t.Error("expected IsNotFoundError to return true for 404 APIError")
+	}
+}
+
+func TestIsNotFoundError_IgnoresAPIError500(t *testing.T) {
+	err := runtime.NewAPIError("PutAPIOidcClientsID", nil, http.StatusInternalServerError)
+
+	if pocketid.IsNotFoundError(err) {
+		t.Error("expected IsNotFoundError to return false for 500 APIError")
 	}
 }

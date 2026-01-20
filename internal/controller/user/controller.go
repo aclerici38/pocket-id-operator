@@ -322,14 +322,12 @@ func (r *Reconciler) FindExistingUser(ctx context.Context, apiClient PocketIDUse
 	return nil, nil
 }
 
-// reconcileUser ensures the user exists in Pocket-ID with correct settings
-func (r *Reconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
-	log := logf.FromContext(ctx)
-
+// buildUserInput resolves all user fields from spec and secrets into a UserInput.
+func (r *Reconciler) buildUserInput(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser) (pocketid.UserInput, error) {
 	userInfoInputSecret := userInfoInputSecretName(user)
 	username, err := helpers.ResolveStringValue(ctx, r.Client, r.APIReader, user.Namespace, user.Spec.Username, userInfoInputSecret, UserInfoSecretKeyUsername)
 	if err != nil {
-		return fmt.Errorf("resolve username: %w", err)
+		return pocketid.UserInput{}, fmt.Errorf("resolve username: %w", err)
 	}
 	if username == "" {
 		username = user.Name
@@ -337,7 +335,7 @@ func (r *Reconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1
 
 	firstName, err := helpers.ResolveStringValue(ctx, r.Client, r.APIReader, user.Namespace, user.Spec.FirstName, userInfoInputSecret, UserInfoSecretKeyFirstName)
 	if err != nil {
-		return fmt.Errorf("resolve firstName: %w", err)
+		return pocketid.UserInput{}, fmt.Errorf("resolve firstName: %w", err)
 	}
 	// FirstName is required by Pocket-ID, default to username if not set
 	if firstName == "" {
@@ -346,12 +344,12 @@ func (r *Reconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1
 
 	lastName, err := helpers.ResolveStringValue(ctx, r.Client, r.APIReader, user.Namespace, user.Spec.LastName, userInfoInputSecret, UserInfoSecretKeyLastName)
 	if err != nil {
-		return fmt.Errorf("resolve lastName: %w", err)
+		return pocketid.UserInput{}, fmt.Errorf("resolve lastName: %w", err)
 	}
 
 	email, err := helpers.ResolveStringValue(ctx, r.Client, r.APIReader, user.Namespace, user.Spec.Email, userInfoInputSecret, UserInfoSecretKeyEmail)
 	if err != nil {
-		return fmt.Errorf("resolve email: %w", err)
+		return pocketid.UserInput{}, fmt.Errorf("resolve email: %w", err)
 	}
 	// Email is required by Pocket-ID by default, generate a placeholder if not set
 	if email == "" {
@@ -360,7 +358,7 @@ func (r *Reconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1
 
 	displayName, err := helpers.ResolveStringValue(ctx, r.Client, r.APIReader, user.Namespace, user.Spec.DisplayName, userInfoInputSecret, UserInfoSecretKeyDisplayName)
 	if err != nil {
-		return fmt.Errorf("resolve displayName: %w", err)
+		return pocketid.UserInput{}, fmt.Errorf("resolve displayName: %w", err)
 	}
 	// Default displayName to "FirstName LastName" if not set
 	if displayName == "" {
@@ -377,7 +375,7 @@ func (r *Reconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1
 		}
 	}
 
-	input := pocketid.UserInput{
+	return pocketid.UserInput{
 		Username:    username,
 		FirstName:   firstName,
 		LastName:    lastName,
@@ -386,21 +384,31 @@ func (r *Reconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1
 		IsAdmin:     user.Spec.Admin,
 		Disabled:    user.Spec.Disabled,
 		Locale:      user.Spec.Locale,
+	}, nil
+}
+
+// reconcileUser ensures the user exists in Pocket-ID with correct settings
+func (r *Reconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
+	log := logf.FromContext(ctx)
+
+	input, err := r.buildUserInput(ctx, user)
+	if err != nil {
+		return err
 	}
 
 	// If we don't have a user ID, we need to check if user exists and create if not
 	if user.Status.UserID == "" {
-		existingUser, err := r.FindExistingUser(ctx, apiClient, username, email)
+		existingUser, err := r.FindExistingUser(ctx, apiClient, input.Username, input.Email)
 		if err != nil {
 			return fmt.Errorf("find existing user: %w", err)
 		}
 
 		var pUser *pocketid.User
 		if existingUser != nil {
-			log.Info("Adopting existing user from Pocket-ID", "username", username, "userID", existingUser.ID)
+			log.Info("Adopting existing user from Pocket-ID", "username", input.Username, "userID", existingUser.ID)
 			pUser = existingUser
 		} else {
-			log.Info("Creating user in Pocket-ID", "username", username)
+			log.Info("Creating user in Pocket-ID", "username", input.Username)
 			pUser, err = apiClient.CreateUser(ctx, input)
 			if err != nil {
 				return fmt.Errorf("create user: %w", err)
@@ -427,6 +435,13 @@ func (r *Reconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1
 	// User exists, check if update needed
 	pUser, err := apiClient.GetUser(ctx, user.Status.UserID)
 	if err != nil {
+		if pocketid.IsNotFoundError(err) {
+			log.Info("User was deleted externally, will recreate", "userID", user.Status.UserID)
+			if clearErr := r.clearUserStatus(ctx, user); clearErr != nil {
+				return fmt.Errorf("clear user status after external deletion: %w", clearErr)
+			}
+			return nil // Requeue will recreate
+		}
 		return fmt.Errorf("get user: %w", err)
 	}
 
@@ -441,7 +456,7 @@ func (r *Reconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1
 		pUser.Locale != input.Locale
 
 	if needsUpdate {
-		log.Info("Updating user in Pocket-ID", "username", username)
+		log.Info("Updating user in Pocket-ID", "username", input.Username)
 		pUser, err = apiClient.UpdateUser(ctx, user.Status.UserID, input)
 		if err != nil {
 			return fmt.Errorf("update user: %w", err)
@@ -449,6 +464,18 @@ func (r *Reconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1
 	}
 
 	return r.updateUserStatus(ctx, user, pUser)
+}
+
+// clearUserStatus clears the UserID from status, triggering recreation on next reconcile.
+func (r *Reconciler) clearUserStatus(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latest := &pocketidinternalv1alpha1.PocketIDUser{}
+		if err := r.Get(ctx, client.ObjectKeyFromObject(user), latest); err != nil {
+			return err
+		}
+		latest.Status.UserID = ""
+		return r.Status().Update(ctx, latest)
+	})
 }
 
 // updateUserStatus updates the User CR status from Pocket-ID response
