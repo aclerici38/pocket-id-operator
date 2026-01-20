@@ -45,6 +45,11 @@ const (
 	UserGroupUserFinalizer     = "pocketid.internal/user-group-finalizer"
 	defaultAPIKeyName          = "pocket-id-operator"
 	DefaultLoginTokenExpiryMin = 15
+
+	// DeleteFromPocketIDAnnotation when set to "true" will delete the user from Pocket-ID
+	// when the PocketIDUser resource is deleted from Kubernetes. By default, users are
+	// NOT deleted from Pocket-ID when the resource is deleted.
+	DeleteFromPocketIDAnnotation = "pocketid.internal/delete-from-pocket-id"
 )
 
 // Reconciler reconciles a PocketIDUser object
@@ -231,7 +236,10 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, user *pocketidinternal
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	if user.Status.UserID != "" {
+	// Only delete user from Pocket-ID if the annotation is set to "true"
+	shouldDeleteFromPocketID := helpers.HasAnnotation(user, DeleteFromPocketIDAnnotation, "true")
+
+	if user.Status.UserID != "" && shouldDeleteFromPocketID {
 		instance, err := common.SelectInstance(ctx, r.Client, user.Spec.InstanceSelector)
 		if err != nil {
 			if stderrors.Is(err, common.ErrNoInstance) {
@@ -256,6 +264,8 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, user *pocketidinternal
 				return ctrl.Result{}, err
 			}
 		}
+	} else if user.Status.UserID != "" {
+		log.Info("Skipping Pocket-ID user deletion (annotation not set)", "userID", user.Status.UserID, "annotation", DeleteFromPocketIDAnnotation)
 	}
 
 	// Delete associated secrets
