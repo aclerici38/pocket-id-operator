@@ -24,10 +24,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
@@ -186,6 +188,7 @@ func (r *Reconciler) reconcileUserGroup(ctx context.Context, userGroup *pocketid
 			}
 		}
 	} else {
+		log.Info("Updating user group in Pocket-ID", "name", name)
 		current, err = apiClient.UpdateUserGroup(ctx, userGroup.Status.GroupID, name, friendlyName)
 		if err != nil {
 			if pocketid.IsNotFoundError(err) {
@@ -199,6 +202,7 @@ func (r *Reconciler) reconcileUserGroup(ctx context.Context, userGroup *pocketid
 		}
 	}
 
+	// Update custom claims if specified
 	if userGroup.Spec.CustomClaims != nil {
 		claims := make([]pocketid.CustomClaim, 0, len(userGroup.Spec.CustomClaims))
 		for _, claim := range userGroup.Spec.CustomClaims {
@@ -206,7 +210,7 @@ func (r *Reconciler) reconcileUserGroup(ctx context.Context, userGroup *pocketid
 		}
 		updated, err := apiClient.UpdateUserGroupCustomClaims(ctx, current.ID, claims)
 		if err != nil {
-			return nil, err
+			return current, err
 		}
 		current.CustomClaims = updated
 	}
@@ -219,14 +223,11 @@ func (r *Reconciler) reconcileUserGroup(ctx context.Context, userGroup *pocketid
 		if err := apiClient.UpdateUserGroupUsers(ctx, current.ID, userIDs); err != nil {
 			return current, err
 		}
+		current.UserIDs = userIDs
+		current.UserCount = len(userIDs)
 	}
 
-	latest, err := apiClient.GetUserGroup(ctx, current.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	return latest, nil
+	return current, nil
 }
 
 // resolveUsers resolves userRefs, usernames, and userIds to Pocket-ID user IDs.
@@ -502,7 +503,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&pocketidinternalv1alpha1.PocketIDUserGroup{}).
+		For(&pocketidinternalv1alpha1.PocketIDUserGroup{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(&pocketidinternalv1alpha1.PocketIDUser{}, handler.EnqueueRequestsFromMapFunc(r.requestsForUser)).
 		Watches(&pocketidinternalv1alpha1.PocketIDOIDCClient{}, handler.EnqueueRequestsFromMapFunc(r.requestsForOIDCClient)).
 		Named("pocketidusergroup").
