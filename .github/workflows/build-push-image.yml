@@ -24,7 +24,7 @@ jobs:
     name: Build and push amd64 image
     runs-on: ubuntu-latest
     outputs:
-      digest: ${{ steps.digest.outputs.digest }}
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -39,30 +39,29 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push by digest
+      - name: Extract image repo
+        id: repo
         run: |
           IMAGE_REPO="${{ inputs.image }}"
-          IMAGE_REPO="${IMAGE_REPO%%:*}"
-          docker buildx build \
-            --platform=linux/amd64 \
-            --push \
-            --metadata-file /tmp/metadata-amd64.json \
-            --output=type=image,name=${IMAGE_REPO},push-by-digest=true \
-            --cache-from=type=gha,scope=build-amd64 \
-            --cache-to=type=gha,mode=max,scope=build-amd64 \
-            .
+          echo "name=${IMAGE_REPO%%:*}" >> "$GITHUB_OUTPUT"
 
-      - name: Read digest
-        id: digest
-        run: |
-          DIGEST=$(jq -r '.["containerimage.digest"]' /tmp/metadata-amd64.json)
-          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+      - name: Build and push by digest
+        uses: docker/build-push-action@v6
+        id: build
+        with:
+          context: .
+          platforms: linux/amd64
+          outputs: type=image,name=${{ steps.repo.outputs.name }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: |
+            type=gha,scope=build-amd64
+            type=gha,scope=build-amd64-main
+          cache-to: type=gha,mode=max,scope=build-amd64
 
   build-arm64:
     name: Build and push arm64 image
     runs-on: ubuntu-24.04-arm
     outputs:
-      digest: ${{ steps.digest.outputs.digest }}
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -77,24 +76,23 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push by digest
+      - name: Extract image repo
+        id: repo
         run: |
           IMAGE_REPO="${{ inputs.image }}"
-          IMAGE_REPO="${IMAGE_REPO%%:*}"
-          docker buildx build \
-            --platform=linux/arm64 \
-            --push \
-            --metadata-file /tmp/metadata-arm64.json \
-            --output=type=image,name=${IMAGE_REPO},push-by-digest=true \
-            --cache-from=type=gha,scope=build-arm64 \
-            --cache-to=type=gha,mode=max,scope=build-arm64 \
-            .
+          echo "name=${IMAGE_REPO%%:*}" >> "$GITHUB_OUTPUT"
 
-      - name: Read digest
-        id: digest
-        run: |
-          DIGEST=$(jq -r '.["containerimage.digest"]' /tmp/metadata-arm64.json)
-          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+      - name: Build and push by digest
+        uses: docker/build-push-action@v6
+        id: build
+        with:
+          context: .
+          platforms: linux/arm64
+          outputs: type=image,name=${{ steps.repo.outputs.name }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: |
+            type=gha,scope=build-arm64
+            type=gha,scope=build-arm64-main
+          cache-to: type=gha,mode=max,scope=build-arm64
 
   manifest:
     name: Create multi-arch manifest
