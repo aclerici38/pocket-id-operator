@@ -49,6 +49,7 @@ const (
 	envDBConnectionString = "DB_CONNECTION_STRING"
 	envAppURL             = "APP_URL"
 	envStaticAPIKey       = "STATIC_API_KEY"
+	envTrustProxy         = "TRUST_PROXY"
 
 	deploymentTypeDeployment  = "Deployment"
 	deploymentTypeStatefulSet = "StatefulSet"
@@ -157,7 +158,13 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 		encryptionKeyEnv.ValueFrom = instance.Spec.EncryptionKey.ValueFrom
 	}
 
-	env := []corev1.EnvVar{encryptionKeyEnv}
+	env := []corev1.EnvVar{
+		encryptionKeyEnv,
+		{
+			Name:  envTrustProxy,
+			Value: "true",
+		},
+	}
 
 	if instance.Spec.DatabaseUrl != nil {
 		dbUrlEnv := corev1.EnvVar{
