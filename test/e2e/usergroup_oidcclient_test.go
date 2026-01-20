@@ -192,14 +192,14 @@ var _ = Describe("PocketIDUserGroup and PocketIDOIDCClient", Ordered, func() {
 
 var _ = Describe("UserGroup with Usernames and UserIds", Ordered, func() {
 	const (
-		usernameGroupName   = "test-username-group"
-		userIdGroupName     = "test-userid-group"
-		mixedGroupName      = "test-mixed-group"
-		usernameTestUser    = "username-lookup-user"
-		userIdTestUser      = "userid-lookup-user"
-		mixedUserRefsUser   = "mixed-userrefs-user"
-		mixedUsernameUser   = "mixed-username-user"
-		mixedUserIdUser     = "mixed-userid-user"
+		usernameGroupName = "test-username-group"
+		userIdGroupName   = "test-userid-group"
+		mixedGroupName    = "test-mixed-group"
+		usernameTestUser  = "username-lookup-user"
+		userIdTestUser    = "userid-lookup-user"
+		mixedUserRefsUser = "mixed-userrefs-user"
+		mixedUsernameUser = "mixed-username-user"
+		mixedUserIdUser   = "mixed-userid-user"
 	)
 
 	Context("User Group with Usernames", func() {
