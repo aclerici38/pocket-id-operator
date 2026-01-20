@@ -15,6 +15,7 @@ on:
         type: string
 
 permissions:
+  actions: write
   contents: read
   packages: write
 
@@ -47,6 +48,8 @@ jobs:
             --push \
             --metadata-file /tmp/metadata-amd64.json \
             --output=type=image,name=${IMAGE_REPO},push-by-digest=true \
+            --cache-from=type=gha,scope=build-amd64 \
+            --cache-to=type=gha,mode=max,scope=build-amd64 \
             .
 
       - name: Read digest
@@ -83,6 +86,8 @@ jobs:
             --push \
             --metadata-file /tmp/metadata-arm64.json \
             --output=type=image,name=${IMAGE_REPO},push-by-digest=true \
+            --cache-from=type=gha,scope=build-arm64 \
+            --cache-to=type=gha,mode=max,scope=build-arm64 \
             .
 
       - name: Read digest
