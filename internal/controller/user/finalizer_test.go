@@ -255,3 +255,149 @@ func containsFinalizer(finalizers []string, target string) bool {
 	}
 	return false
 }
+
+func TestReconcileDelete_SkipsPocketIDDeletionByDefault(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	now := metav1.NewTime(time.Now())
+	user := &pocketidinternalv1alpha1.PocketIDUser{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "delete-skip-user",
+			Namespace:         "default",
+			Finalizers:        []string{UserFinalizer},
+			DeletionTimestamp: &now,
+		},
+		Status: pocketidinternalv1alpha1.PocketIDUserStatus{
+			UserID: "test-user-id",
+		},
+	}
+
+	client := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(user).
+		WithStatusSubresource(user).
+		Build()
+
+	reconciler := &Reconciler{Client: client, APIReader: client, Scheme: scheme}
+
+	// ReconcileDelete should succeed without calling Pocket-ID API
+	// (no instance exists, but it should skip deletion anyway due to missing annotation)
+	result, err := reconciler.ReconcileDelete(context.Background(), user)
+	if err != nil {
+		t.Fatalf("ReconcileDelete returned error: %v", err)
+	}
+	if result.RequeueAfter > 0 {
+		t.Fatalf("expected no requeue, got %s", result.RequeueAfter)
+	}
+
+	// User should be deleted (finalizer removed)
+	updatedUser := &pocketidinternalv1alpha1.PocketIDUser{}
+	if err := client.Get(context.Background(), types.NamespacedName{Name: user.Name, Namespace: user.Namespace}, updatedUser); err == nil {
+		if containsFinalizer(updatedUser.Finalizers, UserFinalizer) {
+			t.Fatalf("expected finalizer to be removed, got %v", updatedUser.Finalizers)
+		}
+	} else if !errors.IsNotFound(err) {
+		t.Fatalf("failed to get updated user: %v", err)
+	}
+}
+
+func TestReconcileDelete_SkipsPocketIDDeletionWithWrongAnnotationValue(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	now := metav1.NewTime(time.Now())
+	user := &pocketidinternalv1alpha1.PocketIDUser{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "delete-skip-wrong-annotation",
+			Namespace:         "default",
+			Finalizers:        []string{UserFinalizer},
+			DeletionTimestamp: &now,
+			Annotations: map[string]string{
+				DeleteFromPocketIDAnnotation: "false",
+			},
+		},
+		Status: pocketidinternalv1alpha1.PocketIDUserStatus{
+			UserID: "test-user-id",
+		},
+	}
+
+	client := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(user).
+		WithStatusSubresource(user).
+		Build()
+
+	reconciler := &Reconciler{Client: client, APIReader: client, Scheme: scheme}
+
+	// ReconcileDelete should succeed without calling Pocket-ID API
+	result, err := reconciler.ReconcileDelete(context.Background(), user)
+	if err != nil {
+		t.Fatalf("ReconcileDelete returned error: %v", err)
+	}
+	if result.RequeueAfter > 0 {
+		t.Fatalf("expected no requeue, got %s", result.RequeueAfter)
+	}
+
+	// User should be deleted (finalizer removed)
+	updatedUser := &pocketidinternalv1alpha1.PocketIDUser{}
+	if err := client.Get(context.Background(), types.NamespacedName{Name: user.Name, Namespace: user.Namespace}, updatedUser); err == nil {
+		if containsFinalizer(updatedUser.Finalizers, UserFinalizer) {
+			t.Fatalf("expected finalizer to be removed, got %v", updatedUser.Finalizers)
+		}
+	} else if !errors.IsNotFound(err) {
+		t.Fatalf("failed to get updated user: %v", err)
+	}
+}
+
+func TestReconcileDelete_AttemptsPocketIDDeletionWithAnnotation(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	now := metav1.NewTime(time.Now())
+	user := &pocketidinternalv1alpha1.PocketIDUser{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "delete-with-annotation",
+			Namespace:         "default",
+			Finalizers:        []string{UserFinalizer},
+			DeletionTimestamp: &now,
+			Annotations: map[string]string{
+				DeleteFromPocketIDAnnotation: "true",
+			},
+		},
+		Status: pocketidinternalv1alpha1.PocketIDUserStatus{
+			UserID: "test-user-id",
+		},
+	}
+
+	client := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(user).
+		WithStatusSubresource(user).
+		Build()
+
+	reconciler := &Reconciler{Client: client, APIReader: client, Scheme: scheme}
+
+	// ReconcileDelete should proceed with deletion attempt
+	// Since no instance exists, it will log and continue with finalizer removal
+	result, err := reconciler.ReconcileDelete(context.Background(), user)
+	if err != nil {
+		t.Fatalf("ReconcileDelete returned error: %v", err)
+	}
+	if result.RequeueAfter > 0 {
+		t.Fatalf("expected no requeue, got %s", result.RequeueAfter)
+	}
+
+	// User should be deleted (finalizer removed)
+	updatedUser := &pocketidinternalv1alpha1.PocketIDUser{}
+	if err := client.Get(context.Background(), types.NamespacedName{Name: user.Name, Namespace: user.Namespace}, updatedUser); err == nil {
+		if containsFinalizer(updatedUser.Finalizers, UserFinalizer) {
+			t.Fatalf("expected finalizer to be removed, got %v", updatedUser.Finalizers)
+		}
+	} else if !errors.IsNotFound(err) {
+		t.Fatalf("failed to get updated user: %v", err)
+	}
+}

@@ -7,9 +7,21 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/aclerici38/pocket-id-operator/internal/controller/user"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
+
+// staticAPIKeySecretName returns the name of the static API key secret for the e2e instance
+func staticAPIKeySecretName() string {
+	return instanceName + "-static-api-key"
+}
+
+// getStaticAPIKeyToken retrieves the base64-encoded static API key token
+func getStaticAPIKeyToken() string {
+	return kubectlGet("secret", staticAPIKeySecretName(), "-n", instanceNS,
+		"-o", "jsonpath={.data.token}")
+}
 
 var _ = Describe("PocketIDUser", Ordered, func() {
 	Context("Minimal User", func() {
@@ -332,6 +344,132 @@ COOKIE_PAIR=$(echo "$COOKIE" | cut -d';' -f1)
 curl -sf -H "Cookie: $COOKIE_PAIR" %s/api/users/me | grep -q '"username":"%s"'`,
 				token, formatInstanceURL(), formatInstanceURL(), userName)
 
+			applyYAML(createCurlPodYAML(podName, userNS, script))
+			waitForPodSucceeded(podName, userNS)
+		})
+	})
+
+	Context("User Deletion Behavior", func() {
+		It("should NOT delete user from Pocket-ID when annotation is missing", func() {
+			const userName = "test-delete-no-annotation"
+			const podName = "check-user-exists-no-annotation"
+
+			By("creating a user without the delete annotation")
+			createUserAndWaitReady(UserOptions{Name: userName})
+
+			By("getting the userID from status")
+			userID := waitForStatusFieldNotEmpty("pocketiduser", userName, userNS, ".status.userID")
+
+			By("deleting the PocketIDUser resource")
+			kubectlDelete("pocketiduser", userName, userNS)
+			waitForResourceDeleted("pocketiduser", userName, userNS)
+
+			By("verifying user still exists in Pocket-ID")
+			tokenBase64 := getStaticAPIKeyToken()
+			Expect(tokenBase64).NotTo(BeEmpty())
+			script := fmt.Sprintf(`TOKEN=$(echo '%s' | base64 -d)
+curl -sf -H "X-API-KEY: $TOKEN" %s/api/users/%s | grep -q '"id":"%s"'`,
+				tokenBase64, formatInstanceURL(), userID, userID)
+			applyYAML(createCurlPodYAML(podName, userNS, script))
+			waitForPodSucceeded(podName, userNS)
+		})
+
+		It("should NOT delete user from Pocket-ID when annotation is set to false", func() {
+			const userName = "test-delete-annotation-false"
+			const podName = "check-user-exists-annotation-false"
+
+			By("creating a user with annotation set to false")
+			createUserAndWaitReady(UserOptions{
+				Name: userName,
+				Annotations: map[string]string{
+					user.DeleteFromPocketIDAnnotation: "false",
+				},
+			})
+
+			By("getting the userID from status")
+			userID := waitForStatusFieldNotEmpty("pocketiduser", userName, userNS, ".status.userID")
+
+			By("deleting the PocketIDUser resource")
+			kubectlDelete("pocketiduser", userName, userNS)
+			waitForResourceDeleted("pocketiduser", userName, userNS)
+
+			By("verifying user still exists in Pocket-ID")
+			tokenBase64 := getStaticAPIKeyToken()
+			Expect(tokenBase64).NotTo(BeEmpty())
+			script := fmt.Sprintf(`TOKEN=$(echo '%s' | base64 -d)
+curl -sf -H "X-API-KEY: $TOKEN" %s/api/users/%s | grep -q '"id":"%s"'`,
+				tokenBase64, formatInstanceURL(), userID, userID)
+			applyYAML(createCurlPodYAML(podName, userNS, script))
+			waitForPodSucceeded(podName, userNS)
+		})
+
+		It("should delete user from Pocket-ID when annotation is set to true", func() {
+			const userName = "test-delete-annotation-true"
+			const podName = "check-user-deleted-annotation-true"
+
+			By("creating a user with annotation set to true")
+			createUserAndWaitReady(UserOptions{
+				Name: userName,
+				Annotations: map[string]string{
+					user.DeleteFromPocketIDAnnotation: "true",
+				},
+			})
+
+			By("getting the userID from status")
+			userID := waitForStatusFieldNotEmpty("pocketiduser", userName, userNS, ".status.userID")
+
+			By("deleting the PocketIDUser resource")
+			kubectlDelete("pocketiduser", userName, userNS)
+			waitForResourceDeleted("pocketiduser", userName, userNS)
+
+			By("verifying user no longer exists in Pocket-ID (expect 404)")
+			tokenBase64 := getStaticAPIKeyToken()
+			Expect(tokenBase64).NotTo(BeEmpty())
+			script := fmt.Sprintf(`TOKEN=$(echo '%s' | base64 -d)
+HTTP_CODE=$(curl -s -o /dev/null -w "%%{http_code}" -H "X-API-KEY: $TOKEN" %s/api/users/%s)
+if [ "$HTTP_CODE" = "404" ]; then
+  echo "User correctly deleted (got 404)"
+  exit 0
+else
+  echo "Expected 404 but got $HTTP_CODE"
+  exit 1
+fi`,
+				tokenBase64, formatInstanceURL(), userID)
+			applyYAML(createCurlPodYAML(podName, userNS, script))
+			waitForPodSucceeded(podName, userNS)
+		})
+
+		It("should delete user from Pocket-ID when annotation is added before deletion", func() {
+			const userName = "test-delete-add-annotation"
+			const podName = "check-user-deleted-add-annotation"
+
+			By("creating a user without annotation")
+			createUserAndWaitReady(UserOptions{Name: userName})
+
+			By("getting the userID from status")
+			userID := waitForStatusFieldNotEmpty("pocketiduser", userName, userNS, ".status.userID")
+
+			By("adding the delete annotation")
+			Expect(kubectlAnnotate("pocketiduser", userName, userNS,
+				user.DeleteFromPocketIDAnnotation+"=true")).To(Succeed())
+
+			By("deleting the PocketIDUser resource")
+			kubectlDelete("pocketiduser", userName, userNS)
+			waitForResourceDeleted("pocketiduser", userName, userNS)
+
+			By("verifying user no longer exists in Pocket-ID (expect 404)")
+			tokenBase64 := getStaticAPIKeyToken()
+			Expect(tokenBase64).NotTo(BeEmpty())
+			script := fmt.Sprintf(`TOKEN=$(echo '%s' | base64 -d)
+HTTP_CODE=$(curl -s -o /dev/null -w "%%{http_code}" -H "X-API-KEY: $TOKEN" %s/api/users/%s)
+if [ "$HTTP_CODE" = "404" ]; then
+  echo "User correctly deleted (got 404)"
+  exit 0
+else
+  echo "Expected 404 but got $HTTP_CODE"
+  exit 1
+fi`,
+				tokenBase64, formatInstanceURL(), userID)
 			applyYAML(createCurlPodYAML(podName, userNS, script))
 			waitForPodSucceeded(podName, userNS)
 		})

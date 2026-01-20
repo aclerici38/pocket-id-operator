@@ -105,6 +105,7 @@ type UserOptions struct {
 	APIKeys          []APIKeySpec
 	UserInfoSecret   string
 	InstanceSelector map[string]string
+	Annotations      map[string]string
 }
 
 type APIKeySpec struct {
@@ -125,6 +126,15 @@ func (o UserOptions) withDefaults() UserOptions {
 
 func buildUserYAML(opts UserOptions) string {
 	opts = opts.withDefaults()
+
+	var annotations string
+	if len(opts.Annotations) > 0 {
+		annotationLines := make([]string, 0, len(opts.Annotations))
+		for k, v := range opts.Annotations {
+			annotationLines = append(annotationLines, fmt.Sprintf("    %s: \"%s\"", k, v))
+		}
+		annotations = "  annotations:\n" + strings.Join(annotationLines, "\n") + "\n"
+	}
 
 	var spec strings.Builder
 
@@ -175,7 +185,7 @@ kind: PocketIDUser
 metadata:
   name: %s
   namespace: %s
-`, opts.Name, opts.Namespace)
+%s`, opts.Name, opts.Namespace, annotations)
 	}
 
 	return fmt.Sprintf(`apiVersion: pocketid.internal/v1alpha1
@@ -183,8 +193,8 @@ kind: PocketIDUser
 metadata:
   name: %s
   namespace: %s
-spec:
-%s`, opts.Name, opts.Namespace, specStr)
+%sspec:
+%s`, opts.Name, opts.Namespace, annotations, specStr)
 }
 
 // UserGroupOptions configures a PocketIDUserGroup YAML.
