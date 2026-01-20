@@ -182,18 +182,23 @@ func (r *Reconciler) reconcileOIDCClient(ctx context.Context, oidcClient *pocket
 	var current *pocketid.OIDCClient
 	var err error
 	if oidcClient.Status.ClientID == "" {
-		existingClient, err := r.FindExistingOIDCClient(ctx, apiClient, clientID)
+		// Try to create first, then fallback to adopting if it already exists
+		log.Info("Creating OIDC client in Pocket-ID", "clientID", clientID)
+		current, err = apiClient.CreateOIDCClient(ctx, input)
 		if err != nil {
-			return nil, fmt.Errorf("find existing OIDC client: %w", err)
-		}
-
-		if existingClient != nil {
-			log.Info("Adopting existing OIDC client from Pocket-ID", "clientID", clientID)
-			current = existingClient
-		} else {
-			log.Info("Creating OIDC client in Pocket-ID", "clientID", clientID)
-			current, err = apiClient.CreateOIDCClient(ctx, input)
-			if err != nil {
+			// Check if creation failed because client already exists
+			if pocketid.IsAlreadyExistsError(err) {
+				log.Info("OIDC client already exists in Pocket-ID, attempting to adopt", "clientID", clientID)
+				existingClient, findErr := r.FindExistingOIDCClient(ctx, apiClient, clientID)
+				if findErr != nil {
+					return nil, fmt.Errorf("find existing OIDC client after create conflict: %w", findErr)
+				}
+				if existingClient == nil {
+					return nil, fmt.Errorf("create OIDC client failed with conflict but could not find existing client: %w", err)
+				}
+				log.Info("Adopting existing OIDC client from Pocket-ID", "clientID", clientID)
+				current = existingClient
+			} else {
 				return nil, fmt.Errorf("create OIDC client: %w", err)
 			}
 		}
@@ -229,6 +234,12 @@ func (r *Reconciler) reconcileOIDCClient(ctx context.Context, oidcClient *pocket
 func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) pocketid.OIDCClientInput {
 	name := oidcClient.Name
 
+	// Determine the client ID: prefer spec.clientID, fallback to resource name
+	clientID := oidcClient.Spec.ClientID
+	if clientID == "" {
+		clientID = oidcClient.Name
+	}
+
 	var credentials *pocketid.OIDCClientCredentials
 	if len(oidcClient.Spec.FederatedIdentities) > 0 {
 		identities := make([]pocketid.OIDCClientFederatedIdentity, 0, len(oidcClient.Spec.FederatedIdentities))
@@ -248,7 +259,7 @@ func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.Pocket
 	isGroupRestricted := len(oidcClient.Spec.AllowedUserGroups) > 0
 
 	return pocketid.OIDCClientInput{
-		ID:                       oidcClient.Spec.ClientID,
+		ID:                       clientID,
 		Name:                     name,
 		CallbackURLs:             oidcClient.Spec.CallbackURLs,
 		LogoutCallbackURLs:       oidcClient.Spec.LogoutCallbackURLs,
