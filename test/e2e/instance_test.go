@@ -4,7 +4,6 @@
 package e2e
 
 import (
-	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -318,8 +317,3 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Ordered, func() {
 		})
 	})
 })
-
-// Helper to format instance URL for curl pods
-func formatInstanceURL() string {
-	return fmt.Sprintf("http://%s.%s.svc.cluster.local:1411", instanceName, instanceNS)
-}

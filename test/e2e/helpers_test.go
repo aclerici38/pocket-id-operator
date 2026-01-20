@@ -292,6 +292,7 @@ spec:
 type OIDCClientOptions struct {
 	Name               string
 	Namespace          string
+	ClientID           string // Custom client ID (defaults to Name if empty)
 	CallbackURLs       []string
 	LogoutCallbackURLs []string
 	IsPublic           bool
@@ -330,6 +331,10 @@ func buildOIDCClientYAML(opts OIDCClientOptions) string {
 	opts = opts.withDefaults()
 
 	var spec strings.Builder
+
+	if opts.ClientID != "" {
+		spec.WriteString(fmt.Sprintf("  clientID: %s\n", opts.ClientID))
+	}
 
 	if opts.IsPublic {
 		spec.WriteString("  isPublic: true\n")
@@ -640,4 +645,25 @@ func waitForPodSucceeded(name, namespace string) {
 		output := kubectlGet("pod", name, "-n", namespace, "-o", "jsonpath={.status.phase}")
 		g.Expect(output).To(Equal("Succeeded"))
 	}, 2*time.Minute, 2*time.Second).Should(Succeed())
+}
+
+// kubectlLogs retrieves logs from a pod
+func kubectlLogs(name, namespace string) string {
+	cmd := exec.Command("kubectl", "logs", name, "-n", namespace)
+	output, err := utils.Run(cmd)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(output)
+}
+
+// getPodLogs waits for a pod to succeed and retrieves its logs
+func getPodLogs(name, namespace string) string {
+	waitForPodSucceeded(name, namespace)
+	return kubectlLogs(name, namespace)
+}
+
+// formatInstanceURL returns the internal service URL for the e2e instance
+func formatInstanceURL() string {
+	return fmt.Sprintf("http://%s.%s.svc.cluster.local:1411", instanceName, instanceNS)
 }
