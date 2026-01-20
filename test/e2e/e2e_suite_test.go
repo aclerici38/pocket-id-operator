@@ -55,8 +55,8 @@ var _ = BeforeSuite(func() {
 	_, err = utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
 
-	By("deploying the operator")
-	cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImage))
+	By("deploying the operator with e2e config (faster resync)")
+	cmd = exec.Command("make", "deploy-e2e", fmt.Sprintf("IMG=%s", projectImage))
 	_, err = utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred(), "Failed to deploy operator")
 

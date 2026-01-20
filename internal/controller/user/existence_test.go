@@ -2,9 +2,11 @@ package user
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
+	"github.com/go-openapi/runtime"
 )
 
 const (
@@ -303,5 +305,21 @@ func TestFindExistingUser_EmptyEmail(t *testing.T) {
 	}
 	if callCount != 1 {
 		t.Fatalf("expected ListUsers to be called once (username only), got %d calls", callCount)
+	}
+}
+
+func TestIsNotFoundError_DetectsAPIError404(t *testing.T) {
+	err := runtime.NewAPIError("GetAPIUsersID", nil, http.StatusNotFound)
+
+	if !pocketid.IsNotFoundError(err) {
+		t.Error("expected IsNotFoundError to return true for 404 APIError")
+	}
+}
+
+func TestIsNotFoundError_IgnoresAPIError500(t *testing.T) {
+	err := runtime.NewAPIError("GetAPIUsersID", nil, http.StatusInternalServerError)
+
+	if pocketid.IsNotFoundError(err) {
+		t.Error("expected IsNotFoundError to return false for 500 APIError")
 	}
 }
