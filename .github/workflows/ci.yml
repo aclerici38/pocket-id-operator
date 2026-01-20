@@ -10,7 +10,6 @@ on:
       - "LICENSE"
       - ".gitignore"
       - "dist/chart/**"
-      - ".github"
   pull_request:
     paths-ignore:
       - "**.md"
@@ -18,10 +17,10 @@ on:
       - "LICENSE"
       - ".gitignore"
       - "dist/chart/**"
-      - ".github/**"
   workflow_dispatch:
 
 permissions:
+  actions: write
   contents: read
   packages: write
 

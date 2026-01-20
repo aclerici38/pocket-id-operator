@@ -64,6 +64,8 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
 
       - name: Setup Helm
         uses: azure/setup-helm@v4
