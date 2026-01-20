@@ -40,8 +40,8 @@ var _ = Describe("PocketIDUserGroup and PocketIDOIDCClient", Ordered, func() {
 	})
 
 	Context("User Group Reconciliation", func() {
-		It("should set groupId in status", func() {
-			waitForStatusFieldNotEmpty("pocketidusergroup", groupName, userNS, ".status.groupId")
+		It("should set groupID in status", func() {
+			waitForStatusFieldNotEmpty("pocketidusergroup", groupName, userNS, ".status.groupID")
 		})
 
 		It("should reflect custom claims in status", func() {
@@ -64,17 +64,17 @@ var _ = Describe("PocketIDUserGroup and PocketIDOIDCClient", Ordered, func() {
 			})
 		})
 
-		It("should set clientId in status", func() {
-			waitForStatusFieldNotEmpty("pocketidoidcclient", oidcClientName, userNS, ".status.clientId")
+		It("should set clientID in status", func() {
+			waitForStatusFieldNotEmpty("pocketidoidcclient", oidcClientName, userNS, ".status.clientID")
 		})
 
-		It("should include the group in allowedUserGroupIds", func() {
+		It("should include the group in allowedUserGroupIDs", func() {
 			groupID := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-				"-o", "jsonpath={.status.groupId}")
+				"-o", "jsonpath={.status.groupID}")
 
 			Eventually(func(g Gomega) {
 				output := kubectlGet("pocketidoidcclient", oidcClientName, "-n", userNS,
-					"-o", "jsonpath={.status.allowedUserGroupIds[*]}")
+					"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
 				g.Expect(output).To(ContainSubstring(groupID))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 		})
@@ -175,16 +175,250 @@ var _ = Describe("PocketIDUserGroup and PocketIDOIDCClient", Ordered, func() {
 			})
 
 			groupID := kubectlGet("pocketidusergroup", recoveryOIDCGroup, "-n", userNS,
-				"-o", "jsonpath={.status.groupId}")
+				"-o", "jsonpath={.status.groupID}")
 			groupIDAlt := kubectlGet("pocketidusergroup", recoveryOIDCGroupAlt, "-n", userNS,
-				"-o", "jsonpath={.status.groupId}")
+				"-o", "jsonpath={.status.groupID}")
 
 			By("verifying allowed group IDs include both groups")
 			Eventually(func(g Gomega) {
 				output := kubectlGet("pocketidoidcclient", recoveryOIDCName, "-n", userNS,
-					"-o", "jsonpath={.status.allowedUserGroupIds[*]}")
+					"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
 				g.Expect(output).To(ContainSubstring(groupID))
 				g.Expect(output).To(ContainSubstring(groupIDAlt))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+	})
+})
+
+var _ = Describe("UserGroup with Usernames and UserIds", Ordered, func() {
+	const (
+		usernameGroupName   = "test-username-group"
+		userIdGroupName     = "test-userid-group"
+		mixedGroupName      = "test-mixed-group"
+		usernameTestUser    = "username-lookup-user"
+		userIdTestUser      = "userid-lookup-user"
+		mixedUserRefsUser   = "mixed-userrefs-user"
+		mixedUsernameUser   = "mixed-username-user"
+		mixedUserIdUser     = "mixed-userid-user"
+	)
+
+	Context("User Group with Usernames", func() {
+		BeforeAll(func() {
+			By("creating a user that will be looked up by username")
+			createUserAndWaitReady(UserOptions{
+				Name:      usernameTestUser,
+				Username:  "e2e-username-lookup",
+				FirstName: "Username",
+				LastName:  "Lookup",
+				Email:     "username-lookup@example.local",
+			})
+		})
+
+		It("should resolve username and add user to group", func() {
+			By("getting the user's ID from status")
+			userID := waitForStatusFieldNotEmpty("pocketiduser", usernameTestUser, userNS, ".status.userID")
+
+			By("creating a user group with usernames")
+			createUserGroup(UserGroupOptions{
+				Name:         usernameGroupName,
+				GroupName:    "username-lookup-group",
+				FriendlyName: "Username Lookup Group",
+				Usernames:    []string{"e2e-username-lookup"},
+			})
+
+			By("verifying the group becomes Ready")
+			waitForReady("pocketidusergroup", usernameGroupName, userNS)
+
+			By("verifying the group has the correct user")
+			Eventually(func(g Gomega) {
+				userIDs := kubectlGet("pocketidusergroup", usernameGroupName, "-n", userNS,
+					"-o", "jsonpath={.status.userIDs[*]}")
+				g.Expect(userIDs).To(ContainSubstring(userID))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+
+		It("should report error for non-existent username", func() {
+			nonExistentGroupName := "test-nonexistent-username-group"
+
+			By("creating a user group with a non-existent username")
+			createUserGroup(UserGroupOptions{
+				Name:         nonExistentGroupName,
+				GroupName:    "nonexistent-username-group",
+				FriendlyName: "Non-existent Username Group",
+				Usernames:    []string{"this-user-does-not-exist-12345"},
+			})
+
+			By("verifying the group reports a reconcile error")
+			waitForConditionReason("pocketidusergroup", nonExistentGroupName, userNS, "Ready", "ReconcileError")
+		})
+	})
+
+	Context("User Group with UserIds", func() {
+		var userID string
+
+		BeforeAll(func() {
+			By("creating a user to get its ID")
+			createUserAndWaitReady(UserOptions{
+				Name:      userIdTestUser,
+				Username:  "e2e-userid-lookup",
+				FirstName: "UserId",
+				LastName:  "Lookup",
+				Email:     "userid-lookup@example.local",
+			})
+
+			By("getting the user's ID from status")
+			userID = waitForStatusFieldNotEmpty("pocketiduser", userIdTestUser, userNS, ".status.userID")
+		})
+
+		It("should add user by ID directly to group", func() {
+			By("creating a user group with userIds")
+			createUserGroup(UserGroupOptions{
+				Name:         userIdGroupName,
+				GroupName:    "userid-lookup-group",
+				FriendlyName: "UserId Lookup Group",
+				UserIds:      []string{userID},
+			})
+
+			By("verifying the group becomes Ready")
+			waitForReady("pocketidusergroup", userIdGroupName, userNS)
+
+			By("verifying the group has the correct user")
+			Eventually(func(g Gomega) {
+				userIDs := kubectlGet("pocketidusergroup", userIdGroupName, "-n", userNS,
+					"-o", "jsonpath={.status.userIDs[*]}")
+				g.Expect(userIDs).To(ContainSubstring(userID))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+	})
+
+	Context("User Group with Mixed User Specifications", func() {
+		var mixedUserIdUserID string
+
+		BeforeAll(func() {
+			By("creating users for mixed specification test")
+			createUserAndWaitReady(UserOptions{
+				Name:      mixedUserRefsUser,
+				Username:  "e2e-mixed-userrefs",
+				FirstName: "Mixed",
+				LastName:  "UserRefs",
+				Email:     "mixed-userrefs@example.local",
+			})
+
+			createUserAndWaitReady(UserOptions{
+				Name:      mixedUsernameUser,
+				Username:  "e2e-mixed-username",
+				FirstName: "Mixed",
+				LastName:  "Username",
+				Email:     "mixed-username@example.local",
+			})
+
+			createUserAndWaitReady(UserOptions{
+				Name:      mixedUserIdUser,
+				Username:  "e2e-mixed-userid",
+				FirstName: "Mixed",
+				LastName:  "UserId",
+				Email:     "mixed-userid@example.local",
+			})
+
+			By("getting the userId for direct ID reference")
+			mixedUserIdUserID = waitForStatusFieldNotEmpty("pocketiduser", mixedUserIdUser, userNS, ".status.userID")
+		})
+
+		It("should resolve all three user specification types", func() {
+			By("getting user IDs for verification")
+			userRefsUserID := waitForStatusFieldNotEmpty("pocketiduser", mixedUserRefsUser, userNS, ".status.userID")
+			usernameUserID := waitForStatusFieldNotEmpty("pocketiduser", mixedUsernameUser, userNS, ".status.userID")
+
+			By("creating a user group with userRefs, usernames, and userIds")
+			createUserGroup(UserGroupOptions{
+				Name:         mixedGroupName,
+				GroupName:    "mixed-users-group",
+				FriendlyName: "Mixed Users Group",
+				UserRefs:     []ResourceRef{{Name: mixedUserRefsUser, Namespace: userNS}},
+				Usernames:    []string{"e2e-mixed-username"},
+				UserIds:      []string{mixedUserIdUserID},
+			})
+
+			By("verifying the group becomes Ready")
+			waitForReady("pocketidusergroup", mixedGroupName, userNS)
+
+			By("verifying the group has all 3 users")
+			Eventually(func(g Gomega) {
+				userIDs := kubectlGet("pocketidusergroup", mixedGroupName, "-n", userNS,
+					"-o", "jsonpath={.status.userIDs[*]}")
+				g.Expect(userIDs).To(ContainSubstring(userRefsUserID))
+				g.Expect(userIDs).To(ContainSubstring(usernameUserID))
+				g.Expect(userIDs).To(ContainSubstring(mixedUserIdUserID))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+
+		It("should deduplicate users specified multiple ways", func() {
+			dedupeGroupName := "test-dedupe-group"
+
+			By("getting userId of the username user")
+			usernameUserID := waitForStatusFieldNotEmpty("pocketiduser", mixedUsernameUser, userNS, ".status.userID")
+
+			By("creating a user group that references the same user via userRef, username, and userId")
+			createUserGroup(UserGroupOptions{
+				Name:         dedupeGroupName,
+				GroupName:    "dedupe-users-group",
+				FriendlyName: "Dedupe Users Group",
+				UserRefs:     []ResourceRef{{Name: mixedUsernameUser, Namespace: userNS}},
+				Usernames:    []string{"e2e-mixed-username"},
+				UserIds:      []string{usernameUserID},
+			})
+
+			By("verifying the group becomes Ready")
+			waitForReady("pocketidusergroup", dedupeGroupName, userNS)
+
+			By("verifying the group has only 1 user (deduplicated)")
+			Eventually(func(g Gomega) {
+				userIDs := kubectlGet("pocketidusergroup", dedupeGroupName, "-n", userNS,
+					"-o", "jsonpath={.status.userIDs[*]}")
+				// Should contain the user ID exactly once (no duplicates)
+				g.Expect(userIDs).To(Equal(usernameUserID))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+	})
+
+	Context("User Group Recovery with Usernames", func() {
+		const (
+			recoveryUsernameGroupName = "test-recovery-username-group"
+			recoveryUsernameUserName  = "recovery-username-user"
+		)
+
+		It("should recover when user with matching username is created", func() {
+			By("creating a user group with a non-existent username")
+			createUserGroup(UserGroupOptions{
+				Name:         recoveryUsernameGroupName,
+				GroupName:    "recovery-username-group",
+				FriendlyName: "Recovery Username Group",
+				Usernames:    []string{"e2e-recovery-username"},
+			})
+
+			By("verifying the group reports a reconcile error")
+			waitForConditionReason("pocketidusergroup", recoveryUsernameGroupName, userNS, "Ready", "ReconcileError")
+
+			By("creating the user with the matching username")
+			createUserAndWaitReady(UserOptions{
+				Name:      recoveryUsernameUserName,
+				Username:  "e2e-recovery-username",
+				FirstName: "Recovery",
+				LastName:  "Username",
+				Email:     "recovery-username@example.local",
+			})
+
+			By("getting the user's ID")
+			userID := waitForStatusFieldNotEmpty("pocketiduser", recoveryUsernameUserName, userNS, ".status.userID")
+
+			By("verifying the group becomes Ready")
+			waitForReady("pocketidusergroup", recoveryUsernameGroupName, userNS)
+
+			By("verifying the group has the correct user")
+			Eventually(func(g Gomega) {
+				userIDs := kubectlGet("pocketidusergroup", recoveryUsernameGroupName, "-n", userNS,
+					"-o", "jsonpath={.status.userIDs[*]}")
+				g.Expect(userIDs).To(ContainSubstring(userID))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 		})
 	})
@@ -209,7 +443,7 @@ var _ = Describe("OIDC Client Secrets", Ordered, func() {
 
 		It("should include client_id in secret", func() {
 			defaultSecretName := secretClientName + "-oidc-credentials"
-			clientID := waitForStatusFieldNotEmpty("pocketidoidcclient", secretClientName, userNS, ".status.clientId")
+			clientID := waitForStatusFieldNotEmpty("pocketidoidcclient", secretClientName, userNS, ".status.clientID")
 
 			secretClientID := waitForSecretKey(defaultSecretName, userNS, "client_id")
 			Expect(secretClientID).To(Equal(clientID))

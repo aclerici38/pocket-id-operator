@@ -204,8 +204,8 @@ func (r *Reconciler) reconcileUserGroup(ctx context.Context, userGroup *pocketid
 		current.CustomClaims = updated
 	}
 
-	if userGroup.Spec.UserRefs != nil {
-		userIDs, err := r.resolveUserRefs(ctx, userGroup)
+	if userGroup.Spec.Users != nil {
+		userIDs, err := r.resolveUsers(ctx, userGroup, apiClient)
 		if err != nil {
 			return current, err
 		}
@@ -222,8 +222,71 @@ func (r *Reconciler) reconcileUserGroup(ctx context.Context, userGroup *pocketid
 	return latest, nil
 }
 
-func (r *Reconciler) resolveUserRefs(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup) ([]string, error) {
-	return helpers.ResolveUserReferences(ctx, r.Client, userGroup.Spec.UserRefs, userGroup.Namespace)
+// resolveUsers resolves userRefs, usernames, and userIds to Pocket-ID user IDs.
+func (r *Reconciler) resolveUsers(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, apiClient *pocketid.Client) ([]string, error) {
+	log := logf.FromContext(ctx)
+	users := userGroup.Spec.Users
+	if users == nil {
+		return nil, nil
+	}
+
+	// Deduplicate user IDs
+	userIDSet := make(map[string]struct{})
+
+	// PocketIDUser CRs
+	if len(users.UserRefs) > 0 {
+		refIDs, err := helpers.ResolveUserReferences(ctx, r.Client, users.UserRefs, userGroup.Namespace)
+		if err != nil {
+			return nil, fmt.Errorf("resolve user references: %w", err)
+		}
+		for _, id := range refIDs {
+			userIDSet[id] = struct{}{}
+		}
+	}
+
+	// Lookup usernames in the instance
+	for _, username := range users.Usernames {
+		if username == "" {
+			return nil, fmt.Errorf("username cannot be empty")
+		}
+		userID, err := r.resolveUsername(ctx, apiClient, username)
+		if err != nil {
+			return nil, fmt.Errorf("resolve username %q: %w", username, err)
+		}
+		log.V(1).Info("Resolved username to user ID", "username", username, "userID", userID)
+		userIDSet[userID] = struct{}{}
+	}
+
+	// Add userIds directly
+	for _, userID := range users.UserIDs {
+		if userID == "" {
+			return nil, fmt.Errorf("userId cannot be empty")
+		}
+		userIDSet[userID] = struct{}{}
+	}
+
+	userIDs := make([]string, 0, len(userIDSet))
+	for id := range userIDSet {
+		userIDs = append(userIDs, id)
+	}
+
+	return userIDs, nil
+}
+
+// resolveUsername looks up a username in Pocket-ID and returns the user ID.
+func (r *Reconciler) resolveUsername(ctx context.Context, apiClient *pocketid.Client, username string) (string, error) {
+	users, err := apiClient.ListUsers(ctx, username)
+	if err != nil {
+		return "", fmt.Errorf("list users: %w", err)
+	}
+
+	for _, user := range users {
+		if user.Username == username {
+			return user.ID, nil
+		}
+	}
+
+	return "", fmt.Errorf("user with username %q not found in Pocket-ID", username)
 }
 
 func (r *Reconciler) updateUserGroupStatus(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, current *pocketid.UserGroup) error {
@@ -237,6 +300,7 @@ func (r *Reconciler) updateUserGroupStatus(ctx context.Context, userGroup *pocke
 	userGroup.Status.CreatedAt = current.CreatedAt
 	userGroup.Status.LdapID = current.LdapID
 	userGroup.Status.UserCount = current.UserCount
+	userGroup.Status.UserIDs = current.UserIDs
 	userGroup.Status.CustomClaims = toCustomClaims(current.CustomClaims)
 	return r.Status().Patch(ctx, userGroup, client.MergeFrom(base))
 }
@@ -403,12 +467,12 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 			return nil
 		}
 
-		if len(userGroup.Spec.UserRefs) == 0 {
+		if userGroup.Spec.Users == nil || len(userGroup.Spec.Users.UserRefs) == 0 {
 			return nil
 		}
 
-		keys := make([]string, 0, len(userGroup.Spec.UserRefs))
-		for _, ref := range userGroup.Spec.UserRefs {
+		keys := make([]string, 0, len(userGroup.Spec.Users.UserRefs))
+		for _, ref := range userGroup.Spec.Users.UserRefs {
 			if ref.Name == "" {
 				continue
 			}

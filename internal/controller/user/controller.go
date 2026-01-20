@@ -174,7 +174,10 @@ func (r *Reconciler) isUserReferencedByUserGroup(ctx context.Context, userName, 
 }
 
 func userGroupHasUserRef(group *pocketidinternalv1alpha1.PocketIDUserGroup, userName, userNamespace string) bool {
-	for _, ref := range group.Spec.UserRefs {
+	if group.Spec.Users == nil {
+		return false
+	}
+	for _, ref := range group.Spec.Users.UserRefs {
 		if ref.Name == "" {
 			continue
 		}
@@ -685,8 +688,12 @@ func (r *Reconciler) requestsForUserGroup(ctx context.Context, obj client.Object
 		return nil
 	}
 
-	requests := make([]reconcile.Request, 0, len(group.Spec.UserRefs))
-	for _, ref := range group.Spec.UserRefs {
+	if group.Spec.Users == nil || len(group.Spec.Users.UserRefs) == 0 {
+		return nil
+	}
+
+	requests := make([]reconcile.Request, 0, len(group.Spec.Users.UserRefs))
+	for _, ref := range group.Spec.Users.UserRefs {
 		if ref.Name == "" {
 			continue
 		}

@@ -195,6 +195,8 @@ type UserGroupOptions struct {
 	FriendlyName string
 	CustomClaims []CustomClaim
 	UserRefs     []ResourceRef
+	Usernames    []string
+	UserIds      []string
 }
 
 type CustomClaim struct {
@@ -237,12 +239,32 @@ func buildUserGroupYAML(opts UserGroupOptions) string {
 		}
 	}
 
-	if len(opts.UserRefs) > 0 {
-		spec.WriteString("  userRefs:\n")
-		for _, ref := range opts.UserRefs {
-			spec.WriteString(fmt.Sprintf("  - name: %s\n", ref.Name))
-			if ref.Namespace != "" {
-				spec.WriteString(fmt.Sprintf("    namespace: %s\n", ref.Namespace))
+	// Build users section if any user specification is provided
+	hasUsers := len(opts.UserRefs) > 0 || len(opts.Usernames) > 0 || len(opts.UserIds) > 0
+	if hasUsers {
+		spec.WriteString("  users:\n")
+
+		if len(opts.UserRefs) > 0 {
+			spec.WriteString("    userRefs:\n")
+			for _, ref := range opts.UserRefs {
+				spec.WriteString(fmt.Sprintf("    - name: %s\n", ref.Name))
+				if ref.Namespace != "" {
+					spec.WriteString(fmt.Sprintf("      namespace: %s\n", ref.Namespace))
+				}
+			}
+		}
+
+		if len(opts.Usernames) > 0 {
+			spec.WriteString("    usernames:\n")
+			for _, username := range opts.Usernames {
+				spec.WriteString(fmt.Sprintf("    - %s\n", username))
+			}
+		}
+
+		if len(opts.UserIds) > 0 {
+			spec.WriteString("    userIDs:\n")
+			for _, userID := range opts.UserIds {
+				spec.WriteString(fmt.Sprintf("    - %s\n", userID))
 			}
 		}
 	}
@@ -333,7 +355,7 @@ func buildOIDCClientYAML(opts OIDCClientOptions) string {
 		if opts.Secret.Keys != nil {
 			spec.WriteString("    keys:\n")
 			if opts.Secret.Keys.ClientID != "" {
-				spec.WriteString(fmt.Sprintf("      clientId: %s\n", opts.Secret.Keys.ClientID))
+				spec.WriteString(fmt.Sprintf("      clientID: %s\n", opts.Secret.Keys.ClientID))
 			}
 			if opts.Secret.Keys.ClientSecret != "" {
 				spec.WriteString(fmt.Sprintf("      clientSecret: %s\n", opts.Secret.Keys.ClientSecret))
@@ -518,7 +540,7 @@ func createUserGroup(opts UserGroupOptions) {
 func createUserGroupAndWaitReady(opts UserGroupOptions) {
 	opts = opts.withDefaults()
 	createUserGroup(opts)
-	waitForStatusFieldNotEmpty("pocketidusergroup", opts.Name, opts.Namespace, ".status.groupId")
+	waitForStatusFieldNotEmpty("pocketidusergroup", opts.Name, opts.Namespace, ".status.groupID")
 }
 
 func createOIDCClient(opts OIDCClientOptions) {

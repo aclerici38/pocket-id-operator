@@ -78,7 +78,7 @@ type OIDCClientSecretKeys struct {
 	// Defaults to client_id
 	// +kubebuilder:default="client_id"
 	// +optional
-	ClientID string `json:"clientId,omitempty"`
+	ClientID string `json:"clientID,omitempty"`
 
 	// ClientSecret is the key name for the OIDC client secret.
 	// +kubebuilder:default="client_secret"
@@ -142,7 +142,7 @@ type OIDCClientSecretKeys struct {
 }
 
 // PocketIDOIDCClientSpec defines the desired state of PocketIDOIDCClient
-// +kubebuilder:validation:XValidation:rule="has(self.clientId) == has(oldSelf.clientId) && (!has(self.clientId) || self.clientId == oldSelf.clientId)",message="clientId is immutable"
+// +kubebuilder:validation:XValidation:rule="has(self.clientID) == has(oldSelf.clientID) && (!has(self.clientID) || self.clientID == oldSelf.clientID)",message="clientID is immutable"
 type PocketIDOIDCClientSpec struct {
 	// InstanceSelector selects the PocketIDInstance to reconcile against.
 	// If omitted, the controller expects exactly one instance in the cluster.
@@ -154,7 +154,7 @@ type PocketIDOIDCClientSpec struct {
 	// +kubebuilder:validation:MinLength=2
 	// +kubebuilder:validation:MaxLength=128
 	// +optional
-	ClientID string `json:"clientId,omitempty"`
+	ClientID string `json:"clientID,omitempty"`
 
 	// Callback URLs for the client
 	// Note: a feature of pocket-id is to autosave the callback URL based on the url params passed by the client.
@@ -215,7 +215,7 @@ type PocketIDOIDCClientStatus struct {
 
 	// ClientID is the ID assigned by Pocket-ID
 	// +optional
-	ClientID string `json:"clientId,omitempty"`
+	ClientID string `json:"clientID,omitempty"`
 
 	// Name is the resolved name from Pocket-ID
 	// +optional
@@ -227,7 +227,7 @@ type PocketIDOIDCClientStatus struct {
 
 	// AllowedUserGroupIDs are the resolved group IDs assigned to the client
 	// +optional
-	AllowedUserGroupIDs []string `json:"allowedUserGroupIds,omitempty"`
+	AllowedUserGroupIDs []string `json:"allowedUserGroupIDs,omitempty"`
 
 	// Conditions represent the current state of the PocketIDOIDCClient resource.
 	// +listType=map

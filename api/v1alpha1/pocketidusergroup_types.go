@@ -46,6 +46,22 @@ type NamespacedUserReference struct {
 	Namespace string `json:"namespace,omitempty"`
 }
 
+// UserGroupUsers defines the users to add to a user group.
+type UserGroupUsers struct {
+	// UserRefs are PocketIDUser custom resources to add to this group
+	// +optional
+	UserRefs []NamespacedUserReference `json:"userRefs,omitempty"`
+
+	// Usernames are Pocket-ID usernames to add to this group.
+	// The controller will look up the user ID from Pocket-ID by username.
+	// +optional
+	Usernames []string `json:"usernames,omitempty"`
+
+	// UserIDs are Pocket-ID user IDs to add directly to this group.
+	// +optional
+	UserIDs []string `json:"userIDs,omitempty"`
+}
+
 // PocketIDUserGroupSpec defines the desired state of PocketIDUserGroup
 type PocketIDUserGroupSpec struct {
 	// InstanceSelector selects the PocketIDInstance to reconcile against.
@@ -69,9 +85,9 @@ type PocketIDUserGroupSpec struct {
 	// +optional
 	CustomClaims []CustomClaim `json:"customClaims,omitempty"`
 
-	// UserRefs are PocketIDUser custom resources to add to this group
+	// Users defines the users to add to this group
 	// +optional
-	UserRefs []NamespacedUserReference `json:"userRefs,omitempty"`
+	Users *UserGroupUsers `json:"users,omitempty"`
 }
 
 // PocketIDUserGroupStatus defines the observed state of PocketIDUserGroup.
@@ -84,7 +100,7 @@ type PocketIDUserGroupStatus struct {
 
 	// GroupID is the ID assigned by Pocket-ID
 	// +optional
-	GroupID string `json:"groupId,omitempty"`
+	GroupID string `json:"groupID,omitempty"`
 
 	// Name is the resolved group name from Pocket-ID
 	// +optional
@@ -100,11 +116,15 @@ type PocketIDUserGroupStatus struct {
 
 	// LdapID is the LDAP identifier if the group is managed via LDAP
 	// +optional
-	LdapID string `json:"ldapId,omitempty"`
+	LdapID string `json:"ldapID,omitempty"`
 
 	// UserCount is the number of users in the group
 	// +optional
 	UserCount int `json:"userCount,omitempty"`
+
+	// UserIDs are the Pocket-ID user IDs of users in this group
+	// +optional
+	UserIDs []string `json:"userIDs,omitempty"`
 
 	// CustomClaims are the resolved custom claims on the group
 	// +optional

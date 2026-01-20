@@ -81,8 +81,10 @@ func TestReconcileUserFinalizers_AddsUserGroupFinalizer(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: pocketidinternalv1alpha1.PocketIDUserGroupSpec{
-			UserRefs: []pocketidinternalv1alpha1.NamespacedUserReference{
-				{Name: user.Name, Namespace: user.Namespace},
+			Users: &pocketidinternalv1alpha1.UserGroupUsers{
+				UserRefs: []pocketidinternalv1alpha1.NamespacedUserReference{
+					{Name: user.Name, Namespace: user.Namespace},
+				},
 			},
 		},
 	}
@@ -214,8 +216,10 @@ func TestReconcileDelete_BlocksWhenUserGroupReferences(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: pocketidinternalv1alpha1.PocketIDUserGroupSpec{
-			UserRefs: []pocketidinternalv1alpha1.NamespacedUserReference{
-				{Name: user.Name, Namespace: user.Namespace},
+			Users: &pocketidinternalv1alpha1.UserGroupUsers{
+				UserRefs: []pocketidinternalv1alpha1.NamespacedUserReference{
+					{Name: user.Name, Namespace: user.Namespace},
+				},
 			},
 		},
 	}

@@ -149,9 +149,11 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Ordered, func() {
 				"-o", "jsonpath={.status.userID}")
 			Expect(userID).NotTo(BeEmpty())
 
-			By("cleaning up")
-			kubectlDelete("pocketiduser", selectorUser, userNS)
-			kubectlDelete("pocketidinstance", selectorInstance, instanceNS)
+			By("cleaning up user")
+			Expect(kubectlDeleteWait("pocketiduser", selectorUser, userNS, 30*time.Second)).To(Succeed())
+
+			By("cleaning up instance")
+			Expect(kubectlDeleteWait("pocketidinstance", selectorInstance, instanceNS, 60*time.Second)).To(Succeed())
 		})
 	})
 
@@ -205,7 +207,7 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Ordered, func() {
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
 			By("cleaning up")
-			kubectlDelete("pocketidinstance", persistenceInstance, instanceNS)
+			Expect(kubectlDeleteWait("pocketidinstance", persistenceInstance, instanceNS, 60*time.Second)).To(Succeed())
 		})
 
 		It("should mount existing claims when configured", func() {
@@ -235,7 +237,7 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Ordered, func() {
 			Expect(output).To(BeEmpty(), "Should not create a new PVC when existingClaim is specified")
 
 			By("cleaning up")
-			kubectlDelete("pocketidinstance", existingClaimInstance, instanceNS)
+			Expect(kubectlDeleteWait("pocketidinstance", existingClaimInstance, instanceNS, 60*time.Second)).To(Succeed())
 			kubectlDelete("pvc", existingPVC, instanceNS)
 		})
 	})
@@ -258,7 +260,7 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Ordered, func() {
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
 			By("cleaning up")
-			kubectlDelete("pocketidinstance", rateLimitInstance, instanceNS)
+			Expect(kubectlDeleteWait("pocketidinstance", rateLimitInstance, instanceNS, 60*time.Second)).To(Succeed())
 		})
 	})
 })
