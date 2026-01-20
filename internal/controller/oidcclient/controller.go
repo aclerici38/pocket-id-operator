@@ -171,10 +171,10 @@ func (r *Reconciler) FindExistingOIDCClient(ctx context.Context, apiClient pocke
 		return nil, fmt.Errorf("list OIDC clients: %w", err)
 	}
 
-	for _, client := range clients {
-		if client.Name == name {
-			log.Info("Found existing OIDC client with matching name", "name", name, "clientID", client.ID)
-			return client, nil
+	for _, c := range clients {
+		if c.Name == name {
+			log.Info("Found existing OIDC client with matching name", "name", name, "clientID", c.ID)
+			return c, nil
 		}
 	}
 
