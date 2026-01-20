@@ -25,6 +25,7 @@ go.work
 *.swp
 *.swo
 *~
+.claude
 
 # Kubeconfig might contain secrets
 *.kubeconfig
