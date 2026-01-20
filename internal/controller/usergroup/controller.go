@@ -188,6 +188,7 @@ func (r *Reconciler) reconcileUserGroup(ctx context.Context, userGroup *pocketid
 			}
 		}
 	} else {
+		log.Info("Updating user group in Pocket-ID", "name", name)
 		current, err = apiClient.UpdateUserGroup(ctx, userGroup.Status.GroupID, name, friendlyName)
 		if err != nil {
 			if pocketid.IsNotFoundError(err) {
@@ -201,6 +202,7 @@ func (r *Reconciler) reconcileUserGroup(ctx context.Context, userGroup *pocketid
 		}
 	}
 
+	// Update custom claims if specified
 	if userGroup.Spec.CustomClaims != nil {
 		claims := make([]pocketid.CustomClaim, 0, len(userGroup.Spec.CustomClaims))
 		for _, claim := range userGroup.Spec.CustomClaims {
@@ -208,7 +210,7 @@ func (r *Reconciler) reconcileUserGroup(ctx context.Context, userGroup *pocketid
 		}
 		updated, err := apiClient.UpdateUserGroupCustomClaims(ctx, current.ID, claims)
 		if err != nil {
-			return nil, err
+			return current, err
 		}
 		current.CustomClaims = updated
 	}
@@ -221,14 +223,11 @@ func (r *Reconciler) reconcileUserGroup(ctx context.Context, userGroup *pocketid
 		if err := apiClient.UpdateUserGroupUsers(ctx, current.ID, userIDs); err != nil {
 			return current, err
 		}
+		current.UserIDs = userIDs
+		current.UserCount = len(userIDs)
 	}
 
-	latest, err := apiClient.GetUserGroup(ctx, current.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	return latest, nil
+	return current, nil
 }
 
 // resolveUsers resolves userRefs, usernames, and userIds to Pocket-ID user IDs.

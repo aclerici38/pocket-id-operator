@@ -198,6 +198,7 @@ func (r *Reconciler) reconcileOIDCClient(ctx context.Context, oidcClient *pocket
 			}
 		}
 	} else {
+		log.Info("Updating OIDC client in Pocket-ID", "clientID", clientID)
 		current, err = apiClient.UpdateOIDCClient(ctx, oidcClient.Status.ClientID, input)
 		if err != nil {
 			if pocketid.IsNotFoundError(err) {

@@ -408,6 +408,8 @@ func (r *Reconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1
 		return err
 	}
 
+	var pUser *pocketid.User
+
 	// If we don't have a user ID, we need to check if user exists and create if not
 	if user.Status.UserID == "" {
 		existingUser, err := r.FindExistingUser(ctx, apiClient, input.Username, input.Email)
@@ -415,7 +417,6 @@ func (r *Reconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1
 			return fmt.Errorf("find existing user: %w", err)
 		}
 
-		var pUser *pocketid.User
 		if existingUser != nil {
 			log.Info("Adopting existing user from Pocket-ID", "username", input.Username, "userID", existingUser.ID)
 			pUser = existingUser
@@ -436,41 +437,17 @@ func (r *Reconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1
 				}
 			}
 		}
-
-		if err := r.updateUserStatus(ctx, user, pUser); err != nil {
-			return err
-		}
-
-		return nil
-	}
-
-	// User exists, check if update needed
-	pUser, err := apiClient.GetUser(ctx, user.Status.UserID)
-	if err != nil {
-		if pocketid.IsNotFoundError(err) {
-			log.Info("User was deleted externally, will recreate", "userID", user.Status.UserID)
-			if clearErr := r.clearUserStatus(ctx, user); clearErr != nil {
-				return fmt.Errorf("clear user status after external deletion: %w", clearErr)
-			}
-			return nil // Requeue will recreate
-		}
-		return fmt.Errorf("get user: %w", err)
-	}
-
-	// Check if update needed
-	needsUpdate := pUser.Username != input.Username ||
-		pUser.FirstName != input.FirstName ||
-		pUser.LastName != input.LastName ||
-		pUser.Email != input.Email ||
-		pUser.DisplayName != input.DisplayName ||
-		pUser.IsAdmin != input.IsAdmin ||
-		pUser.Disabled != input.Disabled ||
-		pUser.Locale != input.Locale
-
-	if needsUpdate {
+	} else {
 		log.Info("Updating user in Pocket-ID", "username", input.Username)
 		pUser, err = apiClient.UpdateUser(ctx, user.Status.UserID, input)
 		if err != nil {
+			if pocketid.IsNotFoundError(err) {
+				log.Info("User was deleted externally, will recreate", "userID", user.Status.UserID)
+				if clearErr := r.clearUserStatus(ctx, user); clearErr != nil {
+					return fmt.Errorf("clear user status after external deletion: %w", clearErr)
+				}
+				return nil // Requeue will recreate
+			}
 			return fmt.Errorf("update user: %w", err)
 		}
 	}
