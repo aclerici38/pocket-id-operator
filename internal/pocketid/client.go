@@ -121,6 +121,7 @@ type UserGroup struct {
 	CreatedAt    string
 	LdapID       string
 	UserCount    int
+	UserIDs      []string
 	CustomClaims []CustomClaim
 }
 
@@ -749,6 +750,12 @@ func userGroupFromDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoUse
 	if dto == nil {
 		return nil
 	}
+	userIds := make([]string, 0, len(dto.Users))
+	for _, user := range dto.Users {
+		if user != nil && user.ID != "" {
+			userIds = append(userIds, user.ID)
+		}
+	}
 	return &UserGroup{
 		ID:           dto.ID,
 		Name:         dto.Name,
@@ -756,6 +763,7 @@ func userGroupFromDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoUse
 		CreatedAt:    dto.CreatedAt,
 		LdapID:       dto.LdapID,
 		UserCount:    len(dto.Users),
+		UserIDs:      userIds,
 		CustomClaims: customClaimsFromDTO(dto.CustomClaims),
 	}
 }

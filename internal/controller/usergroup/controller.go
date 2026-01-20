@@ -258,7 +258,7 @@ func (r *Reconciler) resolveUsers(ctx context.Context, userGroup *pocketidintern
 	}
 
 	// Add userIds directly
-	for _, userID := range users.UserIds {
+	for _, userID := range users.UserIDs {
 		if userID == "" {
 			return nil, fmt.Errorf("userId cannot be empty")
 		}
@@ -300,6 +300,7 @@ func (r *Reconciler) updateUserGroupStatus(ctx context.Context, userGroup *pocke
 	userGroup.Status.CreatedAt = current.CreatedAt
 	userGroup.Status.LdapID = current.LdapID
 	userGroup.Status.UserCount = current.UserCount
+	userGroup.Status.UserIDs = current.UserIDs
 	userGroup.Status.CustomClaims = toCustomClaims(current.CustomClaims)
 	return r.Status().Patch(ctx, userGroup, client.MergeFrom(base))
 }

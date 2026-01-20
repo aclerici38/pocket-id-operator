@@ -120,8 +120,8 @@ spec:
               users:
                 description: Users defines the users to add to this group
                 properties:
-                  userIds:
-                    description: UserIds are Pocket-ID user IDs to add directly to
+                  userIDs:
+                    description: UserIDs are Pocket-ID user IDs to add directly to
                       this group.
                     items:
                       type: string
@@ -239,10 +239,10 @@ spec:
               friendlyName:
                 description: FriendlyName is the resolved display name from Pocket-ID
                 type: string
-              groupId:
+              groupID:
                 description: GroupID is the ID assigned by Pocket-ID
                 type: string
-              ldapId:
+              ldapID:
                 description: LdapID is the LDAP identifier if the group is managed
                   via LDAP
                 type: string
@@ -252,6 +252,11 @@ spec:
               userCount:
                 description: UserCount is the number of users in the group
                 type: integer
+              userIDs:
+                description: UserIDs are the Pocket-ID user IDs of users in this group
+                items:
+                  type: string
+                type: array
             type: object
         required:
         - spec

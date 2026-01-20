@@ -57,9 +57,9 @@ type UserGroupUsers struct {
 	// +optional
 	Usernames []string `json:"usernames,omitempty"`
 
-	// UserIds are Pocket-ID user IDs to add directly to this group.
+	// UserIDs are Pocket-ID user IDs to add directly to this group.
 	// +optional
-	UserIds []string `json:"userIds,omitempty"`
+	UserIDs []string `json:"userIDs,omitempty"`
 }
 
 // PocketIDUserGroupSpec defines the desired state of PocketIDUserGroup
@@ -100,7 +100,7 @@ type PocketIDUserGroupStatus struct {
 
 	// GroupID is the ID assigned by Pocket-ID
 	// +optional
-	GroupID string `json:"groupId,omitempty"`
+	GroupID string `json:"groupID,omitempty"`
 
 	// Name is the resolved group name from Pocket-ID
 	// +optional
@@ -116,11 +116,15 @@ type PocketIDUserGroupStatus struct {
 
 	// LdapID is the LDAP identifier if the group is managed via LDAP
 	// +optional
-	LdapID string `json:"ldapId,omitempty"`
+	LdapID string `json:"ldapID,omitempty"`
 
 	// UserCount is the number of users in the group
 	// +optional
 	UserCount int `json:"userCount,omitempty"`
+
+	// UserIDs are the Pocket-ID user IDs of users in this group
+	// +optional
+	UserIDs []string `json:"userIDs,omitempty"`
 
 	// CustomClaims are the resolved custom claims on the group
 	// +optional

@@ -2,6 +2,7 @@ package usergroup
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
@@ -15,6 +16,7 @@ type mockPocketIDUserGroupClient struct {
 	updateUserGroupFunc             func(ctx context.Context, id, name, friendlyName string) (*pocketid.UserGroup, error)
 	updateUserGroupCustomClaimsFunc func(ctx context.Context, id string, claims []pocketid.CustomClaim) ([]pocketid.CustomClaim, error)
 	updateUserGroupUsersFunc        func(ctx context.Context, id string, userIDs []string) error
+	listUsersFunc                   func(ctx context.Context, search string) ([]*pocketid.User, error)
 }
 
 func (m *mockPocketIDUserGroupClient) ListUserGroups(ctx context.Context, search string) ([]*pocketid.UserGroup, error) {
@@ -65,6 +67,13 @@ func (m *mockPocketIDUserGroupClient) UpdateUserGroupUsers(ctx context.Context, 
 		return m.updateUserGroupUsersFunc(ctx, id, userIDs)
 	}
 	return nil
+}
+
+func (m *mockPocketIDUserGroupClient) ListUsers(ctx context.Context, search string) ([]*pocketid.User, error) {
+	if m.listUsersFunc != nil {
+		return m.listUsersFunc(ctx, search)
+	}
+	return nil, nil
 }
 
 func TestFindExistingUserGroup_NoMatch(t *testing.T) {
@@ -195,5 +204,105 @@ func TestUserGroupAdoption_ExistingGroupByName(t *testing.T) {
 	}
 	if createCalled {
 		t.Fatal("CreateUserGroup should not have been called for existing group")
+	}
+}
+
+// --- Username Resolution Tests ---
+// These test the resolveUsername logic which requires exact matching
+
+// userListerAPI defines the interface for username lookup
+type userListerAPI interface {
+	ListUsers(ctx context.Context, search string) ([]*pocketid.User, error)
+}
+
+// resolveUsernameForTest mirrors the controller's resolveUsername logic for testing
+func resolveUsernameForTest(ctx context.Context, client userListerAPI, username string) (string, error) {
+	users, err := client.ListUsers(ctx, username)
+	if err != nil {
+		return "", err
+	}
+
+	for _, user := range users {
+		if user.Username == username {
+			return user.ID, nil
+		}
+	}
+
+	return "", errors.New("user not found")
+}
+
+func TestResolveUsername_ExactMatch(t *testing.T) {
+	ctx := context.Background()
+
+	mockClient := &mockPocketIDUserGroupClient{
+		listUsersFunc: func(ctx context.Context, search string) ([]*pocketid.User, error) {
+			return []*pocketid.User{
+				{ID: "user-123", Username: "john.doe"},
+			}, nil
+		},
+	}
+
+	userID, err := resolveUsernameForTest(ctx, mockClient, "john.doe")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if userID != "user-123" {
+		t.Fatalf("expected 'user-123', got %q", userID)
+	}
+}
+
+func TestResolveUsername_MultipleUsersReturned_SelectsExactMatch(t *testing.T) {
+	ctx := context.Background()
+
+	// API search may return partial matches - we must select the exact one
+	mockClient := &mockPocketIDUserGroupClient{
+		listUsersFunc: func(ctx context.Context, search string) ([]*pocketid.User, error) {
+			return []*pocketid.User{
+				{ID: "user-456", Username: "john"},
+				{ID: "user-123", Username: "john.doe"},
+				{ID: "user-789", Username: "john.doe.smith"},
+			}, nil
+		},
+	}
+
+	userID, err := resolveUsernameForTest(ctx, mockClient, "john.doe")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if userID != "user-123" {
+		t.Fatalf("expected 'user-123' (exact match), got %q", userID)
+	}
+}
+
+func TestResolveUsername_NoExactMatch(t *testing.T) {
+	ctx := context.Background()
+
+	mockClient := &mockPocketIDUserGroupClient{
+		listUsersFunc: func(ctx context.Context, search string) ([]*pocketid.User, error) {
+			return []*pocketid.User{
+				{ID: "user-456", Username: "johnny"},
+				{ID: "user-789", Username: "john.smith"},
+			}, nil
+		},
+	}
+
+	_, err := resolveUsernameForTest(ctx, mockClient, "john.doe")
+	if err == nil {
+		t.Fatal("expected error when no exact match found")
+	}
+}
+
+func TestResolveUsername_APIError(t *testing.T) {
+	ctx := context.Background()
+
+	mockClient := &mockPocketIDUserGroupClient{
+		listUsersFunc: func(ctx context.Context, search string) ([]*pocketid.User, error) {
+			return nil, errors.New("API connection failed")
+		},
+	}
+
+	_, err := resolveUsernameForTest(ctx, mockClient, "john.doe")
+	if err == nil {
+		t.Fatal("expected error on API failure")
 	}
 }

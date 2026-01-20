@@ -65,7 +65,7 @@ spec:
                 items:
                   type: string
                 type: array
-              clientId:
+              clientID:
                 description: |-
                   ClientID is the optional OIDC client ID to use instead of a generated one
                   The Client ID is immutable and cannot be changed once the oidc client is created
@@ -192,7 +192,7 @@ spec:
                           CallbackURLs is the key name for the callback URLs.
                           Defaults to callback_urls
                         type: string
-                      clientId:
+                      clientID:
                         default: client_id
                         description: |-
                           ClientID is the key name for the OIDC client ID.
@@ -255,19 +255,19 @@ spec:
                 type: object
             type: object
             x-kubernetes-validations:
-            - message: clientId is immutable
-              rule: has(self.clientId) == has(oldSelf.clientId) && (!has(self.clientId)
-                || self.clientId == oldSelf.clientId)
+            - message: clientID is immutable
+              rule: has(self.clientID) == has(oldSelf.clientID) && (!has(self.clientID)
+                || self.clientID == oldSelf.clientID)
           status:
             description: status defines the observed state of PocketIDOIDCClient
             properties:
-              allowedUserGroupIds:
+              allowedUserGroupIDs:
                 description: AllowedUserGroupIDs are the resolved group IDs assigned
                   to the client
                 items:
                   type: string
                 type: array
-              clientId:
+              clientID:
                 description: ClientID is the ID assigned by Pocket-ID
                 type: string
               conditions:
