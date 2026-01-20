@@ -3,9 +3,11 @@ package usergroup
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
+	"github.com/go-openapi/runtime"
 )
 
 // mockPocketIDUserGroupClient is a mock implementation for testing user group operations
@@ -304,5 +306,21 @@ func TestResolveUsername_APIError(t *testing.T) {
 	_, err := resolveUsernameForTest(ctx, mockClient, "api.test.user")
 	if err == nil {
 		t.Fatal("expected error on API failure")
+	}
+}
+
+func TestIsNotFoundError_DetectsAPIError404(t *testing.T) {
+	err := runtime.NewAPIError("PutAPIUserGroupsID", nil, http.StatusNotFound)
+
+	if !pocketid.IsNotFoundError(err) {
+		t.Error("expected IsNotFoundError to return true for 404 APIError")
+	}
+}
+
+func TestIsNotFoundError_IgnoresAPIError500(t *testing.T) {
+	err := runtime.NewAPIError("PutAPIUserGroupsID", nil, http.StatusInternalServerError)
+
+	if pocketid.IsNotFoundError(err) {
+		t.Error("expected IsNotFoundError to return false for 500 APIError")
 	}
 }

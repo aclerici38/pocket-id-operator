@@ -198,6 +198,13 @@ func (r *Reconciler) reconcileOIDCClient(ctx context.Context, oidcClient *pocket
 	} else {
 		current, err = apiClient.UpdateOIDCClient(ctx, oidcClient.Status.ClientID, input)
 		if err != nil {
+			if pocketid.IsNotFoundError(err) {
+				log.Info("OIDC client was deleted externally, will recreate", "clientID", oidcClient.Status.ClientID)
+				if clearErr := r.clearClientStatus(ctx, oidcClient); clearErr != nil {
+					return nil, fmt.Errorf("clear client status after external deletion: %w", clearErr)
+				}
+				return nil, nil // Requeue will recreate
+			}
 			return nil, fmt.Errorf("update OIDC client: %w", err)
 		}
 	}
@@ -257,6 +264,13 @@ func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.Pocket
 
 func (r *Reconciler) ResolveAllowedUserGroups(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) ([]string, error) {
 	return helpers.ResolveUserGroupReferences(ctx, r.Client, oidcClient.Spec.AllowedUserGroups, oidcClient.Namespace)
+}
+
+// clearClientStatus clears the ClientID from status, triggering recreation on next reconcile.
+func (r *Reconciler) clearClientStatus(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) error {
+	base := oidcClient.DeepCopy()
+	oidcClient.Status.ClientID = ""
+	return r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
 }
 
 // UpdateOIDCClientStatus updates the OIDCClient status with values returned from pocket-id
