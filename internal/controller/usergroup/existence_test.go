@@ -280,13 +280,13 @@ func TestResolveUsername_NoExactMatch(t *testing.T) {
 	mockClient := &mockPocketIDUserGroupClient{
 		listUsersFunc: func(ctx context.Context, search string) ([]*pocketid.User, error) {
 			return []*pocketid.User{
-				{ID: "user-456", Username: "johnny"},
-				{ID: "user-789", Username: "john.smith"},
+				{ID: "user-456", Username: "janedoe"},
+				{ID: "user-789", Username: "jane.smith"},
 			}, nil
 		},
 	}
 
-	_, err := resolveUsernameForTest(ctx, mockClient, "john.doe")
+	_, err := resolveUsernameForTest(ctx, mockClient, "jane.doe")
 	if err == nil {
 		t.Fatal("expected error when no exact match found")
 	}
@@ -301,7 +301,7 @@ func TestResolveUsername_APIError(t *testing.T) {
 		},
 	}
 
-	_, err := resolveUsernameForTest(ctx, mockClient, "john.doe")
+	_, err := resolveUsernameForTest(ctx, mockClient, "api.test.user")
 	if err == nil {
 		t.Fatal("expected error on API failure")
 	}
