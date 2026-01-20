@@ -98,11 +98,21 @@ var _ = Describe("PocketIDInstance", Ordered, func() {
 	})
 
 	Context("Static API Key Secret Lifecycle", func() {
-		It("should regenerate static API key secret if deleted", func() {
+		It("should regenerate static API key secret if deleted and rollout instance", func() {
 			staticSecretName := instanceName + "-static-api-key"
 
 			By("reading the original token")
 			originalToken := waitForSecretKey(staticSecretName, instanceNS, "token")
+
+			By("getting the current deployment's pod template hash annotation")
+			originalHash := kubectlGet("deployment", instanceName, "-n", instanceNS,
+				"-o", "jsonpath={.spec.template.metadata.annotations.pocketid\\.internal/static-api-key-hash}")
+			Expect(originalHash).NotTo(BeEmpty(), "Deployment should have static-api-key-hash annotation")
+
+			By("getting the current pod name")
+			originalPodName := kubectlGet("pod", "-l", "app.kubernetes.io/instance="+instanceName, "-n", instanceNS,
+				"-o", "jsonpath={.items[0].metadata.name}")
+			Expect(originalPodName).NotTo(BeEmpty())
 
 			By("deleting the static API key secret")
 			Expect(kubectlDeleteWait("secret", staticSecretName, instanceNS, 30*time.Second)).To(Succeed())
@@ -113,6 +123,50 @@ var _ = Describe("PocketIDInstance", Ordered, func() {
 				g.Expect(newToken).NotTo(BeEmpty())
 				g.Expect(newToken).NotTo(Equal(originalToken))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying deployment's hash annotation changed (triggers rollout)")
+			Eventually(func(g Gomega) {
+				newHash := kubectlGet("deployment", instanceName, "-n", instanceNS,
+					"-o", "jsonpath={.spec.template.metadata.annotations.pocketid\\.internal/static-api-key-hash}")
+				g.Expect(newHash).NotTo(BeEmpty())
+				g.Expect(newHash).NotTo(Equal(originalHash))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying instance rolled out with new pod")
+			Eventually(func(g Gomega) {
+				// Get the current pod name - should be different after rollout
+				currentPodName := kubectlGet("pod", "-l", "app.kubernetes.io/instance="+instanceName, "-n", instanceNS,
+					"-o", "jsonpath={.items[0].metadata.name}")
+				g.Expect(currentPodName).NotTo(BeEmpty())
+				g.Expect(currentPodName).NotTo(Equal(originalPodName), "Pod should have been replaced by rollout")
+			}, 3*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("verifying the new pod is running")
+			Eventually(func(g Gomega) {
+				status := kubectlGet("pod", "-l", "app.kubernetes.io/instance="+instanceName, "-n", instanceNS,
+					"-o", "jsonpath={.items[0].status.phase}")
+				g.Expect(status).To(Equal("Running"))
+			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("verifying operator can still authenticate with new API key by creating a user")
+			testUserName := "api-key-rotation-test-user"
+			createUser(UserOptions{
+				Name:      testUserName,
+				Username:  "api-key-rotation-test",
+				FirstName: "APIKey",
+				LastName:  "RotationTest",
+				Email:     "apikey-rotation@example.local",
+			})
+
+			By("verifying the user becomes Ready (confirms operator authenticated successfully)")
+			waitForReady("pocketiduser", testUserName, userNS)
+
+			By("verifying the user has a userID in status (confirms API call succeeded)")
+			userID := waitForStatusFieldNotEmpty("pocketiduser", testUserName, userNS, ".status.userID")
+			Expect(userID).NotTo(BeEmpty())
+
+			By("cleaning up test user")
+			kubectlDelete("pocketiduser", testUserName, userNS)
 		})
 	})
 })

@@ -19,7 +19,9 @@ package instance
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"maps"
 	"reflect"
@@ -110,7 +112,22 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 // Helpers
 func (r *Reconciler) reconcileWorkload(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
-	podTemplate := r.buildPodTemplate(instance)
+	log := logf.FromContext(ctx)
+
+	// Compute hash of static API key secret to trigger rollout when it changes
+	secretHash, err := r.computeStaticAPIKeyHash(ctx, instance)
+	if err != nil {
+		return fmt.Errorf("compute static API key hash: %w", err)
+	}
+
+	if hashChanged, err := r.hasStaticAPIKeyHashChanged(ctx, instance, secretHash); err != nil {
+		log.Error(err, "Failed to check if static API key hash changed")
+	} else if hashChanged {
+		log.Info("Static API key changed, invalidating API client", "instance", instance.Name)
+		common.RemoveAPIClient(instance)
+	}
+
+	podTemplate := r.buildPodTemplate(instance, secretHash)
 
 	if instance.Spec.DeploymentType == deploymentTypeStatefulSet {
 		return r.reconcileStatefulSet(ctx, instance, podTemplate)
@@ -118,7 +135,7 @@ func (r *Reconciler) reconcileWorkload(ctx context.Context, instance *pocketidin
 	return r.reconcileDeployment(ctx, instance, podTemplate)
 }
 
-func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketIDInstance) corev1.PodTemplateSpec {
+func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketIDInstance, staticAPIKeyHash string) corev1.PodTemplateSpec {
 	labels := common.ManagedByLabels(instance.Spec.Labels)
 	labels["app.kubernetes.io/name"] = "pocket-id"
 	labels["app.kubernetes.io/instance"] = instance.Name
@@ -126,6 +143,10 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 
 	annotations := make(map[string]string)
 	maps.Copy(annotations, instance.Spec.Annotations)
+
+	if staticAPIKeyHash != "" {
+		annotations["pocketid.internal/static-api-key-hash"] = staticAPIKeyHash
+	}
 
 	encryptionKeyEnv := corev1.EnvVar{
 		Name: envEncryptionKey,
@@ -678,6 +699,7 @@ func (r *Reconciler) ensureStaticAPIKeySecret(ctx context.Context, instance *poc
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
 			Namespace: instance.Namespace,
+			Labels:    common.ManagedByLabels(nil),
 		},
 		Data: map[string][]byte{
 			"token": []byte(token),
@@ -697,6 +719,64 @@ func (r *Reconciler) ensureStaticAPIKeySecret(ctx context.Context, instance *poc
 	}
 
 	return nil
+}
+
+// computeStaticAPIKeyHash computes a SHA256 hash of the static API key secret's token.
+// This hash is used as a pod annotation to trigger rollouts when the secret changes.
+func (r *Reconciler) computeStaticAPIKeyHash(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) (string, error) {
+	secretName := common.StaticAPIKeySecretName(instance.Name)
+	secret := &corev1.Secret{}
+
+	err := r.APIReader.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: secretName}, secret)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("get static API key secret: %w", err)
+	}
+
+	token, ok := secret.Data["token"]
+	if !ok || len(token) == 0 {
+		return "", nil
+	}
+
+	hash := sha256.Sum256(token)
+	return hex.EncodeToString(hash[:]), nil
+}
+
+// hasStaticAPIKeyHashChanged checks if the static API key hash differs from the current workload's annotation.
+// Returns true if the hash changed or workload doesn't exist yet, false otherwise.
+func (r *Reconciler) hasStaticAPIKeyHashChanged(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, newHash string) (bool, error) {
+	var currentHash string
+
+	if instance.Spec.DeploymentType == deploymentTypeStatefulSet {
+		sts := &appsv1.StatefulSet{}
+		err := r.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: instance.Name}, sts)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				return false, nil
+			}
+			return false, err
+		}
+		if sts.Spec.Template.Annotations != nil {
+			currentHash = sts.Spec.Template.Annotations["pocketid.internal/static-api-key-hash"]
+		}
+	} else {
+		deployment := &appsv1.Deployment{}
+		err := r.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: instance.Name}, deployment)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				return false, nil
+			}
+			return false, err
+		}
+		if deployment.Spec.Template.Annotations != nil {
+			currentHash = deployment.Spec.Template.Annotations["pocketid.internal/static-api-key-hash"]
+		}
+	}
+
+	// Hash changed if current is non-empty and differs from new
+	return currentHash != "" && currentHash != newHash, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

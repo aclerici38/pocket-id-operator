@@ -2126,5 +2126,117 @@ var _ = Describe("PocketIDInstance Controller", func() {
 				Expect(currentToken).To(Equal(originalToken))
 			})
 		})
+
+		Context("When static API key secret changes", func() {
+			const instanceName = "test-static-api-key-hash-rollout"
+
+			var instance *pocketidinternalv1alpha1.PocketIDInstance
+			var secret *corev1.Secret
+
+			BeforeEach(func() {
+				secret = &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      instanceName + "-secret",
+						Namespace: namespace,
+					},
+					Data: map[string][]byte{
+						"encryption-key": []byte("test-encryption-key-value"),
+					},
+				}
+				Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+				instance = &pocketidinternalv1alpha1.PocketIDInstance{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      instanceName,
+						Namespace: namespace,
+					},
+					Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+						EncryptionKey: pocketidinternalv1alpha1.EnvValue{
+							ValueFrom: &corev1.EnvVarSource{
+								SecretKeyRef: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: secret.Name,
+									},
+									Key: "encryption-key",
+								},
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+				// Wait for deployment to be created
+				deployment := &appsv1.Deployment{}
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{
+						Name:      instanceName,
+						Namespace: namespace,
+					}, deployment)
+				}, timeout, interval).Should(Succeed())
+			})
+
+			AfterEach(func() {
+				if instance != nil {
+					_ = k8sClient.Delete(ctx, instance)
+				}
+				if secret != nil {
+					_ = k8sClient.Delete(ctx, secret)
+				}
+			})
+
+			It("Should add static API key hash annotation to pod template", func() {
+				deployment := &appsv1.Deployment{}
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{
+						Name:      instanceName,
+						Namespace: namespace,
+					}, deployment)
+				}, timeout, interval).Should(Succeed())
+
+				// Verify the hash annotation exists
+				annotations := deployment.Spec.Template.Annotations
+				Expect(annotations).To(HaveKey("pocketid.internal/static-api-key-hash"))
+				Expect(annotations["pocketid.internal/static-api-key-hash"]).NotTo(BeEmpty())
+			})
+
+			It("Should update hash annotation when secret is regenerated", func() {
+				// Get the original hash annotation
+				deployment := &appsv1.Deployment{}
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{
+						Name:      instanceName,
+						Namespace: namespace,
+					}, deployment)
+				}, timeout, interval).Should(Succeed())
+
+				originalHash := deployment.Spec.Template.Annotations["pocketid.internal/static-api-key-hash"]
+				Expect(originalHash).NotTo(BeEmpty())
+
+				// Delete the static API key secret to trigger regeneration
+				staticSecret := &corev1.Secret{}
+				Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName + "-static-api-key",
+					Namespace: namespace,
+				}, staticSecret)).To(Succeed())
+
+				Expect(k8sClient.Delete(ctx, staticSecret)).To(Succeed())
+
+				// Wait for secret to be regenerated and hash to change
+				Eventually(func() string {
+					if err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      instanceName,
+						Namespace: namespace,
+					}, deployment); err != nil {
+						return ""
+					}
+					return deployment.Spec.Template.Annotations["pocketid.internal/static-api-key-hash"]
+				}, timeout, interval).ShouldNot(Equal(originalHash))
+
+				// Verify the new hash is not empty
+				newHash := deployment.Spec.Template.Annotations["pocketid.internal/static-api-key-hash"]
+				Expect(newHash).NotTo(BeEmpty())
+				Expect(newHash).NotTo(Equal(originalHash))
+			})
+		})
 	})
 })
