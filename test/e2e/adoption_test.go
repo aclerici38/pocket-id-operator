@@ -104,28 +104,31 @@ var _ = Describe("Resource Adoption", Ordered, func() {
 		})
 	})
 
-	Context("OIDCClient Adoption with default clientID", func() {
-		// This tests the case where spec.clientID is not set, so the operator
-		// uses the resource name as the client ID
-		const clientName = "test-adopt-oidc-default-id"
+	Context("OIDCClient Adoption by name", func() {
+		// This tests the case where the OIDC client in Pocket-ID has a different ID
+		// but the same name as the CR. The operator should find it by name search.
+		const clientName = "test-adopt-oidc-by-name"
 
-		It("should adopt an existing OIDC client when using resource name as client ID", func() {
-			By("creating an OIDC client directly in Pocket-ID with ID matching the CR name")
-			createOIDCClientInPocketID("create-adopt-oidc-default-pod", userNS, clientName, "Adopt Test Default ID", []string{"https://adopt-default.example.com/callback"})
+		It("should adopt an existing OIDC client by matching name when no clientID is specified", func() {
+			By("creating an OIDC client directly in Pocket-ID with a random ID but name matching the CR name")
+			// The client ID in Pocket-ID will be different from the CR name,
+			// but the name field will match. The operator should find it by name.
+			createOIDCClientInPocketIDWithName("create-adopt-oidc-byname-pod", userNS, clientName, []string{"https://adopt-byname.example.com/callback"})
 
-			By("creating a PocketIDOIDCClient CR without explicit clientID (will use resource name)")
+			By("creating a PocketIDOIDCClient CR without explicit clientID")
 			createOIDCClient(OIDCClientOptions{
 				Name:         clientName,
-				CallbackURLs: []string{"https://adopt-default.example.com/callback"},
-				// Note: ClientID is intentionally not set - should default to Name
+				CallbackURLs: []string{"https://adopt-byname.example.com/callback"},
+				// Note: ClientID is intentionally not set - operator will search by name
 			})
 
 			By("waiting for the client to be ready")
 			waitForReady("pocketidoidcclient", clientName, userNS)
 
-			By("verifying the operator adopted the existing client")
+			By("verifying the operator adopted the existing client (status.clientID should be set)")
 			adoptedClientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
-			Expect(adoptedClientID).To(Equal(clientName), "operator should adopt the existing client using resource name as client ID")
+			// The adopted client ID won't match the CR name since Pocket-ID assigned a different ID
+			Expect(adoptedClientID).NotTo(BeEmpty(), "operator should adopt the existing client found by name")
 		})
 
 		AfterAll(func() {
@@ -144,17 +147,23 @@ func createUserInPocketID(podName, namespace, username, firstName, lastName, ema
 	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
 
 	// Create user and capture the ID from the response
+	// Use -w to append HTTP code, then separate body and code for proper error handling
+	// Note: Pocket-ID API requires displayName, so we construct it from firstName + lastName
+	displayName := firstName + " " + lastName
 	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-RESPONSE=$(curl -sf -X POST -H "X-API-KEY: $API_KEY" -H "Content-Type: application/json" \
-  -d '{"username": "%s", "firstName": "%s", "lastName": "%s", "email": "%s"}' \
+RESPONSE=$(curl -s -X POST -H "X-API-KEY: $API_KEY" -H "Content-Type: application/json" \
+  -d '{"username": "%s", "firstName": "%s", "lastName": "%s", "email": "%s", "displayName": "%s"}' \
+  -w '\n%%{http_code}' \
   %s/api/users)
-if [ $? -ne 0 ]; then
-  echo "Failed to create user" >&2
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+BODY=$(echo "$RESPONSE" | sed '$d')
+if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
+  echo "Failed to create user with HTTP $HTTP_CODE: $BODY" >&2
   exit 1
 fi
-# Extract and print the user ID
-echo "$RESPONSE" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4`,
-		apiKeyBase64, username, firstName, lastName, email, formatInstanceURL())
+# Extract user ID using sed (more portable than grep -o in busybox)
+echo "$BODY" | sed 's/.*"id":"\([^"]*\)".*/\1/'`,
+		apiKeyBase64, username, firstName, lastName, email, displayName, formatInstanceURL())
 
 	applyYAML(createCurlPodYAML(podName, namespace, script))
 	waitForPodSucceeded(podName, namespace)
@@ -174,16 +183,20 @@ func createUserGroupInPocketID(podName, namespace, name, friendlyName string) st
 		"-o", "jsonpath={.data.token}")
 	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
 
+	// Use -w to append HTTP code, then separate body and code for proper error handling
 	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-RESPONSE=$(curl -sf -X POST -H "X-API-KEY: $API_KEY" -H "Content-Type: application/json" \
+RESPONSE=$(curl -s -X POST -H "X-API-KEY: $API_KEY" -H "Content-Type: application/json" \
   -d '{"name": "%s", "friendlyName": "%s"}' \
+  -w '\n%%{http_code}' \
   %s/api/user-groups)
-if [ $? -ne 0 ]; then
-  echo "Failed to create user group" >&2
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+BODY=$(echo "$RESPONSE" | sed '$d')
+if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
+  echo "Failed to create user group with HTTP $HTTP_CODE: $BODY" >&2
   exit 1
 fi
-# Extract and print the group ID
-echo "$RESPONSE" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4`,
+# Extract group ID using sed (more portable than grep -o in busybox)
+echo "$BODY" | sed 's/.*"id":"\([^"]*\)".*/\1/'`,
 		apiKeyBase64, name, friendlyName, formatInstanceURL())
 
 	applyYAML(createCurlPodYAML(podName, namespace, script))
@@ -196,7 +209,7 @@ echo "$RESPONSE" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4`,
 	return groupID
 }
 
-// createOIDCClientInPocketID creates an OIDC client directly in Pocket-ID via the API
+// createOIDCClientInPocketID creates an OIDC client directly in Pocket-ID via the API with a specific client ID
 func createOIDCClientInPocketID(podName, namespace, clientID, name string, callbackURLs []string) {
 	staticSecretName := instanceName + "-static-api-key"
 
@@ -214,16 +227,60 @@ func createOIDCClientInPocketID(podName, namespace, clientID, name string, callb
 	}
 	callbackURLsJSON += "]"
 
+	// Use -w to append HTTP code, capture body for error messages
 	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-HTTP_CODE=$(curl -sf -o /dev/null -w '%%{http_code}' -X POST -H "X-API-KEY: $API_KEY" -H "Content-Type: application/json" \
+RESPONSE=$(curl -s -X POST -H "X-API-KEY: $API_KEY" -H "Content-Type: application/json" \
   -d '{"id": "%s", "name": "%s", "callbackURLs": %s}' \
+  -w '\n%%{http_code}' \
   %s/api/oidc/clients)
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+BODY=$(echo "$RESPONSE" | sed '$d')
 if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
-  echo "Failed to create OIDC client with HTTP $HTTP_CODE" >&2
+  echo "Failed to create OIDC client with HTTP $HTTP_CODE: $BODY" >&2
   exit 1
 fi
 echo "OIDC client created successfully"`,
 		apiKeyBase64, clientID, name, callbackURLsJSON, formatInstanceURL())
+
+	applyYAML(createCurlPodYAML(podName, namespace, script))
+	waitForPodSucceeded(podName, namespace)
+}
+
+// createOIDCClientInPocketIDWithName creates an OIDC client directly in Pocket-ID via the API
+// without specifying a client ID (letting Pocket-ID generate one), but with a specific name.
+// This is used to test adoption by name matching.
+func createOIDCClientInPocketIDWithName(podName, namespace, name string, callbackURLs []string) {
+	staticSecretName := instanceName + "-static-api-key"
+
+	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
+		"-o", "jsonpath={.data.token}")
+	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
+
+	// Build callback URLs JSON array
+	callbackURLsJSON := "["
+	for i, url := range callbackURLs {
+		if i > 0 {
+			callbackURLsJSON += ","
+		}
+		callbackURLsJSON += fmt.Sprintf(`"%s"`, url)
+	}
+	callbackURLsJSON += "]"
+
+	// Use -w to append HTTP code, capture body for error messages
+	// Note: We intentionally omit the "id" field so Pocket-ID generates a random UUID
+	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
+RESPONSE=$(curl -s -X POST -H "X-API-KEY: $API_KEY" -H "Content-Type: application/json" \
+  -d '{"name": "%s", "callbackURLs": %s}' \
+  -w '\n%%{http_code}' \
+  %s/api/oidc/clients)
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+BODY=$(echo "$RESPONSE" | sed '$d')
+if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
+  echo "Failed to create OIDC client with HTTP $HTTP_CODE: $BODY" >&2
+  exit 1
+fi
+echo "OIDC client created successfully"`,
+		apiKeyBase64, name, callbackURLsJSON, formatInstanceURL())
 
 	applyYAML(createCurlPodYAML(podName, namespace, script))
 	waitForPodSucceeded(podName, namespace)
