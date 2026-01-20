@@ -172,18 +172,23 @@ func (r *Reconciler) reconcileUserGroup(ctx context.Context, userGroup *pocketid
 	var current *pocketid.UserGroup
 	var err error
 	if userGroup.Status.GroupID == "" {
-		existingGroup, err := r.FindExistingUserGroup(ctx, apiClient, name)
+		// Try to create first, then fallback to adopting if it already exists
+		log.Info("Creating user group in Pocket-ID", "name", name)
+		current, err = apiClient.CreateUserGroup(ctx, name, friendlyName)
 		if err != nil {
-			return nil, fmt.Errorf("find existing user group: %w", err)
-		}
-
-		if existingGroup != nil {
-			log.Info("Adopting existing user group from Pocket-ID", "name", name, "groupID", existingGroup.ID)
-			current = existingGroup
-		} else {
-			log.Info("Creating user group in Pocket-ID", "name", name)
-			current, err = apiClient.CreateUserGroup(ctx, name, friendlyName)
-			if err != nil {
+			// Check if creation failed because group already exists
+			if pocketid.IsAlreadyExistsError(err) {
+				log.Info("User group already exists in Pocket-ID, attempting to adopt", "name", name)
+				existingGroup, findErr := r.FindExistingUserGroup(ctx, apiClient, name)
+				if findErr != nil {
+					return nil, fmt.Errorf("find existing user group after create conflict: %w", findErr)
+				}
+				if existingGroup == nil {
+					return nil, fmt.Errorf("create user group failed with conflict but could not find existing group: %w", err)
+				}
+				log.Info("Adopting existing user group from Pocket-ID", "name", name, "groupID", existingGroup.ID)
+				current = existingGroup
+			} else {
 				return nil, fmt.Errorf("create user group: %w", err)
 			}
 		}

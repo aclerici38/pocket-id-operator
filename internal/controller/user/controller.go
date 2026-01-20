@@ -409,25 +409,34 @@ func (r *Reconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1
 	}
 
 	var pUser *pocketid.User
+	var isNewlyCreated bool
 
-	// If we don't have a user ID, we need to check if user exists and create if not
+	// If we don't have a user ID, try to create first, then fallback to adopting
 	if user.Status.UserID == "" {
-		existingUser, err := r.FindExistingUser(ctx, apiClient, input.Username, input.Email)
+		log.Info("Creating user in Pocket-ID", "username", input.Username)
+		pUser, err = apiClient.CreateUser(ctx, input)
 		if err != nil {
-			return fmt.Errorf("find existing user: %w", err)
-		}
-
-		if existingUser != nil {
-			log.Info("Adopting existing user from Pocket-ID", "username", input.Username, "userID", existingUser.ID)
-			pUser = existingUser
-		} else {
-			log.Info("Creating user in Pocket-ID", "username", input.Username)
-			pUser, err = apiClient.CreateUser(ctx, input)
-			if err != nil {
+			// Check if creation failed because user already exists
+			if pocketid.IsAlreadyExistsError(err) {
+				log.Info("User already exists in Pocket-ID, attempting to adopt", "username", input.Username)
+				existingUser, findErr := r.FindExistingUser(ctx, apiClient, input.Username, input.Email)
+				if findErr != nil {
+					return fmt.Errorf("find existing user after create conflict: %w", findErr)
+				}
+				if existingUser == nil {
+					return fmt.Errorf("create user failed with conflict but could not find existing user: %w", err)
+				}
+				log.Info("Adopting existing user from Pocket-ID", "username", input.Username, "userID", existingUser.ID)
+				pUser = existingUser
+			} else {
 				return fmt.Errorf("create user: %w", err)
 			}
+		} else {
+			isNewlyCreated = true
+		}
 
-			// Generate one-time login token for newly created user only
+		// Generate one-time login token for newly created user only
+		if isNewlyCreated {
 			token, err := apiClient.CreateOneTimeAccessToken(ctx, pUser.ID, DefaultLoginTokenExpiryMin)
 			if err != nil {
 				log.Error(err, "Failed to create one-time login token - user created but token not available")
