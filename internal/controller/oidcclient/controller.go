@@ -180,8 +180,6 @@ func (r *Reconciler) FindExistingOIDCClient(ctx context.Context, apiClient Pocke
 }
 
 func (r *Reconciler) reconcileOIDCClient(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client) (*pocketid.OIDCClient, error) {
-	log := logf.FromContext(ctx)
-
 	input := r.OidcClientInput(oidcClient)
 
 	clientID := oidcClient.Status.ClientID
@@ -192,42 +190,32 @@ func (r *Reconciler) reconcileOIDCClient(ctx context.Context, oidcClient *pocket
 		clientID = oidcClient.Name
 	}
 
-	var current *pocketid.OIDCClient
-	var err error
-	if oidcClient.Status.ClientID == "" {
-		// Try to create first, then fallback to adopting if it already exists
-		log.Info("Creating OIDC client in Pocket-ID", "clientID", clientID)
-		current, err = apiClient.CreateOIDCClient(ctx, input)
-		if err != nil {
-			// Check if creation failed because client already exists
-			if pocketid.IsAlreadyExistsError(err) {
-				log.Info("OIDC client already exists in Pocket-ID, attempting to adopt", "clientID", clientID)
-				existingClient, findErr := r.FindExistingOIDCClient(ctx, apiClient, oidcClient.Spec.ClientID, oidcClient.Name)
-				if findErr != nil {
-					return nil, fmt.Errorf("find existing OIDC client after create conflict: %w", findErr)
-				}
-				if existingClient == nil {
-					return nil, fmt.Errorf("create OIDC client failed with conflict but could not find existing client: %w", err)
-				}
-				log.Info("Adopting existing OIDC client from Pocket-ID", "clientID", existingClient.ID)
-				current = existingClient
-			} else {
-				return nil, fmt.Errorf("create OIDC client: %w", err)
-			}
-		}
-	} else {
-		log.Info("Updating OIDC client in Pocket-ID", "clientID", clientID)
-		current, err = apiClient.UpdateOIDCClient(ctx, oidcClient.Status.ClientID, input)
-		if err != nil {
-			if pocketid.IsNotFoundError(err) {
-				log.Info("OIDC client was deleted externally, will recreate", "clientID", oidcClient.Status.ClientID)
-				if clearErr := r.clearClientStatus(ctx, oidcClient); clearErr != nil {
-					return nil, fmt.Errorf("clear client status after external deletion: %w", clearErr)
-				}
-				return nil, nil // Requeue will recreate
-			}
-			return nil, fmt.Errorf("update OIDC client: %w", err)
-		}
+	result, err := common.CreateOrAdopt(ctx, oidcClient.Status.ClientID, common.CreateOrAdoptConfig[*pocketid.OIDCClient]{
+		ResourceKind: "OIDC client",
+		ResourceID:   clientID,
+		Create: func() (*pocketid.OIDCClient, error) {
+			return apiClient.CreateOIDCClient(ctx, input)
+		},
+		Update: func() (*pocketid.OIDCClient, error) {
+			return apiClient.UpdateOIDCClient(ctx, oidcClient.Status.ClientID, input)
+		},
+		FindExisting: func() (*pocketid.OIDCClient, error) {
+			return r.FindExistingOIDCClient(ctx, apiClient, oidcClient.Spec.ClientID, oidcClient.Name)
+		},
+		ClearStatus: func() error {
+			return r.clearClientStatus(ctx, oidcClient)
+		},
+		IsNil: func(c *pocketid.OIDCClient) bool {
+			return c == nil
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	current := result.Resource
+	if current == nil {
+		return nil, nil // Requeue will recreate
 	}
 
 	if oidcClient.Spec.AllowedUserGroups != nil {

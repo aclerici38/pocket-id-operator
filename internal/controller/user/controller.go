@@ -392,56 +392,43 @@ func (r *Reconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1
 		return err
 	}
 
-	var pUser *pocketid.User
-	var isNewlyCreated bool
+	result, err := common.CreateOrAdopt(ctx, user.Status.UserID, common.CreateOrAdoptConfig[*pocketid.User]{
+		ResourceKind: "user",
+		ResourceID:   input.Username,
+		Create: func() (*pocketid.User, error) {
+			return apiClient.CreateUser(ctx, input)
+		},
+		Update: func() (*pocketid.User, error) {
+			return apiClient.UpdateUser(ctx, user.Status.UserID, input)
+		},
+		FindExisting: func() (*pocketid.User, error) {
+			return r.FindExistingUser(ctx, apiClient, input.Username, input.Email)
+		},
+		ClearStatus: func() error {
+			return r.clearUserStatus(ctx, user)
+		},
+		IsNil: func(u *pocketid.User) bool {
+			return u == nil
+		},
+	})
+	if err != nil {
+		return err
+	}
 
-	// If we don't have a user ID, try to create first, then fallback to adopting
-	if user.Status.UserID == "" {
-		log.Info("Creating user in Pocket-ID", "username", input.Username)
-		pUser, err = apiClient.CreateUser(ctx, input)
+	pUser := result.Resource
+	if pUser == nil {
+		return nil // Requeue will recreate
+	}
+
+	// Generate one-time login token for newly created user only
+	if result.IsNewlyCreated {
+		token, err := apiClient.CreateOneTimeAccessToken(ctx, pUser.ID, DefaultLoginTokenExpiryMin)
 		if err != nil {
-			// Check if creation failed because user already exists
-			if pocketid.IsAlreadyExistsError(err) {
-				log.Info("User already exists in Pocket-ID, attempting to adopt", "username", input.Username)
-				existingUser, findErr := r.FindExistingUser(ctx, apiClient, input.Username, input.Email)
-				if findErr != nil {
-					return fmt.Errorf("find existing user after create conflict: %w", findErr)
-				}
-				if existingUser == nil {
-					return fmt.Errorf("create user failed with conflict but could not find existing user: %w", err)
-				}
-				log.Info("Adopting existing user from Pocket-ID", "username", input.Username, "userID", existingUser.ID)
-				pUser = existingUser
-			} else {
-				return fmt.Errorf("create user: %w", err)
-			}
+			log.Error(err, "Failed to create one-time login token - user created but token not available")
 		} else {
-			isNewlyCreated = true
-		}
-
-		// Generate one-time login token for newly created user only
-		if isNewlyCreated {
-			token, err := apiClient.CreateOneTimeAccessToken(ctx, pUser.ID, DefaultLoginTokenExpiryMin)
-			if err != nil {
-				log.Error(err, "Failed to create one-time login token - user created but token not available")
-			} else {
-				if err := r.SetOneTimeLoginStatus(ctx, user, instance, token.Token); err != nil {
-					return fmt.Errorf("set one-time login status: %w", err)
-				}
+			if err := r.SetOneTimeLoginStatus(ctx, user, instance, token.Token); err != nil {
+				return fmt.Errorf("set one-time login status: %w", err)
 			}
-		}
-	} else {
-		log.Info("Updating user in Pocket-ID", "username", input.Username)
-		pUser, err = apiClient.UpdateUser(ctx, user.Status.UserID, input)
-		if err != nil {
-			if pocketid.IsNotFoundError(err) {
-				log.Info("User was deleted externally, will recreate", "userID", user.Status.UserID)
-				if clearErr := r.clearUserStatus(ctx, user); clearErr != nil {
-					return fmt.Errorf("clear user status after external deletion: %w", clearErr)
-				}
-				return nil // Requeue will recreate
-			}
-			return fmt.Errorf("update user: %w", err)
 		}
 	}
 
