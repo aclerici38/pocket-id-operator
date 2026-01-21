@@ -82,11 +82,6 @@ instance:
     # true by default (no user namespace isolation, container runs in host user namespace)
     hostUsers: true
 
-    # Disables pocket-id's rate-limiter for ALL IPS
-    # The controller includes its own ratelimiting logic to prevent pocket-id's ratelimiter from triggering
-    # Only use to speed up reconciles
-    disableGlobalRateLimiting: false
-
     # resources:
     #   requests:
     #     cpu: 50m
