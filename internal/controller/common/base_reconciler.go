@@ -11,7 +11,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/log"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	pocketidv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
@@ -38,7 +38,7 @@ func (r *BaseReconciler) EnsureClient(fallback client.Client) {
 
 // SetReadyCondition updates the Ready condition on a resource
 func (r *BaseReconciler) SetReadyCondition(ctx context.Context, obj ConditionedResource, status metav1.ConditionStatus, reason, message string) error {
-	logger := log.FromContext(ctx)
+	logger := logf.FromContext(ctx)
 
 	base := obj.DeepCopyObject().(client.Object)
 
@@ -88,7 +88,7 @@ func (r *BaseReconciler) ValidateInstanceReady(ctx context.Context, obj Conditio
 // GetAPIClientOrWait retrieves an API client for the instance from the pool
 // The returned client has rate limiting applied at the HTTP transport layer.
 func (r *BaseReconciler) GetAPIClientOrWait(ctx context.Context, obj ConditionedResource, instance *pocketidv1alpha1.PocketIDInstance) (*pocketid.Client, *ctrl.Result, error) {
-	logger := log.FromContext(ctx)
+	logger := logf.FromContext(ctx)
 
 	apiClient, err := GetAPIClient(ctx, r.Client, r.APIReader, instance)
 	if err != nil {
@@ -133,7 +133,7 @@ func (r *BaseReconciler) ReconcileDeleteWithPocketID(
 	finalizerName string,
 	deleteFunc DeleteFromPocketIDFunc,
 ) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
+	logger := logf.FromContext(ctx)
 
 	// If no ID in status, resource was never created in PocketID
 	if statusID == "" {
@@ -186,6 +186,79 @@ func (r *BaseReconciler) ReconcileDeleteWithPocketID(
 
 	logger.Info("Successfully deleted")
 	return ctrl.Result{}, nil
+}
+
+// CreateOrAdoptResult contains the result of a create-or-adopt operation.
+type CreateOrAdoptResult[T any] struct {
+	// Resource is the created or adopted resource from Pocket-ID
+	Resource T
+	// IsNewlyCreated is true if the resource was newly created (not adopted)
+	IsNewlyCreated bool
+}
+
+// CreateOrAdoptConfig contains the configuration for a create-or-adopt operation.
+type CreateOrAdoptConfig[T any] struct {
+	// ResourceKind is the human-readable kind name for logging (e.g., "user", "OIDC client")
+	ResourceKind string
+	// ResourceID is the identifier for logging (e.g., username, clientID)
+	ResourceID string
+	// Create attempts to create the resource and returns the created resource
+	Create func() (T, error)
+	// Update attempts to update the resource and returns the updated resource
+	Update func() (T, error)
+	// FindExisting attempts to find an existing resource for adoption
+	FindExisting func() (T, error)
+	// ClearStatus clears the status ID to trigger recreation on next reconcile
+	ClearStatus func() error
+	// IsNil checks if the resource is nil (for generic nil checking)
+	IsNil func(T) bool
+}
+
+// CreateOrAdopt implements the common create-or-adopt pattern for Pocket-ID resources.
+// If statusID is empty, it tries to create the resource. If creation fails with "already exists",
+// it attempts to find and adopt the existing resource.
+// If statusID is not empty, it tries to update the resource. If update fails with "not found",
+// it clears the status to trigger recreation on next reconcile.
+func CreateOrAdopt[T any](ctx context.Context, statusID string, config CreateOrAdoptConfig[T]) (*CreateOrAdoptResult[T], error) {
+	log := logf.FromContext(ctx)
+
+	var zero T
+	if statusID == "" {
+		// Try to create first, then fallback to adopting if it already exists
+		log.Info(fmt.Sprintf("Creating %s in Pocket-ID", config.ResourceKind), "id", config.ResourceID)
+		resource, err := config.Create()
+		if err != nil {
+			if pocketid.IsAlreadyExistsError(err) {
+				log.Info(fmt.Sprintf("%s already exists in Pocket-ID, attempting to adopt", config.ResourceKind), "id", config.ResourceID)
+				existing, findErr := config.FindExisting()
+				if findErr != nil {
+					return nil, fmt.Errorf("find existing %s after create conflict: %w", config.ResourceKind, findErr)
+				}
+				if config.IsNil(existing) {
+					return nil, fmt.Errorf("create %s failed with conflict but could not find existing: %w", config.ResourceKind, err)
+				}
+				log.Info(fmt.Sprintf("Adopting existing %s from Pocket-ID", config.ResourceKind), "id", config.ResourceID)
+				return &CreateOrAdoptResult[T]{Resource: existing, IsNewlyCreated: false}, nil
+			}
+			return nil, fmt.Errorf("create %s: %w", config.ResourceKind, err)
+		}
+		return &CreateOrAdoptResult[T]{Resource: resource, IsNewlyCreated: true}, nil
+	}
+
+	// Update existing resource
+	log.Info(fmt.Sprintf("Updating %s in Pocket-ID", config.ResourceKind), "id", config.ResourceID)
+	resource, err := config.Update()
+	if err != nil {
+		if pocketid.IsNotFoundError(err) {
+			log.Info(fmt.Sprintf("%s was deleted externally, will recreate", config.ResourceKind), "statusID", statusID)
+			if clearErr := config.ClearStatus(); clearErr != nil {
+				return nil, fmt.Errorf("clear status after external deletion: %w", clearErr)
+			}
+			return &CreateOrAdoptResult[T]{Resource: zero, IsNewlyCreated: false}, nil
+		}
+		return nil, fmt.Errorf("update %s: %w", config.ResourceKind, err)
+	}
+	return &CreateOrAdoptResult[T]{Resource: resource, IsNewlyCreated: false}, nil
 }
 
 // ClearStatusField clears a status field on an object using a patch.

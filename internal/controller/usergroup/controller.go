@@ -152,8 +152,6 @@ func (r *Reconciler) FindExistingUserGroup(ctx context.Context, apiClient Pocket
 }
 
 func (r *Reconciler) reconcileUserGroup(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, apiClient *pocketid.Client) (*pocketid.UserGroup, error) {
-	log := logf.FromContext(ctx)
-
 	name := userGroup.Spec.Name
 	if name == "" {
 		name = userGroup.Name
@@ -163,42 +161,32 @@ func (r *Reconciler) reconcileUserGroup(ctx context.Context, userGroup *pocketid
 		friendlyName = name
 	}
 
-	var current *pocketid.UserGroup
-	var err error
-	if userGroup.Status.GroupID == "" {
-		// Try to create first, then fallback to adopting if it already exists
-		log.Info("Creating user group in Pocket-ID", "name", name)
-		current, err = apiClient.CreateUserGroup(ctx, name, friendlyName)
-		if err != nil {
-			// Check if creation failed because group already exists
-			if pocketid.IsAlreadyExistsError(err) {
-				log.Info("User group already exists in Pocket-ID, attempting to adopt", "name", name)
-				existingGroup, findErr := r.FindExistingUserGroup(ctx, apiClient, name)
-				if findErr != nil {
-					return nil, fmt.Errorf("find existing user group after create conflict: %w", findErr)
-				}
-				if existingGroup == nil {
-					return nil, fmt.Errorf("create user group failed with conflict but could not find existing group: %w", err)
-				}
-				log.Info("Adopting existing user group from Pocket-ID", "name", name, "groupID", existingGroup.ID)
-				current = existingGroup
-			} else {
-				return nil, fmt.Errorf("create user group: %w", err)
-			}
-		}
-	} else {
-		log.Info("Updating user group in Pocket-ID", "name", name)
-		current, err = apiClient.UpdateUserGroup(ctx, userGroup.Status.GroupID, name, friendlyName)
-		if err != nil {
-			if pocketid.IsNotFoundError(err) {
-				log.Info("User group was deleted externally, will recreate", "groupID", userGroup.Status.GroupID)
-				if clearErr := r.clearGroupStatus(ctx, userGroup); clearErr != nil {
-					return nil, fmt.Errorf("clear group status after external deletion: %w", clearErr)
-				}
-				return nil, nil // Requeue will recreate
-			}
-			return nil, fmt.Errorf("update user group: %w", err)
-		}
+	result, err := common.CreateOrAdopt(ctx, userGroup.Status.GroupID, common.CreateOrAdoptConfig[*pocketid.UserGroup]{
+		ResourceKind: "user group",
+		ResourceID:   name,
+		Create: func() (*pocketid.UserGroup, error) {
+			return apiClient.CreateUserGroup(ctx, name, friendlyName)
+		},
+		Update: func() (*pocketid.UserGroup, error) {
+			return apiClient.UpdateUserGroup(ctx, userGroup.Status.GroupID, name, friendlyName)
+		},
+		FindExisting: func() (*pocketid.UserGroup, error) {
+			return r.FindExistingUserGroup(ctx, apiClient, name)
+		},
+		ClearStatus: func() error {
+			return r.clearGroupStatus(ctx, userGroup)
+		},
+		IsNil: func(g *pocketid.UserGroup) bool {
+			return g == nil
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	current := result.Resource
+	if current == nil {
+		return nil, nil // Requeue will recreate
 	}
 
 	// Update custom claims if specified
