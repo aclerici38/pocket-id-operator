@@ -45,7 +45,6 @@ import (
 const (
 	UserFinalizer              = "pocketid.internal/user-finalizer"
 	UserGroupUserFinalizer     = "pocketid.internal/user-group-finalizer"
-	defaultAPIKeyName          = "pocket-id-operator"
 	DefaultLoginTokenExpiryMin = 15
 
 	// DeleteFromPocketIDAnnotation when set to "true" will delete the user from Pocket-ID
@@ -163,7 +162,7 @@ func (r *Reconciler) ReconcileUserFinalizers(ctx context.Context, user *pocketid
 func (r *Reconciler) isUserReferencedByUserGroup(ctx context.Context, userName, userNamespace string) (bool, error) {
 	userKey := fmt.Sprintf("%s/%s", userNamespace, userName)
 	userGroups := &pocketidinternalv1alpha1.PocketIDUserGroupList{}
-	if err := r.List(ctx, userGroups, client.MatchingFields{UserGroupUserRefIndexKey: userKey}); err == nil {
+	if err := r.List(ctx, userGroups, client.MatchingFields{common.UserGroupUserRefIndexKey: userKey}); err == nil {
 		return len(userGroups.Items) > 0, nil
 	}
 
@@ -204,16 +203,6 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, user *pocketidinternal
 	log := logf.FromContext(ctx)
 
 	// Check if user is referenced by user groups
-	referenced, err := r.isUserReferencedByUserGroup(ctx, user.Name, user.Namespace)
-	if err != nil {
-		log.Error(err, "Failed to check PocketIDUserGroup references")
-		return ctrl.Result{RequeueAfter: common.Requeue}, nil
-	}
-	if referenced {
-		log.Info("User is referenced by PocketIDInstance, blocking deletion", "user", user.Name)
-		return ctrl.Result{RequeueAfter: common.Requeue}, nil
-	}
-
 	referencedByUserGroup, err := r.isUserReferencedByUserGroup(ctx, user.Name, user.Namespace)
 	if err != nil {
 		log.Error(err, "Failed to check PocketIDUserGroup references")
@@ -733,9 +722,6 @@ func (r *Reconciler) requestsForUserGroup(ctx context.Context, obj client.Object
 
 	return requests
 }
-
-// UserGroupUserRefIndexKey is the index key for user group user references
-const UserGroupUserRefIndexKey = "pocketidusergroup.userRef"
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
