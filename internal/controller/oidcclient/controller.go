@@ -295,9 +295,9 @@ func (r *Reconciler) ResolveAllowedUserGroups(ctx context.Context, oidcClient *p
 
 // clearClientStatus clears the ClientID from status, triggering recreation on next reconcile.
 func (r *Reconciler) clearClientStatus(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) error {
-	base := oidcClient.DeepCopy()
-	oidcClient.Status.ClientID = ""
-	return r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
+	return r.ClearStatusField(ctx, oidcClient, func() {
+		oidcClient.Status.ClientID = ""
+	})
 }
 
 // UpdateOIDCClientStatus updates the OIDCClient status with values returned from pocket-id

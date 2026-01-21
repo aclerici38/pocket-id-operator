@@ -298,9 +298,9 @@ func (r *Reconciler) resolveUsername(ctx context.Context, apiClient *pocketid.Cl
 
 // clearGroupStatus clears the GroupID from status, triggering recreation on next reconcile.
 func (r *Reconciler) clearGroupStatus(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup) error {
-	base := userGroup.DeepCopy()
-	userGroup.Status.GroupID = ""
-	return r.Status().Patch(ctx, userGroup, client.MergeFrom(base))
+	return r.ClearStatusField(ctx, userGroup, func() {
+		userGroup.Status.GroupID = ""
+	})
 }
 
 func (r *Reconciler) updateUserGroupStatus(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, current *pocketid.UserGroup) error {
@@ -335,22 +335,17 @@ func (r *Reconciler) ReconcileUserGroupFinalizers(ctx context.Context, userGroup
 
 func (r *Reconciler) isUserGroupReferencedByOIDCClient(ctx context.Context, group *pocketidinternalv1alpha1.PocketIDUserGroup) (bool, error) {
 	groupKey := fmt.Sprintf("%s/%s", group.Namespace, group.Name)
-	clients := &pocketidinternalv1alpha1.PocketIDOIDCClientList{}
-	if err := r.List(ctx, clients, client.MatchingFields{common.OIDCClientAllowedGroupIndexKey: groupKey}); err == nil {
-		return len(clients.Items) > 0, nil
-	}
-
-	if err := r.List(ctx, clients); err != nil {
-		return false, err
-	}
-
-	for i := range clients.Items {
-		if oidcClientAllowsGroup(&clients.Items[i], group.Namespace, group.Name) {
-			return true, nil
-		}
-	}
-
-	return false, nil
+	return common.IsReferencedByList(
+		ctx,
+		r.Client,
+		common.OIDCClientAllowedGroupIndexKey,
+		groupKey,
+		&pocketidinternalv1alpha1.PocketIDOIDCClientList{},
+		func(item client.Object) bool {
+			oidcClient := item.(*pocketidinternalv1alpha1.PocketIDOIDCClient)
+			return oidcClientAllowsGroup(oidcClient, group.Namespace, group.Name)
+		},
+	)
 }
 
 func oidcClientAllowsGroup(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, groupNamespace, groupName string) bool {

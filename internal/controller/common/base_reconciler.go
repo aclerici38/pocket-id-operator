@@ -188,6 +188,56 @@ func (r *BaseReconciler) ReconcileDeleteWithPocketID(
 	return ctrl.Result{}, nil
 }
 
+// ClearStatusField clears a status field on an object using a patch.
+func (r *BaseReconciler) ClearStatusField(ctx context.Context, obj client.Object, clearFunc func()) error {
+	base := obj.DeepCopyObject().(client.Object)
+	clearFunc()
+	return r.Status().Patch(ctx, obj, client.MergeFrom(base))
+}
+
+// IsReferencedByList checks if a resource is referenced by any item in a list.
+//
+// Parameters:
+//   - ctx: context for the operation
+//   - c: the client to use for listing
+//   - indexKey: the field index key to try first (e.g., common.UserGroupUserRefIndexKey)
+//   - indexValue: the value to match in the index (e.g., "namespace/name")
+//   - list: an empty ObjectList to populate (e.g., &PocketIDUserGroupList{})
+//   - predicate: a function that checks if a single item references the resource
+func IsReferencedByList(
+	ctx context.Context,
+	c client.Client,
+	indexKey string,
+	indexValue string,
+	list client.ObjectList,
+	predicate func(item client.Object) bool,
+) (bool, error) {
+	if err := c.List(ctx, list, client.MatchingFields{indexKey: indexValue}); err == nil {
+		items, err := meta.ExtractList(list)
+		if err != nil {
+			return false, err
+		}
+		return len(items) > 0, nil
+	}
+
+	if err := c.List(ctx, list); err != nil {
+		return false, err
+	}
+
+	items, err := meta.ExtractList(list)
+	if err != nil {
+		return false, err
+	}
+
+	for _, item := range items {
+		if predicate(item.(client.Object)) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 // InstanceReady checks if a PocketIDInstance has the Ready condition set to True
 func InstanceReady(instance *pocketidv1alpha1.PocketIDInstance) bool {
 	for _, cond := range instance.Status.Conditions {

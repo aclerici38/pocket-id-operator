@@ -161,22 +161,17 @@ func (r *Reconciler) ReconcileUserFinalizers(ctx context.Context, user *pocketid
 
 func (r *Reconciler) isUserReferencedByUserGroup(ctx context.Context, userName, userNamespace string) (bool, error) {
 	userKey := fmt.Sprintf("%s/%s", userNamespace, userName)
-	userGroups := &pocketidinternalv1alpha1.PocketIDUserGroupList{}
-	if err := r.List(ctx, userGroups, client.MatchingFields{common.UserGroupUserRefIndexKey: userKey}); err == nil {
-		return len(userGroups.Items) > 0, nil
-	}
-
-	if err := r.List(ctx, userGroups); err != nil {
-		return false, err
-	}
-
-	for i := range userGroups.Items {
-		if userGroupHasUserRef(&userGroups.Items[i], userName, userNamespace) {
-			return true, nil
-		}
-	}
-
-	return false, nil
+	return common.IsReferencedByList(
+		ctx,
+		r.Client,
+		common.UserGroupUserRefIndexKey,
+		userKey,
+		&pocketidinternalv1alpha1.PocketIDUserGroupList{},
+		func(item client.Object) bool {
+			group := item.(*pocketidinternalv1alpha1.PocketIDUserGroup)
+			return userGroupHasUserRef(group, userName, userNamespace)
+		},
+	)
 }
 
 func userGroupHasUserRef(group *pocketidinternalv1alpha1.PocketIDUserGroup, userName, userNamespace string) bool {
@@ -455,13 +450,8 @@ func (r *Reconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1
 
 // clearUserStatus clears the UserID from status, triggering recreation on next reconcile.
 func (r *Reconciler) clearUserStatus(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser) error {
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		latest := &pocketidinternalv1alpha1.PocketIDUser{}
-		if err := r.Get(ctx, client.ObjectKeyFromObject(user), latest); err != nil {
-			return err
-		}
-		latest.Status.UserID = ""
-		return r.Status().Update(ctx, latest)
+	return r.ClearStatusField(ctx, user, func() {
+		user.Status.UserID = ""
 	})
 }
 
