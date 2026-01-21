@@ -9,7 +9,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.27.5
 	github.com/onsi/gomega v1.38.2
 	golang.org/x/time v0.14.0
-	k8s.io/api v0.34.1
+	k8s.io/api v0.35.0
 	k8s.io/apimachinery v0.34.1
 	k8s.io/client-go v0.34.1
 	sigs.k8s.io/controller-runtime v0.22.4
