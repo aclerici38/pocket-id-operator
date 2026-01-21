@@ -144,7 +144,6 @@ type PocketIDInstanceSpec struct {
 
 	// DisableGlobalRateLimiting disables the global rate limiting in Pocket-ID
 	// Sets the DISABLE_RATE_LIMITING environment variable
-	// This controller includes its own ratelimiting logic to prevent pocket-id's ratelimiter from triggering
 	// Only use to speed up reconciles
 	// +kubebuilder:default=false
 	// +optional

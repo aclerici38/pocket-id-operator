@@ -3,11 +3,9 @@ package common
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"sync"
 	"time"
 
-	"golang.org/x/time/rate"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -17,7 +15,6 @@ import (
 )
 
 // ClientPoolManager manages a pool of PocketID API clients, one per instance.
-// Each client has its own rate-limited HTTP transport to prevent overwhelming PocketID instances.
 type ClientPoolManager struct {
 	mu      sync.RWMutex
 	clients map[string]*pooledClient
@@ -25,11 +22,9 @@ type ClientPoolManager struct {
 
 // pooledClient wraps a pocketid.Client with metadata
 type pooledClient struct {
-	client              *pocketid.Client
-	rateLimiter         *rate.Limiter
-	instanceKey         string
-	createdAt           time.Time
-	rateLimitingEnabled bool
+	client      *pocketid.Client
+	instanceKey string
+	createdAt   time.Time
 }
 
 // NewClientPoolManager creates a new client pool manager
@@ -40,7 +35,7 @@ func NewClientPoolManager() *ClientPoolManager {
 }
 
 // GetClient retrieves or creates an API client for the given instance.
-// Each instance gets exactly one client with its own rate-limited HTTP transport.
+// Each instance gets exactly one client.
 func (m *ClientPoolManager) GetClient(ctx context.Context, k8sClient client.Client, apiReader client.Reader, instance *pocketidinternalv1alpha1.PocketIDInstance) (*pocketid.Client, error) {
 	log := logf.FromContext(ctx)
 	instanceKey := InstanceKey(instance)
@@ -48,17 +43,8 @@ func (m *ClientPoolManager) GetClient(ctx context.Context, k8sClient client.Clie
 	// Fast path: check if client exists with read lock
 	m.mu.RLock()
 	if pooledClient, exists := m.clients[instanceKey]; exists {
-		// Check if rate limiting configuration has changed
-		rateLimitingEnabled := !instance.Spec.DisableGlobalRateLimiting
-		if pooledClient.rateLimitingEnabled == rateLimitingEnabled {
-			m.mu.RUnlock()
-			return pooledClient.client, nil
-		}
-		log.Info("Rate limiting configuration changed, recreating client",
-			"instance", instanceKey,
-			"oldRateLimitingEnabled", pooledClient.rateLimitingEnabled,
-			"newRateLimitingEnabled", rateLimitingEnabled,
-		)
+		m.mu.RUnlock()
+		return pooledClient.client, nil
 	}
 	m.mu.RUnlock()
 
@@ -66,13 +52,9 @@ func (m *ClientPoolManager) GetClient(ctx context.Context, k8sClient client.Clie
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Double-check in case another goroutine created it with matching config
-	rateLimitingEnabled := !instance.Spec.DisableGlobalRateLimiting
+	// Double-check in case another goroutine created it
 	if pooledClient, exists := m.clients[instanceKey]; exists {
-		if pooledClient.rateLimitingEnabled == rateLimitingEnabled {
-			return pooledClient.client, nil
-		}
-		// Config doesn't match, continue to recreate
+		return pooledClient.client, nil
 	}
 
 	// Get API key for authentication using APIReader to bypass cache
@@ -81,46 +63,20 @@ func (m *ClientPoolManager) GetClient(ctx context.Context, k8sClient client.Clie
 		return nil, err
 	}
 
-	var httpTransport http.RoundTripper
-	var rateLimiter *rate.Limiter
-
-	if instance.Spec.DisableGlobalRateLimiting {
-		log.Info("Creating pooled API client without rate limiting (disabled by spec)", "instance", instanceKey)
-		httpTransport = http.DefaultTransport
-	} else {
-		log.Info("Creating pooled API client with rate limiting", "instance", instanceKey)
-		// Pocket-id has a very aggressive rate-limiter we do not want to trigger
-		qps := 0.8
-		burst := 10
-		rateLimiter = rate.NewLimiter(rate.Limit(qps), burst)
-		httpTransport = pocketid.NewRateLimitedTransport(qps, burst)
-	}
-
+	log.Info("Creating pooled API client", "instance", instanceKey)
 	serviceURL := InternalServiceURL(instance.Name, instance.Namespace)
-	apiClient, err := pocketid.NewClient(serviceURL, apiKey, httpTransport)
+	apiClient, err := pocketid.NewClient(serviceURL, apiKey)
 	if err != nil {
 		return nil, fmt.Errorf("create pocketid client: %w", err)
 	}
 
 	pooledClient := &pooledClient{
-		client:              apiClient,
-		rateLimiter:         rateLimiter,
-		instanceKey:         instanceKey,
-		createdAt:           time.Now(),
-		rateLimitingEnabled: rateLimitingEnabled,
+		client:      apiClient,
+		instanceKey: instanceKey,
+		createdAt:   time.Now(),
 	}
 
 	m.clients[instanceKey] = pooledClient
-
-	if instance.Spec.DisableGlobalRateLimiting {
-		log.Info("Pooled API client created without rate limiting", "instance", instanceKey)
-	} else {
-		log.Info("Pooled API client created with rate limiting",
-			"instance", instanceKey,
-			"qps", 0.8,
-			"burst", 10,
-		)
-	}
 
 	return pooledClient.client, nil
 }
@@ -178,7 +134,7 @@ func InternalServiceURL(instanceName, namespace string) string {
 var globalClientPool = NewClientPoolManager()
 
 // GetAPIClient retrieves an API client for the given instance from the global pool.
-// This ensures only one client exists per instance, with rate limiting applied at the HTTP transport layer.
+// This ensures only one client exists per instance.
 func GetAPIClient(ctx context.Context, k8sClient client.Client, apiReader client.Reader, instance *pocketidinternalv1alpha1.PocketIDInstance) (*pocketid.Client, error) {
 	return globalClientPool.GetClient(ctx, k8sClient, apiReader, instance)
 }
