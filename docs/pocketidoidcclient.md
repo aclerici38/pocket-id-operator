@@ -88,3 +88,5 @@ metadata:
   annotations:
     pocketid.internal/regenerate-client-secret: "true"
 ```
+
+*Note:* For all options and an up-to-date spec `kubectl explain PocketIDOIDCClient` 

@@ -46,3 +46,5 @@ spec:
 - `status.groupID`: Pocket-ID group ID.
 - `status.userIDs`: resolved user IDs in the group.
 - `status.customClaims`: resolved claims.
+
+*Note:* For all options and an up-to-date spec `kubectl explain PocketIDUserGroup` 

@@ -1,7 +1,6 @@
 # Operator Annotations
 
-The operator recognizes the following annotations. Apply them to the metadata of the
-custom resource unless noted otherwise.
+The operator recognizes the following annotations.
 
 ## PocketIDUser
 

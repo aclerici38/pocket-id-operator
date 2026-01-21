@@ -1,7 +1,6 @@
 # PocketIDUser
 
-A `PocketIDUser` manages a user in Pocket-ID and can optionally create API keys and
-user profile secrets.
+A `PocketIDUser` manages a user in Pocket-ID and can optionally create API keys
 
 ## Minimal Example
 
@@ -90,7 +89,7 @@ spec:
 ## Logging In
 
 When a user is first created in pocket-id via a custom resource a one-time code is automatically
-generated for them to use on first login. The code will be displayed in the status of the `PocketIDUser` under `oneTimeLoginToken`.
+generated for them to use on first login. The code will be displayed in the resource's status under `oneTimeLoginToken`.
 If `spec.appUrl` is set on the targeted `PocketIDInstance`, `oneTimeLoginURL` will contain a fqdn that will auto-login the user with the code.
 This code expires after 15 minutes and is subsequently removed from the resource's status.
 
@@ -105,7 +104,7 @@ This code expires after 15 minutes and is subsequently removed from the resource
 ## Deletion Annotation
 
 By default when a PocketIDUser resource is deleted the user will **not** be deleted from the pocket-id database.
-This is to prevent any accidental deletions of the resource requiring users toreset their passkeys.
+This is to prevent any accidental deletions of the resource requiring users to reset their passkeys.
 If you **would** like user deletion to be synced to Pocket-ID, add this annotation:
 
 ```yaml
@@ -113,3 +112,5 @@ metadata:
   annotations:
     pocketid.internal/delete-from-pocket-id: "true"
 ```
+
+*Note:* For all options and an up-to-date spec `kubectl explain PocketIDUser` 
