@@ -378,14 +378,6 @@ spec:
                                     - Deployment
                                     - StatefulSet
                                 type: string
-                            disableGlobalRateLimiting:
-                                default: false
-                                description: |-
-                                    DisableGlobalRateLimiting disables the global rate limiting in Pocket-ID
-                                    Sets the DISABLE_RATE_LIMITING environment variable
-                                    The controller includes its own ratelimiting logic to prevent pocket-id's ratelimiter from triggering
-                                    Only use to speed up reconciles
-                                type: boolean
                             encryptionKey:
                                 description: |-
                                     Encryption Key
