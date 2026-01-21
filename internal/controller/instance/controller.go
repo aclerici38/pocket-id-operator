@@ -113,19 +113,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 // Helpers
 func (r *Reconciler) reconcileWorkload(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
-	log := logf.FromContext(ctx)
-
 	// Compute hash of static API key secret to trigger rollout when it changes
 	secretHash, err := r.computeStaticAPIKeyHash(ctx, instance)
 	if err != nil {
 		return fmt.Errorf("compute static API key hash: %w", err)
-	}
-
-	if hashChanged, err := r.hasStaticAPIKeyHashChanged(ctx, instance, secretHash); err != nil {
-		log.Error(err, "Failed to check if static API key hash changed")
-	} else if hashChanged {
-		log.Info("Static API key changed, invalidating API client", "instance", instance.Name)
-		common.RemoveAPIClient(instance)
 	}
 
 	podTemplate := r.buildPodTemplate(instance, secretHash)
@@ -687,10 +678,24 @@ func (r *Reconciler) ensureStaticAPIKeySecret(ctx context.Context, instance *poc
 	// Check if secret already exists using APIReader to bypass cache
 	err := r.APIReader.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: secretName}, secret)
 	if err == nil {
-		if _, ok := secret.Data["token"]; ok {
+		if token, ok := secret.Data["token"]; ok && len(token) > 0 {
 			return nil
 		}
-		return fmt.Errorf("static API key secret exists but has no token field")
+		token, err := generateSecureToken(32)
+		if err != nil {
+			return fmt.Errorf("failed to generate secure token: %w", err)
+		}
+		if secret.Data == nil {
+			secret.Data = map[string][]byte{}
+		}
+		secret.Data["token"] = []byte(token)
+		if err := controllerutil.SetControllerReference(instance, secret, r.Scheme); err != nil {
+			return fmt.Errorf("failed to set controller reference: %w", err)
+		}
+		if err := r.Update(ctx, secret); err != nil {
+			return fmt.Errorf("failed to update static API key secret: %w", err)
+		}
+		return nil
 	}
 
 	if !errors.IsNotFound(err) {
@@ -749,41 +754,6 @@ func (r *Reconciler) computeStaticAPIKeyHash(ctx context.Context, instance *pock
 
 	hash := sha256.Sum256(token)
 	return hex.EncodeToString(hash[:]), nil
-}
-
-// hasStaticAPIKeyHashChanged checks if the static API key hash differs from the current workload's annotation.
-// Returns true if the hash changed or workload doesn't exist yet, false otherwise.
-func (r *Reconciler) hasStaticAPIKeyHashChanged(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, newHash string) (bool, error) {
-	var currentHash string
-
-	if instance.Spec.DeploymentType == deploymentTypeStatefulSet {
-		sts := &appsv1.StatefulSet{}
-		err := r.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: instance.Name}, sts)
-		if err != nil {
-			if errors.IsNotFound(err) {
-				return false, nil
-			}
-			return false, err
-		}
-		if sts.Spec.Template.Annotations != nil {
-			currentHash = sts.Spec.Template.Annotations["pocketid.internal/static-api-key-hash"]
-		}
-	} else {
-		deployment := &appsv1.Deployment{}
-		err := r.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: instance.Name}, deployment)
-		if err != nil {
-			if errors.IsNotFound(err) {
-				return false, nil
-			}
-			return false, err
-		}
-		if deployment.Spec.Template.Annotations != nil {
-			currentHash = deployment.Spec.Template.Annotations["pocketid.internal/static-api-key-hash"]
-		}
-	}
-
-	// Hash changed if current is non-empty and differs from new
-	return currentHash != "" && currentHash != newHash, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

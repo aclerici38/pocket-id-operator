@@ -85,7 +85,7 @@ func (r *BaseReconciler) ValidateInstanceReady(ctx context.Context, obj Conditio
 	}
 }
 
-// GetAPIClientOrWait retrieves an API client for the instance from the pool.
+// GetAPIClientOrWait retrieves an API client for the instance.
 func (r *BaseReconciler) GetAPIClientOrWait(ctx context.Context, obj ConditionedResource, instance *pocketidv1alpha1.PocketIDInstance) (*pocketid.Client, *ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
 
