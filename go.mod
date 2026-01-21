@@ -7,7 +7,7 @@ require (
 	github.com/go-openapi/runtime v0.29.2
 	github.com/go-openapi/strfmt v0.25.0
 	github.com/onsi/ginkgo/v2 v2.27.5
-	github.com/onsi/gomega v1.38.2
+	github.com/onsi/gomega v1.39.0
 	golang.org/x/time v0.14.0
 	k8s.io/api v0.35.0
 	k8s.io/apimachinery v0.35.0
