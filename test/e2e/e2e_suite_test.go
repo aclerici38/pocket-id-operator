@@ -79,9 +79,7 @@ var _ = BeforeSuite(func() {
 	}))
 
 	By("creating the shared e2e instance")
-	createInstance(InstanceOptions{
-		DisableGlobalRateLimiting: boolPtr(true),
-	})
+	createInstance(InstanceOptions{})
 
 	By("waiting for the shared instance to be Ready")
 	Eventually(func(g Gomega) {

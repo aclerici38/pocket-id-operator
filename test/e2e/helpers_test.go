@@ -26,14 +26,13 @@ const (
 
 // InstanceOptions configures a PocketIDInstance YAML.
 type InstanceOptions struct {
-	Name                      string
-	Namespace                 string
-	Labels                    map[string]string
-	Image                     string
-	DisableGlobalRateLimiting *bool
-	PersistenceEnabled        *bool
-	PersistenceSize           string
-	ExistingClaim             string
+	Name               string
+	Namespace          string
+	Labels             map[string]string
+	Image              string
+	PersistenceEnabled *bool
+	PersistenceSize    string
+	ExistingClaim      string
 }
 
 func (o InstanceOptions) withDefaults() InstanceOptions {
@@ -71,11 +70,6 @@ func buildInstanceYAML(opts InstanceOptions) string {
 		}
 	}
 
-	var rateLimiting string
-	if opts.DisableGlobalRateLimiting != nil {
-		rateLimiting = fmt.Sprintf("  disableGlobalRateLimiting: %t\n", *opts.DisableGlobalRateLimiting)
-	}
-
 	return fmt.Sprintf(`apiVersion: pocketid.internal/v1alpha1
 kind: PocketIDInstance
 metadata:
@@ -83,13 +77,13 @@ metadata:
   namespace: %s
 %sspec:
   image: %s
-%s  encryptionKey:
+  encryptionKey:
     valueFrom:
       secretKeyRef:
         name: pocket-id-encryption
         key: key
   appUrl: "http://%s.%s.svc.cluster.local:1411"
-%s`, opts.Name, opts.Namespace, labels, opts.Image, rateLimiting, opts.Name, opts.Namespace, persistence)
+%s`, opts.Name, opts.Namespace, labels, opts.Image, opts.Name, opts.Namespace, persistence)
 }
 
 // UserOptions configures a PocketIDUser YAML.
