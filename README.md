@@ -51,6 +51,11 @@ kubectl apply -k config/samples/
 Run `make help` for available targets. See the docs in `docs/` for CRD usage and
 examples.
 
+## Acknowledgments
+
+- **[Pocket-ID](https://github.com/pocket-id/pocket-id)** - Obviously, Amazing IDP this project is made for
+- **[Kubebuilder](https://book.kubebuilder.io/)** - Excellent framework for building Kubernetes controllers
+
 ## License
 
 Copyright 2026.
