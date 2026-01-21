@@ -34,6 +34,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	appsv1apply "k8s.io/client-go/applyconfigurations/apps/v1"
+	corev1apply "k8s.io/client-go/applyconfigurations/core/v1"
+	metav1apply "k8s.io/client-go/applyconfigurations/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -127,7 +130,7 @@ func (r *Reconciler) reconcileWorkload(ctx context.Context, instance *pocketidin
 	return r.reconcileDeployment(ctx, instance, podTemplate)
 }
 
-func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketIDInstance, staticAPIKeyHash string) corev1.PodTemplateSpec {
+func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketIDInstance, staticAPIKeyHash string) *corev1apply.PodTemplateSpecApplyConfiguration {
 	labels := common.ManagedByLabels(instance.Spec.Labels)
 	labels["app.kubernetes.io/name"] = "pocket-id"
 	labels["app.kubernetes.io/instance"] = instance.Name
@@ -216,63 +219,73 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 		})
 	}
 
-	return corev1.PodTemplateSpec{
-		ObjectMeta: metav1.ObjectMeta{
-			Labels:      labels,
-			Annotations: annotations,
-		},
-		Spec: corev1.PodSpec{
-			SecurityContext: buildPodSecurityContext(instance),
-			HostUsers:       instance.Spec.HostUsers,
-			Containers: []corev1.Container{
-				{
-					Name:            "pocket-id",
-					Image:           instance.Spec.Image,
-					Env:             env,
-					VolumeMounts:    volumeMounts,
-					SecurityContext: buildContainerSecurityContext(instance),
-					Resources:       buildResources(instance),
-					ReadinessProbe: func() *corev1.Probe {
-						if instance.Spec.ReadinessProbe != nil {
-							return instance.Spec.ReadinessProbe
-						}
-						return &corev1.Probe{
-							ProbeHandler: corev1.ProbeHandler{
-								HTTPGet: &corev1.HTTPGetAction{
-									Path: "/readyz",
-									Port: intstr.FromInt(1411),
-								},
-							},
-							InitialDelaySeconds: 10,
-							PeriodSeconds:       10,
-							TimeoutSeconds:      5,
-							SuccessThreshold:    1,
-							FailureThreshold:    3,
-						}
-					}(),
-					LivenessProbe: func() *corev1.Probe {
-						if instance.Spec.LivenessProbe != nil {
-							return instance.Spec.LivenessProbe
-						}
-						return &corev1.Probe{
-							ProbeHandler: corev1.ProbeHandler{
-								HTTPGet: &corev1.HTTPGetAction{
-									Path: "/readyz",
-									Port: intstr.FromInt(1411),
-								},
-							},
-							InitialDelaySeconds: 30,
-							PeriodSeconds:       30,
-							TimeoutSeconds:      10,
-							SuccessThreshold:    1,
-							FailureThreshold:    5,
-						}
-					}(),
+	container := corev1apply.Container().
+		WithName("pocket-id").
+		WithImage(instance.Spec.Image).
+		WithSecurityContext(securityContextApplyConfiguration(buildContainerSecurityContext(instance))).
+		WithResources(resourceRequirementsApplyConfiguration(buildResources(instance)))
+
+	readinessProbe := instance.Spec.ReadinessProbe
+	if readinessProbe == nil {
+		readinessProbe = &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Path: "/readyz",
+					Port: intstr.FromInt(1411),
 				},
 			},
-			Volumes: volumes,
-		},
+			InitialDelaySeconds: 10,
+			PeriodSeconds:       10,
+			TimeoutSeconds:      5,
+			SuccessThreshold:    1,
+			FailureThreshold:    3,
+		}
 	}
+	container.WithReadinessProbe(probeApplyConfiguration(readinessProbe))
+
+	livenessProbe := instance.Spec.LivenessProbe
+	if livenessProbe == nil {
+		livenessProbe = &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Path: "/readyz",
+					Port: intstr.FromInt(1411),
+				},
+			},
+			InitialDelaySeconds: 30,
+			PeriodSeconds:       30,
+			TimeoutSeconds:      10,
+			SuccessThreshold:    1,
+			FailureThreshold:    5,
+		}
+	}
+	container.WithLivenessProbe(probeApplyConfiguration(livenessProbe))
+
+	envApply := envVarApplyConfigurationValues(env)
+	if len(envApply) > 0 {
+		container.Env = envApply
+	}
+
+	mountsApply := volumeMountApplyConfigurationValues(volumeMounts)
+	if len(mountsApply) > 0 {
+		container.VolumeMounts = mountsApply
+	}
+
+	podSpec := corev1apply.PodSpec().
+		WithSecurityContext(podSecurityContextApplyConfiguration(buildPodSecurityContext(instance)))
+	if instance.Spec.HostUsers != nil {
+		podSpec.WithHostUsers(*instance.Spec.HostUsers)
+	}
+	podSpec.Containers = []corev1apply.ContainerApplyConfiguration{*container}
+
+	if len(volumes) > 0 {
+		podSpec.Volumes = volumeApplyConfigurationValues(volumes)
+	}
+
+	return corev1apply.PodTemplateSpec().
+		WithLabels(labels).
+		WithAnnotations(annotations).
+		WithSpec(podSpec)
 }
 
 func buildResources(instance *pocketidinternalv1alpha1.PocketIDInstance) corev1.ResourceRequirements {
@@ -372,7 +385,7 @@ func buildContainerSecurityContext(instance *pocketidinternalv1alpha1.PocketIDIn
 	return merged
 }
 
-func (r *Reconciler) reconcileDeployment(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, podTemplate corev1.PodTemplateSpec) error {
+func (r *Reconciler) reconcileDeployment(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, podTemplate *corev1apply.PodTemplateSpecApplyConfiguration) error {
 	replicas := int32(1)
 
 	if instance.Spec.Persistence.Enabled {
@@ -381,13 +394,13 @@ func (r *Reconciler) reconcileDeployment(ctx context.Context, instance *pocketid
 			claimName = instance.Name + "-data"
 		}
 
-		podTemplate.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
+		podTemplate.Spec.Containers[0].VolumeMounts = volumeMountApplyConfigurationValues([]corev1.VolumeMount{
 			{
 				Name:      "data",
 				MountPath: "/app/data",
 			},
-		}
-		podTemplate.Spec.Volumes = []corev1.Volume{
+		})
+		podTemplate.Spec.Volumes = volumeApplyConfigurationValues([]corev1.Volume{
 			{
 				Name: "data",
 				VolumeSource: corev1.VolumeSource{
@@ -396,7 +409,7 @@ func (r *Reconciler) reconcileDeployment(ctx context.Context, instance *pocketid
 					},
 				},
 			},
-		}
+		})
 	}
 
 	selector := map[string]string{
@@ -404,36 +417,26 @@ func (r *Reconciler) reconcileDeployment(ctx context.Context, instance *pocketid
 		"app.kubernetes.io/instance": instance.Name,
 	}
 
-	deployment := &appsv1.Deployment{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "apps/v1",
-			Kind:       "Deployment",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        instance.Name,
-			Namespace:   instance.Namespace,
-			Labels:      common.ManagedByLabels(instance.Spec.Labels),
-			Annotations: instance.Spec.Annotations,
-		},
-		Spec: appsv1.DeploymentSpec{
-			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{MatchLabels: selector},
-			// Pocket-ID uses locking so only 1 process can hold the DB
-			Strategy: appsv1.DeploymentStrategy{
-				Type: appsv1.RecreateDeploymentStrategyType,
-			},
-			Template: podTemplate,
-		},
-	}
-
-	if err := controllerutil.SetControllerReference(instance, deployment, r.Scheme); err != nil {
+	ownerRef, err := common.ControllerOwnerReference(instance, r.Scheme)
+	if err != nil {
 		return err
 	}
 
-	return r.Patch(ctx, deployment, client.Apply, client.FieldOwner("pocket-id-operator"))
+	deployment := appsv1apply.Deployment(instance.Name, instance.Namespace).
+		WithLabels(common.ManagedByLabels(instance.Spec.Labels)).
+		WithAnnotations(instance.Spec.Annotations).
+		WithOwnerReferences(ownerRef).
+		WithSpec(appsv1apply.DeploymentSpec().
+			WithReplicas(replicas).
+			WithSelector(metav1apply.LabelSelector().WithMatchLabels(selector)).
+			WithStrategy(appsv1apply.DeploymentStrategy().WithType(appsv1.RecreateDeploymentStrategyType)).
+			WithTemplate(podTemplate),
+		)
+
+	return r.Apply(ctx, deployment, client.FieldOwner("pocket-id-operator"))
 }
 
-func (r *Reconciler) reconcileStatefulSet(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, podTemplate corev1.PodTemplateSpec) error {
+func (r *Reconciler) reconcileStatefulSet(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, podTemplate *corev1apply.PodTemplateSpecApplyConfiguration) error {
 	replicas := int32(1)
 
 	selector := map[string]string{
@@ -441,23 +444,22 @@ func (r *Reconciler) reconcileStatefulSet(ctx context.Context, instance *pocketi
 		"app.kubernetes.io/instance": instance.Name,
 	}
 
-	stsSpec := &appsv1.StatefulSetSpec{
-		Replicas:    &replicas,
-		ServiceName: instance.Name,
-		Selector:    &metav1.LabelSelector{MatchLabels: selector},
-		Template:    podTemplate,
-	}
+	stsSpec := appsv1apply.StatefulSetSpec().
+		WithReplicas(replicas).
+		WithServiceName(instance.Name).
+		WithSelector(metav1apply.LabelSelector().WithMatchLabels(selector)).
+		WithTemplate(podTemplate)
 
 	if instance.Spec.Persistence.Enabled {
-		stsSpec.Template.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
+		stsSpec.Template.Spec.Containers[0].VolumeMounts = volumeMountApplyConfigurationValues([]corev1.VolumeMount{
 			{
 				Name:      "data",
 				MountPath: "/app/data",
 			},
-		}
+		})
 
 		if instance.Spec.Persistence.ExistingClaim != "" {
-			stsSpec.Template.Spec.Volumes = []corev1.Volume{
+			stsSpec.Template.Spec.Volumes = volumeApplyConfigurationValues([]corev1.Volume{
 				{
 					Name: "data",
 					VolumeSource: corev1.VolumeSource{
@@ -466,8 +468,7 @@ func (r *Reconciler) reconcileStatefulSet(ctx context.Context, instance *pocketi
 						},
 					},
 				},
-			}
-			stsSpec.VolumeClaimTemplates = nil
+			})
 		} else {
 			stsSpec.Template.Spec.Volumes = nil
 
@@ -477,79 +478,58 @@ func (r *Reconciler) reconcileStatefulSet(ctx context.Context, instance *pocketi
 				scn = &sc
 			}
 
-			stsSpec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:   "data",
-						Labels: common.ManagedByLabels(instance.Spec.Labels),
-					},
-					Spec: corev1.PersistentVolumeClaimSpec{
-						AccessModes:      instance.Spec.Persistence.AccessModes,
-						StorageClassName: scn,
-						Resources: corev1.VolumeResourceRequirements{
-							Requests: corev1.ResourceList{
-								corev1.ResourceStorage: instance.Spec.Persistence.Size,
-							},
-						},
-					},
-				},
+			pvcSpec := corev1apply.PersistentVolumeClaimSpec().
+				WithAccessModes(instance.Spec.Persistence.AccessModes...).
+				WithResources(corev1apply.VolumeResourceRequirements().WithRequests(corev1.ResourceList{
+					corev1.ResourceStorage: instance.Spec.Persistence.Size,
+				}))
+			if scn != nil {
+				pvcSpec.WithStorageClassName(*scn)
 			}
+
+			stsSpec.WithVolumeClaimTemplates(corev1apply.PersistentVolumeClaim("data", instance.Namespace).
+				WithLabels(common.ManagedByLabels(instance.Spec.Labels)).
+				WithSpec(pvcSpec))
 		}
 	}
 
-	sts := &appsv1.StatefulSet{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "apps/v1",
-			Kind:       "StatefulSet",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        instance.Name,
-			Namespace:   instance.Namespace,
-			Labels:      common.ManagedByLabels(instance.Spec.Labels),
-			Annotations: instance.Spec.Annotations,
-		},
-		Spec: *stsSpec,
-	}
-
-	if err := controllerutil.SetControllerReference(instance, sts, r.Scheme); err != nil {
+	ownerRef, err := common.ControllerOwnerReference(instance, r.Scheme)
+	if err != nil {
 		return err
 	}
-	return r.Patch(ctx, sts, client.Apply, client.FieldOwner("pocket-id-operator"))
+
+	sts := appsv1apply.StatefulSet(instance.Name, instance.Namespace).
+		WithLabels(common.ManagedByLabels(instance.Spec.Labels)).
+		WithAnnotations(instance.Spec.Annotations).
+		WithOwnerReferences(ownerRef).
+		WithSpec(stsSpec)
+
+	return r.Apply(ctx, sts, client.FieldOwner("pocket-id-operator"))
 }
 
 func (r *Reconciler) reconcileService(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
-	service := &corev1.Service{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Service",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        instance.Name,
-			Namespace:   instance.Namespace,
-			Labels:      common.ManagedByLabels(instance.Spec.Labels),
-			Annotations: instance.Spec.Annotations,
-		},
-		Spec: corev1.ServiceSpec{
-			Selector: map[string]string{
-				"app.kubernetes.io/name":     "pocket-id",
-				"app.kubernetes.io/instance": instance.Name,
-			},
-			Ports: []corev1.ServicePort{
-				{
-					Name:       "http",
-					Port:       1411,
-					TargetPort: intstr.FromInt(1411),
-					Protocol:   corev1.ProtocolTCP,
-				},
-			},
-		},
-	}
-
-	if err := controllerutil.SetControllerReference(instance, service, r.Scheme); err != nil {
+	ownerRef, err := common.ControllerOwnerReference(instance, r.Scheme)
+	if err != nil {
 		return err
 	}
 
-	return r.Patch(ctx, service, client.Apply, client.FieldOwner("pocket-id-operator"))
+	service := corev1apply.Service(instance.Name, instance.Namespace).
+		WithLabels(common.ManagedByLabels(instance.Spec.Labels)).
+		WithAnnotations(instance.Spec.Annotations).
+		WithOwnerReferences(ownerRef).
+		WithSpec(corev1apply.ServiceSpec().
+			WithSelector(map[string]string{
+				"app.kubernetes.io/name":     "pocket-id",
+				"app.kubernetes.io/instance": instance.Name,
+			}).
+			WithPorts(corev1apply.ServicePort().
+				WithName("http").
+				WithPort(1411).
+				WithTargetPort(intstr.FromInt(1411)).
+				WithProtocol(corev1.ProtocolTCP)),
+		)
+
+	return r.Apply(ctx, service, client.FieldOwner("pocket-id-operator"))
 }
 
 func (r *Reconciler) reconcileVolume(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
@@ -579,10 +559,6 @@ func (r *Reconciler) reconcileVolume(ctx context.Context, instance *pocketidinte
 
 	pvc.Labels = common.ManagedByLabels(instance.Spec.Labels)
 
-	if err := controllerutil.SetControllerReference(instance, pvc, r.Scheme); err != nil {
-		return err
-	}
-
 	existing := &corev1.PersistentVolumeClaim{}
 	if err := r.Get(ctx, client.ObjectKeyFromObject(pvc), existing); err != nil {
 		if !errors.IsNotFound(err) {
@@ -595,17 +571,26 @@ func (r *Reconciler) reconcileVolume(ctx context.Context, instance *pocketidinte
 			accessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
 		}
 
-		pvc.Spec = corev1.PersistentVolumeClaimSpec{
-			AccessModes:      accessModes,
-			StorageClassName: scn,
-			Resources: corev1.VolumeResourceRequirements{
-				Requests: corev1.ResourceList{
-					corev1.ResourceStorage: instance.Spec.Persistence.Size,
-				},
-			},
+		pvcSpec := corev1apply.PersistentVolumeClaimSpec().
+			WithAccessModes(accessModes...).
+			WithResources(corev1apply.VolumeResourceRequirements().WithRequests(corev1.ResourceList{
+				corev1.ResourceStorage: instance.Spec.Persistence.Size,
+			}))
+		if scn != nil {
+			pvcSpec.WithStorageClassName(*scn)
 		}
 
-		return r.Patch(ctx, pvc, client.Apply, client.FieldOwner("pocket-id-operator"))
+		ownerRef, err := common.ControllerOwnerReference(instance, r.Scheme)
+		if err != nil {
+			return err
+		}
+
+		pvcApply := corev1apply.PersistentVolumeClaim(pvc.Name, pvc.Namespace).
+			WithLabels(pvc.Labels).
+			WithOwnerReferences(ownerRef).
+			WithSpec(pvcSpec)
+
+		return r.Apply(ctx, pvcApply, client.FieldOwner("pocket-id-operator"))
 	}
 
 	// PVC already exists: only update labels if needed
