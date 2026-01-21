@@ -179,8 +179,7 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Ordered, func() {
 
 			By("creating a test instance with labels")
 			createInstanceAndWaitReady(InstanceOptions{
-				Name:                      selectorInstance,
-				DisableGlobalRateLimiting: boolPtr(true),
+				Name: selectorInstance,
 				Labels: map[string]string{
 					"environment": "test",
 					"team":        "platform",
@@ -217,8 +216,7 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Ordered, func() {
 
 			By("creating a test instance")
 			createInstanceAndWaitReady(InstanceOptions{
-				Name:                      testInstance,
-				DisableGlobalRateLimiting: boolPtr(true),
+				Name: testInstance,
 			})
 
 			By("waiting for static API key secret")
@@ -239,10 +237,9 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Ordered, func() {
 
 			By("creating an instance with persistence enabled")
 			createInstance(InstanceOptions{
-				Name:                      persistenceInstance,
-				DisableGlobalRateLimiting: boolPtr(true),
-				PersistenceEnabled:        boolPtr(true),
-				PersistenceSize:           "2Gi",
+				Name:               persistenceInstance,
+				PersistenceEnabled: boolPtr(true),
+				PersistenceSize:    "2Gi",
 			})
 
 			By("verifying PVC is created with correct size")
@@ -272,10 +269,9 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Ordered, func() {
 
 			By("creating an instance that references the existing PVC")
 			createInstance(InstanceOptions{
-				Name:                      existingClaimInstance,
-				DisableGlobalRateLimiting: boolPtr(true),
-				PersistenceEnabled:        boolPtr(true),
-				ExistingClaim:             existingPVC,
+				Name:               existingClaimInstance,
+				PersistenceEnabled: boolPtr(true),
+				ExistingClaim:      existingPVC,
 			})
 
 			By("verifying deployment mounts the existing PVC")
@@ -295,25 +291,4 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Ordered, func() {
 		})
 	})
 
-	Context("Rate Limiting Configuration", func() {
-		It("should NOT set DISABLE_RATE_LIMITING when rate limiting is enabled (default)", func() {
-			const rateLimitInstance = "rate-limit-enabled-instance"
-
-			By("creating an instance with default rate limiting (enabled)")
-			createInstance(InstanceOptions{
-				Name:                      rateLimitInstance,
-				DisableGlobalRateLimiting: boolPtr(false),
-			})
-
-			By("verifying DISABLE_RATE_LIMITING env var is not set")
-			Eventually(func(g Gomega) {
-				output := kubectlGet("deployment", rateLimitInstance, "-n", instanceNS,
-					"-o", "jsonpath={.spec.template.spec.containers[0].env[?(@.name=='DISABLE_RATE_LIMITING')].name}")
-				g.Expect(output).To(BeEmpty())
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
-
-			By("cleaning up")
-			Expect(kubectlDeleteWait("pocketidinstance", rateLimitInstance, instanceNS, 60*time.Second)).To(Succeed())
-		})
-	})
 })

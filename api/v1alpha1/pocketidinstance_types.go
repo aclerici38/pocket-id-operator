@@ -141,13 +141,6 @@ type PocketIDInstanceSpec struct {
 	// Resource requests and limits for the container
 	// +optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
-
-	// DisableGlobalRateLimiting disables the global rate limiting in Pocket-ID
-	// Sets the DISABLE_RATE_LIMITING environment variable
-	// Only use to speed up reconciles
-	// +kubebuilder:default=false
-	// +optional
-	DisableGlobalRateLimiting bool `json:"disableGlobalRateLimiting,omitempty"`
 }
 
 // PocketIDInstanceStatus defines the observed state of PocketIDInstance.

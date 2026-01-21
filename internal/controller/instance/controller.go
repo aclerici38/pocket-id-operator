@@ -176,12 +176,10 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 		})
 	}
 
-	if instance.Spec.DisableGlobalRateLimiting {
-		env = append(env, corev1.EnvVar{
-			Name:  "DISABLE_RATE_LIMITING",
-			Value: "true",
-		})
-	}
+	env = append(env, corev1.EnvVar{
+		Name:  "DISABLE_RATE_LIMITING",
+		Value: "true",
+	})
 
 	// Always add STATIC_API_KEY for operator authentication
 	staticAPIKeySecret := common.StaticAPIKeySecretName(instance.Name)
