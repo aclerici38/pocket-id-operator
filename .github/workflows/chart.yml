@@ -113,7 +113,6 @@ jobs:
         run: |
           kind load docker-image ghcr.io/${{ inputs.repo_owner }}/pocket-id-operator:ci-$(git rev-parse --short HEAD)
           kind load docker-image ghcr.io/pocket-id/pocket-id:latest
-          kind load docker-image curlimages/curl:latest
 
       - name: Test chart installation
         run: |
