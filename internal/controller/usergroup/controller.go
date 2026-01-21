@@ -43,12 +43,6 @@ const (
 	OIDCClientUserGroupFinalizer = "pocketid.internal/oidc-client-finalizer"
 )
 
-// OIDCClientAllowedGroupIndexKey is the index key for OIDC client allowed groups
-const OIDCClientAllowedGroupIndexKey = "pocketidoidcclient.allowedGroup"
-
-// UserGroupUserRefIndexKey is the index key for user group user references
-const UserGroupUserRefIndexKey = "pocketidusergroup.userRef"
-
 // Reconciler reconciles a PocketIDUserGroup object
 type Reconciler struct {
 	client.Client
@@ -342,7 +336,7 @@ func (r *Reconciler) ReconcileUserGroupFinalizers(ctx context.Context, userGroup
 func (r *Reconciler) isUserGroupReferencedByOIDCClient(ctx context.Context, group *pocketidinternalv1alpha1.PocketIDUserGroup) (bool, error) {
 	groupKey := fmt.Sprintf("%s/%s", group.Namespace, group.Name)
 	clients := &pocketidinternalv1alpha1.PocketIDOIDCClientList{}
-	if err := r.List(ctx, clients, client.MatchingFields{OIDCClientAllowedGroupIndexKey: groupKey}); err == nil {
+	if err := r.List(ctx, clients, client.MatchingFields{common.OIDCClientAllowedGroupIndexKey: groupKey}); err == nil {
 		return len(clients.Items) > 0, nil
 	}
 
@@ -421,7 +415,7 @@ func (r *Reconciler) requestsForUser(ctx context.Context, obj client.Object) []r
 
 	userGroups := &pocketidinternalv1alpha1.PocketIDUserGroupList{}
 	if err := r.List(ctx, userGroups, client.MatchingFields{
-		UserGroupUserRefIndexKey: client.ObjectKeyFromObject(user).String(),
+		common.UserGroupUserRefIndexKey: client.ObjectKeyFromObject(user).String(),
 	}); err != nil {
 		logf.FromContext(ctx).Error(err, "Failed to list user groups for user", "user", client.ObjectKeyFromObject(user))
 		return nil
@@ -481,7 +475,7 @@ func toCustomClaims(claims []pocketid.CustomClaim) []pocketidinternalv1alpha1.Cu
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	ctx := context.Background()
-	if err := mgr.GetFieldIndexer().IndexField(ctx, &pocketidinternalv1alpha1.PocketIDUserGroup{}, UserGroupUserRefIndexKey, func(raw client.Object) []string {
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &pocketidinternalv1alpha1.PocketIDUserGroup{}, common.UserGroupUserRefIndexKey, func(raw client.Object) []string {
 		userGroup, ok := raw.(*pocketidinternalv1alpha1.PocketIDUserGroup)
 		if !ok {
 			return nil

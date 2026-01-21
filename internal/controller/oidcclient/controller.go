@@ -43,9 +43,6 @@ const (
 	oidcClientFinalizer = "pocketid.internal/oidc-client-finalizer"
 )
 
-// OIDCClientAllowedGroupIndexKey is the index key for OIDC client allowed groups
-const OIDCClientAllowedGroupIndexKey = "pocketidoidcclient.allowedGroup"
-
 // Reconciler reconciles a PocketIDOIDCClient object
 type Reconciler struct {
 	client.Client
@@ -135,8 +132,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	return common.ApplyResync(ctrl.Result{}), nil
 }
 
-// pocketIDOIDCClientAPI defines the minimal interface needed for OIDC client operations
-type pocketIDOIDCClientAPI interface {
+// PocketIDOIDCClientAPI defines the minimal interface needed for OIDC client operations
+type PocketIDOIDCClientAPI interface {
 	ListOIDCClients(ctx context.Context, search string) ([]*pocketid.OIDCClient, error)
 	CreateOIDCClient(ctx context.Context, input pocketid.OIDCClientInput) (*pocketid.OIDCClient, error)
 	GetOIDCClient(ctx context.Context, id string) (*pocketid.OIDCClient, error)
@@ -148,7 +145,7 @@ type pocketIDOIDCClientAPI interface {
 // If specClientID is non-empty, it looks up by client ID directly.
 // Otherwise, it searches by name and returns an exact match.
 // Returns the existing client if found, or nil if no matching client exists.
-func (r *Reconciler) FindExistingOIDCClient(ctx context.Context, apiClient pocketIDOIDCClientAPI, specClientID, name string) (*pocketid.OIDCClient, error) {
+func (r *Reconciler) FindExistingOIDCClient(ctx context.Context, apiClient PocketIDOIDCClientAPI, specClientID, name string) (*pocketid.OIDCClient, error) {
 	log := logf.FromContext(ctx)
 
 	if specClientID != "" {
@@ -521,7 +518,7 @@ func (r *Reconciler) requestsForUserGroup(ctx context.Context, obj client.Object
 
 	clients := &pocketidinternalv1alpha1.PocketIDOIDCClientList{}
 	if err := r.List(ctx, clients, client.MatchingFields{
-		OIDCClientAllowedGroupIndexKey: client.ObjectKeyFromObject(group).String(),
+		common.OIDCClientAllowedGroupIndexKey: client.ObjectKeyFromObject(group).String(),
 	}); err != nil {
 		logf.FromContext(ctx).Error(err, "Failed to list OIDC clients for user group", "userGroup", client.ObjectKeyFromObject(group))
 		return nil
@@ -540,7 +537,7 @@ func (r *Reconciler) requestsForUserGroup(ctx context.Context, obj client.Object
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	ctx := context.Background()
-	if err := mgr.GetFieldIndexer().IndexField(ctx, &pocketidinternalv1alpha1.PocketIDOIDCClient{}, OIDCClientAllowedGroupIndexKey, func(raw client.Object) []string {
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &pocketidinternalv1alpha1.PocketIDOIDCClient{}, common.OIDCClientAllowedGroupIndexKey, func(raw client.Object) []string {
 		oidcClient, ok := raw.(*pocketidinternalv1alpha1.PocketIDOIDCClient)
 		if !ok {
 			return nil

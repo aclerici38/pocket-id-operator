@@ -8,6 +8,12 @@ import (
 const (
 	// Requeue is the standard requeue delay for consistent error handling across controllers
 	Requeue = 5 * time.Second
+
+	// OIDCClientAllowedGroupIndexKey is the index key for OIDC client allowed groups
+	OIDCClientAllowedGroupIndexKey = "pocketidoidcclient.allowedGroup"
+
+	// UserGroupUserRefIndexKey is the index key for user group user references
+	UserGroupUserRefIndexKey = "pocketidusergroup.userRef"
 )
 
 var (
