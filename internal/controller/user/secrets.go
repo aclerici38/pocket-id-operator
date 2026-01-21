@@ -5,10 +5,9 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	corev1apply "k8s.io/client-go/applyconfigurations/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
@@ -37,28 +36,20 @@ func userInfoOutputSecretName(userName string) string {
 }
 
 func ensureAPIKeySecret(ctx context.Context, c client.Client, scheme *runtime.Scheme, user *pocketidinternalv1alpha1.PocketIDUser, secretName, token string) error {
-	secret := &corev1.Secret{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Secret",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: user.Namespace,
-			Labels:    common.ManagedByLabels(nil),
-		},
-	}
-
-	if err := controllerutil.SetControllerReference(user, secret, scheme); err != nil {
+	ownerRef, err := common.ControllerOwnerReference(user, scheme)
+	if err != nil {
 		return err
 	}
 
-	secret.Type = corev1.SecretTypeOpaque
-	secret.Data = map[string][]byte{
-		APIKeySecretKey: []byte(token),
-	}
+	secret := corev1apply.Secret(secretName, user.Namespace).
+		WithLabels(common.ManagedByLabels(nil)).
+		WithOwnerReferences(ownerRef).
+		WithType(corev1.SecretTypeOpaque).
+		WithData(map[string][]byte{
+			APIKeySecretKey: []byte(token),
+		})
 
-	return c.Patch(ctx, secret, client.Apply, client.FieldOwner("pocket-id-operator"))
+	return c.Apply(ctx, secret, client.FieldOwner("pocket-id-operator"))
 }
 
 func mergeAPIKeyStatus(user *pocketidinternalv1alpha1.PocketIDUser, keyStatus pocketidinternalv1alpha1.APIKeyStatus) {
@@ -73,30 +64,22 @@ func mergeAPIKeyStatus(user *pocketidinternalv1alpha1.PocketIDUser, keyStatus po
 }
 
 func ensureUserInfoSecret(ctx context.Context, c client.Client, scheme *runtime.Scheme, user *pocketidinternalv1alpha1.PocketIDUser, secretName string, pUser *pocketid.User) error {
-	secret := &corev1.Secret{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Secret",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: user.Namespace,
-			Labels:    common.ManagedByLabels(nil),
-		},
-	}
-
-	if err := controllerutil.SetControllerReference(user, secret, scheme); err != nil {
+	ownerRef, err := common.ControllerOwnerReference(user, scheme)
+	if err != nil {
 		return err
 	}
 
-	secret.Type = corev1.SecretTypeOpaque
-	secret.Data = map[string][]byte{
-		UserInfoSecretKeyUsername:    []byte(pUser.Username),
-		UserInfoSecretKeyFirstName:   []byte(pUser.FirstName),
-		UserInfoSecretKeyLastName:    []byte(pUser.LastName),
-		UserInfoSecretKeyEmail:       []byte(pUser.Email),
-		UserInfoSecretKeyDisplayName: []byte(pUser.DisplayName),
-	}
+	secret := corev1apply.Secret(secretName, user.Namespace).
+		WithLabels(common.ManagedByLabels(nil)).
+		WithOwnerReferences(ownerRef).
+		WithType(corev1.SecretTypeOpaque).
+		WithData(map[string][]byte{
+			UserInfoSecretKeyUsername:    []byte(pUser.Username),
+			UserInfoSecretKeyFirstName:   []byte(pUser.FirstName),
+			UserInfoSecretKeyLastName:    []byte(pUser.LastName),
+			UserInfoSecretKeyEmail:       []byte(pUser.Email),
+			UserInfoSecretKeyDisplayName: []byte(pUser.DisplayName),
+		})
 
-	return c.Patch(ctx, secret, client.Apply, client.FieldOwner("pocket-id-operator"))
+	return c.Apply(ctx, secret, client.FieldOwner("pocket-id-operator"))
 }
