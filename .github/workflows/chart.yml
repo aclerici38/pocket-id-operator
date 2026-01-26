@@ -82,7 +82,7 @@ jobs:
 
       - name: Cache kubebuilder
         id: cache-kubebuilder
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: /usr/local/bin/kubebuilder
           key: kubebuilder-${{ runner.os }}-${{ runner.arch }}-${{ env.KUBEBUILDER_VERSION }}
@@ -97,7 +97,7 @@ jobs:
           sudo mv kubebuilder /usr/local/bin/kubebuilder
 
       - name: Cache tool binaries
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: bin
           key: tools-${{ runner.os }}-kustomize-${{ env.KUSTOMIZE_VERSION }}-controller-gen-${{ env.CONTROLLER_TOOLS_VERSION }}
@@ -118,7 +118,7 @@ jobs:
 
       - name: Cache kind
         id: cache-kind
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: /usr/local/bin/kind
           key: kind-${{ runner.os }}-${{ runner.arch }}-${{ env.KIND_VERSION }}
