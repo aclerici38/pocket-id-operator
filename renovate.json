@@ -1,6 +1,8 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
+  "extends": [
+    "config:recommended"
+  ],
   "dependencyDashboard": true,
   "prConcurrentLimit": 0,
   "prHourlyLimit": 0,
@@ -10,16 +12,25 @@
     "gomodTidy",
     "gomodUpdateImportPaths"
   ],
-  "regexManagers": [
+  "customManagers": [
     {
-      "fileMatch": ["^Makefile$"],
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^Makefile$/"
+      ],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)( versioning=(?<versioning>.*?))?\\n.*?_VERSION \\?= (?<currentValue>.*)"
       ],
       "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}"
     },
     {
-      "fileMatch": ["\\.go$", "\\.ya?ml$", "^Makefile$", "^Dockerfile$"],
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/\\.go$/",
+        "/\\.ya?ml$/",
+        "/^Makefile$/",
+        "/^Dockerfile$/"
+      ],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)( versioning=(?<versioning>.*?))?\\n.*?[\"']?(?<currentValue>v?\\d+\\.\\d+\\.\\d+[^\"'\\s]*)[\"']?"
       ],
