@@ -59,13 +59,11 @@ jobs:
 
   test:
     name: Tests
-    needs: meta
     uses: ./.github/workflows/test.yml
     secrets: inherit
 
   lint:
     name: Lint
-    needs: meta
     uses: ./.github/workflows/lint.yml
     secrets: inherit
 
