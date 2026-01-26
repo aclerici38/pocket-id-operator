@@ -8,6 +8,12 @@ permissions:
   actions: write
   contents: read
 
+env:
+  # renovate: datasource=github-releases depName=kubernetes-sigs/controller-tools
+  CONTROLLER_TOOLS_VERSION: v0.20.0
+  # renovate: datasource=github-releases depName=kubernetes/kubernetes
+  ENVTEST_K8S_VERSION: "1.35"
+
 jobs:
   test:
     name: Run unit tests
@@ -22,6 +28,12 @@ jobs:
           go-version-file: go.mod
           cache: true
           cache-dependency-path: go.sum
+
+      - name: Cache tool binaries
+        uses: actions/cache@v4
+        with:
+          path: bin
+          key: tools-${{ runner.os }}-controller-gen-${{ env.CONTROLLER_TOOLS_VERSION }}-envtest-${{ env.ENVTEST_K8S_VERSION }}
 
       - name: Run tests
         run: make test

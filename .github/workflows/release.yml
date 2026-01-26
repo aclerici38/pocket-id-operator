@@ -12,6 +12,12 @@ permissions:
   contents: write
   packages: write
 
+env:
+  # renovate: datasource=github-releases depName=kubernetes-sigs/controller-tools
+  CONTROLLER_TOOLS_VERSION: v0.20.0
+  # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize
+  KUSTOMIZE_VERSION: v5.7.1
+
 jobs:
   validate:
     name: Validate version
@@ -119,9 +125,27 @@ jobs:
         with:
           ref: ${{ needs.validate.outputs.version }}
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Cache tool binaries
+        uses: actions/cache@v4
+        with:
+          path: bin
+          key: tools-${{ runner.os }}-kustomize-${{ env.KUSTOMIZE_VERSION }}-controller-gen-${{ env.CONTROLLER_TOOLS_VERSION }}
+
+      - name: Generate install manifest
+        run: |
+          make build-installer IMG=ghcr.io/${{ needs.validate.outputs.repo_owner }}/pocket-id-operator:${{ needs.validate.outputs.version }}
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.validate.outputs.version }}
           name: ${{ needs.validate.outputs.version }}
           generate_release_notes: true
+          files: |
+            dist/install.yaml

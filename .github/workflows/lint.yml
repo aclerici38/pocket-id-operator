@@ -23,5 +23,7 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
-      - name: Run linter
-        run: make lint
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.8.0

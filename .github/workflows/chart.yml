@@ -52,6 +52,16 @@ permissions:
   contents: read
   packages: write
 
+env:
+  # renovate: datasource=github-releases depName=kubernetes-sigs/kubebuilder
+  KUBEBUILDER_VERSION: v4.10.1
+  # renovate: datasource=github-releases depName=kubernetes-sigs/kind
+  KIND_VERSION: v0.27.0
+  # renovate: datasource=github-releases depName=kubernetes-sigs/controller-tools
+  CONTROLLER_TOOLS_VERSION: v0.20.0
+  # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize
+  KUSTOMIZE_VERSION: v5.7.1
+
 jobs:
   build-and-publish:
     name: Build, package, test, and publish chart
@@ -70,13 +80,27 @@ jobs:
       - name: Setup Helm
         uses: azure/setup-helm@v4
 
+      - name: Cache kubebuilder
+        id: cache-kubebuilder
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/bin/kubebuilder
+          key: kubebuilder-${{ runner.os }}-${{ runner.arch }}-${{ env.KUBEBUILDER_VERSION }}
+
       - name: Install kubebuilder
+        if: steps.cache-kubebuilder.outputs.cache-hit != 'true'
         run: |
           OS=$(go env GOOS)
           ARCH=$(go env GOARCH)
-          curl -L -o kubebuilder https://github.com/kubernetes-sigs/kubebuilder/releases/download/v4.10.1/kubebuilder_${OS}_${ARCH}
+          curl -L -o kubebuilder https://github.com/kubernetes-sigs/kubebuilder/releases/download/${{ env.KUBEBUILDER_VERSION }}/kubebuilder_${OS}_${ARCH}
           chmod +x kubebuilder
           sudo mv kubebuilder /usr/local/bin/kubebuilder
+
+      - name: Cache tool binaries
+        uses: actions/cache@v4
+        with:
+          path: bin
+          key: tools-${{ runner.os }}-kustomize-${{ env.KUSTOMIZE_VERSION }}-controller-gen-${{ env.CONTROLLER_TOOLS_VERSION }}
 
       - name: Generate Helm chart
         run: make helm
@@ -92,9 +116,17 @@ jobs:
             --app-version "${{ inputs.app_version }}" \
             --destination dist/chart-packages
 
-      - name: Install the latest version of kind
+      - name: Cache kind
+        id: cache-kind
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/bin/kind
+          key: kind-${{ runner.os }}-${{ runner.arch }}-${{ env.KIND_VERSION }}
+
+      - name: Install kind
+        if: steps.cache-kind.outputs.cache-hit != 'true'
         run: |
-          curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-$(go env GOARCH)
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/${{ env.KIND_VERSION }}/kind-linux-$(go env GOARCH)
           chmod +x ./kind
           sudo mv ./kind /usr/local/bin/kind
 

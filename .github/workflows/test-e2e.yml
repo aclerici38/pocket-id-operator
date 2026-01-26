@@ -19,6 +19,14 @@ permissions:
   contents: read
   packages: read
 
+env:
+  # renovate: datasource=github-releases depName=kubernetes-sigs/kind
+  KIND_VERSION: v0.27.0
+  # renovate: datasource=github-releases depName=kubernetes-sigs/controller-tools
+  CONTROLLER_TOOLS_VERSION: v0.20.0
+  # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize
+  KUSTOMIZE_VERSION: v5.7.1
+
 jobs:
   test-e2e:
     name: Run e2e tests
@@ -34,9 +42,23 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
-      - name: Install the latest version of kind
+      - name: Cache tool binaries
+        uses: actions/cache@v4
+        with:
+          path: bin
+          key: tools-${{ runner.os }}-kustomize-${{ env.KUSTOMIZE_VERSION }}-controller-gen-${{ env.CONTROLLER_TOOLS_VERSION }}
+
+      - name: Cache kind
+        id: cache-kind
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/bin/kind
+          key: kind-${{ runner.os }}-${{ runner.arch }}-${{ env.KIND_VERSION }}
+
+      - name: Install kind
+        if: steps.cache-kind.outputs.cache-hit != 'true'
         run: |
-          curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-$(go env GOARCH)
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/${{ env.KIND_VERSION }}/kind-linux-$(go env GOARCH)
           chmod +x ./kind
           sudo mv ./kind /usr/local/bin/kind
 
