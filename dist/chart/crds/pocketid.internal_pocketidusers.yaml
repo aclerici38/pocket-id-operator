@@ -1,0 +1,467 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.0
+  name: pocketidusers.pocketid.internal
+spec:
+  group: pocketid.internal
+  names:
+    kind: PocketIDUser
+    listKind: PocketIDUserList
+    plural: pocketidusers
+    shortNames:
+    - piduser
+    singular: pocketiduser
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: PocketIDUser is the Schema for the pocketidusers API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of PocketIDUser
+            properties:
+              admin:
+                default: false
+                description: Flag whether a user is an admin or not
+                type: boolean
+              apiKeys:
+                description: APIKeys is a list of API keys to create for this user
+                items:
+                  description: APIKeySpec defines the desired state of an API key
+                  properties:
+                    description:
+                      default: Created by pocket-id-operator
+                      description: Description of the API key
+                      type: string
+                    expiresAt:
+                      description: |-
+                        ExpiresAt is the expiration time in RFC3339 format (e.g., "2030-01-01T00:00:00Z")
+                        Defaults to 1 year in the future
+                      type: string
+                    name:
+                      description: Name of the API key (3-50 characters)
+                      maxLength: 50
+                      minLength: 3
+                      type: string
+                    secretRef:
+                      description: |-
+                        SecretRef references an existing Secret containing the API key token
+                        If set, the operator will use this secret instead of creating a new one
+                      properties:
+                        key:
+                          description: The key of the secret to select from.  Must
+                            be a valid secret key.
+                          type: string
+                        name:
+                          default: ""
+                          description: |-
+                            Name of the referent.
+                            This field is effectively required, but due to backwards compatibility is
+                            allowed to be empty. Instances of this type with an empty value here are
+                            almost certainly wrong.
+                            More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                          type: string
+                        optional:
+                          description: Specify whether the Secret or its key must
+                            be defined
+                          type: boolean
+                      required:
+                      - key
+                      type: object
+                      x-kubernetes-map-type: atomic
+                  required:
+                  - name
+                  type: object
+                type: array
+              disabled:
+                default: false
+                description: Disabled indicates whether the user account is disabled
+                type: boolean
+              displayName:
+                description: |-
+                  DisplayName of the user
+                  Defaults to "spec.FirstName spec.LastName"
+                properties:
+                  value:
+                    description: Plain text value
+                    type: string
+                  valueFrom:
+                    description: Source for the value from a secret
+                    properties:
+                      key:
+                        description: The key of the secret to select from.  Must be
+                          a valid secret key.
+                        type: string
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                      optional:
+                        description: Specify whether the Secret or its key must be
+                          defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
+                type: object
+              email:
+                description: |-
+                  Email of the user
+                  Can be a plain value or reference a secret
+                  Required unless email is disabled in pocket-id
+                properties:
+                  value:
+                    description: Plain text value
+                    type: string
+                  valueFrom:
+                    description: Source for the value from a secret
+                    properties:
+                      key:
+                        description: The key of the secret to select from.  Must be
+                          a valid secret key.
+                        type: string
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                      optional:
+                        description: Specify whether the Secret or its key must be
+                          defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
+                type: object
+              firstName:
+                description: |-
+                  First name of the user
+                  Can be a plain value or reference a secret
+                  Defaults to metadata.name of the Resource
+                properties:
+                  value:
+                    description: Plain text value
+                    type: string
+                  valueFrom:
+                    description: Source for the value from a secret
+                    properties:
+                      key:
+                        description: The key of the secret to select from.  Must be
+                          a valid secret key.
+                        type: string
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                      optional:
+                        description: Specify whether the Secret or its key must be
+                          defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
+                type: object
+              instanceSelector:
+                description: |-
+                  InstanceSelector selects the PocketIDInstance to reconcile against.
+                  If omitted, the controller expects exactly one instance in the cluster.
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    type: object
+                type: object
+                x-kubernetes-map-type: atomic
+              lastName:
+                description: |-
+                  Last name of the user
+                  Can be a plain value or reference a secret
+                properties:
+                  value:
+                    description: Plain text value
+                    type: string
+                  valueFrom:
+                    description: Source for the value from a secret
+                    properties:
+                      key:
+                        description: The key of the secret to select from.  Must be
+                          a valid secret key.
+                        type: string
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                      optional:
+                        description: Specify whether the Secret or its key must be
+                          defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
+                type: object
+              locale:
+                description: Locale is the user's preferred locale (e.g., "en", "de",
+                  "fr")
+                type: string
+              userInfoSecretRef:
+                description: |-
+                  UserInfoSecretRef references a single Secret containing sensitive user profile fields.
+                  Values from the secret are evaluated last, so spec.username will override the username key in this secret
+                  Keys: username, firstName, lastName, email, displayName
+                properties:
+                  name:
+                    default: ""
+                    description: |-
+                      Name of the referent.
+                      This field is effectively required, but due to backwards compatibility is
+                      allowed to be empty. Instances of this type with an empty value here are
+                      almost certainly wrong.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                    type: string
+                type: object
+                x-kubernetes-map-type: atomic
+              username:
+                description: |-
+                  Username of the user. Defaults to the metadata.name
+                  Can be a plain value or reference a secret
+                properties:
+                  value:
+                    description: Plain text value
+                    type: string
+                  valueFrom:
+                    description: Source for the value from a secret
+                    properties:
+                      key:
+                        description: The key of the secret to select from.  Must be
+                          a valid secret key.
+                        type: string
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                      optional:
+                        description: Specify whether the Secret or its key must be
+                          defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
+                type: object
+            type: object
+          status:
+            description: status defines the observed state of PocketIDUser
+            properties:
+              apiKeys:
+                description: APIKeys reflects the observed state of each API key
+                items:
+                  description: APIKeyStatus reflects the observed state of an API
+                    key from Pocket-ID
+                  properties:
+                    createdAt:
+                      description: CreatedAt timestamp from Pocket-ID
+                      type: string
+                    expiresAt:
+                      description: ExpiresAt timestamp from Pocket-ID
+                      type: string
+                    id:
+                      description: ID assigned by Pocket-ID
+                      type: string
+                    lastUsedAt:
+                      description: LastUsedAt timestamp from Pocket-ID
+                      type: string
+                    name:
+                      description: Name of the API key (matches spec)
+                      type: string
+                    secretKey:
+                      description: SecretKey within the secret containing the token
+                      type: string
+                    secretName:
+                      description: SecretName where the API key token is stored
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+              conditions:
+                description: Conditions represent the current state of the PocketIDUser
+                  resource.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              disabled:
+                description: Disabled reflects whether the user is disabled in Pocket-ID
+                type: boolean
+              isAdmin:
+                description: IsAdmin reflects whether the user is an admin in Pocket-ID
+                type: boolean
+              locale:
+                description: Locale of the user from Pocket-ID
+                type: string
+              oneTimeLoginExpiresAt:
+                description: OneTimeLoginExpiresAt is the RFC3339 timestamp when the
+                  login token expires
+                type: string
+              oneTimeLoginToken:
+                description: OneTimeLoginToken is the one-time login token for a newly
+                  created user
+                type: string
+              oneTimeLoginURL:
+                description: OneTimeLoginURL is the login URL built from the one-time
+                  login token
+                type: string
+              userID:
+                description: UserID is the ID assigned by Pocket-ID
+                type: string
+              userInfoSecretName:
+                description: |-
+                  UserInfoSecretName is the name of the Secret storing user profile fields.
+                  The operator writes to "<name>-user-data".
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
