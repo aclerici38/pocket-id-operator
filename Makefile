@@ -91,7 +91,7 @@ test-e2e: setup-test-e2e manifests generate fmt vet test-e2e-only ## Run the e2e
 
 .PHONY: test-e2e-only
 test-e2e-only: setup-test-e2e ginkgo ## Run e2e tests without generating manifests.
-	$(if $(filter file,$(origin IMG)),,IMG=$(IMG) )KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) "$(GINKGO)" -tags=e2e -v -procs=4 ./test/e2e/
+	$(if $(filter file,$(origin IMG)),,IMG=$(IMG) )KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) "$(GINKGO)" -tags=e2e -v -procs=8 ./test/e2e/
 	$(MAKE) cleanup-test-e2e
 
 .PHONY: cleanup-test-e2e
