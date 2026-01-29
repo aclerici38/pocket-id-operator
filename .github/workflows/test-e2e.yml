@@ -77,7 +77,7 @@ jobs:
       - name: Run e2e tests
         run: |
           if [ -n "${{ inputs.image }}" ]; then
-            make test-e2e IMG=${{ inputs.image }}
+            make test-e2e-only IMG=${{ inputs.image }}
           else
-            make test-e2e
+            make test-e2e-only
           fi

@@ -36,4 +36,4 @@ jobs:
           key: tools-${{ runner.os }}-controller-gen-${{ env.CONTROLLER_TOOLS_VERSION }}-envtest-${{ env.ENVTEST_K8S_VERSION }}
 
       - name: Run tests
-        run: make test
+        run: make test-only
