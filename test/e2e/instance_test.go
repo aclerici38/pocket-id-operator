@@ -10,7 +10,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Operator Health", func() {
+var _ = Describe("Operator Health", Serial, func() {
 	It("should have the operator running", func() {
 		Eventually(func(g Gomega) {
 			output := kubectlGet("deployment", "pocket-id-operator", "-n", namespace,
@@ -20,7 +20,7 @@ var _ = Describe("Operator Health", func() {
 	})
 })
 
-var _ = Describe("PocketIDInstance", Ordered, func() {
+var _ = Describe("PocketIDInstance", Serial, Ordered, func() {
 	// All tests use the shared instance created in BeforeSuite
 
 	Context("Core Functionality", func() {
@@ -170,8 +170,8 @@ var _ = Describe("PocketIDInstance", Ordered, func() {
 	})
 })
 
-// Tests that require creating additional instances
-var _ = Describe("PocketIDInstance Multi-Instance Features", Ordered, func() {
+// Tests that require creating additional instances - must run serially
+var _ = Describe("PocketIDInstance Multi-Instance Features", Serial, Ordered, func() {
 	Context("Instance Selector", func() {
 		It("should reconcile a labeled instance with a matching user selector", func() {
 			const selectorUser = "selector-test-user"

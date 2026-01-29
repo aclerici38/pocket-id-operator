@@ -31,7 +31,8 @@ func TestE2E(t *testing.T) {
 	RunSpecs(t, "Pocket-ID Operator E2E Suite")
 }
 
-var _ = BeforeSuite(func() {
+var _ = SynchronizedBeforeSuite(func() []byte {
+	// This runs only on process 1
 	projectImage = resolveProjectImage()
 
 	By("building the operator image")
@@ -87,9 +88,17 @@ var _ = BeforeSuite(func() {
 			"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
 		g.Expect(output).To(Equal("True"))
 	}, 5*time.Minute, 5*time.Second).Should(Succeed())
+
+	return nil
+}, func(_ []byte) {
+	// This runs on all processes
+	projectImage = resolveProjectImage()
 })
 
-var _ = AfterSuite(func() {
+var _ = SynchronizedAfterSuite(func() {
+	// This runs on all processes
+}, func() {
+	// This runs only on process 1
 	By("cleaning up test namespace resources")
 	removeFinalizers(userNS)
 	removeFinalizers(instanceNS)
