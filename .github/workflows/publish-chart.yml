@@ -1,0 +1,108 @@
+name: Chart
+
+on:
+  workflow_call:
+    inputs:
+      chart_version:
+        description: Version to use for the Helm chart (e.g., "0.0.0" or "1.2.3")
+        required: true
+        type: string
+      app_version:
+        description: App version to embed in the chart (e.g., "0.0.0" or "v1.2.3")
+        required: true
+        type: string
+      repo_owner:
+        description: Lowercase repo owner for GHCR namespace
+        required: true
+        type: string
+      primary_tag:
+        description: Primary tag to apply to the chart (e.g., "main", "v1.2.3")
+        required: true
+        type: string
+      additional_tag:
+        description: Optional additional tag to apply (e.g., "abc123-main")
+        required: false
+        type: string
+        default: ""
+  workflow_dispatch:
+    inputs:
+      chart_version:
+        description: Version to use for the Helm chart (e.g., "0.0.0" or "1.2.3")
+        required: true
+        type: string
+      app_version:
+        description: App version to embed in the chart (e.g., "0.0.0" or "v1.2.3")
+        required: true
+        type: string
+      repo_owner:
+        description: Lowercase repo owner for GHCR namespace
+        required: true
+        type: string
+      primary_tag:
+        description: Primary tag to apply to the chart (e.g., "main", "v1.2.3")
+        required: true
+        type: string
+      additional_tag:
+        description: Optional additional tag to apply (e.g., "abc123-main")
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  actions: write
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: Package and publish chart
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Package chart
+        run: |
+          mkdir -p dist/chart-packages
+          helm package dist/chart \
+            --version "${{ inputs.chart_version }}" \
+            --app-version "${{ inputs.app_version }}" \
+            --destination dist/chart-packages
+
+      - name: Log in to Helm registry
+        run: |
+          helm registry login ghcr.io \
+            --username "${{ github.actor }}" \
+            --password "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Push chart (OCI)
+        run: |
+          helm push dist/chart-packages/*.tgz \
+            oci://ghcr.io/${{ inputs.repo_owner }}/charts
+
+      - name: Setup ORAS
+        uses: oras-project/setup-oras@v1
+
+      - name: Log in to ORAS registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | oras login ghcr.io \
+            --username "${{ github.actor }}" \
+            --password-stdin
+
+      - name: Retag chart with primary tag
+        run: |
+          CHART_NAME=$(awk -F': ' '$1=="name"{print $2}' dist/chart/Chart.yaml | tr -d '"')
+          oras tag \
+            ghcr.io/${{ inputs.repo_owner }}/charts/${CHART_NAME}:${{ inputs.chart_version }} \
+            "${{ inputs.primary_tag }}"
+
+      - name: Tag chart with additional tag
+        if: inputs.additional_tag != ''
+        run: |
+          CHART_NAME=$(awk -F': ' '$1=="name"{print $2}' dist/chart/Chart.yaml | tr -d '"')
+          oras tag \
+            ghcr.io/${{ inputs.repo_owner }}/charts/${CHART_NAME}:${{ inputs.chart_version }} \
+            "${{ inputs.additional_tag }}"

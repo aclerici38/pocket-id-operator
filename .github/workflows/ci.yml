@@ -9,14 +9,12 @@ on:
       - "docs/**"
       - "LICENSE"
       - ".gitignore"
-      - "dist/chart/**"
   pull_request:
     paths-ignore:
       - "**.md"
       - "docs/**"
       - "LICENSE"
       - ".gitignore"
-      - "dist/chart/**"
   workflow_dispatch:
 
 permissions:
@@ -133,6 +131,16 @@ jobs:
       image: ${{ needs.meta.outputs.build_image }}
     secrets: inherit
 
+  test-chart:
+    name: Test Chart
+    needs:
+      - meta
+      - build
+    uses: ./.github/workflows/test-chart.yml
+    with:
+      image: ${{ needs.meta.outputs.build_image }}
+    secrets: inherit
+
   publish:
     name: Publish
     needs:
@@ -141,7 +149,8 @@ jobs:
       - test
       - lint
       - build
-    if: ${{ github.event_name == 'push' && needs.e2e.result == 'success' }}
+      - test-chart
+    if: ${{ github.event_name == 'push' }}
     uses: ./.github/workflows/publish.yml
     with:
       image: ${{ needs.meta.outputs.build_image }}

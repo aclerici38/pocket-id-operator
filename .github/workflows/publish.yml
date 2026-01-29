@@ -72,7 +72,7 @@ jobs:
 
   publish-chart:
     name: Publish Helm chart
-    uses: ./.github/workflows/chart.yml
+    uses: ./.github/workflows/publish-chart.yml
     with:
       chart_version: "0.0.0"
       app_version: "0.0.0"
