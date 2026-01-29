@@ -104,7 +104,7 @@ jobs:
     needs:
       - validate
       - tag
-    uses: ./.github/workflows/chart.yml
+    uses: ./.github/workflows/publish-chart.yml
     with:
       chart_version: ${{ needs.validate.outputs.helm_version }}
       app_version: ${{ needs.validate.outputs.version }}
