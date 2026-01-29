@@ -44,6 +44,8 @@ help: ## Display this help.
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	"$(CONTROLLER_GEN)" rbac:roleName=pocket-id-operator-manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	@mkdir -p dist/chart/crds
+	@cp config/crd/bases/*.yaml dist/chart/crds/
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
@@ -145,37 +147,6 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 	mkdir -p dist
 	cd config/manager && "$(KUSTOMIZE)" edit set image controller=${IMG}
 	"$(KUSTOMIZE)" build config/default > dist/install.yaml
-
-.PHONY: helm
-helm: ## Generate/update Helm chart under dist/chart (includes CRDs).
-	kubebuilder edit --plugins=helm.kubebuilder.io/v2-alpha
-	@echo "Moving CRDs to crds/ directory..."
-	@mkdir -p dist/chart/crds
-	@if [ -d "dist/chart/templates/crd" ]; then \
-		for crdfile in dist/chart/templates/crd/*.yaml; do \
-			[ -f "$$crdfile" ] || continue; \
-			grep -v '{{- if and \.Values\.crd \.Values\.crd\.enable }}' "$$crdfile" | \
-			grep -v '{{- if \.Values\.crd\.enable }}' | \
-			sed '$${/{{- end }}/d;}' > "dist/chart/crds/$$(basename "$$crdfile")"; \
-		done; \
-		rm -rf dist/chart/templates/crd; \
-	fi
-	@echo "Cleaning up temporary files..."
-	@rm -f dist/chart/crds/*.tmp dist/chart/crds/*.bak dist/chart/crds/*.bak2
-	@echo "Fixing nil-safety checks in Helm templates..."
-	@for file in $$(find dist/chart/templates -name "*.yaml" -type f); do \
-		sed -i.bak \
-			-e 's/{{- if \.Values\.rbacHelpers\.enable }}/{{- if and .Values.rbacHelpers .Values.rbacHelpers.enable }}/' \
-			-e 's/{{- if \.Values\.metrics\.enable }}/{{- if and .Values.metrics .Values.metrics.enable }}/' \
-			-e 's/{{- if \.Values\.prometheus\.enable }}/{{- if and .Values.prometheus .Values.prometheus.enable }}/' \
-			-e 's/{{- if \.Values\.certManager\.enable }}/{{- if and .Values.certManager .Values.certManager.enable }}/' \
-			"$$file" && rm -f "$$file.bak"; \
-	done
-	@echo "Fixing manager image tag to default to Chart.AppVersion..."
-	@if [ -f "dist/chart/templates/manager/manager.yaml" ]; then \
-		sed -i.bak 's/image: "{{ \.Values\.manager\.image\.repository }}:{{ \.Values\.manager\.image\.tag }}"/image: "{{ .Values.manager.image.repository }}:{{ .Values.manager.image.tag | default .Chart.AppVersion }}"/' \
-			dist/chart/templates/manager/manager.yaml && rm -f dist/chart/templates/manager/manager.yaml.bak; \
-	fi
 
 ##@ Deployment
 

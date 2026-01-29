@@ -54,14 +54,10 @@ permissions:
   packages: write
 
 env:
-  # renovate: datasource=github-releases depName=kubernetes-sigs/kubebuilder
-  KUBEBUILDER_VERSION: v4.11.1
   # renovate: datasource=github-releases depName=kubernetes-sigs/kind
   KIND_VERSION: v0.31.0
   # renovate: datasource=github-releases depName=kubernetes-sigs/controller-tools
   CONTROLLER_TOOLS_VERSION: v0.20.0
-  # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize
-  KUSTOMIZE_VERSION: v5.7.1
 
 jobs:
   build-and-publish:
@@ -81,30 +77,14 @@ jobs:
       - name: Setup Helm
         uses: azure/setup-helm@v4
 
-      - name: Cache kubebuilder
-        id: cache-kubebuilder
-        uses: actions/cache@v5
-        with:
-          path: /usr/local/bin/kubebuilder
-          key: kubebuilder-${{ runner.os }}-${{ runner.arch }}-${{ env.KUBEBUILDER_VERSION }}
-
-      - name: Install kubebuilder
-        if: steps.cache-kubebuilder.outputs.cache-hit != 'true'
-        run: |
-          OS=$(go env GOOS)
-          ARCH=$(go env GOARCH)
-          curl -L -o kubebuilder https://github.com/kubernetes-sigs/kubebuilder/releases/download/${{ env.KUBEBUILDER_VERSION }}/kubebuilder_${OS}_${ARCH}
-          chmod +x kubebuilder
-          sudo mv kubebuilder /usr/local/bin/kubebuilder
-
       - name: Cache tool binaries
         uses: actions/cache@v5
         with:
           path: bin
-          key: tools-${{ runner.os }}-kustomize-${{ env.KUSTOMIZE_VERSION }}-controller-gen-${{ env.CONTROLLER_TOOLS_VERSION }}
+          key: tools-${{ runner.os }}-controller-gen-${{ env.CONTROLLER_TOOLS_VERSION }}
 
-      - name: Generate Helm chart
-        run: make helm
+      - name: Generate CRDs
+        run: make manifests
 
       - name: Lint Helm chart
         run: helm lint dist/chart
