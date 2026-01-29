@@ -24,6 +24,10 @@ permissions:
   contents: read
   packages: write
 
+env:
+  # renovate: datasource=github-releases depName=kubernetes-sigs/controller-tools
+  CONTROLLER_TOOLS_VERSION: v0.20.0
+
 jobs:
   meta:
     name: Metadata
@@ -57,19 +61,62 @@ jobs:
           echo "build_image=${BUILD_IMAGE}" >> "$GITHUB_OUTPUT"
           echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
 
+  generate:
+    name: Generate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Cache tool binaries
+        uses: actions/cache@v5
+        with:
+          path: bin
+          key: tools-${{ runner.os }}-controller-gen-${{ env.CONTROLLER_TOOLS_VERSION }}
+
+      - name: Generate manifests and code
+        run: |
+          make manifests
+          make generate
+
+      - name: Run go fmt
+        run: make fmt
+
+      - name: Run go vet
+        run: make vet
+
+      - name: Check for uncommitted changes
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::Generated files are out of date. Please run 'make manifests generate fmt' and commit the changes."
+            git diff
+            exit 1
+          fi
+
   test:
     name: Tests
+    needs: generate
     uses: ./.github/workflows/test.yml
     secrets: inherit
 
   lint:
     name: Lint
+    needs: generate
     uses: ./.github/workflows/lint.yml
     secrets: inherit
 
   build:
     name: Build Image
-    needs: meta
+    needs:
+      - meta
+      - generate
     uses: ./.github/workflows/build-push-image.yml
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     with:
