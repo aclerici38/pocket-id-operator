@@ -25,6 +25,8 @@ permissions:
 env:
   # renovate: datasource=github-releases depName=kubernetes-sigs/controller-tools
   CONTROLLER_TOOLS_VERSION: v0.20.0
+  # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize
+  KUSTOMIZE_VERSION: v5.7.1
 
 jobs:
   meta:
@@ -77,12 +79,13 @@ jobs:
         uses: actions/cache@v5
         with:
           path: bin
-          key: tools-${{ runner.os }}-controller-gen-${{ env.CONTROLLER_TOOLS_VERSION }}
+          key: tools-${{ runner.os }}-controller-gen-${{ env.CONTROLLER_TOOLS_VERSION }}-kustomize-${{ env.KUSTOMIZE_VERSION }}
 
       - name: Generate manifests and code
         run: |
           make manifests
           make generate
+          make build-installer
 
       - name: Run go fmt
         run: make fmt
@@ -93,7 +96,7 @@ jobs:
       - name: Check for uncommitted changes
         run: |
           if [ -n "$(git status --porcelain)" ]; then
-            echo "::error::Generated files are out of date. Please run 'make manifests generate fmt' and commit the changes."
+            echo "::error::Generated files are out of date. Please run 'make manifests generate fmt build-installer' and commit the changes."
             git diff
             exit 1
           fi
