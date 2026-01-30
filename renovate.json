@@ -1,23 +1,16 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended"
-  ],
+  "extends": ["config:recommended"],
   "dependencyDashboard": true,
   "prConcurrentLimit": 0,
   "prHourlyLimit": 0,
   "automerge": true,
   "platformAutomerge": true,
-  "postUpdateOptions": [
-    "gomodTidy",
-    "gomodUpdateImportPaths"
-  ],
+  "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
   "customManagers": [
     {
       "customType": "regex",
-      "managerFilePatterns": [
-        "/^Makefile$/"
-      ],
+      "managerFilePatterns": ["/^Makefile$/"],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)( versioning=(?<versioning>.*?))?\\n.*?_VERSION \\?= (?<currentValue>.*)"
       ],
@@ -35,6 +28,15 @@
         "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)( versioning=(?<versioning>.*?))?\\n.*?[\"']?(?<currentValue>v?\\d+\\.\\d+\\.\\d+[^\"'\\s]*)[\"']?"
       ],
       "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/\\.go$/", "/\\.ya?ml$/"],
+      "matchStrings": [
+        "ghcr\\.io/pocket-id/pocket-id:(?<currentValue>[^\"\\s]+)"
+      ],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "ghcr.io/pocket-id/pocket-id"
     }
   ]
 }

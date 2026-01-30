@@ -43,7 +43,6 @@ func (o InstanceOptions) withDefaults() InstanceOptions {
 		o.Namespace = instanceNS
 	}
 	if o.Image == "" {
-		// renovate: datasource=docker depName=ghcr.io/pocket-id/pocket-id
 		o.Image = "ghcr.io/pocket-id/pocket-id:v2.2.0-distroless@sha256:ad2d21a7b31d6b4f1d999caec794a5b5edeb97fc40801947158d62befd4203e3"
 	}
 	return o
