@@ -7,6 +7,15 @@
   "automerge": true,
   "platformAutomerge": true,
   "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
+  "packageRules": [
+    {
+      "matchPackageNames": [
+        "ghcr.io/aclerici38/pocket-id-operator",
+        "ghcr.io/aclerici38/charts/pocket-id-operator"
+      ],
+      "groupName": "pocket-id-operator"
+    }
+  ],
   "customManagers": [
     {
       "customType": "regex",
@@ -31,12 +40,16 @@
     },
     {
       "customType": "regex",
-      "managerFilePatterns": ["/\\.go$/", "/\\.ya?ml$/"],
-      "matchStrings": [
-        "ghcr\\.io/pocket-id/pocket-id:(?<currentValue>[^\"\\s]+)"
+      "managerFilePatterns": [
+        "/\\.go$/",
+        "/\\.ya?ml$/",
+        "/^Makefile$/",
+        "/\\.md$/"
       ],
-      "datasourceTemplate": "docker",
-      "depNameTemplate": "ghcr.io/pocket-id/pocket-id"
+      "matchStrings": [
+        "(?<depName>ghcr\\.io/(?:pocket-id/pocket-id|aclerici38/(?:charts/)?pocket-id-operator)):(?<currentValue>[^\"\\s`]+)"
+      ],
+      "datasourceTemplate": "docker"
     }
   ]
 }
