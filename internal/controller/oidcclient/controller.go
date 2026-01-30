@@ -180,14 +180,35 @@ func (r *Reconciler) FindExistingOIDCClient(ctx context.Context, apiClient Pocke
 }
 
 func (r *Reconciler) reconcileOIDCClient(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client) (*pocketid.OIDCClient, error) {
+	log := logf.FromContext(ctx)
 	input := r.OidcClientInput(oidcClient)
 
+	// For logging purposes only - use status ID, then spec ID, then indicate auto-generated
 	resourceID := oidcClient.Status.ClientID
 	if resourceID == "" && oidcClient.Spec.ClientID != "" {
 		resourceID = oidcClient.Spec.ClientID
 	}
 	if resourceID == "" {
 		resourceID = "(auto-generated)"
+	}
+
+	// When spec.clientID is not set and status.clientID is empty, search by name first
+	if oidcClient.Status.ClientID == "" && oidcClient.Spec.ClientID == "" {
+		log.Info("No clientID specified, searching for existing OIDC client by name", "name", oidcClient.Name)
+		existing, err := r.FindExistingOIDCClient(ctx, apiClient, "", oidcClient.Name)
+		if err != nil {
+			return nil, fmt.Errorf("search for existing OIDC client by name: %w", err)
+		}
+		if existing != nil {
+			log.Info("Found existing OIDC client by name, adopting", "name", oidcClient.Name, "clientID", existing.ID)
+			// Update the existing client to sync any spec changes
+			updated, err := apiClient.UpdateOIDCClient(ctx, existing.ID, input)
+			if err != nil {
+				return nil, fmt.Errorf("update adopted OIDC client: %w", err)
+			}
+			return r.reconcileAllowedUserGroups(ctx, oidcClient, apiClient, updated)
+		}
+		log.Info("No existing OIDC client found by name, creating new", "name", oidcClient.Name)
 	}
 
 	result, err := common.CreateOrAdopt(ctx, oidcClient.Status.ClientID, common.CreateOrAdoptConfig[*pocketid.OIDCClient]{
@@ -216,6 +237,14 @@ func (r *Reconciler) reconcileOIDCClient(ctx context.Context, oidcClient *pocket
 	current := result.Resource
 	if current == nil {
 		return nil, nil // Requeue will recreate
+	}
+
+	return r.reconcileAllowedUserGroups(ctx, oidcClient, apiClient, current)
+}
+
+func (r *Reconciler) reconcileAllowedUserGroups(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client, current *pocketid.OIDCClient) (*pocketid.OIDCClient, error) {
+	if current == nil {
+		return nil, nil
 	}
 
 	if oidcClient.Spec.AllowedUserGroups != nil {
