@@ -3,6 +3,6 @@ resources:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 images:
-- name: controller
-  newName: controller
-  newTag: latest
+- name: ghcr.io/aclerici38/pocket-id-operator
+  newName: ghcr.io/aclerici38/pocket-id-operator
+  newTag: v0.1.1
