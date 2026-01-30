@@ -1,0 +1,75 @@
+name: Renovate Config Diff
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  # renovate: datasource=node-version depName=node
+  NODE_VERSION: "22.13.1"
+
+jobs:
+  diff:
+    name: Compare detected dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Renovate CLI
+        run: npm install -g renovate
+
+      - name: Run Renovate dry-run on PR branch
+        env:
+          LOG_LEVEL: debug
+          RENOVATE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          renovate --platform=local --dry-run=lookup 2>&1 | tee /tmp/renovate-pr.log
+          grep -i "detected" /tmp/renovate-pr.log | sort -u > /tmp/deps-pr.txt || true
+
+      - name: Checkout base branch
+        run: git checkout origin/${{ github.base_ref }}
+
+      - name: Run Renovate dry-run on base branch
+        env:
+          LOG_LEVEL: debug
+          RENOVATE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          renovate --platform=local --dry-run=lookup 2>&1 | tee /tmp/renovate-main.log
+          grep -i "detected" /tmp/renovate-main.log | sort -u > /tmp/deps-main.txt || true
+
+      - name: Check for differences
+        id: check-diff
+        run: |
+          if diff -q /tmp/deps-main.txt /tmp/deps-pr.txt > /dev/null 2>&1; then
+            echo "has_diff=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_diff=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate diff comment
+        if: steps.check-diff.outputs.has_diff == 'true'
+        run: |
+          {
+            echo "## Renovate Dependency Detection Diff"
+            echo ""
+            echo "\`\`\`diff"
+            diff -u /tmp/deps-main.txt /tmp/deps-pr.txt || true
+            echo "\`\`\`"
+          } > /tmp/comment.md
+
+      - name: Post comment
+        if: steps.check-diff.outputs.has_diff == 'true'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          path: /tmp/comment.md
