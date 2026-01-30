@@ -62,26 +62,6 @@ jobs:
       - name: Create kind cluster
         run: kind create cluster
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Pull operator image
-        run: docker pull ${{ inputs.image }}
-
-      - name: Pull Pocket-ID application image
-        # renovate: datasource=docker depName=ghcr.io/pocket-id/pocket-id
-        run: docker pull ghcr.io/pocket-id/pocket-id:v2.2.0-distroless@sha256:ad2d21a7b31d6b4f1d999caec794a5b5edeb97fc40801947158d62befd4203e3
-
-      - name: Load images into kind
-        # renovate: datasource=docker depName=ghcr.io/pocket-id/pocket-id
-        run: |
-          kind load docker-image ghcr.io/pocket-id/pocket-id:v2.2.0-distroless@sha256:ad2d21a7b31d6b4f1d999caec794a5b5edeb97fc40801947158d62befd4203e3
-          kind load docker-image ${{ inputs.image }}
-
       - name: Extract image parts
         id: image
         run: |
