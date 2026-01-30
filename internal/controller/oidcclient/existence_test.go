@@ -29,8 +29,12 @@ func (m *mockPocketIDOIDCClientClient) CreateOIDCClient(ctx context.Context, inp
 	if m.createOIDCClientFunc != nil {
 		return m.createOIDCClientFunc(ctx, input)
 	}
+	id := "auto-generated-id"
+	if input.ID != nil {
+		id = *input.ID
+	}
 	return &pocketid.OIDCClient{
-		ID:   input.ID,
+		ID:   id,
 		Name: input.Name,
 	}, nil
 }

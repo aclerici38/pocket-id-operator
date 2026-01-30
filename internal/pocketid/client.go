@@ -89,7 +89,7 @@ type OIDCClientCredentials struct {
 
 // OIDCClientInput contains fields for creating or updating an OIDC client.
 type OIDCClientInput struct {
-	ID                       string
+	ID                       *string // nil means let Pocket-ID autogenerate
 	Name                     string
 	CallbackURLs             []string
 	LogoutCallbackURLs       []string
@@ -326,24 +326,30 @@ func (c *Client) ListOIDCClients(ctx context.Context, search string) ([]*OIDCCli
 }
 
 func (c *Client) CreateOIDCClient(ctx context.Context, input OIDCClientInput) (*OIDCClient, error) {
+	dto := &models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientCreateDto{
+		Name:                     &input.Name,
+		CallbackURLs:             input.CallbackURLs,
+		LogoutCallbackURLs:       input.LogoutCallbackURLs,
+		LaunchURL:                input.LaunchURL,
+		LogoURL:                  input.LogoURL,
+		DarkLogoURL:              input.DarkLogoURL,
+		HasLogo:                  input.HasLogo,
+		HasDarkLogo:              input.HasDarkLogo,
+		IsPublic:                 input.IsPublic,
+		IsGroupRestricted:        input.IsGroupRestricted,
+		PkceEnabled:              input.PKCEEnabled,
+		RequiresReauthentication: input.RequiresReauthentication,
+		Credentials:              oidcCredentialsToDTO(input.Credentials),
+	}
+
+	// Only set ID if explicitly provided; otherwise let Pocket-ID autogenerate
+	if input.ID != nil {
+		dto.ID = *input.ID
+	}
+
 	params := oidc.NewPostAPIOidcClientsParams().
 		WithContext(ctx).
-		WithClient(&models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientCreateDto{
-			ID:                       input.ID,
-			Name:                     &input.Name,
-			CallbackURLs:             input.CallbackURLs,
-			LogoutCallbackURLs:       input.LogoutCallbackURLs,
-			LaunchURL:                input.LaunchURL,
-			LogoURL:                  input.LogoURL,
-			DarkLogoURL:              input.DarkLogoURL,
-			HasLogo:                  input.HasLogo,
-			HasDarkLogo:              input.HasDarkLogo,
-			IsPublic:                 input.IsPublic,
-			IsGroupRestricted:        input.IsGroupRestricted,
-			PkceEnabled:              input.PKCEEnabled,
-			RequiresReauthentication: input.RequiresReauthentication,
-			Credentials:              oidcCredentialsToDTO(input.Credentials),
-		})
+		WithClient(dto)
 
 	resp, err := c.raw.OIDc.PostAPIOidcClients(params)
 	if err != nil {

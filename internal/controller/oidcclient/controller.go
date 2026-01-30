@@ -182,17 +182,17 @@ func (r *Reconciler) FindExistingOIDCClient(ctx context.Context, apiClient Pocke
 func (r *Reconciler) reconcileOIDCClient(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client) (*pocketid.OIDCClient, error) {
 	input := r.OidcClientInput(oidcClient)
 
-	clientID := oidcClient.Status.ClientID
-	if clientID == "" {
-		clientID = oidcClient.Spec.ClientID
+	resourceID := oidcClient.Status.ClientID
+	if resourceID == "" && oidcClient.Spec.ClientID != "" {
+		resourceID = oidcClient.Spec.ClientID
 	}
-	if clientID == "" {
-		clientID = oidcClient.Name
+	if resourceID == "" {
+		resourceID = "(auto-generated)"
 	}
 
 	result, err := common.CreateOrAdopt(ctx, oidcClient.Status.ClientID, common.CreateOrAdoptConfig[*pocketid.OIDCClient]{
 		ResourceKind: "OIDC client",
-		ResourceID:   clientID,
+		ResourceID:   resourceID,
 		Create: func() (*pocketid.OIDCClient, error) {
 			return apiClient.CreateOIDCClient(ctx, input)
 		},
@@ -235,10 +235,10 @@ func (r *Reconciler) reconcileOIDCClient(ctx context.Context, oidcClient *pocket
 func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) pocketid.OIDCClientInput {
 	name := oidcClient.Name
 
-	// Determine the client ID: prefer spec.clientID, fallback to resource name
-	clientID := oidcClient.Spec.ClientID
-	if clientID == "" {
-		clientID = oidcClient.Name
+	// Only set client ID if in spec
+	var clientID *string
+	if oidcClient.Spec.ClientID != "" {
+		clientID = &oidcClient.Spec.ClientID
 	}
 
 	var credentials *pocketid.OIDCClientCredentials
