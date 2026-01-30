@@ -113,7 +113,7 @@ var _ = Describe("Resource Adoption", Ordered, func() {
 			By("creating an OIDC client directly in Pocket-ID with a random ID but name matching the CR name")
 			// The client ID in Pocket-ID will be different from the CR name,
 			// but the name field will match. The operator should find it by name.
-			createOIDCClientInPocketIDWithName("create-adopt-oidc-byname-pod", userNS, clientName, []string{"https://adopt-byname.example.com/callback"})
+			externalClientID := createOIDCClientInPocketIDWithName("create-adopt-oidc-byname-pod", userNS, clientName, []string{"https://adopt-byname.example.com/callback"})
 
 			By("creating a PocketIDOIDCClient CR without explicit clientID")
 			createOIDCClient(OIDCClientOptions{
@@ -125,10 +125,9 @@ var _ = Describe("Resource Adoption", Ordered, func() {
 			By("waiting for the client to be ready")
 			waitForReady("pocketidoidcclient", clientName, userNS)
 
-			By("verifying the operator adopted the existing client (status.clientID should be set)")
+			By("verifying the operator adopted the existing client (same client ID)")
 			adoptedClientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
-			// The adopted client ID won't match the CR name since Pocket-ID assigned a different ID
-			Expect(adoptedClientID).NotTo(BeEmpty(), "operator should adopt the existing client found by name")
+			Expect(adoptedClientID).To(Equal(externalClientID), "operator should adopt the existing client, not create a new one")
 		})
 
 		AfterAll(func() {
@@ -248,8 +247,8 @@ echo "OIDC client created successfully"`,
 
 // createOIDCClientInPocketIDWithName creates an OIDC client directly in Pocket-ID via the API
 // without specifying a client ID (letting Pocket-ID generate one), but with a specific name.
-// This is used to test adoption by name matching.
-func createOIDCClientInPocketIDWithName(podName, namespace, name string, callbackURLs []string) {
+// Returns the generated client ID.
+func createOIDCClientInPocketIDWithName(podName, namespace, name string, callbackURLs []string) string {
 	staticSecretName := instanceName + "-static-api-key"
 
 	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
@@ -279,9 +278,16 @@ if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
   echo "Failed to create OIDC client with HTTP $HTTP_CODE: $BODY" >&2
   exit 1
 fi
-echo "OIDC client created successfully"`,
+# Extract client ID using sed
+echo "$BODY" | sed 's/.*"id":"\([^"]*\)".*/\1/'`,
 		apiKeyBase64, name, callbackURLsJSON, formatInstanceURL())
 
 	applyYAML(createCurlPodYAML(podName, namespace, script))
 	waitForPodSucceeded(podName, namespace)
+
+	// Get the client ID from pod logs
+	clientID := getPodLogs(podName, namespace)
+	Expect(clientID).NotTo(BeEmpty(), "should get client ID from API response")
+
+	return clientID
 }
