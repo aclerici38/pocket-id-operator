@@ -26,7 +26,7 @@ Start here for detailed configuration guides:
 
 ## Quickstart
 It's recommended to install this operator via the helm chart.
-`helm install pocket-id-operator oci://ghcr.io/aclerici38/charts/pocket-id-operator:v0.1.0 --set instance.spec.encryptionKey.value="secure16+characterKey"`
+`helm install pocket-id-operator oci://ghcr.io/aclerici38/charts/pocket-id-operator:v0.1.1 --set instance.spec.encryptionKey.value="secure16+characterKey"`
 
 There will also be a generated manifest to install without helm attached to each release.
 
