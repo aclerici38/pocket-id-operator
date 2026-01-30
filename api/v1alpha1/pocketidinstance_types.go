@@ -76,9 +76,9 @@ type PocketIDInstanceSpec struct {
 	// +kubebuilder:default=Deployment
 	DeploymentType string `json:"deploymentType,omitempty"`
 
-	// Container image to run. It is highly recommended to specify a tag
-	// Defaults to ghcr.io/pocket-id/pocket-id:latest
-	// +kubebuilder:default="ghcr.io/pocket-id/pocket-id:latest"
+	// Container image to run. Defaults to the latest distroless version at time of operator release
+	// renovate: datasource=docker depName=ghcr.io/pocket-id/pocket-id
+	// +kubebuilder:default="ghcr.io/pocket-id/pocket-id:v2.2.0-distroless@sha256:ad2d21a7b31d6b4f1d999caec794a5b5edeb97fc40801947158d62befd4203e3"
 	Image string `json:"image,omitempty"`
 
 	// Encryption Key

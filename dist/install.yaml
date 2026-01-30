@@ -11,7 +11,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.19.0
+    controller-gen.kubebuilder.io/version: v0.20.0
   name: pocketidinstances.pocketid.internal
 spec:
   group: pocketid.internal
@@ -21,7 +21,6 @@ spec:
     plural: pocketidinstances
     shortNames:
     - pidinstance
-    - pinstance
     singular: pocketidinstance
   scope: Namespaced
   versions:
@@ -255,7 +254,7 @@ spec:
                   URL to access database at
                   See the official documentation for DB_CONNECTION_STRING
                   For sqlite only add the filepath e.g. "/app/data/pocket-id.db"
-                  Uses application default if empty
+                  Uses application default (/app/data/pocket-id.db) if empty
                 properties:
                   value:
                     description: Plain text value 16 byte minimum
@@ -404,7 +403,7 @@ spec:
                 description: |-
                   Encryption Key
                   Required since Pocket-ID v2
-                  See the official documentation for ENCRYPTION_KEY
+                  See the official documentation for ENCRYPTION_KEY environment variable
                 properties:
                   value:
                     description: Plain text value 16 byte minimum
@@ -706,10 +705,10 @@ spec:
                   Defaults to true
                 type: boolean
               image:
-                default: ghcr.io/pocket-id/pocket-id:latest
+                default: ghcr.io/pocket-id/pocket-id:v2.2.0
                 description: |-
-                  Container image to run. It is highly recommended to specify a tag
-                  Defaults to ghcr.io/pocket-id/pocket-id:latest
+                  Container image to run.
+                  renovate: datasource=docker depName=ghcr.io/pocket-id/pocket-id
                 type: string
               labels:
                 additionalProperties:
@@ -870,7 +869,7 @@ spec:
               persistence:
                 description: |-
                   Configures persistence for Pocket-ID
-                  Pocket-ID can be run statelessly if using Postgres as a file and db backend
+                  Note: Pocket-ID can be run statelessly if using Postgres as a file and db backend
                   If not enabled mounts an emptydir instead
                 properties:
                   accessModes:
@@ -1430,7 +1429,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.19.0
+    controller-gen.kubebuilder.io/version: v0.20.0
   name: pocketidoidcclients.pocketid.internal
 spec:
   group: pocketid.internal
@@ -1440,7 +1439,6 @@ spec:
     plural: pocketidoidcclients
     shortNames:
     - oidcclient
-    - oidc
     singular: pocketidoidcclient
   scope: Namespaced
   versions:
@@ -1487,13 +1485,16 @@ spec:
                   type: object
                 type: array
               callbackUrls:
-                description: Callback URLs for the client
+                description: |-
+                  Callback URLs for the client
+                  Note: a feature of pocket-id is to autosave the callback URL based on the url params passed by the client.
                 items:
                   type: string
                 type: array
-              clientId:
-                description: ClientID is the optional OIDC client ID to use instead
-                  of a generated one
+              clientID:
+                description: |-
+                  ClientID is the optional OIDC client ID to use instead of a generated one
+                  The Client ID is immutable and cannot be changed once the oidc client is created
                 maxLength: 128
                 minLength: 2
                 type: string
@@ -1599,7 +1600,7 @@ spec:
                     default: true
                     description: |-
                       Enabled controls whether to create a secret with OIDC client credentials.
-                      If false, no secret will be created.
+                      If false, no secret will be created. Defaults to true
                     type: boolean
                   keys:
                     description: Keys allows customization of the secret keys for
@@ -1607,58 +1608,69 @@ spec:
                     properties:
                       authorizationUrl:
                         default: authorization_url
-                        description: AuthorizationURL is the key name for the OIDC
-                          authorization endpoint URL.
+                        description: |-
+                          AuthorizationURL is the key name for the OIDC authorization endpoint URL.
+                          Defaults to authorization_url
                         type: string
                       callbackUrls:
                         default: callback_urls
-                        description: CallbackURLs is the key name for the callback
-                          URLs.
+                        description: |-
+                          CallbackURLs is the key name for the callback URLs.
+                          Defaults to callback_urls
                         type: string
-                      clientId:
+                      clientID:
                         default: client_id
-                        description: ClientID is the key name for the OIDC client
-                          ID.
+                        description: |-
+                          ClientID is the key name for the OIDC client ID.
+                          Defaults to client_id
                         type: string
                       clientSecret:
                         default: client_secret
-                        description: ClientSecret is the key name for the OIDC client
-                          secret.
+                        description: |-
+                          ClientSecret is the key name for the OIDC client secret.
+                          Defaults to client_secret
                         type: string
                       discoveryUrl:
                         default: discovery_url
-                        description: DiscoveryURL is the key name for the OIDC discovery
-                          URL.
+                        description: |-
+                          DiscoveryURL is the key name for the OIDC discovery URL.
+                          Defaults to discovery_url
                         type: string
                       endSessionUrl:
                         default: end_session_url
-                        description: EndSessionURL is the key name for the OIDC end
-                          session (logout) endpoint URL.
+                        description: |-
+                          EndSessionURL is the key name for the OIDC end session (logout) endpoint URL.
+                          Defaults to end_session_url
                         type: string
                       issuerUrl:
                         default: issuer_url
-                        description: IssuerURL is the key name for the OIDC issuer
-                          URL.
+                        description: |-
+                          IssuerURL is the key name for the OIDC issuer URL.
+                          Defaults to issuer_url
                         type: string
                       jwksUrl:
                         default: jwks_url
-                        description: JwksURL is the key name for the OIDC JWKS (JSON
-                          Web Key Set) endpoint URL.
+                        description: |-
+                          JwksURL is the key name for the OIDC JWKS (JSON Web Key Set) endpoint URL.
+                          Defaults to jwks_url
                         type: string
                       logoutCallbackUrls:
                         default: logout_callback_urls
-                        description: LogoutCallbackURLs is the key name for the logout
-                          callback URLs.
+                        description: |-
+                          LogoutCallbackURLs is the key name for the logout callback URLs.
+                          Defaults to logout_callback_urls
                         type: string
                       tokenUrl:
                         default: token_url
-                        description: TokenURL is the key name for the OIDC token endpoint
-                          URL.
+                        description: |-
+                          TokenURL is the key name for the OIDC token endpoint URL.
+                          Defaults to token_url
                         type: string
                       userinfoUrl:
                         default: userinfo_url
-                        description: UserinfoURL is the key name for the OIDC userinfo
-                          endpoint URL.
+                        description: |-
+                          UserinfoURL is the key name for the OIDC userinfo endpoint URL.
+                          Defaults to userinfo_url
                         type: string
                     type: object
                   name:
@@ -1668,16 +1680,20 @@ spec:
                     type: string
                 type: object
             type: object
+            x-kubernetes-validations:
+            - message: clientID is immutable
+              rule: has(self.clientID) == has(oldSelf.clientID) && (!has(self.clientID)
+                || self.clientID == oldSelf.clientID)
           status:
             description: status defines the observed state of PocketIDOIDCClient
             properties:
-              allowedUserGroupIds:
+              allowedUserGroupIDs:
                 description: AllowedUserGroupIDs are the resolved group IDs assigned
                   to the client
                 items:
                   type: string
                 type: array
-              clientId:
+              clientID:
                 description: ClientID is the ID assigned by Pocket-ID
                 type: string
               conditions:
@@ -1748,8 +1764,6 @@ spec:
                 description: Name is the resolved name from Pocket-ID
                 type: string
             type: object
-        required:
-        - spec
         type: object
     served: true
     storage: true
@@ -1760,7 +1774,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.19.0
+    controller-gen.kubebuilder.io/version: v0.20.0
   name: pocketidusergroups.pocketid.internal
 spec:
   group: pocketid.internal
@@ -1769,8 +1783,7 @@ spec:
     listKind: PocketIDUserGroupList
     plural: pocketidusergroups
     shortNames:
-    - pidusergroup
-    - pgroup
+    - usergroup
     singular: pocketidusergroup
   scope: Namespaced
   versions:
@@ -1875,22 +1888,40 @@ spec:
                 maxLength: 255
                 minLength: 2
                 type: string
-              userRefs:
-                description: UserRefs are PocketIDUser resources to add to this group
-                items:
-                  description: NamespacedUserReference references a PocketIDUser by
-                    name and namespace.
-                  properties:
-                    name:
-                      description: Name is the name of the PocketIDUser CR
+              users:
+                description: Users defines the users to add to this group
+                properties:
+                  userIDs:
+                    description: UserIDs are Pocket-ID user IDs to add directly to
+                      this group.
+                    items:
                       type: string
-                    namespace:
-                      description: |-
-                        Namespace is the namespace of the PocketIDUser CR
-                        Defaults to the referencing resource's namespace
+                    type: array
+                  userRefs:
+                    description: UserRefs are PocketIDUser custom resources to add
+                      to this group
+                    items:
+                      description: NamespacedUserReference references a PocketIDUser
+                        by name and namespace.
+                      properties:
+                        name:
+                          description: Name is the name of the PocketIDUser CR
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace is the namespace of the PocketIDUser CR
+                            Defaults to the referencing resource's namespace
+                          type: string
+                      type: object
+                    type: array
+                  usernames:
+                    description: |-
+                      Usernames are Pocket-ID usernames to add to this group.
+                      The controller will look up the user ID from Pocket-ID by username.
+                    items:
                       type: string
-                  type: object
-                type: array
+                    type: array
+                type: object
             type: object
           status:
             description: status defines the observed state of PocketIDUserGroup
@@ -1979,10 +2010,10 @@ spec:
               friendlyName:
                 description: FriendlyName is the resolved display name from Pocket-ID
                 type: string
-              groupId:
+              groupID:
                 description: GroupID is the ID assigned by Pocket-ID
                 type: string
-              ldapId:
+              ldapID:
                 description: LdapID is the LDAP identifier if the group is managed
                   via LDAP
                 type: string
@@ -1992,9 +2023,12 @@ spec:
               userCount:
                 description: UserCount is the number of users in the group
                 type: integer
+              userIDs:
+                description: UserIDs are the Pocket-ID user IDs of users in this group
+                items:
+                  type: string
+                type: array
             type: object
-        required:
-        - spec
         type: object
     served: true
     storage: true
@@ -2005,7 +2039,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.19.0
+    controller-gen.kubebuilder.io/version: v0.20.0
   name: pocketidusers.pocketid.internal
 spec:
   group: pocketid.internal
@@ -2015,7 +2049,6 @@ spec:
     plural: pocketidusers
     shortNames:
     - piduser
-    - puser
     singular: pocketiduser
   scope: Namespaced
   versions:
@@ -2104,7 +2137,7 @@ spec:
               displayName:
                 description: |-
                   DisplayName of the user
-                  Defaults to "FirstName LastName"
+                  Defaults to "spec.FirstName spec.LastName"
                 properties:
                   value:
                     description: Plain text value
@@ -2138,6 +2171,7 @@ spec:
                 description: |-
                   Email of the user
                   Can be a plain value or reference a secret
+                  Required unless email is disabled in pocket-id
                 properties:
                   value:
                     description: Plain text value
@@ -2171,7 +2205,7 @@ spec:
                 description: |-
                   First name of the user
                   Can be a plain value or reference a secret
-                  Defaults to name of the Resource
+                  Defaults to metadata.name of the Resource
                 properties:
                   value:
                     description: Plain text value

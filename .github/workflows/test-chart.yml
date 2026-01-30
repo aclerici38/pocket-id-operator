@@ -73,12 +73,14 @@ jobs:
         run: docker pull ${{ inputs.image }}
 
       - name: Pull Pocket-ID application image
-        run: docker pull ghcr.io/pocket-id/pocket-id:latest
+        # renovate: datasource=docker depName=ghcr.io/pocket-id/pocket-id
+        run: docker pull ghcr.io/pocket-id/pocket-id:v2.2.0-distroless@sha256:ad2d21a7b31d6b4f1d999caec794a5b5edeb97fc40801947158d62befd4203e3
 
       - name: Load images into kind
+        # renovate: datasource=docker depName=ghcr.io/pocket-id/pocket-id
         run: |
+          kind load docker-image ghcr.io/pocket-id/pocket-id:v2.2.0-distroless@sha256:ad2d21a7b31d6b4f1d999caec794a5b5edeb97fc40801947158d62befd4203e3
           kind load docker-image ${{ inputs.image }}
-          kind load docker-image ghcr.io/pocket-id/pocket-id:latest
 
       - name: Extract image parts
         id: image
