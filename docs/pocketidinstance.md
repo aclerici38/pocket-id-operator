@@ -38,7 +38,7 @@ metadata:
   name: pocket-id
   namespace: pocket-id
 spec:
-  image: ghcr.io/pocket-id/pocket-id:v2.6.0
+  image: ghcr.io/pocket-id/pocket-id:v2.2.0-distroless@sha256:ad2d21a7b31d6b4f1d999caec794a5b5edeb97fc40801947158d62befd4203e3
   encryptionKey:
     valueFrom:
       secretKeyRef:
