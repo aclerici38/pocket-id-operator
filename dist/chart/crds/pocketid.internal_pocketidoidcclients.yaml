@@ -338,8 +338,6 @@ spec:
                 description: Name is the resolved name from Pocket-ID
                 type: string
             type: object
-        required:
-        - spec
         type: object
     served: true
     storage: true

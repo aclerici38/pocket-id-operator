@@ -249,8 +249,8 @@ type PocketIDOIDCClient struct {
 	metav1.ObjectMeta `json:"metadata,omitzero"`
 
 	// spec defines the desired state of PocketIDOIDCClient
-	// +required
-	Spec PocketIDOIDCClientSpec `json:"spec"`
+	// +optional
+	Spec PocketIDOIDCClientSpec `json:"spec,omitempty"`
 
 	// status defines the observed state of PocketIDOIDCClient
 	// +optional

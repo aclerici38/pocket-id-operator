@@ -150,8 +150,8 @@ type PocketIDUserGroup struct {
 	metav1.ObjectMeta `json:"metadata,omitzero"`
 
 	// spec defines the desired state of PocketIDUserGroup
-	// +required
-	Spec PocketIDUserGroupSpec `json:"spec"`
+	// +optional
+	Spec PocketIDUserGroupSpec `json:"spec,omitempty"`
 
 	// status defines the observed state of PocketIDUserGroup
 	// +optional
