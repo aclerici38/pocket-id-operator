@@ -64,13 +64,23 @@ jobs:
           chmod +x ./kind
           sudo mv ./kind /usr/local/bin/kind
 
-      - name: Log in to GitHub Container Registry
+      - name: Extract image tag
         if: inputs.image != ''
-        uses: docker/login-action@v3
+        id: tag
+        run: |
+          IMAGE_TAG="${{ inputs.image }}"
+          echo "name=${IMAGE_TAG##*:}" >> "$GITHUB_OUTPUT"
+
+      - name: Download image artifact
+        if: inputs.image != ''
+        uses: actions/download-artifact@v4
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          name: operator-image-${{ steps.tag.outputs.name }}
+          path: /tmp
+
+      - name: Load image
+        if: inputs.image != ''
+        run: docker load -i /tmp/operator-image-${{ steps.tag.outputs.name }}.tar
 
       - name: Run e2e tests
         run: |
