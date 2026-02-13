@@ -74,7 +74,7 @@ jobs:
 
       - name: Pull cached image
         if: inputs.image != ''
-        run: docker pull ${{ inputs.image }}
+        run: docker pull --platform linux/amd64 ${{ inputs.image }}
 
       - name: Run e2e tests
         run: |
