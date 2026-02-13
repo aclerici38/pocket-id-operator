@@ -56,45 +56,44 @@ var _ = Describe("Callback URL Preservation", Ordered, func() {
 		})
 	})
 
-	Context("TOFU callback URLs are preserved when spec is empty", func() {
+	Context("Server-side callback URLs are preserved when spec omits them", func() {
 		const clientName = "test-tofu-preserve"
 
-		It("should not overwrite server-side callback URLs when spec.callbackUrls is empty", func() {
-			By("creating an OIDC client without callback URLs")
-			createOIDCClient(OIDCClientOptions{
+		It("should not overwrite server-side callback URLs when spec.callbackUrls is removed", func() {
+			By("creating an OIDC client with a callback URL")
+			createOIDCClientAndWaitReady(OIDCClientOptions{
 				Name:         clientName,
-				CallbackURLs: []string{"placeholder"}, // withDefaults adds a default, so we use a placeholder
+				CallbackURLs: []string{"https://initial.example.com/callback"},
 			})
 
-			waitForReady("pocketidoidcclient", clientName, userNS)
 			clientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
 
-			By("adding a callback URL directly to pocket-id via API (simulating TOFU)")
+			By("adding a TOFU callback URL directly to pocket-id via API")
 			setOIDCClientCallbackURLsInPocketID("tofu-set-pod", userNS, clientID,
 				[]string{"https://tofu-detected.example.com/callback"})
 
-			By("verifying the callback URL is set in pocket-id")
+			By("verifying the TOFU callback URL is set in pocket-id")
 			callbackURLs := getOIDCClientCallbackURLsFromPocketID("tofu-verify-pod", userNS, clientID)
 			Expect(callbackURLs).To(ContainSubstring("https://tofu-detected.example.com/callback"))
 
-			By("updating the CR spec without callback URLs to trigger a reconcile")
-			// Re-apply without callback URLs — the spec-level callbackUrls is empty.
-			// The operator should preserve the TOFU-detected URL.
+			By("re-applying the CR without callbackUrls to trigger a reconcile")
+			// The spec no longer has callbackUrls — the operator should preserve
+			// whatever pocket-id has server-side rather than overwriting with empty.
 			applyYAML(fmt.Sprintf(`apiVersion: pocketid.internal/v1alpha1
 kind: PocketIDOIDCClient
 metadata:
   name: %s
   namespace: %s
 spec:
-  isPublic: true`, clientName, userNS))
+  pkceEnabled: true`, clientName, userNS))
 
-			time.Sleep(5 * time.Second)
+			waitForReady("pocketidoidcclient", clientName, userNS)
 
 			By("verifying the TOFU callback URL is still present in pocket-id after reconcile")
 			Eventually(func(g Gomega) {
 				urls := getOIDCClientCallbackURLsFromPocketID("tofu-after-reconcile-pod", userNS, clientID)
 				g.Expect(urls).To(ContainSubstring("https://tofu-detected.example.com/callback"),
-					"TOFU-detected callback URL should be preserved across reconciles")
+					"server-side callback URL should be preserved across reconciles when spec omits callbackUrls")
 			}, time.Minute, 5*time.Second).Should(Succeed())
 		})
 
