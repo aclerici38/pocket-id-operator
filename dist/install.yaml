@@ -868,7 +868,7 @@ spec:
               metrics:
                 description: |-
                   Prometheus metrics configuration
-                  When enabled, the operator injects the required OTEL environment variables
+                  When enabled the operator injects the required OTEL environment variables
                   and exposes a metrics port on the Service
                 properties:
                   enabled:
