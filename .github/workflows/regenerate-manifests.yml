@@ -8,11 +8,6 @@ on:
       - "LICENSE"
       - ".gitignore"
   workflow_dispatch:
-    inputs:
-      branch:
-        description: "Branch to regenerate manifests on"
-        required: false
-        default: "main"
 
 permissions:
   contents: write
@@ -31,7 +26,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.head_ref || inputs.branch || github.ref }}
+          ref: ${{ github.head_ref || github.ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Go
