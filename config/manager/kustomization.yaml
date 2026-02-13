@@ -7,3 +7,4 @@ images:
   name: ghcr.io/aclerici38/pocket-id-operator
   newName: ghcr.io/aclerici38/pocket-id-operator
   newTag: v0.1.1
+  
