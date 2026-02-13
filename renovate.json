@@ -8,7 +8,7 @@
   "platformAutomerge": true,
   "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
   "gitIgnoredAuthors": [
-    "1155719\\+botthebuilder25\\[bot\\]@users\\.noreply\\.github\\.com"
+    "200541989\\+botthebuilder25\\[bot\\]@users\\.noreply\\.github\\.com"
   ],
   "packageRules": [
     {
