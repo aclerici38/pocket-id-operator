@@ -225,6 +225,14 @@ type PocketIDOIDCClientStatus struct {
 	// +optional
 	CreatedAt string `json:"createdAt,omitempty"`
 
+	// CallbackURLs are the current callback URLs from Pocket-ID
+	// +optional
+	CallbackURLs []string `json:"callbackUrls,omitempty"`
+
+	// LogoutCallbackURLs are the current logout callback URLs from Pocket-ID
+	// +optional
+	LogoutCallbackURLs []string `json:"logoutCallbackUrls,omitempty"`
+
 	// AllowedUserGroupIDs are the resolved group IDs assigned to the client
 	// +optional
 	AllowedUserGroupIDs []string `json:"allowedUserGroupIDs,omitempty"`

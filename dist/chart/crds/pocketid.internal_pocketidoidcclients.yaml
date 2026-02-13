@@ -267,6 +267,11 @@ spec:
                 items:
                   type: string
                 type: array
+              callbackUrls:
+                description: CallbackURLs are the current callback URLs from Pocket-ID
+                items:
+                  type: string
+                type: array
               clientID:
                 description: ClientID is the ID assigned by Pocket-ID
                 type: string
@@ -334,6 +339,12 @@ spec:
               createdAt:
                 description: CreatedAt is the creation timestamp from Pocket-ID
                 type: string
+              logoutCallbackUrls:
+                description: LogoutCallbackURLs are the current logout callback URLs
+                  from Pocket-ID
+                items:
+                  type: string
+                type: array
               name:
                 description: Name is the resolved name from Pocket-ID
                 type: string
