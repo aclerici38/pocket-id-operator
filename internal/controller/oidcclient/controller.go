@@ -325,6 +325,8 @@ func (r *Reconciler) UpdateOIDCClientStatus(ctx context.Context, oidcClient *poc
 	base := oidcClient.DeepCopy()
 	oidcClient.Status.ClientID = current.ID
 	oidcClient.Status.Name = current.Name
+	oidcClient.Status.CallbackURLs = current.CallbackURLs
+	oidcClient.Status.LogoutCallbackURLs = current.LogoutCallbackURLs
 	oidcClient.Status.AllowedUserGroupIDs = current.AllowedUserGroupIDs
 	return r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
 }

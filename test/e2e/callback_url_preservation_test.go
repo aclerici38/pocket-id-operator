@@ -28,11 +28,12 @@ var _ = Describe("Callback URL Preservation", Ordered, func() {
 				LogoutCallbackURLs: []string{"https://preserve.example.com/logout"},
 			})
 
-			clientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
-
-			By("verifying callback URLs are set in pocket-id")
-			callbackURLs := getOIDCClientCallbackURLsFromPocketID("cb-preserve-check-pod", userNS, clientID)
-			Expect(callbackURLs).To(ContainSubstring("https://preserve.example.com/callback"))
+			By("verifying callback URLs appear in status")
+			Eventually(func(g Gomega) {
+				urls := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
+					"-o", "jsonpath={.status.callbackUrls}")
+				g.Expect(urls).To(ContainSubstring("https://preserve.example.com/callback"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
 			By("triggering a reconcile by updating the spec (adding a logout URL)")
 			createOIDCClient(OIDCClientOptions{
@@ -43,9 +44,10 @@ var _ = Describe("Callback URL Preservation", Ordered, func() {
 
 			time.Sleep(5 * time.Second)
 
-			By("verifying callback URLs are still set in pocket-id after reconcile")
+			By("verifying callback URLs are still in status after reconcile")
 			Eventually(func(g Gomega) {
-				urls := getOIDCClientCallbackURLsFromPocketID("cb-preserve-verify-pod", userNS, clientID)
+				urls := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
+					"-o", "jsonpath={.status.callbackUrls}")
 				g.Expect(urls).To(ContainSubstring("https://preserve.example.com/callback"))
 			}, time.Minute, 5*time.Second).Should(Succeed())
 		})
@@ -75,20 +77,14 @@ spec: {}`, clientName, userNS))
 			setOIDCClientCallbackURLsInPocketID("tofu-set-pod", userNS, clientID, clientName,
 				[]string{"https://tofu-detected.example.com/callback"})
 
-			By("verifying the TOFU callback URL is set in pocket-id")
-			callbackURLs := getOIDCClientCallbackURLsFromPocketID("tofu-verify-pod", userNS, clientID)
-			Expect(callbackURLs).To(ContainSubstring("https://tofu-detected.example.com/callback"))
-
 			By("triggering a reconcile via annotation change")
 			err := kubectlAnnotate("pocketidoidcclient", clientName, userNS, "test/trigger=reconcile")
 			Expect(err).NotTo(HaveOccurred())
 
-			// Wait for the reconcile to complete
-			time.Sleep(5 * time.Second)
-
-			By("verifying the TOFU callback URL is still present in pocket-id after reconcile")
+			By("verifying the TOFU callback URL appears in status after reconcile")
 			Eventually(func(g Gomega) {
-				urls := getOIDCClientCallbackURLsFromPocketID("tofu-after-reconcile-pod", userNS, clientID)
+				urls := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
+					"-o", "jsonpath={.status.callbackUrls}")
 				g.Expect(urls).To(ContainSubstring("https://tofu-detected.example.com/callback"),
 					"TOFU callback URL must survive operator reconcile when spec has no callbackUrls")
 			}, time.Minute, 5*time.Second).Should(Succeed())
@@ -110,7 +106,12 @@ spec: {}`, clientName, userNS))
 				CallbackURLs: []string{"https://initial.example.com/callback"},
 			})
 
-			clientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
+			By("verifying initial callback URLs appear in status")
+			Eventually(func(g Gomega) {
+				urls := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
+					"-o", "jsonpath={.status.callbackUrls}")
+				g.Expect(urls).To(ContainSubstring("https://initial.example.com/callback"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
 			By("updating the spec with new callback URLs")
 			createOIDCClient(OIDCClientOptions{
@@ -118,9 +119,10 @@ spec: {}`, clientName, userNS))
 				CallbackURLs: []string{"https://updated.example.com/callback"},
 			})
 
-			By("verifying pocket-id has the updated callback URLs")
+			By("verifying status reflects the updated callback URLs")
 			Eventually(func(g Gomega) {
-				urls := getOIDCClientCallbackURLsFromPocketID("cb-override-verify-pod", userNS, clientID)
+				urls := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
+					"-o", "jsonpath={.status.callbackUrls}")
 				g.Expect(urls).To(ContainSubstring("https://updated.example.com/callback"))
 				g.Expect(urls).NotTo(ContainSubstring("https://initial.example.com/callback"))
 			}, time.Minute, 5*time.Second).Should(Succeed())
@@ -133,39 +135,7 @@ spec: {}`, clientName, userNS))
 	})
 })
 
-// getOIDCClientCallbackURLsFromPocketID queries pocket-id directly for an OIDC client's callback URLs.
-// Returns the raw JSON array string of callbackURLs.
-func getOIDCClientCallbackURLsFromPocketID(podName, namespace, clientID string) string {
-	staticSecretName := instanceName + "-static-api-key"
-
-	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-	ExpectWithOffset(1, apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
-
-	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-RESPONSE=$(curl -s -H "X-API-KEY: $API_KEY" \
-  -w '\n%%{http_code}' \
-  %s/api/oidc/clients/%s)
-HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-BODY=$(echo "$RESPONSE" | sed '$d')
-if [ "$HTTP_CODE" != "200" ]; then
-  echo "Failed to get OIDC client with HTTP $HTTP_CODE: $BODY" >&2
-  exit 1
-fi
-echo "$BODY"`,
-		apiKeyBase64, formatInstanceURL(), clientID)
-
-	// Clean up any previous pod with same name
-	kubectlDelete("pod", podName, namespace)
-	time.Sleep(time.Second)
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	logs := getPodLogs(podName, namespace)
-	return logs
-}
-
 // setOIDCClientCallbackURLsInPocketID updates an OIDC client's callback URLs directly in pocket-id.
-// The entire PUT body is constructed in Go to avoid fragile shell JSON parsing.
 // clientName is the pocket-id display name (same as the CR metadata.name).
 func setOIDCClientCallbackURLsInPocketID(podName, namespace, clientID, clientName string, callbackURLs []string) {
 	staticSecretName := instanceName + "-static-api-key"
@@ -184,9 +154,6 @@ func setOIDCClientCallbackURLsInPocketID(podName, namespace, clientID, clientNam
 	}
 	callbackURLsJSON += "]"
 
-	// Build a minimal valid update DTO. The name field is required; callbackURLs
-	// is what we want to change. Other boolean fields default to false which
-	// matches a freshly-created test client.
 	updateBody := fmt.Sprintf(`{"name":"%s","callbackURLs":%s}`, clientName, callbackURLsJSON)
 
 	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
