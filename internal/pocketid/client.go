@@ -360,13 +360,32 @@ func (c *Client) CreateOIDCClient(ctx context.Context, input OIDCClientInput) (*
 }
 
 func (c *Client) UpdateOIDCClient(ctx context.Context, id string, input OIDCClientInput) (*OIDCClient, error) {
+	callbackURLs := input.CallbackURLs
+	logoutCallbackURLs := input.LogoutCallbackURLs
+
+	// When callback URLs are not in the spec preserve the server-side
+	// values. This prevents overwriting pocket-id's TOFU auto-detected URLs
+	// which would re-open the client to accepting any redirect URI.
+	if len(callbackURLs) == 0 || len(logoutCallbackURLs) == 0 {
+		existing, err := c.GetOIDCClient(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("fetch existing OIDC client for callback URL preservation: %w", err)
+		}
+		if len(callbackURLs) == 0 {
+			callbackURLs = existing.CallbackURLs
+		}
+		if len(logoutCallbackURLs) == 0 {
+			logoutCallbackURLs = existing.LogoutCallbackURLs
+		}
+	}
+
 	params := oidc.NewPutAPIOidcClientsIDParams().
 		WithContext(ctx).
 		WithID(id).
 		WithClient(&models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientUpdateDto{
 			Name:                     &input.Name,
-			CallbackURLs:             input.CallbackURLs,
-			LogoutCallbackURLs:       input.LogoutCallbackURLs,
+			CallbackURLs:             callbackURLs,
+			LogoutCallbackURLs:       logoutCallbackURLs,
 			LaunchURL:                input.LaunchURL,
 			LogoURL:                  input.LogoURL,
 			DarkLogoURL:              input.DarkLogoURL,
