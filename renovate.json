@@ -56,7 +56,7 @@
         "/\\.md$/"
       ],
       "matchStrings": [
-        "(?<depName>ghcr\\.io/(?:pocket-id/pocket-id|aclerici38/(?:charts/)?pocket-id-operator)):(?<currentValue>[^\"\\s`]+)"
+        "(?<depName>ghcr\\.io/(?:pocket-id/pocket-id|aclerici38/(?:charts/)?pocket-id-operator)):(?<currentValue>[^@\"\\s`]+)(?:@(?<currentDigest>[^\"\\s`]+))?"
       ],
       "datasourceTemplate": "docker"
     }
