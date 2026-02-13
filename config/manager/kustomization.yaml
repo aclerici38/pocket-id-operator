@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: ghcr.io/aclerici38/pocket-id-operator
   newName: pocket-id-operator
-  newTag: e2e
+  newTag: v0.1.1

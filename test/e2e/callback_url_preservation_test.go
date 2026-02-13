@@ -56,19 +56,25 @@ var _ = Describe("Callback URL Preservation", Ordered, func() {
 		})
 	})
 
-	Context("Server-side callback URLs are preserved when spec omits them", func() {
+	Context("TOFU callback URLs are preserved when spec never has callbackUrls", func() {
 		const clientName = "test-tofu-preserve"
 
-		It("should not overwrite server-side callback URLs when spec.callbackUrls is removed", func() {
-			By("creating an OIDC client with a callback URL")
-			createOIDCClientAndWaitReady(OIDCClientOptions{
-				Name:         clientName,
-				CallbackURLs: []string{"https://initial.example.com/callback"},
-			})
+		It("should not overwrite pocket-id auto-detected callback URLs on reconcile", func() {
+			By("creating an OIDC client with no callbackUrls in the spec")
+			// Use raw YAML to bypass the withDefaults() helper which adds a default callback URL.
+			// This is the exact scenario: a CR that never specifies callbackUrls, relying on
+			// pocket-id's TOFU auto-detect to populate them.
+			applyYAML(fmt.Sprintf(`apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDOIDCClient
+metadata:
+  name: %s
+  namespace: %s
+spec: {}`, clientName, userNS))
 
+			waitForReady("pocketidoidcclient", clientName, userNS)
 			clientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
 
-			By("adding a TOFU callback URL directly to pocket-id via API")
+			By("simulating TOFU: adding a callback URL directly to pocket-id via API")
 			setOIDCClientCallbackURLsInPocketID("tofu-set-pod", userNS, clientID,
 				[]string{"https://tofu-detected.example.com/callback"})
 
@@ -76,9 +82,7 @@ var _ = Describe("Callback URL Preservation", Ordered, func() {
 			callbackURLs := getOIDCClientCallbackURLsFromPocketID("tofu-verify-pod", userNS, clientID)
 			Expect(callbackURLs).To(ContainSubstring("https://tofu-detected.example.com/callback"))
 
-			By("re-applying the CR without callbackUrls to trigger a reconcile")
-			// The spec no longer has callbackUrls — the operator should preserve
-			// whatever pocket-id has server-side rather than overwriting with empty.
+			By("triggering a reconcile by toggling pkceEnabled")
 			applyYAML(fmt.Sprintf(`apiVersion: pocketid.internal/v1alpha1
 kind: PocketIDOIDCClient
 metadata:
@@ -93,7 +97,7 @@ spec:
 			Eventually(func(g Gomega) {
 				urls := getOIDCClientCallbackURLsFromPocketID("tofu-after-reconcile-pod", userNS, clientID)
 				g.Expect(urls).To(ContainSubstring("https://tofu-detected.example.com/callback"),
-					"server-side callback URL should be preserved across reconciles when spec omits callbackUrls")
+					"TOFU auto-detected callback URL must survive operator reconcile when spec has no callbackUrls")
 			}, time.Minute, 5*time.Second).Should(Succeed())
 		})
 
