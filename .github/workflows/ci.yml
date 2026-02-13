@@ -136,6 +136,7 @@ jobs:
     needs:
       - meta
       - build
+    if: ${{ !cancelled() && !failure() }}
     uses: ./.github/workflows/test-e2e.yml
     with:
       image: ${{ needs.meta.outputs.build_image }}
@@ -146,6 +147,7 @@ jobs:
     needs:
       - meta
       - build
+    if: ${{ !cancelled() && !failure() }}
     uses: ./.github/workflows/test-chart.yml
     with:
       image: ${{ needs.meta.outputs.build_image }}
