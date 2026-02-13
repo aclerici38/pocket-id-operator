@@ -198,6 +198,20 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 		},
 	})
 
+	// Inject metrics env vars when enabled
+	if instance.Spec.Metrics != nil && instance.Spec.Metrics.Enabled {
+		metricsPort := int32(9464)
+		if instance.Spec.Metrics.Port != 0 {
+			metricsPort = instance.Spec.Metrics.Port
+		}
+		env = append(env,
+			corev1.EnvVar{Name: "METRICS_ENABLED", Value: "true"},
+			corev1.EnvVar{Name: "OTEL_METRICS_EXPORTER", Value: "prometheus"},
+			corev1.EnvVar{Name: "OTEL_EXPORTER_PROMETHEUS_HOST", Value: "0.0.0.0"},
+			corev1.EnvVar{Name: "OTEL_EXPORTER_PROMETHEUS_PORT", Value: fmt.Sprintf("%d", metricsPort)},
+		)
+	}
+
 	// Add on any extra ENVs from CR
 	env = append(env, instance.Spec.Env...)
 
@@ -513,6 +527,26 @@ func (r *Reconciler) reconcileService(ctx context.Context, instance *pocketidint
 		return err
 	}
 
+	ports := []*corev1apply.ServicePortApplyConfiguration{
+		corev1apply.ServicePort().
+			WithName("http").
+			WithPort(1411).
+			WithTargetPort(intstr.FromInt(1411)).
+			WithProtocol(corev1.ProtocolTCP),
+	}
+
+	if instance.Spec.Metrics != nil && instance.Spec.Metrics.Enabled {
+		metricsPort := int32(9464)
+		if instance.Spec.Metrics.Port != 0 {
+			metricsPort = instance.Spec.Metrics.Port
+		}
+		ports = append(ports, corev1apply.ServicePort().
+			WithName("metrics").
+			WithPort(metricsPort).
+			WithTargetPort(intstr.FromInt32(metricsPort)).
+			WithProtocol(corev1.ProtocolTCP))
+	}
+
 	service := corev1apply.Service(instance.Name, instance.Namespace).
 		WithLabels(common.ManagedByLabels(instance.Spec.Labels)).
 		WithAnnotations(instance.Spec.Annotations).
@@ -522,11 +556,7 @@ func (r *Reconciler) reconcileService(ctx context.Context, instance *pocketidint
 				"app.kubernetes.io/name":     "pocket-id",
 				"app.kubernetes.io/instance": instance.Name,
 			}).
-			WithPorts(corev1apply.ServicePort().
-				WithName("http").
-				WithPort(1411).
-				WithTargetPort(intstr.FromInt(1411)).
-				WithProtocol(corev1.ProtocolTCP)),
+			WithPorts(ports...),
 		)
 
 	return r.Apply(ctx, service, client.FieldOwner("pocket-id-operator"))
