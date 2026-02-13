@@ -37,11 +37,11 @@ func TestUpdateOIDCClient_SkipsGetWhenBothURLsProvided(t *testing.T) {
 				AllowedUserGroups:  []any{},
 			}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 
 		case r.Method == http.MethodPut && r.URL.Path == "/api/oidc/clients/test-id":
 			var body map[string]any
-			json.NewDecoder(r.Body).Decode(&body)
+			_ = json.NewDecoder(r.Body).Decode(&body)
 
 			resp := oidcClientResponse{
 				ID:                 "test-id",
@@ -51,7 +51,7 @@ func TestUpdateOIDCClient_SkipsGetWhenBothURLsProvided(t *testing.T) {
 				AllowedUserGroups:  []any{},
 			}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 
 		default:
 			http.NotFound(w, r)
