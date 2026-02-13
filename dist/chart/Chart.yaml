@@ -18,3 +18,6 @@ keywords:
   - oauth2
 annotations:
   category: Infrastructure
+  artifacthub.io/links: |
+    - name: Source
+      url: https://github.com/aclerici38/pocket-id-operator
