@@ -102,21 +102,31 @@ jobs:
             exit 1
           fi
 
+  regenerate:
+    name: Regenerate Manifests
+    if: ${{ github.event_name == 'pull_request' }}
+    uses: ./.github/workflows/regenerate-manifests.yml
+    secrets: inherit
+
   test:
     name: Tests
+    needs: [generate, regenerate]
+    if: ${{ !cancelled() && !failure() }}
     uses: ./.github/workflows/test.yml
     secrets: inherit
 
   lint:
     name: Lint
+    needs: [generate, regenerate]
+    if: ${{ !cancelled() && !failure() }}
     uses: ./.github/workflows/lint.yml
     secrets: inherit
 
   build:
     name: Build Image
-    needs: meta
+    needs: [meta, generate, regenerate]
     uses: ./.github/workflows/build-push-image.yml
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ !cancelled() && !failure() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
     with:
       image: ${{ needs.meta.outputs.build_image }}
     secrets: inherit
