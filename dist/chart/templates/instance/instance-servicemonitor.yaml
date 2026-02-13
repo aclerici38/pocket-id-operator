@@ -5,8 +5,9 @@ metadata:
   name: {{ .Values.instance.name | default "pocket-id" }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "chart.labels" . | nindent 4 }}
     app.kubernetes.io/name: pocket-id
+    app.kubernetes.io/instance: {{ .Values.instance.name | default "pocket-id" }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
     {{- with .Values.instance.serviceMonitor.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
