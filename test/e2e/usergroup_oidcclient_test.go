@@ -586,22 +586,42 @@ var _ = Describe("OIDC Client Secrets", Ordered, func() {
 			}, 20*time.Second, 2*time.Second).Should(Succeed())
 		})
 
-		It("should regenerate client_secret when annotation is added", func() {
+		It("should regenerate client_secret each time the annotation is added", func() {
 			preserveSecretName := regenerateSecretClient + "-oidc-credentials"
 			originalSecret := waitForSecretKey(preserveSecretName, userNS, "client_secret")
 
-			By("adding the regenerate annotation")
+			By("adding the regenerate annotation the first time")
 			Expect(kubectlAnnotate("pocketidoidcclient", regenerateSecretClient, userNS,
 				"pocketid.internal/regenerate-client-secret=true")).To(Succeed())
 
 			By("verifying the client_secret is regenerated")
+			var firstRegenSecret string
+			Eventually(func(g Gomega) {
+				firstRegenSecret = kubectlGetSecretData(preserveSecretName, userNS, "client_secret")
+				g.Expect(firstRegenSecret).NotTo(BeEmpty())
+				g.Expect(firstRegenSecret).NotTo(Equal(originalSecret))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying the annotation is removed")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidoidcclient", regenerateSecretClient, "-n", userNS,
+					"-o", "jsonpath={.metadata.annotations.pocketid\\.internal/regenerate-client-secret}")
+				g.Expect(output).To(BeEmpty())
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("adding the regenerate annotation a second time")
+			Expect(kubectlAnnotate("pocketidoidcclient", regenerateSecretClient, userNS,
+				"pocketid.internal/regenerate-client-secret=true")).To(Succeed())
+
+			By("verifying the client_secret is regenerated again to a new value")
 			Eventually(func(g Gomega) {
 				currentSecret := kubectlGetSecretData(preserveSecretName, userNS, "client_secret")
 				g.Expect(currentSecret).NotTo(BeEmpty())
 				g.Expect(currentSecret).NotTo(Equal(originalSecret))
+				g.Expect(currentSecret).NotTo(Equal(firstRegenSecret))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
-			By("verifying the annotation is removed")
+			By("verifying the annotation is removed again")
 			Eventually(func(g Gomega) {
 				output := kubectlGet("pocketidoidcclient", regenerateSecretClient, "-n", userNS,
 					"-o", "jsonpath={.metadata.annotations.pocketid\\.internal/regenerate-client-secret}")
