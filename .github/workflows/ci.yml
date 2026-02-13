@@ -63,6 +63,7 @@ jobs:
 
   generate:
     name: Generate
+    if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -104,12 +105,14 @@ jobs:
   test:
     name: Tests
     needs: generate
+    if: ${{ !cancelled() && needs.generate.result != 'failure' }}
     uses: ./.github/workflows/test.yml
     secrets: inherit
 
   lint:
     name: Lint
     needs: generate
+    if: ${{ !cancelled() && needs.generate.result != 'failure' }}
     uses: ./.github/workflows/lint.yml
     secrets: inherit
 
@@ -119,7 +122,7 @@ jobs:
       - meta
       - generate
     uses: ./.github/workflows/build-push-image.yml
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ !cancelled() && needs.generate.result != 'failure' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
     with:
       image: ${{ needs.meta.outputs.build_image }}
     secrets: inherit

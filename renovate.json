@@ -7,11 +7,6 @@
   "automerge": true,
   "platformAutomerge": true,
   "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
-  "postUpgradeTasks": {
-    "commands": ["make manifests generate fmt build-installer"],
-    "fileFilters": ["**/*"],
-    "executionMode": "branch"
-  },
   "packageRules": [
     {
       "matchPackageNames": [

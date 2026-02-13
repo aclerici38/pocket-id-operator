@@ -1,0 +1,55 @@
+name: Regenerate Manifests
+
+on:
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".gitignore"
+
+permissions:
+  contents: write
+
+env:
+  # renovate: datasource=github-releases depName=kubernetes-sigs/controller-tools
+  CONTROLLER_TOOLS_VERSION: v0.20.0
+  # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize
+  KUSTOMIZE_VERSION: v5.7.1
+
+jobs:
+  regenerate:
+    name: Regenerate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Cache tool binaries
+        uses: actions/cache@v5
+        with:
+          path: bin
+          key: tools-${{ runner.os }}-go-${{ hashFiles('go.mod') }}-controller-gen-${{ env.CONTROLLER_TOOLS_VERSION }}-kustomize-${{ env.KUSTOMIZE_VERSION }}
+
+      - name: Regenerate manifests
+        run: make manifests generate fmt build-installer
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain)" ]; then
+            git add -A
+            git commit -m "chore: regenerate manifests"
+            git push
+          fi
