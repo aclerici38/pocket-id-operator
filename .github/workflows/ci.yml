@@ -79,7 +79,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: bin
-          key: tools-${{ runner.os }}-controller-gen-${{ env.CONTROLLER_TOOLS_VERSION }}-kustomize-${{ env.KUSTOMIZE_VERSION }}
+          key: tools-${{ runner.os }}-go-${{ hashFiles('go.mod') }}-controller-gen-${{ env.CONTROLLER_TOOLS_VERSION }}-kustomize-${{ env.KUSTOMIZE_VERSION }}
 
       - name: Generate manifests and code
         run: |
