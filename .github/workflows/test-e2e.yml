@@ -73,7 +73,7 @@ jobs:
 
       - name: Download image artifact
         if: inputs.image != ''
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: operator-image-${{ steps.tag.outputs.name }}
           path: /tmp

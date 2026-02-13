@@ -75,7 +75,7 @@ jobs:
         run: docker save ${{ inputs.image }} -o /tmp/operator-image-${{ steps.tag.outputs.name }}.tar
 
       - name: Upload image artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: operator-image-${{ steps.tag.outputs.name }}
           path: /tmp/operator-image-${{ steps.tag.outputs.name }}.tar
