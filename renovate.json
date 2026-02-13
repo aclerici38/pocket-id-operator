@@ -16,7 +16,8 @@
         "ghcr.io/aclerici38/pocket-id-operator",
         "ghcr.io/aclerici38/charts/pocket-id-operator"
       ],
-      "groupName": "pocket-id-operator"
+      "groupName": "pocket-id-operator",
+      "automergeType": "branch"
     },
     {
       "matchDatasources": ["golang-version"],
