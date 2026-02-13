@@ -62,6 +62,18 @@ type PersistenceConfig struct {
 	AccessModes []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
 }
 
+// MetricsConfig configures the Prometheus metrics endpoint for Pocket-ID
+type MetricsConfig struct {
+	// Enables the Prometheus metrics endpoint
+	// +kubebuilder:default=false
+	Enabled bool `json:"enabled"`
+
+	// Port for the Prometheus metrics endpoint
+	// +kubebuilder:default=9464
+	// +optional
+	Port int32 `json:"port,omitempty"`
+}
+
 // PocketIDInstanceSpec defines the desired state of PocketIDInstance
 // +kubebuilder:validation:XValidation:rule="self.deploymentType == oldSelf.deploymentType",message="deploymentType is immutable"
 type PocketIDInstanceSpec struct {
@@ -140,6 +152,12 @@ type PocketIDInstanceSpec struct {
 	// Resource requests and limits for the container
 	// +optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	// Prometheus metrics configuration
+	// When enabled the operator injects the required OTEL environment variables
+	// and exposes a metrics port on the Service
+	// +optional
+	Metrics *MetricsConfig `json:"metrics,omitempty"`
 }
 
 // PocketIDInstanceStatus defines the observed state of PocketIDInstance.

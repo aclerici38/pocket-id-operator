@@ -857,6 +857,24 @@ spec:
                     format: int32
                     type: integer
                 type: object
+              metrics:
+                description: |-
+                  Prometheus metrics configuration
+                  When enabled the operator injects the required OTEL environment variables
+                  and exposes a metrics port on the Service
+                properties:
+                  enabled:
+                    default: false
+                    description: Enables the Prometheus metrics endpoint
+                    type: boolean
+                  port:
+                    default: 9464
+                    description: Port for the Prometheus metrics endpoint
+                    format: int32
+                    type: integer
+                required:
+                - enabled
+                type: object
               persistence:
                 description: |-
                   Configures persistence for Pocket-ID

@@ -52,6 +52,12 @@ instance:
     #     secretKeyRef:
     #       name: smtp-credentials
     #       key: password
+    #
+    # To enable tracing, add the following env vars:
+    # - name: TRACING_ENABLED
+    #   value: "true"
+    # - name: OTEL_EXPORTER_OTLP_ENDPOINT
+    #   value: "http://otel-collector:4317"
 
     # Persistence configuration
     # Mounts to /app/data. If spec.deploymentType is StatefulSet will be mounted as a VolumeClaimTemplate
@@ -89,6 +95,12 @@ instance:
     #   limits:
     #     memory: 512Mi
 
+    # Prometheus metrics configuration
+    # Enabling this will set all required OTEL env vars and expose a metrics port on the Service
+    metrics:
+      enabled: false
+      # port: 9464
+
   # HTTPRoute configuration (Gateway API)
   # Creates an HTTPRoute for the PocketIDInstance when enabled
   route:
@@ -111,6 +123,12 @@ instance:
     # Will be automatically set to the hostname from instance.spec.appUrl if not specified
     hostnames: []
     # - auth.example.com
+
+  # Requires instance.spec.metrics.enabled=true for the metrics port to be exposed
+  serviceMonitor:
+    enabled: false
+    # interval: 30s
+    # labels: {}
 
 # PocketIDUser configuration
 # Creates PocketIDUser custom resources
