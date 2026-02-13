@@ -56,14 +56,11 @@ var _ = Describe("Callback URL Preservation", Ordered, func() {
 		})
 	})
 
-	Context("TOFU callback URLs are preserved when spec never has callbackUrls", func() {
+	Context("TOFU callback URLs are preserved when spec has no callbackUrls", func() {
 		const clientName = "test-tofu-preserve"
 
-		It("should not overwrite pocket-id auto-detected callback URLs on reconcile", func() {
-			By("creating an OIDC client with no callbackUrls in the spec")
-			// Use raw YAML to bypass the withDefaults() helper which adds a default callback URL.
-			// This is the exact scenario: a CR that never specifies callbackUrls, relying on
-			// pocket-id's TOFU auto-detect to populate them.
+		It("should not overwrite pocket-id TOFU callback URLs on reconcile", func() {
+			By("creating an OIDC client without any callbackUrls in the spec")
 			applyYAML(fmt.Sprintf(`apiVersion: pocketid.internal/v1alpha1
 kind: PocketIDOIDCClient
 metadata:
@@ -74,30 +71,26 @@ spec: {}`, clientName, userNS))
 			waitForReady("pocketidoidcclient", clientName, userNS)
 			clientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
 
-			By("simulating TOFU: adding a callback URL directly to pocket-id via API")
-			setOIDCClientCallbackURLsInPocketID("tofu-set-pod", userNS, clientID,
+			By("simulating TOFU: setting a callback URL directly in pocket-id via API")
+			setOIDCClientCallbackURLsInPocketID("tofu-set-pod", userNS, clientID, clientName,
 				[]string{"https://tofu-detected.example.com/callback"})
 
 			By("verifying the TOFU callback URL is set in pocket-id")
 			callbackURLs := getOIDCClientCallbackURLsFromPocketID("tofu-verify-pod", userNS, clientID)
 			Expect(callbackURLs).To(ContainSubstring("https://tofu-detected.example.com/callback"))
 
-			By("triggering a reconcile by toggling pkceEnabled")
-			applyYAML(fmt.Sprintf(`apiVersion: pocketid.internal/v1alpha1
-kind: PocketIDOIDCClient
-metadata:
-  name: %s
-  namespace: %s
-spec:
-  pkceEnabled: true`, clientName, userNS))
+			By("triggering a reconcile via annotation change")
+			err := kubectlAnnotate("pocketidoidcclient", clientName, userNS, "test/trigger=reconcile")
+			Expect(err).NotTo(HaveOccurred())
 
-			waitForReady("pocketidoidcclient", clientName, userNS)
+			// Wait for the reconcile to complete
+			time.Sleep(5 * time.Second)
 
 			By("verifying the TOFU callback URL is still present in pocket-id after reconcile")
 			Eventually(func(g Gomega) {
 				urls := getOIDCClientCallbackURLsFromPocketID("tofu-after-reconcile-pod", userNS, clientID)
 				g.Expect(urls).To(ContainSubstring("https://tofu-detected.example.com/callback"),
-					"TOFU auto-detected callback URL must survive operator reconcile when spec has no callbackUrls")
+					"TOFU callback URL must survive operator reconcile when spec has no callbackUrls")
 			}, time.Minute, 5*time.Second).Should(Succeed())
 		})
 
@@ -172,14 +165,16 @@ echo "$BODY"`,
 }
 
 // setOIDCClientCallbackURLsInPocketID updates an OIDC client's callback URLs directly in pocket-id.
-func setOIDCClientCallbackURLsInPocketID(podName, namespace, clientID string, callbackURLs []string) {
+// The entire PUT body is constructed in Go to avoid fragile shell JSON parsing.
+// clientName is the pocket-id display name (same as the CR metadata.name).
+func setOIDCClientCallbackURLsInPocketID(podName, namespace, clientID, clientName string, callbackURLs []string) {
 	staticSecretName := instanceName + "-static-api-key"
 
 	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
 		"-o", "jsonpath={.data.token}")
 	ExpectWithOffset(1, apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
 
-	// Build callback URLs JSON array
+	// Build the complete update DTO JSON in Go — only "name" is required
 	callbackURLsJSON := "["
 	for i, url := range callbackURLs {
 		if i > 0 {
@@ -189,15 +184,15 @@ func setOIDCClientCallbackURLsInPocketID(podName, namespace, clientID string, ca
 	}
 	callbackURLsJSON += "]"
 
-	// First GET the current client to preserve other fields in the PUT
-	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-# Get current client state
-CURRENT=$(curl -s -H "X-API-KEY: $API_KEY" %s/api/oidc/clients/%s)
-NAME=$(echo "$CURRENT" | sed 's/.*"name":"\([^"]*\)".*/\1/')
+	// Build a minimal valid update DTO. The name field is required; callbackURLs
+	// is what we want to change. Other boolean fields default to false which
+	// matches a freshly-created test client.
+	updateBody := fmt.Sprintf(`{"name":"%s","callbackURLs":%s}`, clientName, callbackURLsJSON)
 
-# Update with new callback URLs
+	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
+
 RESPONSE=$(curl -s -X PUT -H "X-API-KEY: $API_KEY" -H "Content-Type: application/json" \
-  -d "{\"name\": \"$NAME\", \"callbackURLs\": %s}" \
+  -d '%s' \
   -w '\n%%{http_code}' \
   %s/api/oidc/clients/%s)
 HTTP_CODE=$(echo "$RESPONSE" | tail -1)
@@ -207,7 +202,7 @@ if [ "$HTTP_CODE" != "200" ]; then
   exit 1
 fi
 echo "Updated callback URLs successfully"`,
-		apiKeyBase64, formatInstanceURL(), clientID, callbackURLsJSON, formatInstanceURL(), clientID)
+		apiKeyBase64, updateBody, formatInstanceURL(), clientID)
 
 	// Clean up any previous pod with same name
 	kubectlDelete("pod", podName, namespace)
