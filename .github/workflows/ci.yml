@@ -19,7 +19,7 @@ on:
 
 permissions:
   actions: write
-  contents: read
+  contents: write
   packages: write
 
 env:
