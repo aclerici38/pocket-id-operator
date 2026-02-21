@@ -255,10 +255,14 @@ func (r *Reconciler) reconcileAllowedUserGroups(ctx context.Context, oidcClient 
 		if err := apiClient.UpdateOIDCClientAllowedGroups(ctx, current.ID, groupIDs); err != nil {
 			return current, err
 		}
-		current.AllowedUserGroupIDs = groupIDs
 	}
 
-	return current, nil
+	fresh, err := apiClient.GetOIDCClient(ctx, current.ID)
+	if err != nil {
+		return current, fmt.Errorf("get OIDC client after reconcile: %w", err)
+	}
+
+	return fresh, nil
 }
 
 func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) pocketid.OIDCClientInput {

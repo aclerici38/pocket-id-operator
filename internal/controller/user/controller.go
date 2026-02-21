@@ -432,6 +432,11 @@ func (r *Reconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1
 		}
 	}
 
+	pUser, err = apiClient.GetUser(ctx, pUser.ID)
+	if err != nil {
+		return fmt.Errorf("get user after reconcile: %w", err)
+	}
+
 	return r.updateUserStatus(ctx, user, pUser)
 }
 
