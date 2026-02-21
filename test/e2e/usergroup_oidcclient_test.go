@@ -190,6 +190,155 @@ var _ = Describe("PocketIDUserGroup and PocketIDOIDCClient", Ordered, func() {
 	})
 })
 
+var _ = Describe("Bidirectional UserGroup and OIDCClient Assignment", Ordered, func() {
+	const (
+		biClientName     = "bi-test-client"
+		biClientAltName  = "bi-test-client-alt"
+		biReverseGroup   = "bi-reverse-group"
+		biUnionGroup     = "bi-union-group"
+		biUnionClient    = "bi-union-client"
+		biRecoveryGroup  = "bi-recovery-group"
+		biRecoveryClient = "bi-recovery-client"
+	)
+
+	Context("UserGroup with allowedOIDCClients (reverse direction)", func() {
+		BeforeAll(func() {
+			By("creating an OIDC client")
+			createOIDCClientAndWaitReady(OIDCClientOptions{
+				Name:         biClientName,
+				CallbackURLs: []string{"https://bi-test.example.com/callback"},
+			})
+
+			By("creating a user group that references the OIDC client")
+			createUserGroup(UserGroupOptions{
+				Name:               biReverseGroup,
+				GroupName:          "bi-reverse-group",
+				FriendlyName:       "BI Reverse Group",
+				AllowedOIDCClients: []ResourceRef{{Name: biClientName}},
+			})
+		})
+
+		It("should become Ready", func() {
+			waitForReady("pocketidusergroup", biReverseGroup, userNS)
+		})
+
+		It("should include the client ID in allowedOIDCClientIDs status", func() {
+			clientID := kubectlGet("pocketidoidcclient", biClientName, "-n", userNS,
+				"-o", "jsonpath={.status.clientID}")
+
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidusergroup", biReverseGroup, "-n", userNS,
+					"-o", "jsonpath={.status.allowedOIDCClientIDs[*]}")
+				g.Expect(output).To(ContainSubstring(clientID))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+
+		It("should also reflect the group in the OIDC client's allowedUserGroupIDs", func() {
+			groupID := kubectlGet("pocketidusergroup", biReverseGroup, "-n", userNS,
+				"-o", "jsonpath={.status.groupID}")
+
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidoidcclient", biClientName, "-n", userNS,
+					"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+				g.Expect(output).To(ContainSubstring(groupID))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+	})
+
+	Context("Union of both directions", func() {
+		BeforeAll(func() {
+			By("creating two OIDC clients")
+			createOIDCClientAndWaitReady(OIDCClientOptions{
+				Name:         biUnionClient,
+				CallbackURLs: []string{"https://bi-union.example.com/callback"},
+			})
+			createOIDCClientAndWaitReady(OIDCClientOptions{
+				Name:         biClientAltName,
+				CallbackURLs: []string{"https://bi-alt.example.com/callback"},
+			})
+
+			By("creating a user group that references one client via allowedOIDCClients")
+			createUserGroupAndWaitReady(UserGroupOptions{
+				Name:               biUnionGroup,
+				GroupName:          "bi-union-group",
+				FriendlyName:       "BI Union Group",
+				AllowedOIDCClients: []ResourceRef{{Name: biUnionClient}},
+			})
+
+			By("updating the other OIDC client to reference the group via allowedUserGroups")
+			createOIDCClient(OIDCClientOptions{
+				Name:              biClientAltName,
+				CallbackURLs:      []string{"https://bi-alt.example.com/callback"},
+				AllowedUserGroups: []string{biUnionGroup},
+			})
+			waitForReady("pocketidoidcclient", biClientAltName, userNS)
+		})
+
+		It("should include both client IDs in the group's allowedOIDCClientIDs (union)", func() {
+			clientID1 := kubectlGet("pocketidoidcclient", biUnionClient, "-n", userNS,
+				"-o", "jsonpath={.status.clientID}")
+			clientID2 := kubectlGet("pocketidoidcclient", biClientAltName, "-n", userNS,
+				"-o", "jsonpath={.status.clientID}")
+
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidusergroup", biUnionGroup, "-n", userNS,
+					"-o", "jsonpath={.status.allowedOIDCClientIDs[*]}")
+				g.Expect(output).To(ContainSubstring(clientID1))
+				g.Expect(output).To(ContainSubstring(clientID2))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+
+		It("should include the group in both clients' allowedUserGroupIDs", func() {
+			groupID := kubectlGet("pocketidusergroup", biUnionGroup, "-n", userNS,
+				"-o", "jsonpath={.status.groupID}")
+
+			Eventually(func(g Gomega) {
+				output1 := kubectlGet("pocketidoidcclient", biUnionClient, "-n", userNS,
+					"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+				g.Expect(output1).To(ContainSubstring(groupID))
+
+				output2 := kubectlGet("pocketidoidcclient", biClientAltName, "-n", userNS,
+					"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+				g.Expect(output2).To(ContainSubstring(groupID))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+	})
+
+	Context("Recovery from missing OIDC client reference", func() {
+		It("should recover when referenced OIDC client becomes ready", func() {
+			By("creating a user group that references a non-existent OIDC client")
+			createUserGroup(UserGroupOptions{
+				Name:               biRecoveryGroup,
+				GroupName:          "bi-recovery-group",
+				FriendlyName:       "BI Recovery Group",
+				AllowedOIDCClients: []ResourceRef{{Name: biRecoveryClient}},
+			})
+
+			By("verifying the group reports a reconcile error")
+			waitForConditionReason("pocketidusergroup", biRecoveryGroup, userNS, "Ready", "ReconcileError")
+
+			By("creating the missing OIDC client")
+			createOIDCClientAndWaitReady(OIDCClientOptions{
+				Name:         biRecoveryClient,
+				CallbackURLs: []string{"https://bi-recovery.example.com/callback"},
+			})
+
+			By("verifying the group becomes Ready")
+			waitForReady("pocketidusergroup", biRecoveryGroup, userNS)
+
+			By("verifying the client ID appears in the group's status")
+			clientID := kubectlGet("pocketidoidcclient", biRecoveryClient, "-n", userNS,
+				"-o", "jsonpath={.status.clientID}")
+
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidusergroup", biRecoveryGroup, "-n", userNS,
+					"-o", "jsonpath={.status.allowedOIDCClientIDs[*]}")
+				g.Expect(output).To(ContainSubstring(clientID))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+	})
+})
+
 var _ = Describe("UserGroup with Usernames and UserIds", Ordered, func() {
 	const (
 		usernameGroupName = "test-username-group"
