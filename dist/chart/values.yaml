@@ -161,8 +161,8 @@ users: []
   #     userInfoSecretRef:
   #       name: user-credentials
 
-# Configure the controller manager deployment
-manager:
+# Configure the operator deployment
+operator:
   replicas: 1
 
   image:
