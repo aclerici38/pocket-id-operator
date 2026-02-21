@@ -391,6 +391,184 @@ func TestReconcileSecret_CreateForPublicClient(t *testing.T) {
 	}
 }
 
+func newAggregationFakeClient(scheme *runtime.Scheme, objs ...client.Object) client.Client {
+	return fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(objs...).
+		WithIndex(&pocketidinternalv1alpha1.PocketIDUserGroup{}, "pocketidusergroup.allowedOIDCClient", func(raw client.Object) []string {
+			ug := raw.(*pocketidinternalv1alpha1.PocketIDUserGroup)
+			var keys []string
+			for _, ref := range ug.Spec.AllowedOIDCClients {
+				if ref.Name == "" {
+					continue
+				}
+				ns := ref.Namespace
+				if ns == "" {
+					ns = ug.Namespace
+				}
+				keys = append(keys, ns+"/"+ref.Name)
+			}
+			return keys
+		}).
+		Build()
+}
+
+func readyCondition() []metav1.Condition {
+	return []metav1.Condition{{
+		Type:               "Ready",
+		Status:             metav1.ConditionTrue,
+		Reason:             "Reconciled",
+		LastTransitionTime: metav1.Now(),
+	}}
+}
+
+func TestAggregateAllowedUserGroupIDs_DirectOnly(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	group := &pocketidinternalv1alpha1.PocketIDUserGroup{
+		ObjectMeta: metav1.ObjectMeta{Name: "group-a", Namespace: testNamespace},
+		Status:     pocketidinternalv1alpha1.PocketIDUserGroupStatus{GroupID: "gid-a", Conditions: readyCondition()},
+	}
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "client-1", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{{Name: "group-a"}},
+		},
+	}
+
+	fc := newAggregationFakeClient(scheme, group, oidcClient)
+	reconciler := &Reconciler{Client: fc, Scheme: scheme}
+
+	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != "gid-a" {
+		t.Errorf("expected [gid-a], got %v", ids)
+	}
+}
+
+func TestAggregateAllowedUserGroupIDs_ReverseOnly(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	group := &pocketidinternalv1alpha1.PocketIDUserGroup{
+		ObjectMeta: metav1.ObjectMeta{Name: "group-b", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDUserGroupSpec{
+			AllowedOIDCClients: []pocketidinternalv1alpha1.NamespacedOIDCClientReference{{Name: "client-2"}},
+		},
+		Status: pocketidinternalv1alpha1.PocketIDUserGroupStatus{GroupID: "gid-b", Conditions: readyCondition()},
+	}
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "client-2", Namespace: testNamespace},
+	}
+
+	fc := newAggregationFakeClient(scheme, group, oidcClient)
+	reconciler := &Reconciler{Client: fc, Scheme: scheme}
+
+	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != "gid-b" {
+		t.Errorf("expected [gid-b], got %v", ids)
+	}
+}
+
+func TestAggregateAllowedUserGroupIDs_Union(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	groupA := &pocketidinternalv1alpha1.PocketIDUserGroup{
+		ObjectMeta: metav1.ObjectMeta{Name: "group-a", Namespace: testNamespace},
+		Status:     pocketidinternalv1alpha1.PocketIDUserGroupStatus{GroupID: "gid-a", Conditions: readyCondition()},
+	}
+	groupB := &pocketidinternalv1alpha1.PocketIDUserGroup{
+		ObjectMeta: metav1.ObjectMeta{Name: "group-b", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDUserGroupSpec{
+			AllowedOIDCClients: []pocketidinternalv1alpha1.NamespacedOIDCClientReference{{Name: "client-3"}},
+		},
+		Status: pocketidinternalv1alpha1.PocketIDUserGroupStatus{GroupID: "gid-b", Conditions: readyCondition()},
+	}
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "client-3", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{{Name: "group-a"}},
+		},
+	}
+
+	fc := newAggregationFakeClient(scheme, groupA, groupB, oidcClient)
+	reconciler := &Reconciler{Client: fc, Scheme: scheme}
+
+	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ids) != 2 {
+		t.Fatalf("expected 2 IDs, got %v", ids)
+	}
+	idSet := map[string]bool{}
+	for _, id := range ids {
+		idSet[id] = true
+	}
+	if !idSet["gid-a"] || !idSet["gid-b"] {
+		t.Errorf("expected {gid-a, gid-b}, got %v", ids)
+	}
+}
+
+func TestAggregateAllowedUserGroupIDs_SkipsNotReady(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	group := &pocketidinternalv1alpha1.PocketIDUserGroup{
+		ObjectMeta: metav1.ObjectMeta{Name: "group-nr", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDUserGroupSpec{
+			AllowedOIDCClients: []pocketidinternalv1alpha1.NamespacedOIDCClientReference{{Name: "client-4"}},
+		},
+		Status: pocketidinternalv1alpha1.PocketIDUserGroupStatus{GroupID: "gid-nr"},
+	}
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "client-4", Namespace: testNamespace},
+	}
+
+	fc := newAggregationFakeClient(scheme, group, oidcClient)
+	reconciler := &Reconciler{Client: fc, Scheme: scheme}
+
+	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ids) != 0 {
+		t.Errorf("expected empty (not-ready group skipped), got %v", ids)
+	}
+}
+
+func TestAggregateAllowedUserGroupIDs_NilWhenNoRefs(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "client-5", Namespace: testNamespace},
+	}
+
+	fc := newAggregationFakeClient(scheme, oidcClient)
+	reconciler := &Reconciler{Client: fc, Scheme: scheme}
+
+	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ids != nil {
+		t.Errorf("expected nil when no refs from either side, got %v", ids)
+	}
+}
+
 func TestReconcileDelete_RemoveFinalizerWhenNoInstance(t *testing.T) {
 	ctx := context.Background()
 	scheme := runtime.NewScheme()
