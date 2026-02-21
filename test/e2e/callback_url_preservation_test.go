@@ -88,6 +88,14 @@ spec: {}`, clientName, userNS))
 				g.Expect(urls).To(ContainSubstring("https://tofu-detected.example.com/callback"),
 					"TOFU callback URL must survive operator reconcile when spec has no callbackUrls")
 			}, time.Minute, 5*time.Second).Should(Succeed())
+
+			By("verifying the TOFU callback URL persists across multiple reconciles")
+			Consistently(func(g Gomega) {
+				urls := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
+					"-o", "jsonpath={.status.callbackUrls}")
+				g.Expect(urls).To(ContainSubstring("https://tofu-detected.example.com/callback"),
+					"TOFU callback URL must not be wiped by subsequent reconciles")
+			}, 20*time.Second, 5*time.Second).Should(Succeed())
 		})
 
 		AfterAll(func() {

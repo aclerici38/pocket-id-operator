@@ -22,6 +22,7 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -40,7 +41,8 @@ import (
 )
 
 const (
-	oidcClientFinalizer = "pocketid.internal/oidc-client-finalizer"
+	oidcClientFinalizer          = "pocketid.internal/oidc-client-finalizer"
+	UserGroupOIDCClientFinalizer = "pocketid.internal/user-group-oidc-client-finalizer"
 )
 
 // Reconciler reconciles a PocketIDOIDCClient object
@@ -76,9 +78,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return r.ReconcileDelete(ctx, oidcClient)
 	}
 
-	if updated, err := helpers.EnsureFinalizer(ctx, r.Client, oidcClient, oidcClientFinalizer); err != nil {
-		return ctrl.Result{}, err
-	} else if updated {
+	updatedFinalizers, err := r.ReconcileOIDCClientFinalizers(ctx, oidcClient)
+	if err != nil {
+		log.Error(err, "Failed to reconcile OIDC client finalizers")
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+	}
+	if updatedFinalizers {
 		return ctrl.Result{Requeue: true}, nil
 	}
 
@@ -263,23 +268,73 @@ func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *po
 
 // pushOIDCClientState pushes the desired state from the CR spec into Pocket ID.
 func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client) error {
+	// Aggregate allowed groups before building input so IsGroupRestricted is correct
+	groupIDs, err := r.aggregateAllowedUserGroupIDs(ctx, oidcClient)
+	if err != nil {
+		return fmt.Errorf("aggregate allowed user groups: %w", err)
+	}
+
 	input := r.OidcClientInput(oidcClient)
+	input.IsGroupRestricted = len(groupIDs) > 0
 
 	if _, err := apiClient.UpdateOIDCClient(ctx, oidcClient.Status.ClientID, input); err != nil {
 		return fmt.Errorf("update OIDC client: %w", err)
 	}
 
-	if oidcClient.Spec.AllowedUserGroups != nil {
-		groupIDs, err := r.ResolveAllowedUserGroups(ctx, oidcClient)
-		if err != nil {
-			return err
-		}
+	if groupIDs != nil {
 		if err := apiClient.UpdateOIDCClientAllowedGroups(ctx, oidcClient.Status.ClientID, groupIDs); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// aggregateAllowedUserGroupIDs returns the union of:
+// 1. Direct refs from spec.allowedUserGroups
+// 2. UserGroups whose spec.allowedOIDCClients references this client
+// Returns nil if neither source contributes.
+func (r *Reconciler) aggregateAllowedUserGroupIDs(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) ([]string, error) {
+	// Find UserGroups whose spec.allowedOIDCClients references this client
+	clientKey := fmt.Sprintf("%s/%s", oidcClient.Namespace, oidcClient.Name)
+	userGroups := &pocketidinternalv1alpha1.PocketIDUserGroupList{}
+	if err := r.List(ctx, userGroups, client.MatchingFields{
+		common.UserGroupAllowedOIDCClientIndexKey: clientKey,
+	}); err != nil {
+		return nil, fmt.Errorf("list user groups referencing OIDC client: %w", err)
+	}
+
+	hasDirectRefs := len(oidcClient.Spec.AllowedUserGroups) > 0
+	hasReverseRefs := len(userGroups.Items) > 0
+
+	if !hasDirectRefs && !hasReverseRefs {
+		return nil, nil
+	}
+
+	groupIDSet := make(map[string]struct{})
+
+	if hasDirectRefs {
+		directIDs, err := helpers.ResolveUserGroupReferences(ctx, r.Client, oidcClient.Spec.AllowedUserGroups, oidcClient.Namespace)
+		if err != nil {
+			return nil, fmt.Errorf("resolve allowed user groups: %w", err)
+		}
+		for _, id := range directIDs {
+			groupIDSet[id] = struct{}{}
+		}
+	}
+
+	// Extract status.GroupID from ready UserGroups that reference this client
+	for _, group := range userGroups.Items {
+		if helpers.IsResourceReady(group.Status.Conditions) && group.Status.GroupID != "" {
+			groupIDSet[group.Status.GroupID] = struct{}{}
+		}
+	}
+
+	groupIDs := make([]string, 0, len(groupIDSet))
+	for id := range groupIDSet {
+		groupIDs = append(groupIDs, id)
+	}
+	return groupIDs, nil
 }
 
 // setClientID persists only the client ID to status.
@@ -314,28 +369,34 @@ func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.Pocket
 
 	hasLogo := oidcClient.Spec.LogoURL != ""
 	hasDarkLogo := oidcClient.Spec.DarkLogoURL != ""
-	isGroupRestricted := len(oidcClient.Spec.AllowedUserGroups) > 0
+
+	// When callback URLs are not in the spec, preserve the server-side values
+	// This prevents overwriting pocket-id's TOFU auto-detected URLs.
+	callbackURLs := oidcClient.Spec.CallbackURLs
+	if len(callbackURLs) == 0 {
+		callbackURLs = oidcClient.Status.CallbackURLs
+	}
+	logoutCallbackURLs := oidcClient.Spec.LogoutCallbackURLs
+	if len(logoutCallbackURLs) == 0 {
+		logoutCallbackURLs = oidcClient.Status.LogoutCallbackURLs
+	}
 
 	return pocketid.OIDCClientInput{
 		ID:                       clientID,
 		Name:                     name,
-		CallbackURLs:             oidcClient.Spec.CallbackURLs,
-		LogoutCallbackURLs:       oidcClient.Spec.LogoutCallbackURLs,
+		CallbackURLs:             callbackURLs,
+		LogoutCallbackURLs:       logoutCallbackURLs,
 		LaunchURL:                oidcClient.Spec.LaunchURL,
 		LogoURL:                  oidcClient.Spec.LogoURL,
 		DarkLogoURL:              oidcClient.Spec.DarkLogoURL,
 		HasLogo:                  hasLogo,
 		HasDarkLogo:              hasDarkLogo,
 		IsPublic:                 oidcClient.Spec.IsPublic,
-		IsGroupRestricted:        isGroupRestricted,
+		IsGroupRestricted:        len(oidcClient.Spec.AllowedUserGroups) > 0,
 		PKCEEnabled:              oidcClient.Spec.PKCEEnabled,
 		RequiresReauthentication: oidcClient.Spec.RequiresReauthentication,
 		Credentials:              credentials,
 	}
-}
-
-func (r *Reconciler) ResolveAllowedUserGroups(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) ([]string, error) {
-	return helpers.ResolveUserGroupReferences(ctx, r.Client, oidcClient.Spec.AllowedUserGroups, oidcClient.Namespace)
 }
 
 // clearClientStatus clears the ClientID from status, triggering recreation on next reconcile.
@@ -359,8 +420,77 @@ func (r *Reconciler) UpdateOIDCClientStatus(ctx context.Context, oidcClient *poc
 	return r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
 }
 
+func (r *Reconciler) ReconcileOIDCClientFinalizers(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) (bool, error) {
+	referencedByUserGroup, err := r.isOIDCClientReferencedByUserGroup(ctx, oidcClient)
+	if err != nil {
+		return false, err
+	}
+
+	updates := []helpers.FinalizerUpdate{
+		{Name: oidcClientFinalizer, ShouldAdd: true},
+		{Name: UserGroupOIDCClientFinalizer, ShouldAdd: referencedByUserGroup},
+	}
+
+	return helpers.ReconcileFinalizers(ctx, r.Client, oidcClient, updates)
+}
+
+func (r *Reconciler) isOIDCClientReferencedByUserGroup(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) (bool, error) {
+	clientKey := fmt.Sprintf("%s/%s", oidcClient.Namespace, oidcClient.Name)
+	return common.IsReferencedByList(
+		ctx,
+		r.Client,
+		common.UserGroupAllowedOIDCClientIndexKey,
+		clientKey,
+		&pocketidinternalv1alpha1.PocketIDUserGroupList{},
+		func(item client.Object) bool {
+			group := item.(*pocketidinternalv1alpha1.PocketIDUserGroup)
+			return userGroupAllowsOIDCClient(group, oidcClient.Namespace, oidcClient.Name)
+		},
+	)
+}
+
+func userGroupAllowsOIDCClient(group *pocketidinternalv1alpha1.PocketIDUserGroup, clientNamespace, clientName string) bool {
+	for _, ref := range group.Spec.AllowedOIDCClients {
+		if ref.Name == "" {
+			continue
+		}
+		namespace := ref.Namespace
+		if namespace == "" {
+			namespace = group.Namespace
+		}
+		if ref.Name == clientName && namespace == clientNamespace {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *Reconciler) ReconcileDelete(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) (ctrl.Result, error) {
 	r.EnsureClient(r.Client)
+	referencedByUserGroup, err := r.isOIDCClientReferencedByUserGroup(ctx, oidcClient)
+	if err != nil {
+		logf.FromContext(ctx).Error(err, "Failed to check PocketIDUserGroup references")
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+	}
+	if referencedByUserGroup {
+		logf.FromContext(ctx).Info("OIDC client is referenced by PocketIDUserGroup, blocking deletion", "oidcClient", oidcClient.Name)
+		if _, err := helpers.EnsureFinalizer(ctx, r.Client, oidcClient, UserGroupOIDCClientFinalizer); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+	}
+
+	// Remove UserGroupOIDCClientFinalizer if not referenced
+	if controllerutil.ContainsFinalizer(oidcClient, UserGroupOIDCClientFinalizer) {
+		if err := helpers.RemoveFinalizers(ctx, r.Client, oidcClient, UserGroupOIDCClientFinalizer); err != nil {
+			if errors.IsConflict(err) {
+				return ctrl.Result{Requeue: true}, nil
+			}
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{Requeue: true}, nil
+	}
+
 	return r.ReconcileDeleteWithPocketID(
 		ctx,
 		oidcClient,
@@ -563,6 +693,10 @@ func (r *Reconciler) requestsForUserGroup(ctx context.Context, obj client.Object
 		return nil
 	}
 
+	seen := make(map[client.ObjectKey]struct{})
+	var requests []reconcile.Request
+
+	// Forward: OIDCClients whose spec.allowedUserGroups references this group
 	clients := &pocketidinternalv1alpha1.PocketIDOIDCClientList{}
 	if err := r.List(ctx, clients, client.MatchingFields{
 		common.OIDCClientAllowedGroupIndexKey: client.ObjectKeyFromObject(group).String(),
@@ -570,12 +704,26 @@ func (r *Reconciler) requestsForUserGroup(ctx context.Context, obj client.Object
 		logf.FromContext(ctx).Error(err, "Failed to list OIDC clients for user group", "userGroup", client.ObjectKeyFromObject(group))
 		return nil
 	}
-
-	requests := make([]reconcile.Request, 0, len(clients.Items))
 	for i := range clients.Items {
-		requests = append(requests, reconcile.Request{
-			NamespacedName: client.ObjectKeyFromObject(&clients.Items[i]),
-		})
+		key := client.ObjectKeyFromObject(&clients.Items[i])
+		seen[key] = struct{}{}
+		requests = append(requests, reconcile.Request{NamespacedName: key})
+	}
+
+	// Reverse: OIDCClients referenced in this UserGroup's spec.allowedOIDCClients
+	for _, ref := range group.Spec.AllowedOIDCClients {
+		if ref.Name == "" {
+			continue
+		}
+		namespace := ref.Namespace
+		if namespace == "" {
+			namespace = group.Namespace
+		}
+		key := client.ObjectKey{Namespace: namespace, Name: ref.Name}
+		if _, ok := seen[key]; !ok {
+			seen[key] = struct{}{}
+			requests = append(requests, reconcile.Request{NamespacedName: key})
+		}
 	}
 
 	return requests

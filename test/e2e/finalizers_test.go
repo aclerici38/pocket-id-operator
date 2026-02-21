@@ -62,6 +62,53 @@ var _ = Describe("Reference Finalizers", Ordered, func() {
 		})
 	})
 
+	Context("OIDC Client blocks User Group deletion (reverse direction)", func() {
+		const (
+			revFinalizerGroupName = "rev-finalizer-group"
+			revFinalizerOIDCName  = "rev-finalizer-oidc-client"
+		)
+
+		It("should block deletion of an OIDC client while referenced by a user group's allowedOIDCClients", func() {
+			By("creating an OIDC client")
+			createOIDCClientAndWaitReady(OIDCClientOptions{
+				Name:         revFinalizerOIDCName,
+				CallbackURLs: []string{"https://example.com/rev-finalizer/callback"},
+			})
+
+			By("creating a user group that references the OIDC client via allowedOIDCClients")
+			createUserGroupAndWaitReady(UserGroupOptions{
+				Name:               revFinalizerGroupName,
+				GroupName:          "rev-finalizer-group",
+				FriendlyName:       "Rev Finalizer Group",
+				AllowedOIDCClients: []ResourceRef{{Name: revFinalizerOIDCName}},
+			})
+
+			By("requesting deletion of the OIDC client")
+			cmd := exec.Command("kubectl", "delete", "pocketidoidcclient", revFinalizerOIDCName,
+				"-n", userNS, "--wait=false")
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("verifying deletion is blocked by the user group finalizer")
+			Eventually(func(g Gomega) {
+				deletionTimestamp := kubectlGet("pocketidoidcclient", revFinalizerOIDCName, "-n", userNS,
+					"-o", "jsonpath={.metadata.deletionTimestamp}")
+				finalizers := kubectlGet("pocketidoidcclient", revFinalizerOIDCName, "-n", userNS,
+					"-o", "jsonpath={.metadata.finalizers}")
+				g.Expect(deletionTimestamp).NotTo(BeEmpty())
+				g.Expect(finalizers).To(ContainSubstring("pocketid.internal/user-group-oidc-client-finalizer"))
+			}, time.Minute, 2*time.Second).Should(Succeed())
+
+			By("deleting the user group")
+			cmd = exec.Command("kubectl", "delete", "pocketidusergroup", revFinalizerGroupName, "-n", userNS)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("verifying the OIDC client is deleted")
+			waitForResourceDeleted("pocketidoidcclient", revFinalizerOIDCName, userNS)
+		})
+	})
+
 	Context("User blocks User Group deletion", func() {
 		const (
 			finalizerUserName      = "finalizer-user"

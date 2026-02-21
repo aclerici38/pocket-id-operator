@@ -14,6 +14,9 @@ const (
 
 	// UserGroupUserRefIndexKey is the index key for user group user references
 	UserGroupUserRefIndexKey = "pocketidusergroup.userRef"
+
+	// UserGroupAllowedOIDCClientIndexKey is the index key for user group allowed OIDC clients
+	UserGroupAllowedOIDCClientIndexKey = "pocketidusergroup.allowedOIDCClient"
 )
 
 var (

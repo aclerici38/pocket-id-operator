@@ -193,14 +193,15 @@ metadata:
 
 // UserGroupOptions configures a PocketIDUserGroup YAML.
 type UserGroupOptions struct {
-	Name         string
-	Namespace    string
-	GroupName    string
-	FriendlyName string
-	CustomClaims []CustomClaim
-	UserRefs     []ResourceRef
-	Usernames    []string
-	UserIds      []string
+	Name               string
+	Namespace          string
+	GroupName          string
+	FriendlyName       string
+	CustomClaims       []CustomClaim
+	UserRefs           []ResourceRef
+	Usernames          []string
+	UserIds            []string
+	AllowedOIDCClients []ResourceRef
 }
 
 type CustomClaim struct {
@@ -269,6 +270,16 @@ func buildUserGroupYAML(opts UserGroupOptions) string {
 			spec.WriteString("    userIDs:\n")
 			for _, userID := range opts.UserIds {
 				spec.WriteString(fmt.Sprintf("    - %s\n", userID))
+			}
+		}
+	}
+
+	if len(opts.AllowedOIDCClients) > 0 {
+		spec.WriteString("  allowedOIDCClients:\n")
+		for _, ref := range opts.AllowedOIDCClients {
+			spec.WriteString(fmt.Sprintf("  - name: %s\n", ref.Name))
+			if ref.Namespace != "" {
+				spec.WriteString(fmt.Sprintf("    namespace: %s\n", ref.Namespace))
 			}
 		}
 	}

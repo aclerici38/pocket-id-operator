@@ -88,6 +88,12 @@ type PocketIDUserGroupSpec struct {
 	// Users defines the users to add to this group
 	// +optional
 	Users *UserGroupUsers `json:"users,omitempty"`
+
+	// AllowedOIDCClients lists PocketIDOIDCClient CRs that this group grants access to.
+	// The final set of allowed clients is the union of this field and any
+	// OIDCClients that reference this group in their allowedUserGroups.
+	// +optional
+	AllowedOIDCClients []NamespacedOIDCClientReference `json:"allowedOIDCClients,omitempty"`
 }
 
 // PocketIDUserGroupStatus defines the observed state of PocketIDUserGroup.
@@ -129,6 +135,10 @@ type PocketIDUserGroupStatus struct {
 	// CustomClaims are the resolved custom claims on the group
 	// +optional
 	CustomClaims []CustomClaim `json:"customClaims,omitempty"`
+
+	// AllowedOIDCClientIDs are the resolved OIDC client IDs assigned to this group
+	// +optional
+	AllowedOIDCClientIDs []string `json:"allowedOIDCClientIDs,omitempty"`
 
 	// Conditions represent the current state of the PocketIDUserGroup resource.
 	// +listType=map

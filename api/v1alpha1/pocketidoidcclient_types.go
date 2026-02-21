@@ -35,6 +35,18 @@ type NamespacedUserGroupReference struct {
 	Namespace string `json:"namespace,omitempty"`
 }
 
+// NamespacedOIDCClientReference references a PocketIDOIDCClient by name and namespace.
+type NamespacedOIDCClientReference struct {
+	// Name is the name of the PocketIDOIDCClient CR
+	// +optional
+	Name string `json:"name,omitempty"`
+
+	// Namespace is the namespace of the PocketIDOIDCClient CR
+	// Defaults to the referencing resource's namespace
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+}
+
 // OIDCClientFederatedIdentity defines a federated identity for OIDC client credentials.
 type OIDCClientFederatedIdentity struct {
 	// Issuer is the OIDC issuer for the identity
