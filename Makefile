@@ -46,6 +46,7 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 	"$(CONTROLLER_GEN)" rbac:roleName=pocket-id-operator-manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 	@mkdir -p dist/chart/crds
 	@cp config/crd/bases/*.yaml dist/chart/crds/
+	@cp config/rbac/role.yaml dist/chart/templates/rbac/manager-role.yaml
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.

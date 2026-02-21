@@ -55,4 +55,6 @@ jobs:
             git add -A
             git commit -m "chore: regenerate manifests"
             git push
+            echo "::error::Manifests were out of date and have been regenerated. Failing to prevent duplicate CI runs."
+            exit 1
           fi

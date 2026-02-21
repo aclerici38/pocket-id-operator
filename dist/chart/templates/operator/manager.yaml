@@ -16,7 +16,7 @@ spec:
     template:
         metadata:
             annotations:
-                kubectl.kubernetes.io/default-container: manager
+                kubectl.kubernetes.io/default-container: operator
             labels:
                 app.kubernetes.io/name: pocket-id-operator
                 control-plane: controller-manager
@@ -44,20 +44,21 @@ spec:
                     - --metrics-bind-address=0
                     {{- end }}
                     - --health-probe-bind-address=:8081
-                    {{- range .Values.manager.args }}
+                    - --leader-elect
+                    {{- range .Values.operator.args }}
                     - {{ . }}
                     {{- end }}
                   command:
                     - /manager
-                  image: "{{ .Values.manager.image.repository }}:{{ .Values.manager.image.tag | default .Chart.AppVersion }}"
-                  imagePullPolicy: {{ .Values.manager.image.pullPolicy }}
+                  image: "{{ .Values.operator.image.repository }}:{{ .Values.operator.image.tag | default .Chart.AppVersion }}"
+                  imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
                   livenessProbe:
                     httpGet:
                         path: /healthz
                         port: 8081
                     initialDelaySeconds: 15
                     periodSeconds: 20
-                  name: manager
+                  name: operator
                   ports: []
                   readinessProbe:
                     httpGet:
@@ -66,21 +67,21 @@ spec:
                     initialDelaySeconds: 5
                     periodSeconds: 10
                   resources:
-                    {{- if .Values.manager.resources }}
-                    {{- toYaml .Values.manager.resources | nindent 20 }}
+                    {{- if .Values.operator.resources }}
+                    {{- toYaml .Values.operator.resources | nindent 20 }}
                     {{- else }}
                     {}
                     {{- end }}
                   securityContext:
-                    {{- if .Values.manager.securityContext }}
-                    {{- toYaml .Values.manager.securityContext | nindent 20 }}
+                    {{- if .Values.operator.securityContext }}
+                    {{- toYaml .Values.operator.securityContext | nindent 20 }}
                     {{- else }}
                     {}
                     {{- end }}
                   volumeMounts: []
             securityContext:
-              {{- if .Values.manager.podSecurityContext }}
-              {{- toYaml .Values.manager.podSecurityContext | nindent 14 }}
+              {{- if .Values.operator.podSecurityContext }}
+              {{- toYaml .Values.operator.podSecurityContext | nindent 14 }}
               {{- else }}
               {}
               {{- end }}
