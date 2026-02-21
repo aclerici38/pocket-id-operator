@@ -30,6 +30,7 @@ import (
 	"k8s.io/client-go/util/retry"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/helpers"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/oidcclient"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
@@ -94,15 +95,6 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 			clientName = "test-oidc-group-client"
 		)
 
-		var reconciler *PocketIDOIDCClientReconciler
-
-		BeforeEach(func() {
-			reconciler = &PocketIDOIDCClientReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-			}
-		})
-
 		AfterEach(func() {
 			group := &pocketidinternalv1alpha1.PocketIDUserGroup{}
 			if err := k8sClient.Get(ctx, types.NamespacedName{Name: groupName, Namespace: namespace}, group); err == nil {
@@ -160,7 +152,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 
 			// Use Eventually because the controller may overwrite our status update
 			Eventually(func() ([]string, error) {
-				return reconciler.ResolveAllowedUserGroups(ctx, client)
+				return helpers.ResolveUserGroupReferences(ctx, k8sClient, client.Spec.AllowedUserGroups, client.Namespace)
 			}, timeout, interval).Should(Equal([]string{"group-id-1"}))
 		})
 
@@ -177,7 +169,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 				},
 			}
 
-			_, err := reconciler.ResolveAllowedUserGroups(ctx, client)
+			_, err := helpers.ResolveUserGroupReferences(ctx, k8sClient, client.Spec.AllowedUserGroups, client.Namespace)
 			Expect(err).To(HaveOccurred())
 		})
 
@@ -194,7 +186,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 				},
 			}
 
-			_, err := reconciler.ResolveAllowedUserGroups(ctx, client)
+			_, err := helpers.ResolveUserGroupReferences(ctx, k8sClient, client.Spec.AllowedUserGroups, client.Namespace)
 			Expect(err).To(HaveOccurred())
 		})
 
@@ -226,7 +218,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 				},
 			}
 
-			_, err := reconciler.ResolveAllowedUserGroups(ctx, client)
+			_, err := helpers.ResolveUserGroupReferences(ctx, k8sClient, client.Spec.AllowedUserGroups, client.Namespace)
 			Expect(err).To(HaveOccurred())
 		})
 
@@ -282,7 +274,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 				},
 			}
 
-			ids, err := reconciler.ResolveAllowedUserGroups(ctx, client)
+			ids, err := helpers.ResolveUserGroupReferences(ctx, k8sClient, client.Spec.AllowedUserGroups, client.Namespace)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ids).To(Equal([]string{"cross-ns-group-id"}))
 		})

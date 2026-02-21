@@ -251,7 +251,65 @@ func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketid
 		}
 	}
 
+	// Aggregate allowed OIDC clients from both directions and push
+	clientIDs, err := r.aggregateAllowedOIDCClientIDs(ctx, userGroup)
+	if err != nil {
+		return fmt.Errorf("aggregate allowed OIDC clients: %w", err)
+	}
+	if clientIDs != nil {
+		if err := apiClient.UpdateUserGroupAllowedOIDCClients(ctx, userGroup.Status.GroupID, clientIDs); err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+// aggregateAllowedOIDCClientIDs returns the union of:
+// Direct refs from spec.allowedOIDCClients
+// OIDCClients whose spec.allowedUserGroups references this group
+// Returns nil if neither source contributes.
+func (r *Reconciler) aggregateAllowedOIDCClientIDs(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup) ([]string, error) {
+	// Find OIDCClients whose spec.allowedUserGroups references this group
+	groupKey := fmt.Sprintf("%s/%s", userGroup.Namespace, userGroup.Name)
+	oidcClients := &pocketidinternalv1alpha1.PocketIDOIDCClientList{}
+	if err := r.List(ctx, oidcClients, client.MatchingFields{
+		common.OIDCClientAllowedGroupIndexKey: groupKey,
+	}); err != nil {
+		return nil, fmt.Errorf("list OIDC clients referencing user group: %w", err)
+	}
+
+	hasDirectRefs := len(userGroup.Spec.AllowedOIDCClients) > 0
+	hasReverseRefs := len(oidcClients.Items) > 0
+
+	if !hasDirectRefs && !hasReverseRefs {
+		return nil, nil
+	}
+
+	clientIDSet := make(map[string]struct{})
+
+	if hasDirectRefs {
+		directIDs, err := helpers.ResolveOIDCClientReferences(ctx, r.Client, userGroup.Spec.AllowedOIDCClients, userGroup.Namespace)
+		if err != nil {
+			return nil, fmt.Errorf("resolve allowed OIDC clients: %w", err)
+		}
+		for _, id := range directIDs {
+			clientIDSet[id] = struct{}{}
+		}
+	}
+
+	// Reverse: extract status.ClientID from ready OIDCClients that reference this group
+	for _, oc := range oidcClients.Items {
+		if helpers.IsResourceReady(oc.Status.Conditions) && oc.Status.ClientID != "" {
+			clientIDSet[oc.Status.ClientID] = struct{}{}
+		}
+	}
+
+	clientIDs := make([]string, 0, len(clientIDSet))
+	for id := range clientIDSet {
+		clientIDs = append(clientIDs, id)
+	}
+	return clientIDs, nil
 }
 
 // setGroupID persists only the group ID to status.
@@ -348,6 +406,7 @@ func (r *Reconciler) updateUserGroupStatus(ctx context.Context, userGroup *pocke
 	userGroup.Status.UserCount = current.UserCount
 	userGroup.Status.UserIDs = current.UserIDs
 	userGroup.Status.CustomClaims = toCustomClaims(current.CustomClaims)
+	userGroup.Status.AllowedOIDCClientIDs = current.AllowedOIDCClientIDs
 	return r.Status().Patch(ctx, userGroup, client.MergeFrom(base))
 }
 
@@ -464,11 +523,10 @@ func (r *Reconciler) requestsForOIDCClient(ctx context.Context, obj client.Objec
 		return nil
 	}
 
-	if len(oidcClient.Spec.AllowedUserGroups) == 0 {
-		return nil
-	}
+	seen := make(map[client.ObjectKey]struct{})
+	var requests []reconcile.Request
 
-	requests := make([]reconcile.Request, 0, len(oidcClient.Spec.AllowedUserGroups))
+	// Forward: UserGroups referenced in this OIDCClient's spec.allowedUserGroups
 	for _, ref := range oidcClient.Spec.AllowedUserGroups {
 		if ref.Name == "" {
 			continue
@@ -477,9 +535,28 @@ func (r *Reconciler) requestsForOIDCClient(ctx context.Context, obj client.Objec
 		if namespace == "" {
 			namespace = oidcClient.Namespace
 		}
-		requests = append(requests, reconcile.Request{
-			NamespacedName: client.ObjectKey{Namespace: namespace, Name: ref.Name},
-		})
+		key := client.ObjectKey{Namespace: namespace, Name: ref.Name}
+		if _, ok := seen[key]; !ok {
+			seen[key] = struct{}{}
+			requests = append(requests, reconcile.Request{NamespacedName: key})
+		}
+	}
+
+	// Reverse: UserGroups whose spec.allowedOIDCClients references this OIDCClient
+	clientKey := client.ObjectKeyFromObject(oidcClient).String()
+	userGroups := &pocketidinternalv1alpha1.PocketIDUserGroupList{}
+	if err := r.List(ctx, userGroups, client.MatchingFields{
+		common.UserGroupAllowedOIDCClientIndexKey: clientKey,
+	}); err != nil {
+		logf.FromContext(ctx).Error(err, "Failed to list user groups for OIDC client", "oidcClient", clientKey)
+		return requests
+	}
+	for i := range userGroups.Items {
+		key := client.ObjectKeyFromObject(&userGroups.Items[i])
+		if _, ok := seen[key]; !ok {
+			seen[key] = struct{}{}
+			requests = append(requests, reconcile.Request{NamespacedName: key})
+		}
 	}
 
 	return requests
@@ -514,6 +591,32 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 		keys := make([]string, 0, len(userGroup.Spec.Users.UserRefs))
 		for _, ref := range userGroup.Spec.Users.UserRefs {
+			if ref.Name == "" {
+				continue
+			}
+			namespace := ref.Namespace
+			if namespace == "" {
+				namespace = userGroup.Namespace
+			}
+			keys = append(keys, fmt.Sprintf("%s/%s", namespace, ref.Name))
+		}
+		return keys
+	}); err != nil {
+		return err
+	}
+
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &pocketidinternalv1alpha1.PocketIDUserGroup{}, common.UserGroupAllowedOIDCClientIndexKey, func(raw client.Object) []string {
+		userGroup, ok := raw.(*pocketidinternalv1alpha1.PocketIDUserGroup)
+		if !ok {
+			return nil
+		}
+
+		if len(userGroup.Spec.AllowedOIDCClients) == 0 {
+			return nil
+		}
+
+		keys := make([]string, 0, len(userGroup.Spec.AllowedOIDCClients))
+		for _, ref := range userGroup.Spec.AllowedOIDCClients {
 			if ref.Name == "" {
 				continue
 			}
