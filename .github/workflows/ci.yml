@@ -158,12 +158,13 @@ jobs:
     needs:
       - meta
       - generate
+      - regenerate
       - e2e
       - test
       - lint
       - build
       - test-chart
-    if: ${{ github.event_name == 'push' }}
+    if: ${{ !cancelled() && !failure() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
     uses: ./.github/workflows/publish.yml
     with:
       image: ${{ needs.meta.outputs.build_image }}
