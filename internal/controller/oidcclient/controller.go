@@ -365,11 +365,22 @@ func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.Pocket
 	hasLogo := oidcClient.Spec.LogoURL != ""
 	hasDarkLogo := oidcClient.Spec.DarkLogoURL != ""
 
+	// When callback URLs are not in the spec, preserve the server-side values
+	// This prevents overwriting pocket-id's TOFU auto-detected URLs.
+	callbackURLs := oidcClient.Spec.CallbackURLs
+	if len(callbackURLs) == 0 {
+		callbackURLs = oidcClient.Status.CallbackURLs
+	}
+	logoutCallbackURLs := oidcClient.Spec.LogoutCallbackURLs
+	if len(logoutCallbackURLs) == 0 {
+		logoutCallbackURLs = oidcClient.Status.LogoutCallbackURLs
+	}
+
 	return pocketid.OIDCClientInput{
 		ID:                       clientID,
 		Name:                     name,
-		CallbackURLs:             oidcClient.Spec.CallbackURLs,
-		LogoutCallbackURLs:       oidcClient.Spec.LogoutCallbackURLs,
+		CallbackURLs:             callbackURLs,
+		LogoutCallbackURLs:       logoutCallbackURLs,
 		LaunchURL:                oidcClient.Spec.LaunchURL,
 		LogoURL:                  oidcClient.Spec.LogoURL,
 		DarkLogoURL:              oidcClient.Spec.DarkLogoURL,
