@@ -113,8 +113,43 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return *result, err
 	}
 
-	if err := r.reconcileUser(ctx, user, apiClient, instance); err != nil {
-		log.Error(err, "Failed to reconcile user")
+	// Sync status from Pocket ID
+	if user.Status.UserID != "" {
+		pUser, err := apiClient.GetUser(ctx, user.Status.UserID)
+		if err != nil {
+			if pocketid.IsNotFoundError(err) {
+				log.Info("User was deleted externally, will recreate", "userID", user.Status.UserID)
+				if err := r.clearUserStatus(ctx, user); err != nil {
+					return ctrl.Result{}, err
+				}
+				return ctrl.Result{Requeue: true}, nil
+			}
+			_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "GetError", err.Error())
+			return ctrl.Result{RequeueAfter: common.Requeue}, nil
+		}
+
+		if err := r.updateUserStatus(ctx, user, pUser); err != nil {
+			log.Error(err, "Failed to update user status")
+			return ctrl.Result{RequeueAfter: common.Requeue}, nil
+		}
+	}
+
+	// Ensure resource exists or push state from CR
+	if user.Status.UserID == "" {
+		requeue, err := r.createOrAdoptUser(ctx, user, apiClient, instance)
+		if err != nil {
+			log.Error(err, "Failed to create or adopt user")
+			_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "ReconcileError", err.Error())
+			return ctrl.Result{RequeueAfter: common.Requeue}, nil
+		}
+		if requeue {
+			return ctrl.Result{Requeue: true}, nil
+		}
+		return common.ApplyResync(ctrl.Result{}), nil
+	}
+
+	if err := r.pushUserState(ctx, user, apiClient); err != nil {
+		log.Error(err, "Failed to push user state")
 		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
@@ -383,56 +418,75 @@ func (r *Reconciler) buildUserInput(ctx context.Context, user *pocketidinternalv
 	}, nil
 }
 
-// reconcileUser ensures the user exists in Pocket-ID with correct settings
-func (r *Reconciler) reconcileUser(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
+// createOrAdoptUser handles creation or adoption when no status ID exists.
+// Returns (requeue, error). On success, sets the status ID and signals a requeue.
+func (r *Reconciler) createOrAdoptUser(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client, instance *pocketidinternalv1alpha1.PocketIDInstance) (bool, error) {
 	log := logf.FromContext(ctx)
 
 	input, err := r.buildUserInput(ctx, user)
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	result, err := common.CreateOrAdopt(ctx, user.Status.UserID, common.CreateOrAdoptConfig[*pocketid.User]{
+	result, err := common.CreateOrAdopt(ctx, common.CreateOrAdoptConfig[*pocketid.User]{
 		ResourceKind: "user",
 		ResourceID:   input.Username,
 		Create: func() (*pocketid.User, error) {
 			return apiClient.CreateUser(ctx, input)
 		},
-		Update: func() (*pocketid.User, error) {
-			return apiClient.UpdateUser(ctx, user.Status.UserID, input)
-		},
 		FindExisting: func() (*pocketid.User, error) {
 			return r.FindExistingUser(ctx, apiClient, input.Username, input.Email)
-		},
-		ClearStatus: func() error {
-			return r.clearUserStatus(ctx, user)
 		},
 		IsNil: func(u *pocketid.User) bool {
 			return u == nil
 		},
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	pUser := result.Resource
-	if pUser == nil {
-		return nil // Requeue will recreate
+	if result.Resource == nil {
+		return true, nil
+	}
+
+	if err := r.setUserID(ctx, user, result.Resource.ID); err != nil {
+		return false, err
 	}
 
 	// Generate one-time login token for newly created user only
 	if result.IsNewlyCreated {
-		token, err := apiClient.CreateOneTimeAccessToken(ctx, pUser.ID, DefaultLoginTokenExpiryMin)
+		token, err := apiClient.CreateOneTimeAccessToken(ctx, result.Resource.ID, DefaultLoginTokenExpiryMin)
 		if err != nil {
 			log.Error(err, "Failed to create one-time login token - user created but token not available")
 		} else {
 			if err := r.SetOneTimeLoginStatus(ctx, user, instance, token.Token); err != nil {
-				return fmt.Errorf("set one-time login status: %w", err)
+				return false, fmt.Errorf("set one-time login status: %w", err)
 			}
 		}
 	}
 
-	return r.updateUserStatus(ctx, user, pUser)
+	return true, nil
+}
+
+// pushUserState pushes the desired state from the CR spec into Pocket ID.
+func (r *Reconciler) pushUserState(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client) error {
+	input, err := r.buildUserInput(ctx, user)
+	if err != nil {
+		return err
+	}
+
+	if _, err := apiClient.UpdateUser(ctx, user.Status.UserID, input); err != nil {
+		return fmt.Errorf("update user: %w", err)
+	}
+
+	return nil
+}
+
+// setUserID persists only the user ID to status.
+func (r *Reconciler) setUserID(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, id string) error {
+	base := user.DeepCopy()
+	user.Status.UserID = id
+	return r.Status().Patch(ctx, user, client.MergeFrom(base))
 }
 
 // clearUserStatus clears the UserID from status, triggering recreation on next reconcile.

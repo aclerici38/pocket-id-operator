@@ -99,18 +99,44 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return *result, err
 	}
 
-	current, err := r.reconcileOIDCClient(ctx, oidcClient, apiClient)
-	if err != nil {
-		log.Error(err, "Failed to reconcile OIDC client")
-		if updateErr := r.UpdateOIDCClientStatus(ctx, oidcClient, current); updateErr != nil {
-			log.Error(updateErr, "Failed to update OIDC client status")
+	// Sync status from Pocket ID
+	if oidcClient.Status.ClientID != "" {
+		current, err := apiClient.GetOIDCClient(ctx, oidcClient.Status.ClientID)
+		if err != nil {
+			if pocketid.IsNotFoundError(err) {
+				log.Info("OIDC client was deleted externally, will recreate", "clientID", oidcClient.Status.ClientID)
+				if err := r.clearClientStatus(ctx, oidcClient); err != nil {
+					return ctrl.Result{}, err
+				}
+				return ctrl.Result{Requeue: true}, nil
+			}
+			_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "GetError", err.Error())
+			return ctrl.Result{RequeueAfter: common.Requeue}, nil
 		}
-		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "ReconcileError", err.Error())
-		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+
+		if err := r.UpdateOIDCClientStatus(ctx, oidcClient, current); err != nil {
+			log.Error(err, "Failed to update OIDC client status")
+			return ctrl.Result{RequeueAfter: common.Requeue}, nil
+		}
 	}
 
-	if err := r.UpdateOIDCClientStatus(ctx, oidcClient, current); err != nil {
-		log.Error(err, "Failed to update OIDC client status")
+	// Ensure resource exists and update state
+	if oidcClient.Status.ClientID == "" {
+		requeue, err := r.createOrAdoptOIDCClient(ctx, oidcClient, apiClient)
+		if err != nil {
+			log.Error(err, "Failed to create or adopt OIDC client")
+			_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "ReconcileError", err.Error())
+			return ctrl.Result{RequeueAfter: common.Requeue}, nil
+		}
+		if requeue {
+			return ctrl.Result{Requeue: true}, nil
+		}
+		return common.ApplyResync(ctrl.Result{}), nil
+	}
+
+	if err := r.pushOIDCClientState(ctx, oidcClient, apiClient); err != nil {
+		log.Error(err, "Failed to push OIDC client state")
+		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
@@ -179,86 +205,88 @@ func (r *Reconciler) FindExistingOIDCClient(ctx context.Context, apiClient Pocke
 	return nil, nil
 }
 
-func (r *Reconciler) reconcileOIDCClient(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client) (*pocketid.OIDCClient, error) {
+// createOrAdoptOIDCClient handles creation or adoption when no ID exists in the status.
+// Returns (requeue, error). On success, sets the status ID and signals a requeue
+// so the next reconcile loop can GET the canonical state.
+func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client) (bool, error) {
 	log := logf.FromContext(ctx)
 	input := r.OidcClientInput(oidcClient)
 
-	// For logging purposes only - use status ID, then spec ID, then indicate auto-generated
-	resourceID := oidcClient.Status.ClientID
-	if resourceID == "" && oidcClient.Spec.ClientID != "" {
-		resourceID = oidcClient.Spec.ClientID
-	}
+	resourceID := oidcClient.Spec.ClientID
 	if resourceID == "" {
 		resourceID = "(auto-generated)"
 	}
 
-	// When spec.clientID is not set and status.clientID is empty, search by name first
-	if oidcClient.Status.ClientID == "" && oidcClient.Spec.ClientID == "" {
+	// When spec.clientID is not set, search by name first to adopt
+	if oidcClient.Spec.ClientID == "" {
 		log.Info("No clientID specified, searching for existing OIDC client by name", "name", oidcClient.Name)
 		existing, err := r.FindExistingOIDCClient(ctx, apiClient, "", oidcClient.Name)
 		if err != nil {
-			return nil, fmt.Errorf("search for existing OIDC client by name: %w", err)
+			return false, fmt.Errorf("search for existing OIDC client by name: %w", err)
 		}
 		if existing != nil {
 			log.Info("Found existing OIDC client by name, adopting", "name", oidcClient.Name, "clientID", existing.ID)
-			// Update the existing client to sync any spec changes
-			updated, err := apiClient.UpdateOIDCClient(ctx, existing.ID, input)
-			if err != nil {
-				return nil, fmt.Errorf("update adopted OIDC client: %w", err)
+			if err := r.setClientID(ctx, oidcClient, existing.ID); err != nil {
+				return false, err
 			}
-			return r.reconcileAllowedUserGroups(ctx, oidcClient, apiClient, updated)
+			return true, nil
 		}
 		log.Info("No existing OIDC client found by name, creating new", "name", oidcClient.Name)
 	}
 
-	result, err := common.CreateOrAdopt(ctx, oidcClient.Status.ClientID, common.CreateOrAdoptConfig[*pocketid.OIDCClient]{
+	result, err := common.CreateOrAdopt(ctx, common.CreateOrAdoptConfig[*pocketid.OIDCClient]{
 		ResourceKind: "OIDC client",
 		ResourceID:   resourceID,
 		Create: func() (*pocketid.OIDCClient, error) {
 			return apiClient.CreateOIDCClient(ctx, input)
 		},
-		Update: func() (*pocketid.OIDCClient, error) {
-			return apiClient.UpdateOIDCClient(ctx, oidcClient.Status.ClientID, input)
-		},
 		FindExisting: func() (*pocketid.OIDCClient, error) {
 			return r.FindExistingOIDCClient(ctx, apiClient, oidcClient.Spec.ClientID, oidcClient.Name)
-		},
-		ClearStatus: func() error {
-			return r.clearClientStatus(ctx, oidcClient)
 		},
 		IsNil: func(c *pocketid.OIDCClient) bool {
 			return c == nil
 		},
 	})
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 
-	current := result.Resource
-	if current == nil {
-		return nil, nil // Requeue will recreate
+	if result.Resource == nil {
+		return true, nil
 	}
 
-	return r.reconcileAllowedUserGroups(ctx, oidcClient, apiClient, current)
+	if err := r.setClientID(ctx, oidcClient, result.Resource.ID); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
-func (r *Reconciler) reconcileAllowedUserGroups(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client, current *pocketid.OIDCClient) (*pocketid.OIDCClient, error) {
-	if current == nil {
-		return nil, nil
+// pushOIDCClientState pushes the desired state from the CR spec into Pocket ID.
+func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client) error {
+	input := r.OidcClientInput(oidcClient)
+
+	if _, err := apiClient.UpdateOIDCClient(ctx, oidcClient.Status.ClientID, input); err != nil {
+		return fmt.Errorf("update OIDC client: %w", err)
 	}
 
 	if oidcClient.Spec.AllowedUserGroups != nil {
 		groupIDs, err := r.ResolveAllowedUserGroups(ctx, oidcClient)
 		if err != nil {
-			return current, err
+			return err
 		}
-		if err := apiClient.UpdateOIDCClientAllowedGroups(ctx, current.ID, groupIDs); err != nil {
-			return current, err
+		if err := apiClient.UpdateOIDCClientAllowedGroups(ctx, oidcClient.Status.ClientID, groupIDs); err != nil {
+			return err
 		}
-		current.AllowedUserGroupIDs = groupIDs
 	}
 
-	return current, nil
+	return nil
+}
+
+// setClientID persists only the client ID to status.
+func (r *Reconciler) setClientID(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, id string) error {
+	base := oidcClient.DeepCopy()
+	oidcClient.Status.ClientID = id
+	return r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
 }
 
 func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) pocketid.OIDCClientInput {

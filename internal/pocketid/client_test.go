@@ -22,32 +22,23 @@ type oidcClientResponse struct {
 	AllowedUserGroups  []any    `json:"allowedUserGroups"`
 }
 
-func TestUpdateOIDCClient_SkipsGetWhenBothURLsProvided(t *testing.T) {
-	getCalled := false
+func TestUpdateOIDCClient_SendsCallbackURLsAsProvided(t *testing.T) {
+	var sentCallbackURLs, sentLogoutCallbackURLs []string
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/api/oidc/clients/test-id":
-			getCalled = true
-			resp := oidcClientResponse{
-				ID:                 "test-id",
-				Name:               "test-client",
-				CallbackURLs:       []string{"https://old.example.com/callback"},
-				LogoutCallbackURLs: []string{"https://old.example.com/logout"},
-				AllowedUserGroups:  []any{},
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(resp)
-
 		case r.Method == http.MethodPut && r.URL.Path == "/api/oidc/clients/test-id":
 			var body map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&body)
 
+			sentCallbackURLs = jsonStringSlice(body, "callbackURLs")
+			sentLogoutCallbackURLs = jsonStringSlice(body, "logoutCallbackURLs")
+
 			resp := oidcClientResponse{
 				ID:                 "test-id",
 				Name:               "test-client",
-				CallbackURLs:       jsonStringSlice(body, "callbackURLs"),
-				LogoutCallbackURLs: jsonStringSlice(body, "logoutCallbackURLs"),
+				CallbackURLs:       sentCallbackURLs,
+				LogoutCallbackURLs: sentLogoutCallbackURLs,
 				AllowedUserGroups:  []any{},
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -64,7 +55,6 @@ func TestUpdateOIDCClient_SkipsGetWhenBothURLsProvided(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	// Both URLs provided — should NOT issue a GET to fetch existing state
 	_, err = client.UpdateOIDCClient(context.Background(), "test-id", OIDCClientInput{
 		Name:               "test-client",
 		CallbackURLs:       []string{"https://new.example.com/callback"},
@@ -74,8 +64,11 @@ func TestUpdateOIDCClient_SkipsGetWhenBothURLsProvided(t *testing.T) {
 		t.Fatalf("UpdateOIDCClient: %v", err)
 	}
 
-	if getCalled {
-		t.Error("GET should not be called when both callback URL lists are provided in spec")
+	if len(sentCallbackURLs) != 1 || sentCallbackURLs[0] != "https://new.example.com/callback" {
+		t.Errorf("expected callback URLs [https://new.example.com/callback], got %v", sentCallbackURLs)
+	}
+	if len(sentLogoutCallbackURLs) != 1 || sentLogoutCallbackURLs[0] != "https://new.example.com/logout" {
+		t.Errorf("expected logout callback URLs [https://new.example.com/logout], got %v", sentLogoutCallbackURLs)
 	}
 }
 

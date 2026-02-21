@@ -100,18 +100,44 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return *result, err
 	}
 
-	current, err := r.reconcileUserGroup(ctx, userGroup, apiClient)
-	if err != nil {
-		log.Error(err, "Failed to reconcile user group")
-		if updateErr := r.updateUserGroupStatus(ctx, userGroup, current); updateErr != nil {
-			log.Error(updateErr, "Failed to update user group status")
+	// Sync status from Pocket ID
+	if userGroup.Status.GroupID != "" {
+		current, err := apiClient.GetUserGroup(ctx, userGroup.Status.GroupID)
+		if err != nil {
+			if pocketid.IsNotFoundError(err) {
+				log.Info("User group was deleted externally, will recreate", "groupID", userGroup.Status.GroupID)
+				if err := r.clearGroupStatus(ctx, userGroup); err != nil {
+					return ctrl.Result{}, err
+				}
+				return ctrl.Result{Requeue: true}, nil
+			}
+			_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "GetError", err.Error())
+			return ctrl.Result{RequeueAfter: common.Requeue}, nil
 		}
-		_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "ReconcileError", err.Error())
-		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+
+		if err := r.updateUserGroupStatus(ctx, userGroup, current); err != nil {
+			log.Error(err, "Failed to update user group status")
+			return ctrl.Result{RequeueAfter: common.Requeue}, nil
+		}
 	}
 
-	if err := r.updateUserGroupStatus(ctx, userGroup, current); err != nil {
-		log.Error(err, "Failed to update user group status")
+	// Ensure resource exists or push state from CR
+	if userGroup.Status.GroupID == "" {
+		requeue, err := r.createOrAdoptUserGroup(ctx, userGroup, apiClient)
+		if err != nil {
+			log.Error(err, "Failed to create or adopt user group")
+			_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "ReconcileError", err.Error())
+			return ctrl.Result{RequeueAfter: common.Requeue}, nil
+		}
+		if requeue {
+			return ctrl.Result{Requeue: true}, nil
+		}
+		return common.ApplyResync(ctrl.Result{}), nil
+	}
+
+	if err := r.pushUserGroupState(ctx, userGroup, apiClient); err != nil {
+		log.Error(err, "Failed to push user group state")
+		_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
@@ -151,7 +177,9 @@ func (r *Reconciler) FindExistingUserGroup(ctx context.Context, apiClient Pocket
 	return nil, nil
 }
 
-func (r *Reconciler) reconcileUserGroup(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, apiClient *pocketid.Client) (*pocketid.UserGroup, error) {
+// createOrAdoptUserGroup handles creation or adoption when no status ID exists.
+// Returns (requeue, error). On success, sets the status ID and signals a requeue.
+func (r *Reconciler) createOrAdoptUserGroup(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, apiClient *pocketid.Client) (bool, error) {
 	name := userGroup.Spec.Name
 	if name == "" {
 		name = userGroup.Name
@@ -161,60 +189,76 @@ func (r *Reconciler) reconcileUserGroup(ctx context.Context, userGroup *pocketid
 		friendlyName = name
 	}
 
-	result, err := common.CreateOrAdopt(ctx, userGroup.Status.GroupID, common.CreateOrAdoptConfig[*pocketid.UserGroup]{
+	result, err := common.CreateOrAdopt(ctx, common.CreateOrAdoptConfig[*pocketid.UserGroup]{
 		ResourceKind: "user group",
 		ResourceID:   name,
 		Create: func() (*pocketid.UserGroup, error) {
 			return apiClient.CreateUserGroup(ctx, name, friendlyName)
 		},
-		Update: func() (*pocketid.UserGroup, error) {
-			return apiClient.UpdateUserGroup(ctx, userGroup.Status.GroupID, name, friendlyName)
-		},
 		FindExisting: func() (*pocketid.UserGroup, error) {
 			return r.FindExistingUserGroup(ctx, apiClient, name)
-		},
-		ClearStatus: func() error {
-			return r.clearGroupStatus(ctx, userGroup)
 		},
 		IsNil: func(g *pocketid.UserGroup) bool {
 			return g == nil
 		},
 	})
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 
-	current := result.Resource
-	if current == nil {
-		return nil, nil // Requeue will recreate
+	if result.Resource == nil {
+		return true, nil
 	}
 
-	// Update custom claims if specified
+	if err := r.setGroupID(ctx, userGroup, result.Resource.ID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// pushUserGroupState pushes the desired state from the CR spec into Pocket ID.
+func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, apiClient *pocketid.Client) error {
+	name := userGroup.Spec.Name
+	if name == "" {
+		name = userGroup.Name
+	}
+	friendlyName := userGroup.Spec.FriendlyName
+	if friendlyName == "" {
+		friendlyName = name
+	}
+
+	if _, err := apiClient.UpdateUserGroup(ctx, userGroup.Status.GroupID, name, friendlyName); err != nil {
+		return fmt.Errorf("update user group: %w", err)
+	}
+
 	if userGroup.Spec.CustomClaims != nil {
 		claims := make([]pocketid.CustomClaim, 0, len(userGroup.Spec.CustomClaims))
 		for _, claim := range userGroup.Spec.CustomClaims {
 			claims = append(claims, pocketid.CustomClaim{Key: claim.Key, Value: claim.Value})
 		}
-		updated, err := apiClient.UpdateUserGroupCustomClaims(ctx, current.ID, claims)
-		if err != nil {
-			return current, err
+		if _, err := apiClient.UpdateUserGroupCustomClaims(ctx, userGroup.Status.GroupID, claims); err != nil {
+			return err
 		}
-		current.CustomClaims = updated
 	}
 
 	if userGroup.Spec.Users != nil {
 		userIDs, err := r.resolveUsers(ctx, userGroup, apiClient)
 		if err != nil {
-			return current, err
+			return err
 		}
-		if err := apiClient.UpdateUserGroupUsers(ctx, current.ID, userIDs); err != nil {
-			return current, err
+		if err := apiClient.UpdateUserGroupUsers(ctx, userGroup.Status.GroupID, userIDs); err != nil {
+			return err
 		}
-		current.UserIDs = userIDs
-		current.UserCount = len(userIDs)
 	}
 
-	return current, nil
+	return nil
+}
+
+// setGroupID persists only the group ID to status.
+func (r *Reconciler) setGroupID(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, id string) error {
+	base := userGroup.DeepCopy()
+	userGroup.Status.GroupID = id
+	return r.Status().Patch(ctx, userGroup, client.MergeFrom(base))
 }
 
 // resolveUsers resolves userRefs, usernames, and userIds to Pocket-ID user IDs.
