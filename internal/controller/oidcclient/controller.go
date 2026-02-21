@@ -22,6 +22,7 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -40,7 +41,8 @@ import (
 )
 
 const (
-	oidcClientFinalizer = "pocketid.internal/oidc-client-finalizer"
+	oidcClientFinalizer          = "pocketid.internal/oidc-client-finalizer"
+	UserGroupOIDCClientFinalizer = "pocketid.internal/user-group-oidc-client-finalizer"
 )
 
 // Reconciler reconciles a PocketIDOIDCClient object
@@ -76,9 +78,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return r.ReconcileDelete(ctx, oidcClient)
 	}
 
-	if updated, err := helpers.EnsureFinalizer(ctx, r.Client, oidcClient, oidcClientFinalizer); err != nil {
-		return ctrl.Result{}, err
-	} else if updated {
+	updatedFinalizers, err := r.ReconcileOIDCClientFinalizers(ctx, oidcClient)
+	if err != nil {
+		log.Error(err, "Failed to reconcile OIDC client finalizers")
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+	}
+	if updatedFinalizers {
 		return ctrl.Result{Requeue: true}, nil
 	}
 
@@ -415,8 +420,77 @@ func (r *Reconciler) UpdateOIDCClientStatus(ctx context.Context, oidcClient *poc
 	return r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
 }
 
+func (r *Reconciler) ReconcileOIDCClientFinalizers(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) (bool, error) {
+	referencedByUserGroup, err := r.isOIDCClientReferencedByUserGroup(ctx, oidcClient)
+	if err != nil {
+		return false, err
+	}
+
+	updates := []helpers.FinalizerUpdate{
+		{Name: oidcClientFinalizer, ShouldAdd: true},
+		{Name: UserGroupOIDCClientFinalizer, ShouldAdd: referencedByUserGroup},
+	}
+
+	return helpers.ReconcileFinalizers(ctx, r.Client, oidcClient, updates)
+}
+
+func (r *Reconciler) isOIDCClientReferencedByUserGroup(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) (bool, error) {
+	clientKey := fmt.Sprintf("%s/%s", oidcClient.Namespace, oidcClient.Name)
+	return common.IsReferencedByList(
+		ctx,
+		r.Client,
+		common.UserGroupAllowedOIDCClientIndexKey,
+		clientKey,
+		&pocketidinternalv1alpha1.PocketIDUserGroupList{},
+		func(item client.Object) bool {
+			group := item.(*pocketidinternalv1alpha1.PocketIDUserGroup)
+			return userGroupAllowsOIDCClient(group, oidcClient.Namespace, oidcClient.Name)
+		},
+	)
+}
+
+func userGroupAllowsOIDCClient(group *pocketidinternalv1alpha1.PocketIDUserGroup, clientNamespace, clientName string) bool {
+	for _, ref := range group.Spec.AllowedOIDCClients {
+		if ref.Name == "" {
+			continue
+		}
+		namespace := ref.Namespace
+		if namespace == "" {
+			namespace = group.Namespace
+		}
+		if ref.Name == clientName && namespace == clientNamespace {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *Reconciler) ReconcileDelete(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) (ctrl.Result, error) {
 	r.EnsureClient(r.Client)
+	referencedByUserGroup, err := r.isOIDCClientReferencedByUserGroup(ctx, oidcClient)
+	if err != nil {
+		logf.FromContext(ctx).Error(err, "Failed to check PocketIDUserGroup references")
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+	}
+	if referencedByUserGroup {
+		logf.FromContext(ctx).Info("OIDC client is referenced by PocketIDUserGroup, blocking deletion", "oidcClient", oidcClient.Name)
+		if _, err := helpers.EnsureFinalizer(ctx, r.Client, oidcClient, UserGroupOIDCClientFinalizer); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+	}
+
+	// Remove UserGroupOIDCClientFinalizer if not referenced
+	if controllerutil.ContainsFinalizer(oidcClient, UserGroupOIDCClientFinalizer) {
+		if err := helpers.RemoveFinalizers(ctx, r.Client, oidcClient, UserGroupOIDCClientFinalizer); err != nil {
+			if errors.IsConflict(err) {
+				return ctrl.Result{Requeue: true}, nil
+			}
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{Requeue: true}, nil
+	}
+
 	return r.ReconcileDeleteWithPocketID(
 		ctx,
 		oidcClient,
