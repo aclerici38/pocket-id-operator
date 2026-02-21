@@ -1,67 +1,68 @@
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-    name: pocket-id-operator-manager-role
+  name: pocket-id-operator-manager-role
 rules:
-    - apiGroups:
-        - ""
-      resources:
-        - persistentvolumeclaims
-        - secrets
-        - services
-      verbs:
-        - create
-        - delete
-        - get
-        - list
-        - patch
-        - update
-        - watch
-    - apiGroups:
-        - apps
-      resources:
-        - deployments
-        - statefulsets
-      verbs:
-        - create
-        - delete
-        - get
-        - list
-        - patch
-        - update
-        - watch
-    - apiGroups:
-        - pocketid.internal
-      resources:
-        - pocketidinstances
-        - pocketidoidcclients
-        - pocketidusergroups
-        - pocketidusers
-      verbs:
-        - create
-        - delete
-        - get
-        - list
-        - patch
-        - update
-        - watch
-    - apiGroups:
-        - pocketid.internal
-      resources:
-        - pocketidinstances/finalizers
-        - pocketidoidcclients/finalizers
-        - pocketidusergroups/finalizers
-        - pocketidusers/finalizers
-      verbs:
-        - update
-    - apiGroups:
-        - pocketid.internal
-      resources:
-        - pocketidinstances/status
-        - pocketidoidcclients/status
-        - pocketidusergroups/status
-        - pocketidusers/status
-      verbs:
-        - get
-        - patch
-        - update
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumeclaims
+  - secrets
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  - statefulsets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - pocketid.internal
+  resources:
+  - pocketidinstances
+  - pocketidoidcclients
+  - pocketidusergroups
+  - pocketidusers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - pocketid.internal
+  resources:
+  - pocketidinstances/finalizers
+  - pocketidoidcclients/finalizers
+  - pocketidusergroups/finalizers
+  - pocketidusers/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - pocketid.internal
+  resources:
+  - pocketidinstances/status
+  - pocketidoidcclients/status
+  - pocketidusergroups/status
+  - pocketidusers/status
+  verbs:
+  - get
+  - patch
+  - update

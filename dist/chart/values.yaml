@@ -170,9 +170,8 @@ manager:
     tag: "" # Defaults to Chart.appVersion when empty
     pullPolicy: IfNotPresent
 
-  # Arguments
-  args:
-    - --leader-elect
+  # Extra arguments
+  args: []
 
   # Environment variables
   env: []
@@ -199,8 +198,3 @@ manager:
     requests:
       cpu: 10m
       memory: 64Mi
-
-# Custom Resource Definitions
-crd:
-  enable: true # Install CRDs with the chart
-  keep: false # Keep CRDs when uninstalling
