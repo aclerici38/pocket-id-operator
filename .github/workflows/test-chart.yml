@@ -34,6 +34,13 @@ jobs:
       - name: Setup Helm
         uses: azure/setup-helm@v4
 
+      - name: Extract image parts
+        id: image
+        run: |
+          IMAGE="${{ inputs.image }}"
+          echo "repository=${IMAGE%:*}" >> "$GITHUB_OUTPUT"
+          echo "tag=${IMAGE##*:}" >> "$GITHUB_OUTPUT"
+
       - name: Lint Helm chart
         run: helm lint dist/chart
 
@@ -42,7 +49,7 @@ jobs:
           mkdir -p dist/chart-packages
           helm package dist/chart \
             --version "0.0.0" \
-            --app-version "0.0.0" \
+            --app-version "${{ steps.image.outputs.tag }}" \
             --destination dist/chart-packages
 
       - name: Cache kind
@@ -62,20 +69,13 @@ jobs:
       - name: Create kind cluster
         run: kind create cluster
 
-      - name: Extract image parts
-        id: image
-        run: |
-          IMAGE="${{ inputs.image }}"
-          echo "repository=${IMAGE%:*}" >> "$GITHUB_OUTPUT"
-          echo "tag=${IMAGE##*:}" >> "$GITHUB_OUTPUT"
-
       - name: Test chart installation
         run: |
           helm install test-release dist/chart-packages/*.tgz \
             --create-namespace \
             --namespace pocket-id-operator-system \
-            --set manager.image.repository=${{ steps.image.outputs.repository }} \
-            --set manager.image.tag=${{ steps.image.outputs.tag }} \
+            --set operator.image.repository=${{ steps.image.outputs.repository }} \
+            --set operator.image.tag=${{ steps.image.outputs.tag }} \
             --set instance.spec.encryptionKey.value="test-key-16chars" \
             --wait \
             --timeout 2m

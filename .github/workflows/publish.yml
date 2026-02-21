@@ -76,7 +76,7 @@ jobs:
     uses: ./.github/workflows/publish-chart.yml
     with:
       chart_version: "0.0.0"
-      app_version: "0.0.0"
+      app_version: ${{ inputs.image_tag }}
       repo_owner: ${{ inputs.repo_owner }}
       primary_tag: ${{ inputs.image_tag }}
       additional_tag: ${{ inputs.image_tag == 'main' && format('{0}-main', inputs.short_sha) || '' }}
