@@ -113,14 +113,15 @@ type CustomClaim struct {
 
 // UserGroup represents a Pocket-ID user group.
 type UserGroup struct {
-	ID           string
-	Name         string
-	FriendlyName string
-	CreatedAt    string
-	LdapID       string
-	UserCount    int
-	UserIDs      []string
-	CustomClaims []CustomClaim
+	ID                   string
+	Name                 string
+	FriendlyName         string
+	CreatedAt            string
+	LdapID               string
+	UserCount            int
+	UserIDs              []string
+	CustomClaims         []CustomClaim
+	AllowedOIDCClientIDs []string
 }
 
 // NewClient creates a new Pocket-ID client for the given base URL with optional API key.
@@ -552,6 +553,21 @@ func (c *Client) UpdateUserGroupUsers(ctx context.Context, id string, userIDs []
 	return nil
 }
 
+func (c *Client) UpdateUserGroupAllowedOIDCClients(ctx context.Context, id string, clientIDs []string) error {
+	params := oidc.NewPutAPIUserGroupsIDAllowedOidcClientsParams().
+		WithContext(ctx).
+		WithID(id).
+		WithGroups(&models.GithubComPocketIDPocketIDBackendInternalDtoUserGroupUpdateAllowedOidcClientsDto{
+			OidcClientIds: clientIDs,
+		})
+
+	if _, err := c.raw.OIDc.PutAPIUserGroupsIDAllowedOidcClients(params); err != nil {
+		return fmt.Errorf("update user group allowed OIDC clients failed: %w", err)
+	}
+
+	return nil
+}
+
 func (c *Client) UpdateUserGroupCustomClaims(ctx context.Context, id string, claims []CustomClaim) ([]CustomClaim, error) {
 	payload := make([]*models.GithubComPocketIDPocketIDBackendInternalDtoCustomClaimCreateDto, 0, len(claims))
 	for _, claim := range claims {
@@ -744,15 +760,22 @@ func userGroupFromDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoUse
 			userIds = append(userIds, user.ID)
 		}
 	}
+	clientIDs := make([]string, 0, len(dto.AllowedOidcClients))
+	for _, client := range dto.AllowedOidcClients {
+		if client != nil && client.ID != "" {
+			clientIDs = append(clientIDs, client.ID)
+		}
+	}
 	return &UserGroup{
-		ID:           dto.ID,
-		Name:         dto.Name,
-		FriendlyName: dto.FriendlyName,
-		CreatedAt:    dto.CreatedAt,
-		LdapID:       dto.LdapID,
-		UserCount:    len(dto.Users),
-		UserIDs:      userIds,
-		CustomClaims: customClaimsFromDTO(dto.CustomClaims),
+		ID:                   dto.ID,
+		Name:                 dto.Name,
+		FriendlyName:         dto.FriendlyName,
+		CreatedAt:            dto.CreatedAt,
+		LdapID:               dto.LdapID,
+		UserCount:            len(dto.Users),
+		UserIDs:              userIds,
+		CustomClaims:         customClaimsFromDTO(dto.CustomClaims),
+		AllowedOIDCClientIDs: clientIDs,
 	}
 }
 

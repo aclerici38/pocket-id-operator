@@ -55,6 +55,44 @@ func ResolveUserReferences(
 	return userIDs, nil
 }
 
+// ResolveOIDCClientReferences resolves PocketIDOIDCClient references to client IDs
+func ResolveOIDCClientReferences(
+	ctx context.Context,
+	c client.Client,
+	refs []pocketidv1alpha1.NamespacedOIDCClientReference,
+	defaultNamespace string,
+) ([]string, error) {
+	clientIDs := make([]string, 0, len(refs))
+
+	for _, ref := range refs {
+		if ref.Name == "" {
+			return nil, fmt.Errorf("OIDC client reference contains an empty name")
+		}
+
+		namespace := ref.Namespace
+		if namespace == "" {
+			namespace = defaultNamespace
+		}
+
+		oidcClient := &pocketidv1alpha1.PocketIDOIDCClient{}
+		if err := c.Get(ctx, client.ObjectKey{Namespace: namespace, Name: ref.Name}, oidcClient); err != nil {
+			return nil, fmt.Errorf("get OIDC client %s: %w", ref.Name, err)
+		}
+
+		if !isResourceReady(oidcClient.Status.Conditions) {
+			return nil, fmt.Errorf("OIDC client %s is not ready (Ready condition not True)", ref.Name)
+		}
+
+		if oidcClient.Status.ClientID == "" {
+			return nil, fmt.Errorf("OIDC client %s has no ClientID in status", ref.Name)
+		}
+
+		clientIDs = append(clientIDs, oidcClient.Status.ClientID)
+	}
+
+	return clientIDs, nil
+}
+
 // ResolveUserGroupReferences resolves PocketIDUserGroup references to group IDs
 func ResolveUserGroupReferences(
 	ctx context.Context,

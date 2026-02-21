@@ -41,6 +41,25 @@ spec:
           spec:
             description: spec defines the desired state of PocketIDUserGroup
             properties:
+              allowedOIDCClients:
+                description: |-
+                  AllowedOIDCClients lists PocketIDOIDCClient CRs that this group grants access to.
+                  The final set of allowed clients is the union of this field and any
+                  OIDCClients that reference this group in their allowedUserGroups.
+                items:
+                  description: NamespacedOIDCClientReference references a PocketIDOIDCClient
+                    by name and namespace.
+                  properties:
+                    name:
+                      description: Name is the name of the PocketIDOIDCClient CR
+                      type: string
+                    namespace:
+                      description: |-
+                        Namespace is the namespace of the PocketIDOIDCClient CR
+                        Defaults to the referencing resource's namespace
+                      type: string
+                  type: object
+                type: array
               customClaims:
                 description: CustomClaims are additional claims to attach to users
                   in this group
@@ -155,6 +174,12 @@ spec:
           status:
             description: status defines the observed state of PocketIDUserGroup
             properties:
+              allowedOIDCClientIDs:
+                description: AllowedOIDCClientIDs are the resolved OIDC client IDs
+                  assigned to this group
+                items:
+                  type: string
+                type: array
               conditions:
                 description: Conditions represent the current state of the PocketIDUserGroup
                   resource.
