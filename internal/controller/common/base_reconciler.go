@@ -203,61 +203,37 @@ type CreateOrAdoptConfig[T any] struct {
 	ResourceID string
 	// Create attempts to create the resource and returns the created resource
 	Create func() (T, error)
-	// Update attempts to update the resource and returns the updated resource
-	Update func() (T, error)
 	// FindExisting attempts to find an existing resource for adoption
 	FindExisting func() (T, error)
-	// ClearStatus clears the status ID to trigger recreation on next reconcile
-	ClearStatus func() error
 	// IsNil checks if the resource is nil (for generic nil checking)
 	IsNil func(T) bool
 }
 
 // CreateOrAdopt implements the common create-or-adopt pattern for Pocket-ID resources.
-// If statusID is empty, it tries to create the resource. If creation fails with "already exists",
+// It tries to create the resource. If creation fails with "already exists",
 // it attempts to find and adopt the existing resource.
-// If statusID is not empty, it tries to update the resource. If update fails with "not found",
-// it clears the status to trigger recreation on next reconcile.
-func CreateOrAdopt[T any](ctx context.Context, statusID string, config CreateOrAdoptConfig[T]) (*CreateOrAdoptResult[T], error) {
+// This should only be called when the resource has no status ID (i.e., first creation).
+func CreateOrAdopt[T any](ctx context.Context, config CreateOrAdoptConfig[T]) (*CreateOrAdoptResult[T], error) {
 	log := logf.FromContext(ctx)
 
-	var zero T
-	if statusID == "" {
-		// Try to create first, then fallback to adopting if it already exists
-		log.Info(fmt.Sprintf("Creating %s in Pocket-ID", config.ResourceKind), "id", config.ResourceID)
-		resource, err := config.Create()
-		if err != nil {
-			if pocketid.IsAlreadyExistsError(err) {
-				log.Info(fmt.Sprintf("%s already exists in Pocket-ID, attempting to adopt", config.ResourceKind), "id", config.ResourceID)
-				existing, findErr := config.FindExisting()
-				if findErr != nil {
-					return nil, fmt.Errorf("find existing %s after create conflict: %w", config.ResourceKind, findErr)
-				}
-				if config.IsNil(existing) {
-					return nil, fmt.Errorf("create %s failed with conflict but could not find existing: %w", config.ResourceKind, err)
-				}
-				log.Info(fmt.Sprintf("Adopting existing %s from Pocket-ID", config.ResourceKind), "id", config.ResourceID)
-				return &CreateOrAdoptResult[T]{Resource: existing, IsNewlyCreated: false}, nil
-			}
-			return nil, fmt.Errorf("create %s: %w", config.ResourceKind, err)
-		}
-		return &CreateOrAdoptResult[T]{Resource: resource, IsNewlyCreated: true}, nil
-	}
-
-	// Update existing resource
-	log.Info(fmt.Sprintf("Updating %s in Pocket-ID", config.ResourceKind), "id", config.ResourceID)
-	resource, err := config.Update()
+	log.Info(fmt.Sprintf("Creating %s in Pocket-ID", config.ResourceKind), "id", config.ResourceID)
+	resource, err := config.Create()
 	if err != nil {
-		if pocketid.IsNotFoundError(err) {
-			log.Info(fmt.Sprintf("%s was deleted externally, will recreate", config.ResourceKind), "statusID", statusID)
-			if clearErr := config.ClearStatus(); clearErr != nil {
-				return nil, fmt.Errorf("clear status after external deletion: %w", clearErr)
+		if pocketid.IsAlreadyExistsError(err) {
+			log.Info(fmt.Sprintf("%s already exists in Pocket-ID, attempting to adopt", config.ResourceKind), "id", config.ResourceID)
+			existing, findErr := config.FindExisting()
+			if findErr != nil {
+				return nil, fmt.Errorf("find existing %s after create conflict: %w", config.ResourceKind, findErr)
 			}
-			return &CreateOrAdoptResult[T]{Resource: zero, IsNewlyCreated: false}, nil
+			if config.IsNil(existing) {
+				return nil, fmt.Errorf("create %s failed with conflict but could not find existing: %w", config.ResourceKind, err)
+			}
+			log.Info(fmt.Sprintf("Adopting existing %s from Pocket-ID", config.ResourceKind), "id", config.ResourceID)
+			return &CreateOrAdoptResult[T]{Resource: existing, IsNewlyCreated: false}, nil
 		}
-		return nil, fmt.Errorf("update %s: %w", config.ResourceKind, err)
+		return nil, fmt.Errorf("create %s: %w", config.ResourceKind, err)
 	}
-	return &CreateOrAdoptResult[T]{Resource: resource, IsNewlyCreated: false}, nil
+	return &CreateOrAdoptResult[T]{Resource: resource, IsNewlyCreated: true}, nil
 }
 
 // ClearStatusField clears a status field on an object using a patch.
