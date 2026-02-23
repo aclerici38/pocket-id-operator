@@ -92,6 +92,10 @@ jobs:
         if: inputs.image != '' && !inputs.skip_artifact
         run: docker load -i /tmp/operator-image-${{ steps.tag.outputs.name }}.tar
 
+      - name: Pull image
+        if: inputs.image != '' && inputs.skip_artifact
+        run: docker pull ${{ inputs.image }}
+
       - name: Run e2e tests
         run: |
           if [ -n "${{ inputs.image }}" ]; then
