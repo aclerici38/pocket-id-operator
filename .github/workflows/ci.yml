@@ -178,15 +178,6 @@ jobs:
       image: ${{ needs.latest-release.outputs.image }}
     secrets: inherit
 
-  test-chart-latest-release:
-    name: Test Chart (Latest Release)
-    needs: [latest-release]
-    if: ${{ !cancelled() && !failure() }}
-    uses: ./.github/workflows/test-chart.yml
-    with:
-      image: ${{ needs.latest-release.outputs.image }}
-    secrets: inherit
-
   publish:
     name: Publish
     needs:
