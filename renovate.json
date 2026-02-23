@@ -20,6 +20,10 @@
       "automergeType": "branch"
     },
     {
+      "matchPackageNames": ["ghcr.io/pocket-id/pocket-id"],
+      "automerge": false
+    },
+    {
       "matchDatasources": ["golang-version"],
       "rangeStrategy": "bump"
     }
