@@ -155,7 +155,6 @@ jobs:
 
   latest-release:
     name: Resolve Latest Release
-    if: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'pocket-id-upgrade') }}
     runs-on: ubuntu-latest
     outputs:
       image: ${{ steps.release.outputs.image }}
@@ -172,7 +171,7 @@ jobs:
   e2e-latest-release:
     name: E2E Tests (Latest Release)
     needs: [latest-release]
-    if: ${{ !cancelled() && !failure() && needs.latest-release.result == 'success' }}
+    if: ${{ !cancelled() && !failure() }}
     uses: ./.github/workflows/test-e2e.yml
     with:
       image: ${{ needs.latest-release.outputs.image }}
