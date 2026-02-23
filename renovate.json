@@ -21,7 +21,8 @@
     },
     {
       "matchPackageNames": ["ghcr.io/pocket-id/pocket-id"],
-      "automerge": false
+      "automerge": false,
+      "labels": ["pocket-id-upgrade"]
     },
     {
       "matchDatasources": ["golang-version"],
