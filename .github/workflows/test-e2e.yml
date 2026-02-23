@@ -7,12 +7,22 @@ on:
         description: Optional image to preload for e2e tests.
         required: false
         type: string
+      skip_artifact:
+        description: Skip downloading and loading the image artifact (e.g. when the image is already in the registry).
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       image:
         description: Optional image to preload for e2e tests.
         required: false
         type: string
+      skip_artifact:
+        description: Skip downloading and loading the image artifact (e.g. when the image is already in the registry).
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   actions: write
@@ -65,21 +75,21 @@ jobs:
           sudo mv ./kind /usr/local/bin/kind
 
       - name: Extract image tag
-        if: inputs.image != ''
+        if: inputs.image != '' && !inputs.skip_artifact
         id: tag
         run: |
           IMAGE_TAG="${{ inputs.image }}"
           echo "name=${IMAGE_TAG##*:}" >> "$GITHUB_OUTPUT"
 
       - name: Download image artifact
-        if: inputs.image != ''
+        if: inputs.image != '' && !inputs.skip_artifact
         uses: actions/download-artifact@v7
         with:
           name: operator-image-${{ steps.tag.outputs.name }}
           path: /tmp
 
       - name: Load image
-        if: inputs.image != ''
+        if: inputs.image != '' && !inputs.skip_artifact
         run: docker load -i /tmp/operator-image-${{ steps.tag.outputs.name }}.tar
 
       - name: Run e2e tests
