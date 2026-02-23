@@ -172,7 +172,7 @@ jobs:
   e2e-latest-release:
     name: E2E Tests (Latest Release)
     needs: [latest-release]
-    if: ${{ !cancelled() && !failure() }}
+    if: ${{ !cancelled() && !failure() && needs.latest-release.result == 'success' }}
     uses: ./.github/workflows/test-e2e.yml
     with:
       image: ${{ needs.latest-release.outputs.image }}
