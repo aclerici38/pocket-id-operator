@@ -134,6 +134,74 @@ spec:
         namespace: infra-gateway
 ```
 
+## Metrics and ServiceMonitor
+
+The operator can enable a Prometheus metrics endpoint on the Pocket ID instance.
+Note that Pocket ID does not currently expose any useful metrics
+beyond the default OTEL SDK metrics. See [pocket-id/pocket-id#1318](https://github.com/pocket-id/pocket-id/issues/1318).
+
+To enable metrics, set `spec.metrics.enabled: true` on the `PocketIDInstance`. The operator
+will inject the required OpenTelemetry environment variables and add a `metrics` port to
+the Service.
+
+```yaml
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDInstance
+metadata:
+  name: pocket-id
+  namespace: pocket-id
+spec:
+  encryptionKey:
+    valueFrom:
+      secretKeyRef:
+        name: pocket-id-encryption
+        key: key
+  appUrl: "https://pocket-id.example.com"
+  metrics:
+    enabled: true
+    # port: 9464  # default
+```
+
+If installing via the Helm chart, you can also deploy a `ServiceMonitor` for the instance:
+
+```yaml
+# values.yaml
+instance:
+  enabled: true
+  spec:
+    metrics:
+      enabled: true
+  serviceMonitor:
+    enabled: true
+    # interval: 30s
+    # labels: {}
+```
+
+This creates a `ServiceMonitor` that scrapes the `metrics` port. You must have the
+Prometheus Operator CRDs installed for this to work.
+
+If you're not using the Helm chart, you can deploy a `ServiceMonitor` directly:
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: pocket-id
+  namespace: pocket-id
+  labels:
+    app.kubernetes.io/name: pocket-id
+    app.kubernetes.io/instance: pocket-id
+spec:
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pocket-id
+      app.kubernetes.io/instance: pocket-id
+```
+
 ## Generated Resources And Environment
 
 - Service name: `<instance>`, port 1411.
