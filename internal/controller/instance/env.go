@@ -316,8 +316,8 @@ func buildGeoIPEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1
 	if geo.DBPath != "" {
 		env = append(env, corev1.EnvVar{Name: "GEOLITE_DB_PATH", Value: geo.DBPath})
 	}
-	if geo.DBURL != "" {
-		env = append(env, corev1.EnvVar{Name: "GEOLITE_DB_URL", Value: geo.DBURL})
+	if geo.DBURL != nil {
+		env = append(env, sensitiveValueToEnvVar("GEOLITE_DB_URL", geo.DBURL))
 	}
 	return env
 }

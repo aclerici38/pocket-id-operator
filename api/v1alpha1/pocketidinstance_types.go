@@ -308,8 +308,9 @@ type GeoIPConfig struct {
 	DBPath string `json:"dbPath,omitempty"`
 
 	// Custom URL to download the GeoLite2 database from
+	// May contain credentials so supports secretKeyRef
 	// +optional
-	DBURL string `json:"dbUrl,omitempty"`
+	DBURL *SensitiveValue `json:"dbUrl,omitempty"`
 }
 
 // Persistence config. Mounts a volume at /app/Data

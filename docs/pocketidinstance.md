@@ -231,7 +231,8 @@ spec:
           name: maxmind
           key: license-key
     dbPath: ""                               # custom GeoLite2 DB path
-    dbUrl: ""                                # custom download URL
+    dbUrl:                                   # custom download URL (supports value or valueFrom)
+      value: "https://custom.example.com/GeoLite2-City.mmdb"
 ```
 
 ## StatefulSet With Operator-Managed PVC

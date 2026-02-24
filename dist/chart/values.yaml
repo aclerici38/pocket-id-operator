@@ -1,189 +1,73 @@
 # PocketIDInstance configuration
 # Creates a PocketIDInstance custom resource when enabled
-# At least 1 PocketIDInstance is required. If disabled create the resource manually
+# Full documentation: https://github.com/aclerici38/pocket-id-operator/blob/main/docs/pocketidinstance.md
 instance:
   enabled: true
   name: pocket-id
   labels: {}
   annotations: {}
 
-  # PocketIDInstance spec configuration
-  # Anything from PocketIDInstance.spec can be added here
+  # PocketIDInstance spec — all fields from the CRD are supported here
+  # See docs for all available options (SMTP, LDAP, S3, UI, user management, etc.)
   spec:
-    # Kind of workload to create, Deployment or StatefulSet
-    deploymentType: Deployment
-
-    # Container image to run
-    image: ghcr.io/pocket-id/pocket-id:v2.3.0-distroless@sha256:85a7485108325e34679b0fbca0baeb8418401f6d6cf59944d50f3ec013aafd09
-
-    # Encryption Key (required)
-    # Use either 'value' for a plain text value (16 byte minimum) or 'valueFrom' for a reference
     encryptionKey:
-      # Plaintext value
-      # value: "your-encryption-key-here"
-
-      # Source the value from a secret/configMap/etc
+      # value: "your-encryption-key-here-min-16-bytes"
       # valueFrom:
       #   secretKeyRef:
       #     name: pocket-id-encryption-key
       #     key: encryption-key
 
-    # Database URL
-    # If left as a filepath the instance will use a sqlite db
-    # To use postgres configure the full uri, e.g. postgresql://user:password@host:port/dbname
-    databaseUrl: {}
-      # value: "/app/data/pocket-id.db"
-      # valueFrom:
-      #   secretKeyRef:
-      #     name: pocket-id-db
-      #     key: uri
-
-    # External URL Pocket-ID can be reached at
     # appUrl: "https://auth.example.com"
 
-    # Additional environment variables
-    env: []
-    # - name: LOG_LEVEL
-    #   value: "debug"
-    # - name: SMTP_HOST
-    #   value: "smtp.example.com"
-    # - name: SMTP_PASSWORD
+    # databaseUrl:
     #   valueFrom:
     #     secretKeyRef:
-    #       name: smtp-credentials
-    #       key: password
-    #
-    # To enable tracing, add the following env vars:
-    # - name: TRACING_ENABLED
-    #   value: "true"
-    # - name: OTEL_EXPORTER_OTLP_ENDPOINT
-    #   value: "http://otel-collector:4317"
+    #       name: pocket-id-db
+    #       key: uri
 
-    # Persistence configuration
-    # Mounts to /app/data. If spec.deploymentType is StatefulSet will be mounted as a VolumeClaimTemplate
-    # if not enabled will mount emptyDir. It is possible to run stateless if using postgres
     persistence:
       enabled: true
-      # existingClaim: ""
-      # storageClass: ""
       size: 1Gi
-      accessModes:
-        - ReadWriteOnce
 
-    podSecurityContext:
-      runAsNonRoot: true
-      runAsUser: 65534
-      fsGroup: 65534
-
-    containerSecurityContext:
-      allowPrivilegeEscalation: false
-      runAsNonRoot: true
-      readOnlyRootFilesystem: true
-      capabilities:
-        drop:
-          - ALL
-
-    # Controls whether the container's user namespace is separate from the host
-    # Set to false to enable user namespace isolation
-    # true by default (no user namespace isolation, container runs in host user namespace)
-    hostUsers: true
-
-    # resources:
-    #   requests:
-    #     cpu: 50m
-    #     memory: 128Mi
-    #   limits:
-    #     memory: 512Mi
-
-    # Prometheus metrics configuration
-    # Enabling this will set all required OTEL env vars and expose a metrics port on the Service
     metrics:
       enabled: false
-      # port: 9464
 
-    # HTTPRoute configuration
-    # Creates an HTTPRoute for the PocketIDInstance when enabled
-    # Requires Gateway API CRDs to be installed
     route:
       enabled: false
+      parentRefs: []
 
-      # Name of the HTTPRoute (defaults to instance name if not set)
-      # name: ""
-
-      labels: {}
-
-      annotations: {}
-
-      # Gateway parent references
-      parentRefs:
-        - name: gateway
-          # namespace: default
-          # sectionName: https
-
-      # Hostnames for the route
-      # Will be automatically set to the hostname from instance.spec.appUrl if not specified
-      hostnames: []
-      # - auth.example.com
-
-  # Requires instance.spec.metrics.enabled=true for the metrics port to be exposed
+  # ServiceMonitor for the PocketIDInstance (requires metrics.enabled)
   serviceMonitor:
     enabled: false
-    # interval: 30s
-    # labels: {}
 
 # PocketIDUser configuration
-# Creates PocketIDUser custom resources
+# Full documentation: https://github.com/aclerici38/pocket-id-operator/blob/main/docs/pocketiduser.md
 users: []
   # - name: admin-user
-  #   labels: {}
-  #   annotations: {}
   #   spec:
   #     admin: true
   #     email:
   #       value: "admin@example.com"
   #     firstName:
   #       value: "Admin"
-  #     displayName:
-  #       value: "Admin User"
-  #     apiKeys:
-  #     - name: admin-api-key
-  #       description: "Admin API key"
-  #       expiresAt: "2030-01-01T00:00:00Z"
-  #       # Reference to an existing apikey stored in a secret
-  #       # secretRef:
-  #       #   name: my-existing-secret
-  #       #   key: api-key
-  #
-  # Example using userInfoSecretRef (references secret with default keys):
-  # Secret can contain keys: username, firstName, lastName, email, displayName
-  # - name: secret-user
-  #   spec:
-  #     admin: false
-  #     userInfoSecretRef:
-  #       name: user-credentials
 
-# Configure the operator deployment
+# Operator deployment configuration
 operator:
   replicas: 1
 
   image:
     repository: ghcr.io/aclerici38/pocket-id-operator
-    tag: "" # Defaults to Chart.appVersion when empty
+    tag: "" # Defaults to Chart.appVersion
     pullPolicy: IfNotPresent
 
-  # Extra arguments
   args: []
-
-  # Environment variables
   env: []
 
-  # Pod-level security settings
   podSecurityContext:
     runAsNonRoot: true
     seccompProfile:
       type: RuntimeDefault
 
-  # Container-level security settings
   securityContext:
     allowPrivilegeEscalation: false
     capabilities:
@@ -191,7 +75,6 @@ operator:
         - ALL
     readOnlyRootFilesystem: true
 
-  # Resource limits and requests
   resources:
     limits:
       cpu: 500m

@@ -352,7 +352,7 @@ func TestBuildEnvVars_GeoIP(t *testing.T) {
 	inst.Spec.GeoIP = &pocketidinternalv1alpha1.GeoIPConfig{
 		MaxmindLicenseKey: &pocketidinternalv1alpha1.SensitiveValue{Value: "my-key"},
 		DBPath:            "/data/GeoLite2.mmdb",
-		DBURL:             "https://custom.example.com/db",
+		DBURL:             &pocketidinternalv1alpha1.SensitiveValue{Value: "https://custom.example.com/db"},
 	}
 
 	env := buildEnvVars(inst)
