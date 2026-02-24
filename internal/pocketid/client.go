@@ -15,6 +15,7 @@ import (
 	"github.com/aclerici38/pocket-id-go-client/v2/client/api_keys"
 	custom_claims "github.com/aclerici38/pocket-id-go-client/v2/client/custom_claims"
 	oidc "github.com/aclerici38/pocket-id-go-client/v2/client/o_id_c"
+	scim "github.com/aclerici38/pocket-id-go-client/v2/client/s_c_i_m"
 	"github.com/aclerici38/pocket-id-go-client/v2/client/user_groups"
 	"github.com/aclerici38/pocket-id-go-client/v2/client/users"
 	"github.com/aclerici38/pocket-id-go-client/v2/models"
@@ -109,6 +110,23 @@ type OIDCClientInput struct {
 type CustomClaim struct {
 	Key   string
 	Value string
+}
+
+// SCIMServiceProvider represents a SCIM service provider configuration linked to an OIDC client.
+type SCIMServiceProvider struct {
+	ID           string
+	Endpoint     string
+	Token        string
+	OIDCClientID string
+	CreatedAt    string
+	LastSyncedAt string
+}
+
+// SCIMServiceProviderInput is used to create or update a SCIM service provider.
+type SCIMServiceProviderInput struct {
+	Endpoint     string
+	OIDCClientID string
+	Token        string
 }
 
 // UserGroup represents a Pocket-ID user group.
@@ -456,6 +474,76 @@ func (c *Client) RegenerateOIDCClientSecret(ctx context.Context, id string) (str
 	return secret, nil
 }
 
+// --- SCIM Service Provider Operations ---
+
+// GetOIDCClientSCIMServiceProvider fetches the SCIM service provider configured for an OIDC client.
+// Returns nil, nil if no SCIM service provider is configured (404).
+func (c *Client) GetOIDCClientSCIMServiceProvider(ctx context.Context, oidcClientID string) (*SCIMServiceProvider, error) {
+	params := oidc.NewGetAPIOidcClientsIDScimServiceProviderParams().
+		WithContext(ctx).
+		WithID(oidcClientID)
+
+	resp, err := c.raw.OIDc.GetAPIOidcClientsIDScimServiceProvider(params)
+	if err != nil {
+		if IsNotFoundError(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get OIDC client SCIM service provider failed: %w", err)
+	}
+
+	return scimFromDTO(resp.Payload), nil
+}
+
+// CreateSCIMServiceProvider creates a new SCIM service provider.
+func (c *Client) CreateSCIMServiceProvider(ctx context.Context, input SCIMServiceProviderInput) (*SCIMServiceProvider, error) {
+	params := scim.NewPostAPIScimServiceProviderParams().
+		WithContext(ctx).
+		WithServiceProvider(&models.GithubComPocketIDPocketIDBackendInternalDtoScimServiceProviderCreateDTO{
+			Endpoint:     &input.Endpoint,
+			OidcClientID: &input.OIDCClientID,
+			Token:        input.Token,
+		})
+
+	resp, err := c.raw.Scim.PostAPIScimServiceProvider(params)
+	if err != nil {
+		return nil, fmt.Errorf("create SCIM service provider failed: %w", err)
+	}
+
+	return scimFromDTO(resp.Payload), nil
+}
+
+// UpdateSCIMServiceProvider updates an existing SCIM service provider.
+func (c *Client) UpdateSCIMServiceProvider(ctx context.Context, id string, input SCIMServiceProviderInput) (*SCIMServiceProvider, error) {
+	params := scim.NewPutAPIScimServiceProviderIDParams().
+		WithContext(ctx).
+		WithID(id).
+		WithServiceProvider(&models.GithubComPocketIDPocketIDBackendInternalDtoScimServiceProviderCreateDTO{
+			Endpoint:     &input.Endpoint,
+			OidcClientID: &input.OIDCClientID,
+			Token:        input.Token,
+		})
+
+	resp, err := c.raw.Scim.PutAPIScimServiceProviderID(params)
+	if err != nil {
+		return nil, fmt.Errorf("update SCIM service provider failed: %w", err)
+	}
+
+	return scimFromDTO(resp.Payload), nil
+}
+
+// DeleteSCIMServiceProvider deletes a SCIM service provider by its pocket-id ID.
+func (c *Client) DeleteSCIMServiceProvider(ctx context.Context, id string) error {
+	params := scim.NewDeleteAPIScimServiceProviderIDParams().
+		WithContext(ctx).
+		WithID(id)
+
+	if _, err := c.raw.Scim.DeleteAPIScimServiceProviderID(params); err != nil {
+		return fmt.Errorf("delete SCIM service provider failed: %w", err)
+	}
+
+	return nil
+}
+
 // --- User Group Operations ---
 
 // ListUserGroups returns a list of user groups matching the search term.
@@ -776,6 +864,24 @@ func userGroupFromDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoUse
 		UserIDs:              userIds,
 		CustomClaims:         customClaimsFromDTO(dto.CustomClaims),
 		AllowedOIDCClientIDs: clientIDs,
+	}
+}
+
+func scimFromDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoScimServiceProviderDTO) *SCIMServiceProvider {
+	if dto == nil {
+		return nil
+	}
+	oidcClientID := ""
+	if dto.OidcClient != nil {
+		oidcClientID = dto.OidcClient.ID
+	}
+	return &SCIMServiceProvider{
+		ID:           dto.ID,
+		Endpoint:     dto.Endpoint,
+		Token:        dto.Token,
+		OIDCClientID: oidcClientID,
+		CreatedAt:    dto.CreatedAt,
+		LastSyncedAt: dto.LastSyncedAt,
 	}
 }
 

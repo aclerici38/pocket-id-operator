@@ -36,7 +36,8 @@ type InstanceOptions struct {
 	ExistingClaim      string
 }
 
-const defaultPocketIDImage = "ghcr.io/pocket-id/pocket-id:v2.2.0-distroless@sha256:ad2d21a7b31d6b4f1d999caec794a5b5edeb97fc40801947158d62befd4203e3"
+// renovate: datasource=docker depName=ghcr.io/pocket-id/pocket-id
+const defaultPocketIDImage = "ghcr.io/pocket-id/pocket-id:v2.3.0-distroless@sha256:85a7485108325e34679b0fbca0baeb8418401f6d6cf59944d50f3ec013aafd09"
 
 func pocketIDImage() string {
 	if img := os.Getenv("POCKET_ID_IMAGE"); img != "" {
@@ -313,6 +314,19 @@ type OIDCClientOptions struct {
 	IsPublic           bool
 	AllowedUserGroups  []string
 	Secret             *OIDCSecretConfig
+	SCIM               *SCIMConfig
+}
+
+// SCIMConfig configures the SCIM spec for an OIDCClient.
+type SCIMConfig struct {
+	Endpoint       string
+	TokenSecretRef *SecretKeyRef
+}
+
+// SecretKeyRef references a key in a Kubernetes Secret.
+type SecretKeyRef struct {
+	Name string
+	Key  string
 }
 
 type OIDCSecretConfig struct {
@@ -399,6 +413,16 @@ func buildOIDCClientYAML(opts OIDCClientOptions) string {
 			if opts.Secret.Keys.LogoutCallbackURLs != "" {
 				spec.WriteString(fmt.Sprintf("      logoutCallbackUrls: %s\n", opts.Secret.Keys.LogoutCallbackURLs))
 			}
+		}
+	}
+
+	if opts.SCIM != nil {
+		spec.WriteString("  scim:\n")
+		spec.WriteString(fmt.Sprintf("    endpoint: %s\n", opts.SCIM.Endpoint))
+		if opts.SCIM.TokenSecretRef != nil {
+			spec.WriteString("    tokenSecretRef:\n")
+			spec.WriteString(fmt.Sprintf("      name: %s\n", opts.SCIM.TokenSecretRef.Name))
+			spec.WriteString(fmt.Sprintf("      key: %s\n", opts.SCIM.TokenSecretRef.Key))
 		}
 	}
 

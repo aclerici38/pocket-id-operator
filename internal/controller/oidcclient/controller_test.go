@@ -661,3 +661,284 @@ func TestReconcileDelete_KeepFinalizerWhenAPIClientNotReady(t *testing.T) {
 		t.Error("expected finalizer to be kept")
 	}
 }
+
+// --- SCIM unit tests ---
+
+// fakeSCIMAPI is a minimal implementation of PocketIDOIDCClientAPI for SCIM tests.
+// Only SCIM-related methods are used; the rest panic if called unexpectedly.
+type fakeSCIMAPI struct {
+	existingProvider *pocketid.SCIMServiceProvider // returned by GetOIDCClientSCIMServiceProvider
+	createErr        error
+	updateErr        error
+	deleteErr        error
+	created          *pocketid.SCIMServiceProviderInput
+	updated          map[string]pocketid.SCIMServiceProviderInput // keyed by SCIM provider ID
+	deleted          []string                                     // SCIM provider IDs passed to Delete
+}
+
+func (f *fakeSCIMAPI) ListOIDCClients(_ context.Context, _ string) ([]*pocketid.OIDCClient, error) {
+	panic("not implemented")
+}
+func (f *fakeSCIMAPI) CreateOIDCClient(_ context.Context, _ pocketid.OIDCClientInput) (*pocketid.OIDCClient, error) {
+	panic("not implemented")
+}
+func (f *fakeSCIMAPI) GetOIDCClient(_ context.Context, _ string) (*pocketid.OIDCClient, error) {
+	panic("not implemented")
+}
+func (f *fakeSCIMAPI) UpdateOIDCClient(_ context.Context, _ string, _ pocketid.OIDCClientInput) (*pocketid.OIDCClient, error) {
+	panic("not implemented")
+}
+func (f *fakeSCIMAPI) UpdateOIDCClientAllowedGroups(_ context.Context, _ string, _ []string) error {
+	panic("not implemented")
+}
+func (f *fakeSCIMAPI) GetOIDCClientSCIMServiceProvider(_ context.Context, _ string) (*pocketid.SCIMServiceProvider, error) {
+	return f.existingProvider, nil
+}
+func (f *fakeSCIMAPI) CreateSCIMServiceProvider(_ context.Context, input pocketid.SCIMServiceProviderInput) (*pocketid.SCIMServiceProvider, error) {
+	if f.createErr != nil {
+		return nil, f.createErr
+	}
+	f.created = &input
+	return &pocketid.SCIMServiceProvider{ID: "new-scim-id", Endpoint: input.Endpoint, Token: input.Token}, nil
+}
+func (f *fakeSCIMAPI) UpdateSCIMServiceProvider(_ context.Context, id string, input pocketid.SCIMServiceProviderInput) (*pocketid.SCIMServiceProvider, error) {
+	if f.updateErr != nil {
+		return nil, f.updateErr
+	}
+	if f.updated == nil {
+		f.updated = make(map[string]pocketid.SCIMServiceProviderInput)
+	}
+	f.updated[id] = input
+	return &pocketid.SCIMServiceProvider{ID: id, Endpoint: input.Endpoint, Token: input.Token}, nil
+}
+func (f *fakeSCIMAPI) DeleteSCIMServiceProvider(_ context.Context, id string) error {
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
+	f.deleted = append(f.deleted, id)
+	return nil
+}
+
+// newSCIMReconciler creates a Reconciler with a fake K8s client and the given objects.
+func newSCIMReconciler(t *testing.T, objs ...client.Object) *Reconciler {
+	t.Helper()
+	scheme := runtime.NewScheme()
+	if err := pocketidinternalv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).WithStatusSubresource(objs...).Build()
+	r := &Reconciler{Client: fc, Scheme: scheme}
+	r.EnsureClient(fc)
+	return r
+}
+
+func oidcClientWithSCIM(scimSpec *pocketidinternalv1alpha1.SCIMSpec, scimProviderID string) *pocketidinternalv1alpha1.PocketIDOIDCClient {
+	return &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-client", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			SCIM: scimSpec,
+		},
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
+			ClientID:       "oidc-client-id",
+			SCIMProviderID: scimProviderID,
+		},
+	}
+}
+
+func TestReconcileSCIM_NoSpec_NoTrackedID_NoExisting(t *testing.T) {
+	// spec.scim == nil, status.scimProviderID == "", pocket-id has nothing → no-op
+	ctx := context.Background()
+	oidcClient := oidcClientWithSCIM(nil, "")
+	r := newSCIMReconciler(t, oidcClient)
+	api := &fakeSCIMAPI{existingProvider: nil}
+
+	if err := r.ReconcileSCIM(ctx, oidcClient, api); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(api.deleted) > 0 {
+		t.Errorf("expected no deletions, got %v", api.deleted)
+	}
+}
+
+func TestReconcileSCIM_NoSpec_WithTrackedID_DeletesIt(t *testing.T) {
+	// spec.scim == nil but status.scimProviderID is set → must delete
+	ctx := context.Background()
+	oidcClient := oidcClientWithSCIM(nil, "existing-scim-id")
+	r := newSCIMReconciler(t, oidcClient)
+	api := &fakeSCIMAPI{}
+
+	if err := r.ReconcileSCIM(ctx, oidcClient, api); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(api.deleted) != 1 || api.deleted[0] != "existing-scim-id" {
+		t.Errorf("expected deletion of existing-scim-id, got %v", api.deleted)
+	}
+	if oidcClient.Status.SCIMProviderID != "" {
+		t.Errorf("expected SCIMProviderID to be cleared, got %q", oidcClient.Status.SCIMProviderID)
+	}
+}
+
+func TestReconcileSCIM_NoSpec_NoTrackedID_StaleInPocketID_DeletesIt(t *testing.T) {
+	// Adoption scenario: spec.scim == nil, no tracked ID, but pocket-id has an existing provider
+	ctx := context.Background()
+	oidcClient := oidcClientWithSCIM(nil, "")
+	r := newSCIMReconciler(t, oidcClient)
+	api := &fakeSCIMAPI{
+		existingProvider: &pocketid.SCIMServiceProvider{ID: "stale-scim-id", Endpoint: "https://old.example.com/scim"},
+	}
+
+	if err := r.ReconcileSCIM(ctx, oidcClient, api); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(api.deleted) != 1 || api.deleted[0] != "stale-scim-id" {
+		t.Errorf("expected deletion of stale-scim-id, got %v", api.deleted)
+	}
+}
+
+func TestReconcileSCIM_WithSpec_NoTrackedID_NoExisting_Creates(t *testing.T) {
+	// spec.scim set, no tracked ID, pocket-id has nothing → create
+	ctx := context.Background()
+	oidcClient := oidcClientWithSCIM(&pocketidinternalv1alpha1.SCIMSpec{
+		Endpoint: "https://scim.example.com/v2",
+	}, "")
+	r := newSCIMReconciler(t, oidcClient)
+	api := &fakeSCIMAPI{existingProvider: nil}
+
+	if err := r.ReconcileSCIM(ctx, oidcClient, api); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if api.created == nil {
+		t.Fatal("expected CreateSCIMServiceProvider to be called")
+	}
+	if api.created.Endpoint != "https://scim.example.com/v2" {
+		t.Errorf("expected endpoint %q, got %q", "https://scim.example.com/v2", api.created.Endpoint)
+	}
+	if api.created.OIDCClientID != "oidc-client-id" {
+		t.Errorf("expected OIDCClientID %q, got %q", "oidc-client-id", api.created.OIDCClientID)
+	}
+	if oidcClient.Status.SCIMProviderID != "new-scim-id" {
+		t.Errorf("expected SCIMProviderID %q, got %q", "new-scim-id", oidcClient.Status.SCIMProviderID)
+	}
+}
+
+func TestReconcileSCIM_WithSpec_NoTrackedID_ExistingInPocketID_Adopts(t *testing.T) {
+	// spec.scim set, no tracked ID, pocket-id already has one → adopt (update + set ID)
+	ctx := context.Background()
+	oidcClient := oidcClientWithSCIM(&pocketidinternalv1alpha1.SCIMSpec{
+		Endpoint: "https://scim.example.com/v2",
+	}, "")
+	r := newSCIMReconciler(t, oidcClient)
+	api := &fakeSCIMAPI{
+		existingProvider: &pocketid.SCIMServiceProvider{ID: "adopt-scim-id", Endpoint: "https://old.example.com/scim"},
+	}
+
+	if err := r.ReconcileSCIM(ctx, oidcClient, api); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if api.created != nil {
+		t.Error("expected no create call during adoption")
+	}
+	if _, ok := api.updated["adopt-scim-id"]; !ok {
+		t.Errorf("expected update of adopt-scim-id, updated map: %v", api.updated)
+	}
+	if oidcClient.Status.SCIMProviderID != "adopt-scim-id" {
+		t.Errorf("expected SCIMProviderID %q, got %q", "adopt-scim-id", oidcClient.Status.SCIMProviderID)
+	}
+}
+
+func TestReconcileSCIM_WithSpec_WithTrackedID_Updates(t *testing.T) {
+	// spec.scim set, tracked ID exists → update
+	ctx := context.Background()
+	oidcClient := oidcClientWithSCIM(&pocketidinternalv1alpha1.SCIMSpec{
+		Endpoint: "https://scim.example.com/v2",
+	}, "tracked-scim-id")
+	r := newSCIMReconciler(t, oidcClient)
+	api := &fakeSCIMAPI{}
+
+	if err := r.ReconcileSCIM(ctx, oidcClient, api); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if api.created != nil {
+		t.Error("expected no create call")
+	}
+	input, ok := api.updated["tracked-scim-id"]
+	if !ok {
+		t.Fatalf("expected update of tracked-scim-id, updated map: %v", api.updated)
+	}
+	if input.Endpoint != "https://scim.example.com/v2" {
+		t.Errorf("expected endpoint %q, got %q", "https://scim.example.com/v2", input.Endpoint)
+	}
+}
+
+func TestReconcileSCIM_TokenFromSecret(t *testing.T) {
+	// spec.scim.tokenSecretRef resolves correctly from a K8s Secret
+	ctx := context.Background()
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "scim-token-secret", Namespace: testNamespace},
+		Data:       map[string][]byte{"token": []byte("super-secret-token")},
+	}
+	oidcClient := oidcClientWithSCIM(&pocketidinternalv1alpha1.SCIMSpec{
+		Endpoint: "https://scim.example.com/v2",
+		TokenSecretRef: &corev1.SecretKeySelector{
+			LocalObjectReference: corev1.LocalObjectReference{Name: "scim-token-secret"},
+			Key:                  "token",
+		},
+	}, "")
+	r := newSCIMReconciler(t, oidcClient, secret)
+	api := &fakeSCIMAPI{existingProvider: nil}
+
+	if err := r.ReconcileSCIM(ctx, oidcClient, api); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if api.created == nil {
+		t.Fatal("expected CreateSCIMServiceProvider to be called")
+	}
+	if api.created.Token != "super-secret-token" {
+		t.Errorf("expected token %q, got %q", "super-secret-token", api.created.Token)
+	}
+}
+
+func TestReconcileSCIM_TokenFromSecret_MissingSecret_ReturnsError(t *testing.T) {
+	// tokenSecretRef references a non-existent Secret → error
+	ctx := context.Background()
+	oidcClient := oidcClientWithSCIM(&pocketidinternalv1alpha1.SCIMSpec{
+		Endpoint: "https://scim.example.com/v2",
+		TokenSecretRef: &corev1.SecretKeySelector{
+			LocalObjectReference: corev1.LocalObjectReference{Name: "does-not-exist"},
+			Key:                  "token",
+		},
+	}, "")
+	r := newSCIMReconciler(t, oidcClient)
+	api := &fakeSCIMAPI{}
+
+	err := r.ReconcileSCIM(ctx, oidcClient, api)
+	if err == nil {
+		t.Fatal("expected error for missing secret, got nil")
+	}
+}
+
+func TestReconcileSCIM_TokenFromSecret_MissingKey_ReturnsError(t *testing.T) {
+	// Secret exists but the key is absent → error
+	ctx := context.Background()
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "scim-token-secret", Namespace: testNamespace},
+		Data:       map[string][]byte{"other-key": []byte("value")},
+	}
+	oidcClient := oidcClientWithSCIM(&pocketidinternalv1alpha1.SCIMSpec{
+		Endpoint: "https://scim.example.com/v2",
+		TokenSecretRef: &corev1.SecretKeySelector{
+			LocalObjectReference: corev1.LocalObjectReference{Name: "scim-token-secret"},
+			Key:                  "token",
+		},
+	}, "")
+	r := newSCIMReconciler(t, oidcClient, secret)
+	api := &fakeSCIMAPI{}
+
+	err := r.ReconcileSCIM(ctx, oidcClient, api)
+	if err == nil {
+		t.Fatal("expected error for missing key, got nil")
+	}
+}

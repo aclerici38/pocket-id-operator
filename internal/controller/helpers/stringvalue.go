@@ -47,6 +47,15 @@ func ResolveStringValue(
 	return "", nil
 }
 
+// ResolveSecretKeySelector reads the value of a SecretKeySelector from a Kubernetes Secret.
+// Returns an empty string if ref is nil.
+func ResolveSecretKeySelector(ctx context.Context, c client.Client, apiReader client.Reader, namespace string, ref *corev1.SecretKeySelector) (string, error) {
+	if ref == nil {
+		return "", nil
+	}
+	return getSecretValue(ctx, c, apiReader, namespace, ref.Name, ref.Key, false)
+}
+
 // getSecretValue retrieves a value from a secret, preferring apiReader for fresh reads
 // If optional is true, missing keys return an empty string rather than an error
 func getSecretValue(

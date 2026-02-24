@@ -166,6 +166,45 @@ spec:
                 default: false
                 description: Requires reauthentication on login
                 type: boolean
+              scim:
+                description: |-
+                  SCIM configures SCIM provisioning for this OIDC client.
+                  Pocket ID will push user/group changes to the configured endpoint.
+                properties:
+                  endpoint:
+                    description: Endpoint is the URL of the external SCIM service
+                      provider.
+                    type: string
+                  tokenSecretRef:
+                    description: |-
+                      TokenSecretRef references a Kubernetes Secret key containing the
+                      bearer token used to authenticate with the SCIM endpoint.
+                      If omitted, no Authorization header is sent.
+                    properties:
+                      key:
+                        description: The key of the secret to select from.  Must be
+                          a valid secret key.
+                        type: string
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                      optional:
+                        description: Specify whether the Secret or its key must be
+                          defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
+                required:
+                - endpoint
+                type: object
               secret:
                 description: Secret defines how OIDC client credentials should be
                   stored in a Kubernetes Secret.
@@ -347,6 +386,10 @@ spec:
                 type: array
               name:
                 description: Name is the resolved name from Pocket-ID
+                type: string
+              scimProviderID:
+                description: SCIMProviderID is the pocket-id ID of the SCIM service
+                  provider for this client, if configured.
                 type: string
             type: object
         type: object

@@ -63,6 +63,22 @@ func (m *mockPocketIDOIDCClientClient) UpdateOIDCClientAllowedGroups(ctx context
 	return nil
 }
 
+func (m *mockPocketIDOIDCClientClient) GetOIDCClientSCIMServiceProvider(_ context.Context, _ string) (*pocketid.SCIMServiceProvider, error) {
+	return nil, nil
+}
+
+func (m *mockPocketIDOIDCClientClient) CreateSCIMServiceProvider(_ context.Context, _ pocketid.SCIMServiceProviderInput) (*pocketid.SCIMServiceProvider, error) {
+	return nil, nil
+}
+
+func (m *mockPocketIDOIDCClientClient) UpdateSCIMServiceProvider(_ context.Context, id string, _ pocketid.SCIMServiceProviderInput) (*pocketid.SCIMServiceProvider, error) {
+	return &pocketid.SCIMServiceProvider{ID: id}, nil
+}
+
+func (m *mockPocketIDOIDCClientClient) DeleteSCIMServiceProvider(_ context.Context, _ string) error {
+	return nil
+}
+
 func TestFindExistingOIDCClient_NoMatch_ByID(t *testing.T) {
 	ctx := context.Background()
 	reconciler := &Reconciler{}
