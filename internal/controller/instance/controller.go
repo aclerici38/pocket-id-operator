@@ -26,6 +26,7 @@ import (
 	"maps"
 	"net/url"
 	"reflect"
+	"strings"
 
 	"golang.org/x/mod/semver"
 	appsv1 "k8s.io/api/apps/v1"
@@ -73,8 +74,6 @@ type Reconciler struct {
 	client.Client
 	APIReader client.Reader
 	Scheme    *runtime.Scheme
-
-	GatewayAPIAvailable bool
 }
 
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidinstances,verbs=get;list;watch;create;update;patch;delete
@@ -583,13 +582,6 @@ func (r *Reconciler) reconcileService(ctx context.Context, instance *pocketidint
 }
 
 func (r *Reconciler) reconcileHTTPRoute(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
-	if !r.GatewayAPIAvailable {
-		if instance.Spec.Route != nil && instance.Spec.Route.Enabled {
-			return fmt.Errorf("httproute is enabled but Gateway API CRDs (gateway.networking.k8s.io/v1) are not installed")
-		}
-		return nil
-	}
-
 	routeName := instance.Name
 	if instance.Spec.Route != nil && instance.Spec.Route.Name != "" {
 		routeName = instance.Spec.Route.Name
@@ -600,6 +592,9 @@ func (r *Reconciler) reconcileHTTPRoute(ctx context.Context, instance *pocketidi
 		existing.Name = routeName
 		existing.Namespace = instance.Namespace
 		err := r.Delete(ctx, existing)
+		if isHTTPRouteCRDUnavailableError(err) {
+			return nil
+		}
 		return client.IgnoreNotFound(err)
 	}
 
@@ -659,7 +654,24 @@ func (r *Reconciler) reconcileHTTPRoute(ctx context.Context, instance *pocketidi
 		httpRoute.WithAnnotations(instance.Spec.Route.Annotations)
 	}
 
-	return r.Apply(ctx, httpRoute, client.FieldOwner("pocket-id-operator"))
+	if err := r.Apply(ctx, httpRoute, client.FieldOwner("pocket-id-operator")); err != nil {
+		if isHTTPRouteCRDUnavailableError(err) {
+			return fmt.Errorf("httproute is enabled but Gateway API CRDs are not installed")
+		}
+		return err
+	}
+
+	return nil
+}
+
+func isHTTPRouteCRDUnavailableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if meta.IsNoMatchError(err) {
+		return true
+	}
+	return strings.Contains(err.Error(), `no matches for kind "HTTPRoute"`)
 }
 
 func (r *Reconciler) reconcileVolume(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
@@ -899,17 +911,13 @@ func (r *Reconciler) computeStaticAPIKeyHash(ctx context.Context, instance *pock
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
-	builder := ctrl.NewControllerManagedBy(mgr).
+	return ctrl.NewControllerManagedBy(mgr).
 		For(&pocketidinternalv1alpha1.PocketIDInstance{}).
 		Owns(&appsv1.Deployment{}).
 		Owns(&appsv1.StatefulSet{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
-		Owns(&corev1.Secret{})
-
-	if r.GatewayAPIAvailable {
-		builder = builder.Owns(&gatewayv1.HTTPRoute{})
-	}
-
-	return builder.Named("pocketidinstance").Complete(r)
+		Owns(&corev1.Secret{}).
+		Named("pocketidinstance").
+		Complete(r)
 }

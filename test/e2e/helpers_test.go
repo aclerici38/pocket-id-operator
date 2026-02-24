@@ -485,6 +485,12 @@ func kubectlAnnotate(resource, name, namespace, annotation string) error {
 	return err
 }
 
+func kubectlPatch(resource, name, namespace, patch string) error {
+	cmd := exec.Command("kubectl", "patch", resource, name, "-n", namespace, "--type=merge", "-p", patch)
+	_, err := utils.Run(cmd)
+	return err
+}
+
 func removeFinalizers(namespace string) {
 	cmd := exec.Command("bash", "-c",
 		fmt.Sprintf("kubectl get pocketiduser,pocketidusergroup,pocketidoidcclient,pocketidinstance -n %s -o name 2>/dev/null | xargs -I {} kubectl patch {} -n %s --type=merge -p '{\"metadata\":{\"finalizers\":null}}' 2>/dev/null || true",

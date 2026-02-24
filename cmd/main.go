@@ -27,14 +27,10 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/client-go/discovery"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -65,43 +61,6 @@ func init() {
 	utilruntime.Must(pocketidinternalv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(gatewayv1.Install(scheme))
 	// +kubebuilder:scaffold:scheme
-}
-
-func supportsHTTPRoute(cfg *rest.Config) (bool, error) {
-	discoveryClient, err := discovery.NewDiscoveryClientForConfig(cfg)
-	if err != nil {
-		return false, err
-	}
-
-	gv := schema.GroupVersion{
-		Group:   gatewayv1.GroupVersion.Group,
-		Version: gatewayv1.GroupVersion.Version,
-	}
-	resourceList, err := discoveryClient.ServerResourcesForGroupVersion(gv.String())
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return false, nil
-		}
-		if discovery.IsGroupDiscoveryFailedError(err) {
-			if groupErrs, ok := err.(*discovery.ErrGroupDiscoveryFailed); ok {
-				if groupErr, ok := groupErrs.Groups[gv]; ok {
-					if apierrors.IsNotFound(groupErr) {
-						return false, nil
-					}
-					return false, groupErr
-				}
-			}
-		}
-		return false, err
-	}
-
-	for _, resource := range resourceList.APIResources {
-		if resource.Kind == "HTTPRoute" && resource.Name == "httproutes" {
-			return true, nil
-		}
-	}
-
-	return false, nil
 }
 
 // nolint:gocyclo
@@ -155,14 +114,6 @@ func main() {
 	}
 
 	cfg := ctrl.GetConfigOrDie()
-	gatewayHTTPRouteAvailable, err := supportsHTTPRoute(cfg)
-	if err != nil {
-		setupLog.Error(err, "failed to determine if Gateway API CRDs are available")
-		os.Exit(1)
-	}
-	if !gatewayHTTPRouteAvailable {
-		setupLog.Info("Gateway API CRDs not found, disabling HTTPRoute support")
-	}
 
 	// Initial webhook TLS options
 	webhookTLSOpts := tlsOpts
@@ -226,9 +177,6 @@ func main() {
 		&corev1.PersistentVolumeClaim{}: {Label: managedBySelector},
 		&corev1.Secret{}:                {Label: managedBySelector},
 	}
-	if gatewayHTTPRouteAvailable {
-		byObject[&gatewayv1.HTTPRoute{}] = cache.ByObject{Label: managedBySelector}
-	}
 	cacheOptions := cache.Options{
 		ByObject: byObject,
 	}
@@ -259,10 +207,9 @@ func main() {
 	}
 
 	if err := (&instance.Reconciler{
-		Client:              mgr.GetClient(),
-		APIReader:           mgr.GetAPIReader(),
-		Scheme:              mgr.GetScheme(),
-		GatewayAPIAvailable: gatewayHTTPRouteAvailable,
+		Client:    mgr.GetClient(),
+		APIReader: mgr.GetAPIReader(),
+		Scheme:    mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PocketIDInstance")
 		os.Exit(1)
