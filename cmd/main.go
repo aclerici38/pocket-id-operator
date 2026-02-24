@@ -27,17 +27,16 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/discovery"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -68,25 +67,37 @@ func init() {
 }
 
 func supportsHTTPRoute(cfg *rest.Config) (bool, error) {
-	httpClient, err := rest.HTTPClientFor(cfg)
-	if err != nil {
-		return false, err
-	}
-	restMapper, err := apiutil.NewDynamicRESTMapper(cfg, httpClient)
+	discoveryClient, err := discovery.NewDiscoveryClientForConfig(cfg)
 	if err != nil {
 		return false, err
 	}
 
-	groupKind := schema.GroupKind{Group: gatewayv1.GroupVersion.Group, Kind: "HTTPRoute"}
-	_, err = restMapper.RESTMapping(groupKind, gatewayv1.GroupVersion.Version)
+	gv := gatewayv1.GroupVersion.String()
+	resourceList, err := discoveryClient.ServerResourcesForGroupVersion(gv)
 	if err != nil {
-		if meta.IsNoMatchError(err) {
+		if apierrors.IsNotFound(err) {
 			return false, nil
+		}
+		if discovery.IsGroupDiscoveryFailedError(err) {
+			if groupErrs, ok := err.(*discovery.ErrGroupDiscoveryFailed); ok {
+				if groupErr, ok := groupErrs.Groups[gv]; ok {
+					if apierrors.IsNotFound(groupErr) {
+						return false, nil
+					}
+					return false, groupErr
+				}
+			}
 		}
 		return false, err
 	}
 
-	return true, nil
+	for _, resource := range resourceList.APIResources {
+		if resource.Kind == "HTTPRoute" && resource.Name == "httproutes" {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // nolint:gocyclo
