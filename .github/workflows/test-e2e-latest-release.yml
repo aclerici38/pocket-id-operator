@@ -29,7 +29,7 @@ env:
 jobs:
   test-e2e-latest-release:
     name: Run e2e tests against latest release
-    if: ${{ contains(github.event.pull_request.labels.*.name, 'pocket-id-upgrade') || github.event_name == 'workflow_dispatch' }}
+    # if: ${{ contains(github.event.pull_request.labels.*.name, 'pocket-id-upgrade') || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     steps:
       - name: Resolve latest release
