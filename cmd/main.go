@@ -30,6 +30,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/discovery"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -72,7 +73,10 @@ func supportsHTTPRoute(cfg *rest.Config) (bool, error) {
 		return false, err
 	}
 
-	gv := gatewayv1.GroupVersion.String()
+	gv := schema.GroupVersion{
+		Group:   gatewayv1.GroupVersion.Group,
+		Version: gatewayv1.GroupVersion.Version,
+	}
 	resourceList, err := discoveryClient.ServerResourcesForGroupVersion(gv)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
