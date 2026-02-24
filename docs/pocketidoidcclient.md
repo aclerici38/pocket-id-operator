@@ -78,6 +78,35 @@ When enabled, the operator writes a Secret containing:
 - Issuer URL and discovery endpoints derived from the instance `spec.appUrl`
 - Callback and logout URLs
 
+## SCIM Provisioning
+
+OIDC clients can optionally configure a SCIM service provider. When configured, Pocket ID
+pushes user and group changes to the external SCIM endpoint.
+
+```yaml
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDOIDCClient
+metadata:
+  name: hr-app
+  namespace: pocket-id
+spec:
+  callbackUrls:
+    - "https://hr.example.com/auth/callback"
+  scim:
+    endpoint: "https://hr.example.com/scim/v2"
+    tokenSecretRef:
+      name: hr-scim-token
+      key: token
+```
+
+- `spec.scim.endpoint` (required): URL of the external SCIM service provider.
+- `spec.scim.tokenSecretRef` (optional): reference to a Kubernetes Secret key containing
+  the bearer token for authenticating with the SCIM endpoint. If omitted, no
+  Authorization header is sent.
+- `status.scimProviderID`: populated after the SCIM service provider is created in Pocket ID.
+
+When `spec.scim` is removed the operator deletes the SCIM service provider from Pocket ID.
+
 ## Regenerating Client Secrets
 
 Set the annotation below to force a client secret regeneration. The operator removes
