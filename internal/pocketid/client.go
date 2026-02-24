@@ -18,6 +18,7 @@ import (
 	scim "github.com/aclerici38/pocket-id-go-client/v2/client/s_c_i_m"
 	"github.com/aclerici38/pocket-id-go-client/v2/client/user_groups"
 	"github.com/aclerici38/pocket-id-go-client/v2/client/users"
+	pocketidversion "github.com/aclerici38/pocket-id-go-client/v2/client/version"
 	"github.com/aclerici38/pocket-id-go-client/v2/models"
 )
 
@@ -165,6 +166,22 @@ func NewClient(baseURL string, apiKey string) (*Client, error) {
 		raw:     raw,
 		baseURL: parsed.Scheme + "://" + parsed.Host,
 	}, nil
+}
+
+// --- Version Operations ---
+
+// GetCurrentVersion returns the currently deployed version of the PocketID instance.
+func (c *Client) GetCurrentVersion(ctx context.Context) (string, error) {
+	params := pocketidversion.NewGetAPIVersionCurrentParamsWithContext(ctx)
+	resp, err := c.raw.Version.GetAPIVersionCurrent(params)
+	if err != nil {
+		return "", fmt.Errorf("get current version failed: %w", err)
+	}
+	v, ok := resp.Payload["currentVersion"]
+	if !ok {
+		return "", fmt.Errorf("currentVersion key missing from response")
+	}
+	return v, nil
 }
 
 // --- User Operations ---
