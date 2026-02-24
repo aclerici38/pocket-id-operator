@@ -87,9 +87,32 @@ var _ = Describe("PocketIDInstance", Serial, Ordered, func() {
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 		})
 
-		It("should set DISABLE_RATE_LIMITING env var (shared instance has it disabled)", func() {
+		It("should not set DISABLE_RATE_LIMITING env var by default", func() {
+			const defaultRLInstance = "e2e-ratelimit-default"
+			createInstance(InstanceOptions{Name: defaultRLInstance})
+			DeferCleanup(func() {
+				kubectlDelete("pocketidinstance", defaultRLInstance, instanceNS)
+			})
+
 			Eventually(func(g Gomega) {
-				output := kubectlGet("deployment", instanceName, "-n", instanceNS,
+				output := kubectlGet("deployment", defaultRLInstance, "-n", instanceNS,
+					"-o", "jsonpath={.spec.template.spec.containers[0].env[?(@.name=='DISABLE_RATE_LIMITING')].value}")
+				g.Expect(output).To(BeEmpty())
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+
+		It("should set DISABLE_RATE_LIMITING=true when disableRateLimiting is true", func() {
+			const rlInstance = "e2e-ratelimit-disabled"
+			createInstance(InstanceOptions{
+				Name:                rlInstance,
+				DisableRateLimiting: boolPtr(true),
+			})
+			DeferCleanup(func() {
+				kubectlDelete("pocketidinstance", rlInstance, instanceNS)
+			})
+
+			Eventually(func(g Gomega) {
+				output := kubectlGet("deployment", rlInstance, "-n", instanceNS,
 					"-o", "jsonpath={.spec.template.spec.containers[0].env[?(@.name=='DISABLE_RATE_LIMITING')].value}")
 				g.Expect(output).To(Equal("true"))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())

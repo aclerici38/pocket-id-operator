@@ -27,13 +27,14 @@ const (
 
 // InstanceOptions configures a PocketIDInstance YAML.
 type InstanceOptions struct {
-	Name               string
-	Namespace          string
-	Labels             map[string]string
-	Image              string
-	PersistenceEnabled *bool
-	PersistenceSize    string
-	ExistingClaim      string
+	Name                string
+	Namespace           string
+	Labels              map[string]string
+	Image               string
+	PersistenceEnabled  *bool
+	PersistenceSize     string
+	ExistingClaim       string
+	DisableRateLimiting *bool
 }
 
 const defaultPocketIDImage = "ghcr.io/pocket-id/pocket-id:v2.2.0-distroless@sha256:ad2d21a7b31d6b4f1d999caec794a5b5edeb97fc40801947158d62befd4203e3"
@@ -80,6 +81,15 @@ func buildInstanceYAML(opts InstanceOptions) string {
 		}
 	}
 
+	var disableRateLimiting string
+	if opts.DisableRateLimiting != nil {
+		if *opts.DisableRateLimiting {
+			disableRateLimiting = "  disableRateLimiting: true\n"
+		} else {
+			disableRateLimiting = "  disableRateLimiting: false\n"
+		}
+	}
+
 	return fmt.Sprintf(`apiVersion: pocketid.internal/v1alpha1
 kind: PocketIDInstance
 metadata:
@@ -93,7 +103,7 @@ metadata:
         name: pocket-id-encryption
         key: key
   appUrl: "http://%s.%s.svc.cluster.local:1411"
-%s`, opts.Name, opts.Namespace, labels, opts.Image, opts.Name, opts.Namespace, persistence)
+%s%s`, opts.Name, opts.Namespace, labels, opts.Image, opts.Name, opts.Namespace, persistence, disableRateLimiting)
 }
 
 // UserOptions configures a PocketIDUser YAML.

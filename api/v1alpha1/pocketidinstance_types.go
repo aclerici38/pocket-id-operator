@@ -158,6 +158,11 @@ type PocketIDInstanceSpec struct {
 	// and exposes a metrics port on the Service
 	// +optional
 	Metrics *MetricsConfig `json:"metrics,omitempty"`
+
+	// DisableRateLimiting sets DISABLE_RATE_LIMITING=true on the Pocket-ID container.
+	// +kubebuilder:default=false
+	// +optional
+	DisableRateLimiting *bool `json:"disableRateLimiting,omitempty"`
 }
 
 // PocketIDInstanceStatus defines the observed state of PocketIDInstance.

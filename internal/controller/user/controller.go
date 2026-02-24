@@ -124,6 +124,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 				}
 				return ctrl.Result{Requeue: true}, nil
 			}
+			common.WarnOnRateLimit(ctx, err)
 			_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "GetError", err.Error())
 			return ctrl.Result{RequeueAfter: common.Requeue}, nil
 		}
@@ -138,6 +139,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if user.Status.UserID == "" {
 		requeue, err := r.createOrAdoptUser(ctx, user, apiClient, instance)
 		if err != nil {
+			common.WarnOnRateLimit(ctx, err)
 			log.Error(err, "Failed to create or adopt user")
 			_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "ReconcileError", err.Error())
 			return ctrl.Result{RequeueAfter: common.Requeue}, nil
@@ -149,18 +151,21 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	if err := r.pushUserState(ctx, user, apiClient); err != nil {
+		common.WarnOnRateLimit(ctx, err)
 		log.Error(err, "Failed to push user state")
 		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
 	if err := r.reconcileAPIKeys(ctx, user, apiClient); err != nil {
+		common.WarnOnRateLimit(ctx, err)
 		log.Error(err, "Failed to reconcile API keys")
 		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "APIKeyError", err.Error())
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
 	if err := r.ensureOneTimeLoginStatus(ctx, user, apiClient, instance); err != nil {
+		common.WarnOnRateLimit(ctx, err)
 		log.Error(err, "Failed to ensure one-time login status")
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}

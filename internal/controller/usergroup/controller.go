@@ -111,6 +111,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 				}
 				return ctrl.Result{Requeue: true}, nil
 			}
+			common.WarnOnRateLimit(ctx, err)
 			_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "GetError", err.Error())
 			return ctrl.Result{RequeueAfter: common.Requeue}, nil
 		}
@@ -125,6 +126,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if userGroup.Status.GroupID == "" {
 		requeue, err := r.createOrAdoptUserGroup(ctx, userGroup, apiClient)
 		if err != nil {
+			common.WarnOnRateLimit(ctx, err)
 			log.Error(err, "Failed to create or adopt user group")
 			_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "ReconcileError", err.Error())
 			return ctrl.Result{RequeueAfter: common.Requeue}, nil
@@ -136,6 +138,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	if err := r.pushUserGroupState(ctx, userGroup, apiClient); err != nil {
+		common.WarnOnRateLimit(ctx, err)
 		log.Error(err, "Failed to push user group state")
 		_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil

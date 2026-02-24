@@ -399,6 +399,11 @@ spec:
                 - Deployment
                 - StatefulSet
                 type: string
+              disableRateLimiting:
+                default: false
+                description: DisableRateLimiting sets DISABLE_RATE_LIMITING=true on
+                  the Pocket-ID container.
+                type: boolean
               encryptionKey:
                 description: |-
                   Encryption Key
@@ -2810,7 +2815,7 @@ spec:
         - --health-probe-bind-address=:8081
         command:
         - /manager
-        image: ghcr.io/aclerici38/pocket-id-operator:v0.2.1@sha256:aedef9d0434b2b798de0529d16fb0e600cd11f25857b10c22028f18d47306c5b
+        image: pocket-id-operator:e2e
         livenessProbe:
           httpGet:
             path: /healthz

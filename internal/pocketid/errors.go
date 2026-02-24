@@ -26,3 +26,12 @@ func IsAlreadyExistsError(err error) bool {
 	}
 	return false
 }
+
+// IsRateLimitError returns true if the error indicates the request was rate limited (HTTP 429).
+func IsRateLimitError(err error) bool {
+	var apiErr *runtime.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.IsCode(http.StatusTooManyRequests)
+	}
+	return false
+}

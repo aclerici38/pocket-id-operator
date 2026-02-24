@@ -80,7 +80,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	}))
 
 	By("creating the shared e2e instance")
-	createInstance(InstanceOptions{})
+	createInstance(InstanceOptions{DisableRateLimiting: boolPtr(true)})
 
 	By("waiting for the shared instance to be Ready")
 	Eventually(func(g Gomega) {

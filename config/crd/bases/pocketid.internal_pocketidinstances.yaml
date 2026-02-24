@@ -391,6 +391,11 @@ spec:
                 - Deployment
                 - StatefulSet
                 type: string
+              disableRateLimiting:
+                default: false
+                description: DisableRateLimiting sets DISABLE_RATE_LIMITING=true on
+                  the Pocket-ID container.
+                type: boolean
               encryptionKey:
                 description: |-
                   Encryption Key

@@ -115,6 +115,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 				}
 				return ctrl.Result{Requeue: true}, nil
 			}
+			common.WarnOnRateLimit(ctx, err)
 			_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "GetError", err.Error())
 			return ctrl.Result{RequeueAfter: common.Requeue}, nil
 		}
@@ -129,6 +130,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if oidcClient.Status.ClientID == "" {
 		requeue, err := r.createOrAdoptOIDCClient(ctx, oidcClient, apiClient)
 		if err != nil {
+			common.WarnOnRateLimit(ctx, err)
 			log.Error(err, "Failed to create or adopt OIDC client")
 			_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "ReconcileError", err.Error())
 			return ctrl.Result{RequeueAfter: common.Requeue}, nil
@@ -140,12 +142,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	if err := r.pushOIDCClientState(ctx, oidcClient, apiClient); err != nil {
+		common.WarnOnRateLimit(ctx, err)
 		log.Error(err, "Failed to push OIDC client state")
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
 	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient); err != nil {
+		common.WarnOnRateLimit(ctx, err)
 		log.Error(err, "Failed to reconcile OIDC client secret")
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "SecretReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil

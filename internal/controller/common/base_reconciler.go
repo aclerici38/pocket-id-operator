@@ -329,3 +329,11 @@ func SelectInstance(ctx context.Context, c client.Client, selector *metav1.Label
 
 	return &instances.Items[0], nil
 }
+
+// WarnOnRateLimit logs a warning with remediation advice if err is an HTTP 429.
+// Call this alongside any log.Error for API errors.
+func WarnOnRateLimit(ctx context.Context, err error) {
+	if pocketid.IsRateLimitError(err) {
+		logf.FromContext(ctx).Info("WARNING: Pocket-ID returned HTTP 429 (rate limited). Consider setting spec.disableRateLimiting=true on the PocketIDInstance if this persists.")
+	}
+}
