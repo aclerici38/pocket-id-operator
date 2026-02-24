@@ -101,6 +101,54 @@ func TestBuildEnvVars_DatabaseUrlFromSecret(t *testing.T) {
 	requireEnvFromSecret(t, env, "DB_CONNECTION_STRING", "db-secret", "uri")
 }
 
+func TestBuildEnvVars_FileBackendFilesystem(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.FileBackend = "filesystem"
+
+	env := buildEnvVars(inst)
+	requireEnv(t, env, "FILE_BACKEND", "filesystem")
+}
+
+func TestBuildEnvVars_FileBackendDatabase(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.FileBackend = "database"
+
+	env := buildEnvVars(inst)
+	requireEnv(t, env, "FILE_BACKEND", "database")
+}
+
+func TestBuildEnvVars_FileBackendIgnoredWhenS3Present(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.FileBackend = "s3"
+	inst.Spec.S3 = &pocketidinternalv1alpha1.S3Config{
+		Bucket:          "my-bucket",
+		Region:          "us-east-1",
+		AccessKeyID:     pocketidinternalv1alpha1.SensitiveValue{Value: "key"},
+		SecretAccessKey: pocketidinternalv1alpha1.SensitiveValue{Value: "secret"},
+	}
+
+	env := buildEnvVars(inst)
+	// FILE_BACKEND should be set by S3 builder, not the fileBackend builder
+	requireEnv(t, env, "FILE_BACKEND", "s3")
+
+	// Verify FILE_BACKEND appears exactly once
+	count := 0
+	for _, e := range env {
+		if e.Name == "FILE_BACKEND" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected FILE_BACKEND to appear once, got %d", count)
+	}
+}
+
+func TestBuildEnvVars_FileBackendAbsentByDefault(t *testing.T) {
+	inst := minimalInstance()
+	env := buildEnvVars(inst)
+	requireEnvAbsent(t, env, "FILE_BACKEND")
+}
+
 func TestBuildEnvVars_S3(t *testing.T) {
 	inst := minimalInstance()
 	inst.Spec.S3 = &pocketidinternalv1alpha1.S3Config{
