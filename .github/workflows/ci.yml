@@ -34,7 +34,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       repo_owner: ${{ steps.meta.outputs.repo_owner }}
-      short_sha: ${{ steps.meta.outputs.short_sha }}
       ci_tag: ${{ steps.meta.outputs.ci_tag }}
       build_image: ${{ steps.meta.outputs.build_image }}
       image_tag: ${{ steps.meta.outputs.image_tag }}
@@ -49,7 +48,7 @@ jobs:
           SHORT_SHA=$(git rev-parse --short HEAD)
           CI_TAG="ci-${SHORT_SHA}"
           BUILD_TAG="${CI_TAG}"
-          IMAGE_TAG="main"
+          IMAGE_TAG="${SHORT_SHA}-main"
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             BUILD_TAG="PR-${{ github.event.pull_request.number }}"
             IMAGE_TAG="${BUILD_TAG}"
@@ -170,5 +169,4 @@ jobs:
       image: ${{ needs.meta.outputs.build_image }}
       image_tag: ${{ needs.meta.outputs.image_tag }}
       repo_owner: ${{ needs.meta.outputs.repo_owner }}
-      short_sha: ${{ needs.meta.outputs.short_sha }}
     secrets: inherit

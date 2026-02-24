@@ -20,7 +20,7 @@ on:
         required: true
         type: string
       additional_tag:
-        description: Optional additional tag to apply (e.g., "abc123-main")
+        description: Optional additional tag to apply (e.g., "main")
         required: false
         type: string
         default: ""
@@ -43,7 +43,7 @@ on:
         required: true
         type: string
       additional_tag:
-        description: Optional additional tag to apply (e.g., "abc123-main")
+        description: Optional additional tag to apply (e.g., "main")
         required: false
         type: string
         default: ""

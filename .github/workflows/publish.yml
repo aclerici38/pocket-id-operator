@@ -15,10 +15,6 @@ on:
         description: Lowercase repo owner for GHCR namespace.
         required: true
         type: string
-      short_sha:
-        description: Short commit SHA for commit-main tags.
-        required: true
-        type: string
   workflow_dispatch:
     inputs:
       image:
@@ -31,10 +27,6 @@ on:
         type: string
       repo_owner:
         description: Lowercase repo owner for GHCR namespace.
-        required: true
-        type: string
-      short_sha:
-        description: Short commit SHA for commit-main tags.
         required: true
         type: string
 
@@ -58,17 +50,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Tag primary image
+      - name: Tag image
         run: |
           docker buildx imagetools create \
             -t ghcr.io/${{ inputs.repo_owner }}/pocket-id-operator:${{ inputs.image_tag }} \
             ${{ inputs.image }}
 
-      - name: Tag :commit-main image
-        if: inputs.image_tag == 'main'
+      - name: Tag :main rolling image
+        if: ${{ endsWith(inputs.image_tag, '-main') }}
         run: |
           docker buildx imagetools create \
-            -t ghcr.io/${{ inputs.repo_owner }}/pocket-id-operator:${{ inputs.short_sha }}-main \
+            -t ghcr.io/${{ inputs.repo_owner }}/pocket-id-operator:main \
             ${{ inputs.image }}
 
   publish-chart:
@@ -79,5 +71,5 @@ jobs:
       app_version: ${{ inputs.image_tag }}
       repo_owner: ${{ inputs.repo_owner }}
       primary_tag: ${{ inputs.image_tag }}
-      additional_tag: ${{ inputs.image_tag == 'main' && format('{0}-main', inputs.short_sha) || '' }}
+      additional_tag: ${{ endsWith(inputs.image_tag, '-main') && 'main' || '' }}
     secrets: inherit
