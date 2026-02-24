@@ -313,6 +313,19 @@ type OIDCClientOptions struct {
 	IsPublic           bool
 	AllowedUserGroups  []string
 	Secret             *OIDCSecretConfig
+	SCIM               *SCIMConfig
+}
+
+// SCIMConfig configures the SCIM spec for an OIDCClient.
+type SCIMConfig struct {
+	Endpoint       string
+	TokenSecretRef *SecretKeyRef
+}
+
+// SecretKeyRef references a key in a Kubernetes Secret.
+type SecretKeyRef struct {
+	Name string
+	Key  string
 }
 
 type OIDCSecretConfig struct {
@@ -399,6 +412,16 @@ func buildOIDCClientYAML(opts OIDCClientOptions) string {
 			if opts.Secret.Keys.LogoutCallbackURLs != "" {
 				spec.WriteString(fmt.Sprintf("      logoutCallbackUrls: %s\n", opts.Secret.Keys.LogoutCallbackURLs))
 			}
+		}
+	}
+
+	if opts.SCIM != nil {
+		spec.WriteString("  scim:\n")
+		spec.WriteString(fmt.Sprintf("    endpoint: %s\n", opts.SCIM.Endpoint))
+		if opts.SCIM.TokenSecretRef != nil {
+			spec.WriteString("    tokenSecretRef:\n")
+			spec.WriteString(fmt.Sprintf("      name: %s\n", opts.SCIM.TokenSecretRef.Name))
+			spec.WriteString(fmt.Sprintf("      key: %s\n", opts.SCIM.TokenSecretRef.Key))
 		}
 	}
 

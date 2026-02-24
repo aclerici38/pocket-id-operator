@@ -145,6 +145,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
+	if err := r.ReconcileSCIM(ctx, oidcClient, apiClient); err != nil {
+		log.Error(err, "Failed to reconcile SCIM service provider")
+		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "SCIMReconcileError", err.Error())
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+	}
+
 	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient); err != nil {
 		log.Error(err, "Failed to reconcile OIDC client secret")
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "SecretReconcileError", err.Error())
@@ -170,6 +176,10 @@ type PocketIDOIDCClientAPI interface {
 	GetOIDCClient(ctx context.Context, id string) (*pocketid.OIDCClient, error)
 	UpdateOIDCClient(ctx context.Context, id string, input pocketid.OIDCClientInput) (*pocketid.OIDCClient, error)
 	UpdateOIDCClientAllowedGroups(ctx context.Context, id string, groupIDs []string) error
+	GetOIDCClientSCIMServiceProvider(ctx context.Context, oidcClientID string) (*pocketid.SCIMServiceProvider, error)
+	CreateSCIMServiceProvider(ctx context.Context, input pocketid.SCIMServiceProviderInput) (*pocketid.SCIMServiceProvider, error)
+	UpdateSCIMServiceProvider(ctx context.Context, id string, input pocketid.SCIMServiceProviderInput) (*pocketid.SCIMServiceProvider, error)
+	DeleteSCIMServiceProvider(ctx context.Context, id string) error
 }
 
 // FindExistingOIDCClient checks if an OIDC client already exists in Pocket-ID.
@@ -406,6 +416,92 @@ func (r *Reconciler) clearClientStatus(ctx context.Context, oidcClient *pocketid
 	})
 }
 
+// ReconcileSCIM ensures the SCIM service provider in pocket-id matches the desired spec.
+func (r *Reconciler) ReconcileSCIM(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient PocketIDOIDCClientAPI) error {
+	log := logf.FromContext(ctx)
+
+	// If SCIM is not desired, delete any existing provider
+	if oidcClient.Spec.SCIM == nil {
+		if oidcClient.Status.SCIMProviderID != "" {
+			log.Info("SCIM removed from spec, deleting service provider", "scimProviderID", oidcClient.Status.SCIMProviderID)
+			if err := apiClient.DeleteSCIMServiceProvider(ctx, oidcClient.Status.SCIMProviderID); err != nil {
+				if !pocketid.IsNotFoundError(err) {
+					return fmt.Errorf("delete SCIM service provider: %w", err)
+				}
+			}
+			return r.clearSCIMProviderID(ctx, oidcClient)
+		}
+		// Clean up stale providers
+		existing, err := apiClient.GetOIDCClientSCIMServiceProvider(ctx, oidcClient.Status.ClientID)
+		if err != nil {
+			return fmt.Errorf("get SCIM service provider: %w", err)
+		}
+		if existing != nil {
+			log.Info("Deleting untracked SCIM service provider found on adopted OIDC client", "scimProviderID", existing.ID)
+			if err := apiClient.DeleteSCIMServiceProvider(ctx, existing.ID); err != nil && !pocketid.IsNotFoundError(err) {
+				return fmt.Errorf("delete untracked SCIM service provider: %w", err)
+			}
+		}
+		return nil
+	}
+
+	token, err := helpers.ResolveSecretKeySelector(ctx, r.Client, r.APIReader, oidcClient.Namespace, oidcClient.Spec.SCIM.TokenSecretRef)
+	if err != nil {
+		return fmt.Errorf("resolve SCIM token secret: %w", err)
+	}
+
+	input := pocketid.SCIMServiceProviderInput{
+		Endpoint:     oidcClient.Spec.SCIM.Endpoint,
+		OIDCClientID: oidcClient.Status.ClientID,
+		Token:        token,
+	}
+
+	if oidcClient.Status.SCIMProviderID == "" {
+		existing, err := apiClient.GetOIDCClientSCIMServiceProvider(ctx, oidcClient.Status.ClientID)
+		if err != nil {
+			return fmt.Errorf("get SCIM service provider: %w", err)
+		}
+		if existing != nil {
+			log.Info("Adopting existing SCIM service provider", "scimProviderID", existing.ID)
+			if _, err := apiClient.UpdateSCIMServiceProvider(ctx, existing.ID, input); err != nil {
+				return fmt.Errorf("update adopted SCIM service provider: %w", err)
+			}
+			return r.setSCIMProviderID(ctx, oidcClient, existing.ID)
+		}
+		log.Info("Creating SCIM service provider", "endpoint", input.Endpoint)
+		created, err := apiClient.CreateSCIMServiceProvider(ctx, input)
+		if err != nil {
+			return fmt.Errorf("create SCIM service provider: %w", err)
+		}
+		return r.setSCIMProviderID(ctx, oidcClient, created.ID)
+	}
+
+	// Update existing
+	if _, err := apiClient.UpdateSCIMServiceProvider(ctx, oidcClient.Status.SCIMProviderID, input); err != nil {
+		if pocketid.IsNotFoundError(err) {
+			log.Info("SCIM service provider not found, will recreate", "scimProviderID", oidcClient.Status.SCIMProviderID)
+			if err := r.clearSCIMProviderID(ctx, oidcClient); err != nil {
+				return err
+			}
+			return r.ReconcileSCIM(ctx, oidcClient, apiClient)
+		}
+		return fmt.Errorf("update SCIM service provider: %w", err)
+	}
+	return nil
+}
+
+func (r *Reconciler) setSCIMProviderID(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, id string) error {
+	base := oidcClient.DeepCopy()
+	oidcClient.Status.SCIMProviderID = id
+	return r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
+}
+
+func (r *Reconciler) clearSCIMProviderID(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) error {
+	return r.ClearStatusField(ctx, oidcClient, func() {
+		oidcClient.Status.SCIMProviderID = ""
+	})
+}
+
 // UpdateOIDCClientStatus updates the OIDCClient status with values returned from pocket-id
 func (r *Reconciler) UpdateOIDCClientStatus(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, current *pocketid.OIDCClient) error {
 	if current == nil {
@@ -497,8 +593,13 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, oidcClient *pocketidin
 		oidcClient.Status.ClientID,
 		oidcClient.Spec.InstanceSelector,
 		oidcClientFinalizer,
-		func(ctx context.Context, client *pocketid.Client, id string) error {
-			return client.DeleteOIDCClient(ctx, id)
+		func(ctx context.Context, apiClient *pocketid.Client, id string) error {
+			if oidcClient.Status.SCIMProviderID != "" {
+				if err := apiClient.DeleteSCIMServiceProvider(ctx, oidcClient.Status.SCIMProviderID); err != nil && !pocketid.IsNotFoundError(err) {
+					return fmt.Errorf("delete SCIM service provider: %w", err)
+				}
+			}
+			return apiClient.DeleteOIDCClient(ctx, id)
 		},
 	)
 }

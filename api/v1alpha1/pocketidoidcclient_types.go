@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -153,6 +154,20 @@ type OIDCClientSecretKeys struct {
 	EndSessionURL string `json:"endSessionUrl,omitempty"`
 }
 
+// SCIMSpec configures SCIM provisioning for the OIDC client.
+// Pocket ID will push user/group changes to the given endpoint.
+type SCIMSpec struct {
+	// Endpoint is the URL of the external SCIM service provider.
+	// +kubebuilder:validation:Required
+	Endpoint string `json:"endpoint"`
+
+	// TokenSecretRef references a Kubernetes Secret key containing the
+	// bearer token used to authenticate with the SCIM endpoint.
+	// If omitted, no Authorization header is sent.
+	// +optional
+	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
+}
+
 // PocketIDOIDCClientSpec defines the desired state of PocketIDOIDCClient
 // +kubebuilder:validation:XValidation:rule="has(self.clientID) == has(oldSelf.clientID) && (!has(self.clientID) || self.clientID == oldSelf.clientID)",message="clientID is immutable"
 type PocketIDOIDCClientSpec struct {
@@ -215,6 +230,11 @@ type PocketIDOIDCClientSpec struct {
 	// Secret defines how OIDC client credentials should be stored in a Kubernetes Secret.
 	// +optional
 	Secret *OIDCClientSecretSpec `json:"secret,omitempty"`
+
+	// SCIM configures SCIM provisioning for this OIDC client.
+	// Pocket ID will push user/group changes to the configured endpoint.
+	// +optional
+	SCIM *SCIMSpec `json:"scim,omitempty"`
 }
 
 // PocketIDOIDCClientStatus defines the observed state of PocketIDOIDCClient.
@@ -248,6 +268,10 @@ type PocketIDOIDCClientStatus struct {
 	// AllowedUserGroupIDs are the resolved group IDs assigned to the client
 	// +optional
 	AllowedUserGroupIDs []string `json:"allowedUserGroupIDs,omitempty"`
+
+	// SCIMProviderID is the pocket-id ID of the SCIM service provider for this client, if configured.
+	// +optional
+	SCIMProviderID string `json:"scimProviderID,omitempty"`
 
 	// Conditions represent the current state of the PocketIDOIDCClient resource.
 	// +listType=map
