@@ -77,7 +77,7 @@ func supportsHTTPRoute(cfg *rest.Config) (bool, error) {
 		Group:   gatewayv1.GroupVersion.Group,
 		Version: gatewayv1.GroupVersion.Version,
 	}
-	resourceList, err := discoveryClient.ServerResourcesForGroupVersion(gv)
+	resourceList, err := discoveryClient.ServerResourcesForGroupVersion(gv.String())
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return false, nil
