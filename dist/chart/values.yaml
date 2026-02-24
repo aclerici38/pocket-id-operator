@@ -34,7 +34,7 @@ instance:
 
     route:
       enabled: false
-      parentRefs: []
+      # parentRefs: []
 
   # ServiceMonitor for the PocketIDInstance (requires metrics.enabled)
   serviceMonitor:
