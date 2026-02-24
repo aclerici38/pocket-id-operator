@@ -89,6 +89,10 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 		g.Expect(output).To(Equal("True"))
 	}, 5*time.Minute, 5*time.Second).Should(Succeed())
 
+	actualImage := kubectlGet("pod", "-n", instanceNS, "-l", "app.kubernetes.io/name=pocket-id",
+		"-o", "jsonpath={.items[0].spec.containers[0].image}")
+	By(fmt.Sprintf("pocket-id pod is running image: %s", actualImage))
+
 	return nil
 }, func(_ []byte) {
 	// This runs on all processes

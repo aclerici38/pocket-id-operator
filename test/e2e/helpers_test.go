@@ -6,6 +6,7 @@ package e2e
 import (
 	"encoding/base64"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -35,6 +36,15 @@ type InstanceOptions struct {
 	ExistingClaim      string
 }
 
+const defaultPocketIDImage = "ghcr.io/pocket-id/pocket-id:v2.2.0-distroless@sha256:ad2d21a7b31d6b4f1d999caec794a5b5edeb97fc40801947158d62befd4203e3"
+
+func pocketIDImage() string {
+	if img := os.Getenv("POCKET_ID_IMAGE"); img != "" {
+		return img
+	}
+	return defaultPocketIDImage
+}
+
 func (o InstanceOptions) withDefaults() InstanceOptions {
 	if o.Name == "" {
 		o.Name = instanceName
@@ -43,7 +53,7 @@ func (o InstanceOptions) withDefaults() InstanceOptions {
 		o.Namespace = instanceNS
 	}
 	if o.Image == "" {
-		o.Image = "ghcr.io/pocket-id/pocket-id:v2.2.0-distroless@sha256:ad2d21a7b31d6b4f1d999caec794a5b5edeb97fc40801947158d62befd4203e3"
+		o.Image = pocketIDImage()
 	}
 	return o
 }
