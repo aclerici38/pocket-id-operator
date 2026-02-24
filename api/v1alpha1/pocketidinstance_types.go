@@ -380,6 +380,7 @@ type MetricsConfig struct {
 
 // PocketIDInstanceSpec defines the desired state of PocketIDInstance
 // +kubebuilder:validation:XValidation:rule="self.deploymentType == oldSelf.deploymentType",message="deploymentType is immutable"
+// +kubebuilder:validation:XValidation:rule="!has(self.s3) || !has(self.fileBackend) || self.fileBackend == 's3'",message="fileBackend must be 's3' (or unset) when s3 config is present"
 type PocketIDInstanceSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
@@ -467,6 +468,12 @@ type PocketIDInstanceSpec struct {
 	// Creates an HTTPRoute when enabled. Requires Gateway API CRDs to be installed.
 	// +optional
 	Route *HTTPRouteConfig `json:"route,omitempty"`
+
+	// File storage backend
+	// Automatically set to "s3" when s3 config is present
+	// +kubebuilder:validation:Enum=filesystem;s3;database
+	// +optional
+	FileBackend string `json:"fileBackend,omitempty"`
 
 	// S3 file backend configuration
 	// When present, FILE_BACKEND is automatically set to "s3"

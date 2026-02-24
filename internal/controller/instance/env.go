@@ -15,6 +15,7 @@ import (
 func buildEnvVars(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.EnvVar {
 	env := buildCoreEnv(instance)
 	env = append(env, buildMetricsEnv(instance)...)
+	env = append(env, buildFileBackendEnv(instance)...)
 	env = append(env, buildS3Env(instance)...)
 	env = append(env, buildSMTPEnv(instance)...)
 	env = append(env, buildEmailNotificationsEnv(instance)...)
@@ -95,6 +96,19 @@ func buildMetricsEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []core
 		{Name: "OTEL_EXPORTER_PROMETHEUS_HOST", Value: "0.0.0.0"},
 		{Name: "OTEL_EXPORTER_PROMETHEUS_PORT", Value: fmt.Sprintf("%d", metricsPort)},
 	}
+}
+
+func buildFileBackendEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.EnvVar {
+	// When S3 config is present, buildS3Env sets FILE_BACKEND=s3
+	if instance.Spec.S3 != nil {
+		return nil
+	}
+	if instance.Spec.FileBackend != "" {
+		return []corev1.EnvVar{
+			{Name: "FILE_BACKEND", Value: instance.Spec.FileBackend},
+		}
+	}
+	return nil
 }
 
 func buildS3Env(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.EnvVar {

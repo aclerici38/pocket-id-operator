@@ -733,6 +733,15 @@ spec:
                   - name
                   type: object
                 type: array
+              fileBackend:
+                description: |-
+                  File storage backend
+                  Automatically set to "s3" when s3 config is present
+                enum:
+                - filesystem
+                - s3
+                - database
+                type: string
               geoip:
                 description: GeoIP/MaxMind integration for audit log geolocation
                 properties:
@@ -2636,6 +2645,9 @@ spec:
             x-kubernetes-validations:
             - message: deploymentType is immutable
               rule: self.deploymentType == oldSelf.deploymentType
+            - message: fileBackend must be 's3' (or unset) when s3 config is present
+              rule: '!has(self.s3) || !has(self.fileBackend) || self.fileBackend ==
+                ''s3'''
           status:
             description: status defines the observed state of PocketIDInstance
             properties:

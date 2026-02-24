@@ -373,6 +373,7 @@ spec:
   - `DB_CONNECTION_STRING` (from `spec.databaseUrl`)
   - `APP_URL` (from `spec.appUrl`)
   - `INTERNAL_APP_URL` (from `spec.internalAppUrl`)
+  - `FILE_BACKEND` (from `spec.fileBackend`) NOTE: `FILE_BACKEND` is set to `s3` if `spec.s3` is configured
   - `FILE_BACKEND=s3` + `S3_*` (from `spec.s3`)
   - `SMTP_ENABLED=true` + `SMTP_*` (from `spec.smtp`)
   - `EMAIL_*_ENABLED` (from `spec.emailNotifications`)
