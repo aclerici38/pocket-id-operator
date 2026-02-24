@@ -25,10 +25,12 @@ import (
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 )
@@ -176,6 +178,158 @@ var _ = Describe("PocketIDInstance Controller", func() {
 
 			Expect(appURLEnv).NotTo(BeNil())
 			Expect(appURLEnv.Value).To(Equal("https://auth.example.com"))
+		})
+	})
+
+	Context("When creating a PocketIDInstance with HTTPRoute enabled", func() {
+		const (
+			instanceName = "test-httproute-instance"
+			routeName    = "test-httproute-instance-route"
+		)
+
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
+		var secret *corev1.Secret
+
+		BeforeEach(func() {
+			group := gatewayv1.Group("gateway.networking.k8s.io")
+			kind := gatewayv1.Kind("Gateway")
+
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName + "-secret",
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"encryption-key": []byte("test-encryption-key-value"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					DeploymentType: "Deployment",
+					EncryptionKey: pocketidinternalv1alpha1.EnvValue{
+						ValueFrom: &corev1.EnvVarSource{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: secret.Name,
+								},
+								Key: "encryption-key",
+							},
+						},
+					},
+					AppURL: "https://route.example.com",
+					Route: &pocketidinternalv1alpha1.HTTPRouteConfig{
+						Enabled: true,
+						Name:    routeName,
+						Labels: map[string]string{
+							"custom-label": "custom-value",
+						},
+						Annotations: map[string]string{
+							"custom-annotation": "custom-value",
+						},
+						ParentRefs: []gatewayv1.ParentReference{
+							{
+								Group: &group,
+								Kind:  &kind,
+								Name:  gatewayv1.ObjectName("gateway"),
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if instance != nil {
+				_ = k8sClient.Delete(ctx, instance)
+			}
+			if secret != nil {
+				_ = k8sClient.Delete(ctx, secret)
+			}
+		})
+
+		It("Should create an HTTPRoute from route config", func() {
+			httpRoute := &gatewayv1.HTTPRoute{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      routeName,
+					Namespace: namespace,
+				}, httpRoute)
+			}, timeout, interval).Should(Succeed())
+
+			Expect(httpRoute.Spec.ParentRefs).To(HaveLen(1))
+			Expect(httpRoute.Spec.ParentRefs[0].Name).To(Equal(gatewayv1.ObjectName("gateway")))
+			Expect(httpRoute.Spec.Hostnames).To(ContainElement(gatewayv1.Hostname("route.example.com")))
+			Expect(httpRoute.Spec.Rules).To(HaveLen(1))
+			Expect(httpRoute.Spec.Rules[0].BackendRefs).To(HaveLen(1))
+			Expect(httpRoute.Spec.Rules[0].BackendRefs[0].Name).To(Equal(gatewayv1.ObjectName(instanceName)))
+			Expect(httpRoute.Spec.Rules[0].BackendRefs[0].Port).NotTo(BeNil())
+			Expect(*httpRoute.Spec.Rules[0].BackendRefs[0].Port).To(Equal(gatewayv1.PortNumber(1411)))
+			Expect(httpRoute.Labels).To(HaveKeyWithValue("custom-label", "custom-value"))
+			Expect(httpRoute.Annotations).To(HaveKeyWithValue("custom-annotation", "custom-value"))
+		})
+
+		It("Should update HTTPRoute when route hostnames change", func() {
+			Eventually(func() error {
+				current := &pocketidinternalv1alpha1.PocketIDInstance{}
+				if err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName,
+					Namespace: namespace,
+				}, current); err != nil {
+					return err
+				}
+
+				current.Spec.Route.Hostnames = []gatewayv1.Hostname{gatewayv1.Hostname("custom.route.example.com")}
+				return k8sClient.Update(ctx, current)
+			}, timeout, interval).Should(Succeed())
+
+			httpRoute := &gatewayv1.HTTPRoute{}
+			Eventually(func() []gatewayv1.Hostname {
+				if err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      routeName,
+					Namespace: namespace,
+				}, httpRoute); err != nil {
+					return nil
+				}
+				return httpRoute.Spec.Hostnames
+			}, timeout, interval).Should(Equal([]gatewayv1.Hostname{gatewayv1.Hostname("custom.route.example.com")}))
+		})
+
+		It("Should delete HTTPRoute when route is disabled", func() {
+			httpRoute := &gatewayv1.HTTPRoute{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      routeName,
+					Namespace: namespace,
+				}, httpRoute)
+			}, timeout, interval).Should(Succeed())
+
+			Eventually(func() error {
+				current := &pocketidinternalv1alpha1.PocketIDInstance{}
+				if err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName,
+					Namespace: namespace,
+				}, current); err != nil {
+					return err
+				}
+
+				current.Spec.Route.Enabled = false
+				return k8sClient.Update(ctx, current)
+			}, timeout, interval).Should(Succeed())
+
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      routeName,
+					Namespace: namespace,
+				}, &gatewayv1.HTTPRoute{})
+				return apierrors.IsNotFound(err)
+			}, timeout, interval).Should(BeTrue())
 		})
 	})
 
