@@ -93,7 +93,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if vStr, newer := pocketIDVersionStatus(instance.Spec.Image); newer {
 		log.Info("WARNING: pocket-id version is newer than the latest tested version, the operator may not work correctly",
 			"detectedVersion", vStr,
-			"latestTestedVersion", latestTestedPocketIDVersion
+			"latestTestedVersion", latestTestedPocketIDVersion,
 		)
 	} else if vStr == "" {
 		log.Info("WARNING: pocket-id image tag is not a recognised semver, version compatibility unknown",
