@@ -24,7 +24,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"maps"
+	"net/url"
 	"reflect"
+	"strings"
 
 	"golang.org/x/mod/semver"
 	appsv1 "k8s.io/api/apps/v1"
@@ -42,6 +44,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gatewayv1apply "sigs.k8s.io/gateway-api/applyconfiguration/apis/v1"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
@@ -82,6 +86,7 @@ type Reconciler struct {
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -105,6 +110,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	if err := r.reconcileService(ctx, instance); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if err := r.reconcileHTTPRoute(ctx, instance); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -570,6 +579,123 @@ func (r *Reconciler) reconcileService(ctx context.Context, instance *pocketidint
 		)
 
 	return r.Apply(ctx, service, client.FieldOwner("pocket-id-operator"))
+}
+
+func (r *Reconciler) reconcileHTTPRoute(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
+	routeName := instance.Name
+	if instance.Spec.Route != nil && instance.Spec.Route.Name != "" {
+		routeName = instance.Spec.Route.Name
+	}
+
+	if instance.Spec.Route == nil || !instance.Spec.Route.Enabled {
+		existing := &gatewayv1.HTTPRoute{}
+		existing.Name = routeName
+		existing.Namespace = instance.Namespace
+		err := r.Delete(ctx, existing)
+		if isHTTPRouteCRDUnavailableError(err) {
+			return nil
+		}
+		return client.IgnoreNotFound(err)
+	}
+
+	// Check CRD availability at reconcile-time so the controller can start even when
+	// Gateway API is absent and pick it up later if installed.
+	if err := r.ensureHTTPRouteCRDAvailable(ctx, instance.Namespace); err != nil {
+		return err
+	}
+
+	ownerRef, err := common.ControllerOwnerReference(instance, r.Scheme)
+	if err != nil {
+		return err
+	}
+
+	labels := common.ManagedByLabels(instance.Spec.Route.Labels)
+	labels["app.kubernetes.io/name"] = "pocket-id"
+	labels["app.kubernetes.io/instance"] = instance.Name
+
+	parentRefs := make([]*gatewayv1apply.ParentReferenceApplyConfiguration, 0, len(instance.Spec.Route.ParentRefs))
+	for _, ref := range instance.Spec.Route.ParentRefs {
+		pr := gatewayv1apply.ParentReference().
+			WithName(ref.Name)
+		if ref.Group != nil {
+			pr.WithGroup(*ref.Group)
+		}
+		if ref.Kind != nil {
+			pr.WithKind(*ref.Kind)
+		}
+		if ref.Namespace != nil {
+			pr.WithNamespace(*ref.Namespace)
+		}
+		if ref.SectionName != nil {
+			pr.WithSectionName(*ref.SectionName)
+		}
+		if ref.Port != nil {
+			pr.WithPort(*ref.Port)
+		}
+		parentRefs = append(parentRefs, pr)
+	}
+
+	spec := gatewayv1apply.HTTPRouteSpec().
+		WithParentRefs(parentRefs...).
+		WithRules(gatewayv1apply.HTTPRouteRule().
+			WithBackendRefs(gatewayv1apply.HTTPBackendRef().
+				WithName(gatewayv1.ObjectName(instance.Name)).
+				WithPort(1411)))
+
+	// Set hostnames from route config, or derive from appUrl
+	if len(instance.Spec.Route.Hostnames) > 0 {
+		spec.WithHostnames(instance.Spec.Route.Hostnames...)
+	} else if instance.Spec.AppURL != "" {
+		if u, err := url.Parse(instance.Spec.AppURL); err == nil && u.Host != "" {
+			spec.WithHostnames(gatewayv1.Hostname(u.Hostname()))
+		}
+	}
+
+	httpRoute := gatewayv1apply.HTTPRoute(routeName, instance.Namespace).
+		WithLabels(labels).
+		WithOwnerReferences(ownerRef).
+		WithSpec(spec)
+
+	if len(instance.Spec.Route.Annotations) > 0 {
+		httpRoute.WithAnnotations(instance.Spec.Route.Annotations)
+	}
+
+	if err := r.Apply(ctx, httpRoute, client.FieldOwner("pocket-id-operator")); err != nil {
+		if isHTTPRouteCRDUnavailableError(err) {
+			return fmt.Errorf("httproute is enabled but Gateway API CRDs are not installed")
+		}
+		return err
+	}
+
+	return nil
+}
+
+func (r *Reconciler) ensureHTTPRouteCRDAvailable(ctx context.Context, namespace string) error {
+	list := &gatewayv1.HTTPRouteList{}
+	err := r.APIReader.List(ctx, list, client.InNamespace(namespace), client.Limit(1))
+	if err == nil {
+		return nil
+	}
+	if isHTTPRouteCRDUnavailableError(err) {
+		return fmt.Errorf("httproute is enabled but Gateway API CRDs are not installed")
+	}
+	return err
+}
+
+func isHTTPRouteCRDUnavailableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.IsNotFound(err) {
+		return true
+	}
+	if meta.IsNoMatchError(err) {
+		return true
+	}
+	if strings.Contains(err.Error(), `no matches for kind "HTTPRoute"`) {
+		return true
+	}
+	return strings.Contains(err.Error(), "the server could not find the requested resource")
 }
 
 func (r *Reconciler) reconcileVolume(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {

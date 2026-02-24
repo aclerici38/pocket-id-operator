@@ -39,6 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
@@ -58,6 +59,7 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(pocketidinternalv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(gatewayv1.Install(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -110,6 +112,8 @@ func main() {
 	if !enableHTTP2 {
 		tlsOpts = append(tlsOpts, disableHTTP2)
 	}
+
+	cfg := ctrl.GetConfigOrDie()
 
 	// Initial webhook TLS options
 	webhookTLSOpts := tlsOpts
@@ -166,17 +170,18 @@ func main() {
 	managedBySelector := labels.SelectorFromSet(labels.Set{
 		common.ManagedByLabelKey: common.ManagedByLabelValue,
 	})
+	byObject := map[client.Object]cache.ByObject{
+		&appsv1.Deployment{}:            {Label: managedBySelector},
+		&appsv1.StatefulSet{}:           {Label: managedBySelector},
+		&corev1.Service{}:               {Label: managedBySelector},
+		&corev1.PersistentVolumeClaim{}: {Label: managedBySelector},
+		&corev1.Secret{}:                {Label: managedBySelector},
+	}
 	cacheOptions := cache.Options{
-		ByObject: map[client.Object]cache.ByObject{
-			&appsv1.Deployment{}:            {Label: managedBySelector},
-			&appsv1.StatefulSet{}:           {Label: managedBySelector},
-			&corev1.Service{}:               {Label: managedBySelector},
-			&corev1.PersistentVolumeClaim{}: {Label: managedBySelector},
-			&corev1.Secret{}:                {Label: managedBySelector},
-		},
+		ByObject: byObject,
 	}
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:                 scheme,
 		Cache:                  cacheOptions,
 		Metrics:                metricsServerOptions,

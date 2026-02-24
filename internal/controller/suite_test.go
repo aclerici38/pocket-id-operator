@@ -18,7 +18,9 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -33,6 +35,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
@@ -68,6 +71,8 @@ var _ = BeforeSuite(func() {
 	var err error
 	err = pocketidinternalv1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
+	err = gatewayv1.Install(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
 
 	// +kubebuilder:scaffold:scheme
 
@@ -75,6 +80,7 @@ var _ = BeforeSuite(func() {
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "..", "config", "crd", "bases"),
+			filepath.Join(findModCacheDir("sigs.k8s.io/gateway-api"), "config", "crd", "standard"),
 		},
 		ErrorIfCRDPathMissing: true,
 	}
@@ -155,6 +161,24 @@ var _ = AfterSuite(func() {
 // This function streamlines the process by finding the required binaries, similar to
 // setting the 'KUBEBUILDER_ASSETS' environment variable. To ensure the binaries are
 // properly set up, run 'make setup-envtest' beforehand.
+
+// findModCacheDir returns the on-disk path inside the Go module cache for the given module.
+// It runs "go list -m -json <module>" to discover the directory.
+func findModCacheDir(module string) string {
+	cmd := exec.Command("go", "list", "-m", "-json", module)
+	out, err := cmd.Output()
+	if err != nil {
+		logf.Log.Error(err, "Failed to find module cache dir", "module", module)
+		return ""
+	}
+	var info struct{ Dir string }
+	if err := json.Unmarshal(out, &info); err != nil {
+		logf.Log.Error(err, "Failed to parse go list output", "module", module)
+		return ""
+	}
+	return info.Dir
+}
+
 func getFirstFoundEnvTestBinaryDir() string {
 	basePath := filepath.Join("..", "..", "bin", "k8s")
 	entries, err := os.ReadDir(basePath)

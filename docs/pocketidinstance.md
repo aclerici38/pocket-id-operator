@@ -98,6 +98,42 @@ spec:
     size: 5Gi
 ```
 
+## HTTPRoute (Gateway API)
+
+You can optionally have the operator manage a `HTTPRoute` for the instance.
+
+Requirements:
+- Gateway API CRDs must be installed in the cluster (`gateway.networking.k8s.io/v1`).
+- At least one `parentRef` is required.
+
+Behavior:
+- If `spec.route.hostnames` is omitted, the operator derives hostname from `spec.appUrl`.
+- If Gateway API CRDs are missing and route is enabled, reconcile logs an error and does not create the route.
+- Created HTTPRoute defaults to the name of the PocketIDInstance
+
+```yaml
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDInstance
+metadata:
+  name: pocket-id
+  namespace: pocket-id
+spec:
+  encryptionKey:
+    valueFrom:
+      secretKeyRef:
+        name: pocket-id-encryption
+        key: key
+  appUrl: "https://pocket-id.example.com"
+  route:
+    enabled: true
+    name: pocket-id-route
+    parentRefs:
+      - group: gateway.networking.k8s.io
+        kind: Gateway
+        name: shared-gateway
+        namespace: infra-gateway
+```
+
 ## Generated Resources And Environment
 
 - Service name: `<instance>`, port 1411.
@@ -111,4 +147,4 @@ spec:
   - `STATIC_API_KEY` (secret reference)
   - Any additional values from `spec.env`
 
-*Note:* For all options and an up-to-date spec `kubectl explain PocketIDInstance` 
+*Note:* For all options and an up-to-date spec `kubectl explain PocketIDInstance`

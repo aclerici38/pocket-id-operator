@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -128,6 +129,21 @@ func resolveProjectImage() string {
 		return img
 	}
 	return defaultProjectImage
+}
+
+func gatewayAPIHTTPRouteCRDPath() (string, error) {
+	cmd := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "sigs.k8s.io/gateway-api")
+	output, err := utils.Run(cmd)
+	if err != nil {
+		return "", err
+	}
+
+	moduleDir := strings.TrimSpace(output)
+	if moduleDir == "" {
+		return "", fmt.Errorf("gateway-api module directory is empty")
+	}
+
+	return filepath.Join(moduleDir, "config", "crd", "standard", "gateway.networking.k8s.io_httproutes.yaml"), nil
 }
 
 func createNamespace(ns string) {
