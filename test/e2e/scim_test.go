@@ -164,10 +164,11 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 
 			By("verifying the SCIM provider no longer exists in Pocket-ID")
-			// The OIDC client is also deleted, so we query scim provider directly by ID
-			scimGone := checkSCIMProviderGone("verify-scim-gone-after-oidc-delete", userNS, scimID)
-			_ = oidcClientID
-			Expect(scimGone).To(BeTrue())
+			Eventually(func(g Gomega) {
+				kubectlDelete("pod", "verify-scim-gone-after-oidc-delete", userNS)
+				gone := checkSCIMProviderGone("verify-scim-gone-after-oidc-delete", userNS, oidcClientID)
+				g.Expect(gone).To(BeTrue(), "SCIM provider should be deleted after OIDC client deletion")
+			}, 2*time.Minute, 5*time.Second).Should(Succeed())
 		})
 
 		AfterAll(func() {
@@ -231,8 +232,10 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			waitForReady("pocketidoidcclient", clientName, userNS)
 
 			By("verifying the stale SCIM provider was deleted from Pocket-ID")
+			_ = scimID
 			Eventually(func(g Gomega) {
-				gone := checkSCIMProviderGone("verify-stale-scim-gone", userNS, scimID)
+				kubectlDelete("pod", "verify-stale-scim-gone", userNS)
+				gone := checkSCIMProviderGone("verify-stale-scim-gone", userNS, pocketIDClientID)
 				g.Expect(gone).To(BeTrue(), "stale SCIM provider should be deleted")
 			}, 2*time.Minute, 5*time.Second).Should(Succeed())
 
@@ -303,26 +306,27 @@ fi`,
 	return result == "true"
 }
 
-// checkSCIMProviderGone returns true if the SCIM service provider with the given ID
-// no longer exists in Pocket-ID (404 response from DELETE).
-func checkSCIMProviderGone(podName, namespace, scimProviderID string) bool {
+// checkSCIMProviderGone returns true if the SCIM service provider for the given
+// OIDC client no longer exists in Pocket-ID. Uses the OIDC-client-scoped GET
+// endpoint which returns 404 when the SCIM provider (or the OIDC client itself)
+// is missing. We cannot use DELETE /api/scim/service-provider/{id} because
+// Pocket-ID always returns 204 on DELETE regardless of whether the record exists.
+func checkSCIMProviderGone(podName, namespace, oidcClientID string) bool {
 	staticSecretName := instanceName + "-static-api-key"
 	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
 		"-o", "jsonpath={.data.token}")
 	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
 
-	// Attempt a DELETE; if the operator already deleted the provider we get 404.
-	// A 204 means it still existed (and we just deleted it), which means it's NOT gone.
-	// A 404 means the provider was already deleted — it's gone.
 	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-HTTP_CODE=$(curl -s -o /dev/null -w '%%{http_code}' -X DELETE -H "X-API-KEY: $API_KEY" \
-  %s/api/scim/service-provider/%s)
+HTTP_CODE=$(curl -s -o /dev/null -w '%%{http_code}' \
+  -H "X-API-KEY: $API_KEY" \
+  %s/api/oidc/clients/%s/scim-service-provider)
 if [ "$HTTP_CODE" = "404" ]; then
   echo "true"
 else
   echo "false"
 fi`,
-		apiKeyBase64, formatInstanceURL(), scimProviderID)
+		apiKeyBase64, formatInstanceURL(), oidcClientID)
 
 	applyYAML(createCurlPodYAML(podName, namespace, script))
 	waitForPodSucceeded(podName, namespace)
@@ -339,17 +343,17 @@ func createSCIMProviderInPocketID(podName, namespace, oidcClientID, endpoint str
 	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
 
 	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-RESPONSE=$(curl -s -X POST -H "X-API-KEY: $API_KEY" -H "Content-Type: application/json" \
+BODY=$(curl -s -X POST -H "X-API-KEY: $API_KEY" -H "Content-Type: application/json" \
   -d '{"oidcClientId": "%s", "endpoint": "%s"}' \
-  -w '\n%%{http_code}' \
+  -o /tmp/body -w '%%{http_code}' \
   %s/api/scim/service-provider)
-HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-BODY=$(echo "$RESPONSE" | sed '$d')
+HTTP_CODE="$BODY"
+BODY=$(cat /tmp/body)
 if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
   echo "Failed to create SCIM provider with HTTP $HTTP_CODE: $BODY" >&2
   exit 1
 fi
-echo "$BODY" | sed 's/.*"id":"\([^"]*\)".*/\1/'`,
+echo "$BODY" | grep -o '"id":"[^"]*"' | head -1 | sed 's/"id":"//;s/"//'`,
 		apiKeyBase64, oidcClientID, endpoint, formatInstanceURL())
 
 	applyYAML(createCurlPodYAML(podName, namespace, script))

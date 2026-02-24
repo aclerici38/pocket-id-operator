@@ -587,6 +587,8 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, oidcClient *pocketidin
 		return ctrl.Result{Requeue: true}, nil
 	}
 
+	// SCIM service providers are cascade-deleted by pocket-id when the
+	// OIDC client is removed, so no explicit SCIM cleanup is needed here.
 	return r.ReconcileDeleteWithPocketID(
 		ctx,
 		oidcClient,
@@ -594,11 +596,6 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, oidcClient *pocketidin
 		oidcClient.Spec.InstanceSelector,
 		oidcClientFinalizer,
 		func(ctx context.Context, apiClient *pocketid.Client, id string) error {
-			if oidcClient.Status.SCIMProviderID != "" {
-				if err := apiClient.DeleteSCIMServiceProvider(ctx, oidcClient.Status.SCIMProviderID); err != nil && !pocketid.IsNotFoundError(err) {
-					return fmt.Errorf("delete SCIM service provider: %w", err)
-				}
-			}
 			return apiClient.DeleteOIDCClient(ctx, id)
 		},
 	)
