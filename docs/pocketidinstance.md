@@ -29,7 +29,7 @@ spec:
   appUrl: "https://pocket-id.example.com"
 ```
 
-## Deployment with existing PVC, ENV vars
+## Full Featured Example
 
 ```yaml
 apiVersion: pocketid.internal/v1alpha1
@@ -38,7 +38,6 @@ metadata:
   name: pocket-id
   namespace: pocket-id
 spec:
-  image: ghcr.io/pocket-id/pocket-id:v2.3.0-distroless@sha256:85a7485108325e34679b0fbca0baeb8418401f6d6cf59944d50f3ec013aafd09
   encryptionKey:
     valueFrom:
       secretKeyRef:
@@ -50,32 +49,190 @@ spec:
       secretKeyRef:
         name: pocket-id-db
         key: uri
-  env:
-    - name: UPDATE_CHECK_DISABLED
-      value: "true"
-    - name: SESSION_DURATION
-      value: "1440"
-    - name: FILE_BACKEND
-      value: "database"
-    - name: EMAIL_LOGIN_NOTIFICATION_ENABLED
-      value: "true"
-    - name: SMTP_HOST
-      valueFrom:
-        secretKeyRef:
-          name: pocket-id
-          key: smtp-host
-    - name: SMTP_PORT
-      value: "25"
-    - name: SMTP_FROM
-      value: "bot@${SECRET_DOMAIN}"
-    - name: SMTP_TLS
-      value: "none"
   persistence:
     enabled: true
     existingClaim: pocket-id-data
-  annotations:
-    prometheus.io/scrape: "true"
-    prometheus.io/port: "1411"
+  smtp:
+    host: "smtp.example.com"
+    port: 587
+    from: "noreply@example.com"
+    user: "smtpuser"
+    password:
+      valueFrom:
+        secretKeyRef:
+          name: smtp-creds
+          key: password
+    tls: "starttls"
+  emailNotifications:
+    loginNotification: true
+    oneTimeAccessAsAdmin: true
+    apiKeyExpiration: true
+    verification: true
+  ui:
+    appName: "My SSO"
+    sessionDuration: 1440
+    accentColor: "#3b82f6"
+  userManagement:
+    allowOwnAccountEdit: true
+    allowUserSignups: "disabled"
+  logging:
+    level: "info"
+    json: true
+  metrics:
+    enabled: true
+  versionCheckDisabled: true
+  auditLogRetentionDays: 30
+```
+
+## S3 File Backend
+
+When the `s3` block is present, the operator automatically sets `FILE_BACKEND=s3`.
+
+```yaml
+spec:
+  s3:
+    bucket: "pocket-id-uploads"
+    region: "us-east-1"
+    endpoint: "https://minio.example.com"   # optional, for S3-compatible stores
+    accessKeyId:
+      valueFrom:
+        secretKeyRef:
+          name: s3-creds
+          key: access-key
+    secretAccessKey:
+      valueFrom:
+        secretKeyRef:
+          name: s3-creds
+          key: secret-key
+    forcePathStyle: true                     # required for most S3-compatible stores
+```
+
+## SMTP
+
+When the `smtp` block is present, the operator automatically sets `SMTP_ENABLED=true`.
+
+```yaml
+spec:
+  smtp:
+    host: "smtp.example.com"
+    port: 587
+    from: "noreply@example.com"
+    user: "smtpuser"                         # optional
+    password:                                # optional, supports value or valueFrom
+      valueFrom:
+        secretKeyRef:
+          name: smtp-creds
+          key: password
+    tls: "starttls"                          # none, starttls, or tls (default: none)
+    skipCertVerify: false                    # for self-signed certs
+```
+
+## Email Notifications
+
+Controls which email notifications are sent. Only relevant when SMTP is configured.
+
+```yaml
+spec:
+  emailNotifications:
+    loginNotification: true                  # notify on login from new device
+    oneTimeAccessAsAdmin: true               # admins can send login codes
+    apiKeyExpiration: true                   # notify on expiring API keys
+    oneTimeAccessAsUnauthenticated: false     # email-based login bypass (reduced security)
+    verification: true                       # email verification on signup/change
+```
+
+## LDAP
+
+When the `ldap` block is present, the operator automatically sets `LDAP_ENABLED=true`.
+
+```yaml
+spec:
+  ldap:
+    url: "ldaps://ldap.example.com"
+    bindDN: "cn=admin,dc=example,dc=com"
+    bindPassword:
+      valueFrom:
+        secretKeyRef:
+          name: ldap-creds
+          key: password
+    base: "dc=example,dc=com"
+    skipCertVerify: false
+    softDeleteUsers: false                   # disable instead of delete removed users
+    adminGroupName: "pocket-id-admins"       # LDAP group that grants admin
+    userSearchFilter: "(objectClass=person)"
+    userGroupSearchFilter: "(objectClass=groupOfNames)"
+    attributeMapping:
+      userUniqueIdentifier: "uid"
+      userUsername: "uid"
+      userEmail: "mail"
+      userFirstName: "givenName"
+      userLastName: "sn"
+      groupMember: "member"
+      groupName: "cn"
+```
+
+## UI Configuration
+
+The operator always sets `UI_CONFIG_DISABLED=true` so that environment variable overrides take effect.
+
+```yaml
+spec:
+  ui:
+    appName: "My SSO"                        # display name
+    sessionDuration: 60                      # session timeout in minutes
+    homePageUrl: "/settings/account"         # post-login redirect
+    disableAnimations: false
+    accentColor: "#3b82f6"                   # any valid CSS color
+```
+
+## User Management
+
+```yaml
+spec:
+  userManagement:
+    emailsVerified: false                    # auto-verify emails
+    allowOwnAccountEdit: true                # let users edit own details
+    allowUserSignups: "disabled"             # disabled, withToken, or open
+    signupDefaultCustomClaims: '[]'          # JSON array of default claims
+    signupDefaultUserGroupIds:               # UUIDs of default groups
+      - "550e8400-e29b-41d4-a716-446655440000"
+```
+
+## Logging
+
+```yaml
+spec:
+  logging:
+    level: "info"                            # debug, info, warn, error
+    json: true                               # JSON log output
+```
+
+## Tracing
+
+When the `tracing` block is present, the operator sets `TRACING_ENABLED=true`.
+Configure exporter-specific `OTEL_*` variables via the `env` escape hatch.
+
+```yaml
+spec:
+  tracing: {}
+  env:
+    - name: OTEL_EXPORTER_OTLP_ENDPOINT
+      value: "http://otel-collector:4318"
+```
+
+## GeoIP
+
+```yaml
+spec:
+  geoip:
+    maxmindLicenseKey:
+      valueFrom:
+        secretKeyRef:
+          name: maxmind
+          key: license-key
+    dbPath: ""                               # custom GeoLite2 DB path
+    dbUrl:                                   # custom download URL (supports value or valueFrom)
+      value: "https://custom.example.com/GeoLite2-City.mmdb"
 ```
 
 ## StatefulSet With Operator-Managed PVC
@@ -138,13 +295,27 @@ spec:
 
 - Service name: `<instance>`, port 1411.
 - Static API key Secret: `<instance>-static-api-key`, key `token`.
-- Environment variables set by the operator:
+- Environment variables always set by the operator:
   - `ENCRYPTION_KEY` (from `spec.encryptionKey`)
-  - `DB_CONNECTION_STRING` (from `spec.databaseUrl`, if set)
-  - `APP_URL` (from `spec.appUrl`, if set)
   - `TRUST_PROXY=true`
   - `DISABLE_RATE_LIMITING=true`
+  - `UI_CONFIG_DISABLED=true`
   - `STATIC_API_KEY` (secret reference)
-  - Any additional values from `spec.env`
+- Conditionally set from spec fields:
+  - `DB_CONNECTION_STRING` (from `spec.databaseUrl`)
+  - `APP_URL` (from `spec.appUrl`)
+  - `INTERNAL_APP_URL` (from `spec.internalAppUrl`)
+  - `FILE_BACKEND=s3` + `S3_*` (from `spec.s3`)
+  - `SMTP_ENABLED=true` + `SMTP_*` (from `spec.smtp`)
+  - `EMAIL_*_ENABLED` (from `spec.emailNotifications`)
+  - `LDAP_ENABLED=true` + `LDAP_*` (from `spec.ldap`)
+  - `LOG_LEVEL`, `LOG_JSON` (from `spec.logging`)
+  - `TRACING_ENABLED=true` (from `spec.tracing`)
+  - `METRICS_ENABLED=true` + `OTEL_*` (from `spec.metrics`)
+  - `APP_NAME`, `SESSION_DURATION`, `HOME_PAGE_URL`, `DISABLE_ANIMATIONS`, `ACCENT_COLOR` (from `spec.ui`)
+  - `EMAILS_VERIFIED`, `ALLOW_OWN_ACCOUNT_EDIT`, `ALLOW_USER_SIGNUPS`, `SIGNUP_DEFAULT_*` (from `spec.userManagement`)
+  - `MAXMIND_LICENSE_KEY`, `GEOLITE_DB_PATH`, `GEOLITE_DB_URL` (from `spec.geoip`)
+  - `AUDIT_LOG_RETENTION_DAYS`, `ANALYTICS_DISABLED`, `VERSION_CHECK_DISABLED`
+  - Any additional values from `spec.env` (applied last, can override anything above)
 
 *Note:* For all options and an up-to-date spec `kubectl explain PocketIDInstance`
