@@ -8,7 +8,7 @@ require (
 	github.com/go-openapi/strfmt v0.25.0
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
-	golang.org/x/mod v0.32.0
+	golang.org/x/mod v0.33.0
 	k8s.io/api v0.35.1
 	k8s.io/apimachinery v0.35.1
 	k8s.io/client-go v0.35.1
