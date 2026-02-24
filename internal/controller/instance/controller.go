@@ -620,7 +620,7 @@ func (r *Reconciler) reconcileHTTPRoute(ctx context.Context, instance *pocketidi
 			pr.WithSectionName(*ref.SectionName)
 		}
 		if ref.Port != nil {
-			pr.WithPort(int32(*ref.Port))
+			pr.WithPort(*ref.Port)
 		}
 		parentRefs = append(parentRefs, pr)
 	}
