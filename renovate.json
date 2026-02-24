@@ -22,6 +22,7 @@
     {
       "matchPackageNames": ["ghcr.io/pocket-id/pocket-id"],
       "automerge": false,
+      "rebaseWhen": "behind-base-branch",
       "labels": ["pocket-id-upgrade"]
     },
     {
