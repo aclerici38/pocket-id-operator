@@ -116,9 +116,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	// Fetch and store the deployed PocketID version (non-fatal on failure)
+	// Fetch and store the deployed PocketID version
 	if err := r.reconcileVersion(ctx, instance); err != nil {
-		log.Info("WARNING: could not fetch PocketID version from API", "error", err)
+		log.Info("WARNING: could not fetch PocketID version from API. Endpoint added in v2.3.0", "error", err)
 	}
 
 	return common.ApplyResync(ctrl.Result{}), nil
