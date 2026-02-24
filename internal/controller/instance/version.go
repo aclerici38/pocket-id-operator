@@ -26,7 +26,7 @@ import (
 const (
 	// latestTestedPocketIDVersion is the most recent pocket-id upstream version tested.
 	// renovate: datasource=docker depName=ghcr.io/pocket-id/pocket-id
-	latestTestedPocketIDVersion = "v2.2.0"
+	latestTestedPocketIDVersion = "v2.3.0"
 )
 
 var semverTagRe = regexp.MustCompile(`^v\d+\.\d+\.\d+`)
