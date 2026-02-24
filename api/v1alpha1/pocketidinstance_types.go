@@ -20,6 +20,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -60,6 +61,34 @@ type PersistenceConfig struct {
 	// +kubebuilder:default={"ReadWriteOnce"}
 	// +optional
 	AccessModes []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
+}
+
+// HTTPRouteConfig configures an HTTPRoute (Gateway API) for the instance
+type HTTPRouteConfig struct {
+	// Enables creation of an HTTPRoute
+	// +kubebuilder:default=false
+	Enabled bool `json:"enabled"`
+
+	// Name override for the HTTPRoute (defaults to instance name)
+	// +optional
+	Name string `json:"name,omitempty"`
+
+	// Additional labels for the HTTPRoute
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
+
+	// Additional annotations for the HTTPRoute
+	// +optional
+	Annotations map[string]string `json:"annotations,omitempty"`
+
+	// Gateway parent references
+	// +kubebuilder:validation:MinItems=1
+	ParentRefs []gatewayv1.ParentReference `json:"parentRefs"`
+
+	// Hostnames for the route
+	// Will be automatically set to the hostname from spec.appUrl if not specified
+	// +optional
+	Hostnames []gatewayv1.Hostname `json:"hostnames,omitempty"`
 }
 
 // MetricsConfig configures the Prometheus metrics endpoint for Pocket-ID
@@ -158,6 +187,11 @@ type PocketIDInstanceSpec struct {
 	// and exposes a metrics port on the Service
 	// +optional
 	Metrics *MetricsConfig `json:"metrics,omitempty"`
+
+	// HTTPRoute configuration
+	// Creates an HTTPRoute when enabled. Requires Gateway API CRDs to be installed.
+	// +optional
+	Route *HTTPRouteConfig `json:"route,omitempty"`
 }
 
 // PocketIDInstanceStatus defines the observed state of PocketIDInstance.
