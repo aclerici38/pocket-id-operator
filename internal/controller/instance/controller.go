@@ -162,77 +162,7 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 		annotations["pocketid.internal/static-api-key-hash"] = staticAPIKeyHash
 	}
 
-	encryptionKeyEnv := corev1.EnvVar{
-		Name: envEncryptionKey,
-	}
-	if instance.Spec.EncryptionKey.Value != "" {
-		encryptionKeyEnv.Value = instance.Spec.EncryptionKey.Value
-	} else if instance.Spec.EncryptionKey.ValueFrom != nil {
-		encryptionKeyEnv.ValueFrom = instance.Spec.EncryptionKey.ValueFrom
-	}
-
-	env := []corev1.EnvVar{
-		encryptionKeyEnv,
-		{
-			Name:  envTrustProxy,
-			Value: "true",
-		},
-	}
-
-	if instance.Spec.DatabaseUrl != nil {
-		dbUrlEnv := corev1.EnvVar{
-			Name: envDBConnectionString,
-		}
-		if instance.Spec.DatabaseUrl.Value != "" {
-			dbUrlEnv.Value = instance.Spec.DatabaseUrl.Value
-		} else if instance.Spec.DatabaseUrl.ValueFrom != nil {
-			dbUrlEnv.ValueFrom = instance.Spec.DatabaseUrl.ValueFrom
-		}
-		env = append(env, dbUrlEnv)
-	}
-
-	if instance.Spec.AppURL != "" {
-		env = append(env, corev1.EnvVar{
-			Name:  envAppURL,
-			Value: instance.Spec.AppURL,
-		})
-	}
-
-	env = append(env, corev1.EnvVar{
-		Name:  "DISABLE_RATE_LIMITING",
-		Value: "true",
-	})
-
-	// Always add STATIC_API_KEY for operator authentication
-	staticAPIKeySecret := common.StaticAPIKeySecretName(instance.Name)
-	env = append(env, corev1.EnvVar{
-		Name: envStaticAPIKey,
-		ValueFrom: &corev1.EnvVarSource{
-			SecretKeyRef: &corev1.SecretKeySelector{
-				LocalObjectReference: corev1.LocalObjectReference{
-					Name: staticAPIKeySecret,
-				},
-				Key: "token",
-			},
-		},
-	})
-
-	// Inject metrics env vars when enabled
-	if instance.Spec.Metrics != nil && instance.Spec.Metrics.Enabled {
-		metricsPort := int32(9464)
-		if instance.Spec.Metrics.Port != 0 {
-			metricsPort = instance.Spec.Metrics.Port
-		}
-		env = append(env,
-			corev1.EnvVar{Name: "METRICS_ENABLED", Value: "true"},
-			corev1.EnvVar{Name: "OTEL_METRICS_EXPORTER", Value: "prometheus"},
-			corev1.EnvVar{Name: "OTEL_EXPORTER_PROMETHEUS_HOST", Value: "0.0.0.0"},
-			corev1.EnvVar{Name: "OTEL_EXPORTER_PROMETHEUS_PORT", Value: fmt.Sprintf("%d", metricsPort)},
-		)
-	}
-
-	// Add on any extra ENVs from CR
-	env = append(env, instance.Spec.Env...)
+	env := buildEnvVars(instance)
 
 	var volumes []corev1.Volume
 	var volumeMounts []corev1.VolumeMount

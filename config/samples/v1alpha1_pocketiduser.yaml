@@ -1,9 +1,0 @@
-apiVersion: pocketid.internal/v1alpha1
-kind: PocketIDUser
-metadata:
-  labels:
-    app.kubernetes.io/name: pocket-id-operator
-    app.kubernetes.io/managed-by: kustomize
-  name: pocketiduser-sample
-spec:
-  # TODO(user): Add fields here

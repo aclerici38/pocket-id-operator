@@ -38,6 +38,281 @@ type EnvValue struct {
 	ValueFrom *corev1.EnvVarSource `json:"valueFrom,omitempty"`
 }
 
+// SensitiveValue holds a value that can be provided as plain text or from a Kubernetes secret/configmap.
+// Unlike EnvValue, this has no minimum length constraint.
+type SensitiveValue struct {
+	// Plain text value
+	// +optional
+	Value string `json:"value,omitempty"`
+
+	// Source for the value (e.g. secretKeyRef, configMapKeyRef)
+	// +optional
+	ValueFrom *corev1.EnvVarSource `json:"valueFrom,omitempty"`
+}
+
+// S3Config configures S3 as the file backend.
+// When present, FILE_BACKEND is automatically set to "s3".
+type S3Config struct {
+	// S3 bucket name
+	// +kubebuilder:validation:Required
+	Bucket string `json:"bucket"`
+
+	// S3 region
+	// +kubebuilder:validation:Required
+	Region string `json:"region"`
+
+	// S3 endpoint URL (for MinIO, Ceph, or other S3-compatible stores)
+	// +optional
+	Endpoint string `json:"endpoint,omitempty"`
+
+	// S3 access key ID
+	// +kubebuilder:validation:Required
+	AccessKeyID SensitiveValue `json:"accessKeyId"`
+
+	// S3 secret access key
+	// +kubebuilder:validation:Required
+	SecretAccessKey SensitiveValue `json:"secretAccessKey"`
+
+	// Force path-style URLs instead of virtual-hosted-style
+	// +kubebuilder:default=false
+	// +optional
+	ForcePathStyle bool `json:"forcePathStyle,omitempty"`
+}
+
+// SMTPConfig configures SMTP email transport.
+// When present, SMTP is automatically enabled.
+type SMTPConfig struct {
+	// SMTP server hostname
+	// +kubebuilder:validation:Required
+	Host string `json:"host"`
+
+	// SMTP server port
+	// +kubebuilder:validation:Required
+	Port int32 `json:"port"`
+
+	// Sender email address
+	// +kubebuilder:validation:Required
+	From string `json:"from"`
+
+	// SMTP authentication username
+	// +optional
+	User string `json:"user,omitempty"`
+
+	// SMTP authentication password
+	// +optional
+	Password *SensitiveValue `json:"password,omitempty"`
+
+	// TLS mode for the SMTP connection
+	// +kubebuilder:validation:Enum=none;starttls;tls
+	// +kubebuilder:default="none"
+	// +optional
+	TLS string `json:"tls,omitempty"`
+
+	// Skip certificate verification (for self-signed certs)
+	// +kubebuilder:default=false
+	// +optional
+	SkipCertVerify bool `json:"skipCertVerify,omitempty"`
+}
+
+// EmailNotificationsConfig controls which email notifications Pocket-ID sends.
+// Only relevant when SMTP is configured.
+type EmailNotificationsConfig struct {
+	// Notify users of logins from new devices
+	// +kubebuilder:default=false
+	// +optional
+	LoginNotification bool `json:"loginNotification,omitempty"`
+
+	// Allow admins to send one-time login access codes
+	// +kubebuilder:default=false
+	// +optional
+	OneTimeAccessAsAdmin bool `json:"oneTimeAccessAsAdmin,omitempty"`
+
+	// Notify users of expiring API keys
+	// +kubebuilder:default=false
+	// +optional
+	APIKeyExpiration bool `json:"apiKeyExpiration,omitempty"`
+
+	// Allow email-based login bypass for unauthenticated users (reduced security)
+	// +kubebuilder:default=false
+	// +optional
+	OneTimeAccessAsUnauthenticated bool `json:"oneTimeAccessAsUnauthenticated,omitempty"`
+
+	// Send verification emails on signup or email change
+	// +kubebuilder:default=false
+	// +optional
+	Verification bool `json:"verification,omitempty"`
+}
+
+// LDAPAttributeMappingConfig maps LDAP attributes to Pocket-ID user/group fields.
+type LDAPAttributeMappingConfig struct {
+	// LDAP attribute for immutable user identifier
+	// +optional
+	UserUniqueIdentifier string `json:"userUniqueIdentifier,omitempty"`
+
+	// LDAP attribute for username
+	// +optional
+	UserUsername string `json:"userUsername,omitempty"`
+
+	// LDAP attribute for email
+	// +optional
+	UserEmail string `json:"userEmail,omitempty"`
+
+	// LDAP attribute for first name
+	// +optional
+	UserFirstName string `json:"userFirstName,omitempty"`
+
+	// LDAP attribute for last name
+	// +optional
+	UserLastName string `json:"userLastName,omitempty"`
+
+	// LDAP attribute for profile picture
+	// +optional
+	UserProfilePicture string `json:"userProfilePicture,omitempty"`
+
+	// LDAP attribute for group membership
+	// +optional
+	GroupMember string `json:"groupMember,omitempty"`
+
+	// LDAP attribute for immutable group identifier
+	// +optional
+	GroupUniqueIdentifier string `json:"groupUniqueIdentifier,omitempty"`
+
+	// LDAP attribute for group name
+	// +optional
+	GroupName string `json:"groupName,omitempty"`
+}
+
+// LDAPConfig configures LDAP authentication.
+// When present, LDAP is automatically enabled.
+type LDAPConfig struct {
+	// LDAP server connection URL (e.g. ldaps://ldap.example.com)
+	// +kubebuilder:validation:Required
+	URL string `json:"url"`
+
+	// LDAP bind distinguished name
+	// +kubebuilder:validation:Required
+	BindDN string `json:"bindDN"`
+
+	// LDAP bind password
+	// +kubebuilder:validation:Required
+	BindPassword SensitiveValue `json:"bindPassword"`
+
+	// LDAP search base DN
+	// +kubebuilder:validation:Required
+	Base string `json:"base"`
+
+	// Skip LDAP certificate verification
+	// +kubebuilder:default=false
+	// +optional
+	SkipCertVerify bool `json:"skipCertVerify,omitempty"`
+
+	// Disable removed LDAP users instead of deleting them
+	// +kubebuilder:default=false
+	// +optional
+	SoftDeleteUsers bool `json:"softDeleteUsers,omitempty"`
+
+	// LDAP group name that grants admin privileges
+	// +optional
+	AdminGroupName string `json:"adminGroupName,omitempty"`
+
+	// LDAP user search filter
+	// +optional
+	UserSearchFilter string `json:"userSearchFilter,omitempty"`
+
+	// LDAP group search filter
+	// +optional
+	UserGroupSearchFilter string `json:"userGroupSearchFilter,omitempty"`
+
+	// LDAP attribute mappings
+	// +optional
+	AttributeMapping *LDAPAttributeMappingConfig `json:"attributeMapping,omitempty"`
+}
+
+// LoggingConfig configures logging behavior.
+type LoggingConfig struct {
+	// Log level
+	// +kubebuilder:validation:Enum=debug;info;warn;error
+	// +optional
+	Level string `json:"level,omitempty"`
+
+	// Output logs as JSON
+	// +kubebuilder:default=false
+	// +optional
+	JSON bool `json:"json,omitempty"`
+}
+
+// TracingConfig enables OpenTelemetry tracing.
+// When present, tracing is automatically enabled.
+// Configure exporter-specific OTEL_* variables via the env escape hatch.
+type TracingConfig struct {
+}
+
+// UIConfig configures Pocket-ID UI settings.
+// The operator always sets UI_CONFIG_DISABLED=true to ensure env var overrides take effect.
+type UIConfig struct {
+	// Application display name
+	// +optional
+	AppName string `json:"appName,omitempty"`
+
+	// User session timeout in minutes
+	// +optional
+	SessionDuration *int32 `json:"sessionDuration,omitempty"`
+
+	// Post-login redirect page
+	// +optional
+	HomePageURL string `json:"homePageUrl,omitempty"`
+
+	// Turn off UI animations
+	// +kubebuilder:default=false
+	// +optional
+	DisableAnimations bool `json:"disableAnimations,omitempty"`
+
+	// Custom CSS color value for UI accent theme
+	// +optional
+	AccentColor string `json:"accentColor,omitempty"`
+}
+
+// UserManagementConfig configures user registration and account settings.
+type UserManagementConfig struct {
+	// Auto-verify emails on signup or change
+	// +kubebuilder:default=false
+	// +optional
+	EmailsVerified bool `json:"emailsVerified,omitempty"`
+
+	// Allow users to edit their own account details
+	// +optional
+	AllowOwnAccountEdit *bool `json:"allowOwnAccountEdit,omitempty"`
+
+	// User signup mode
+	// +kubebuilder:validation:Enum=disabled;withToken;open
+	// +optional
+	AllowUserSignups string `json:"allowUserSignups,omitempty"`
+
+	// Default custom claims to assign to new users (JSON array)
+	// +optional
+	SignupDefaultCustomClaims string `json:"signupDefaultCustomClaims,omitempty"`
+
+	// Default user group IDs to assign to new users
+	// +optional
+	SignupDefaultUserGroupIDs []string `json:"signupDefaultUserGroupIds,omitempty"`
+}
+
+// GeoIPConfig configures GeoIP/MaxMind integration for audit log geolocation.
+type GeoIPConfig struct {
+	// MaxMind license key for downloading GeoLite2 database
+	// +optional
+	MaxmindLicenseKey *SensitiveValue `json:"maxmindLicenseKey,omitempty"`
+
+	// Custom path to the GeoLite2 database file
+	// +optional
+	DBPath string `json:"dbPath,omitempty"`
+
+	// Custom URL to download the GeoLite2 database from
+	// May contain credentials so supports secretKeyRef
+	// +optional
+	DBURL *SensitiveValue `json:"dbUrl,omitempty"`
+}
+
 // Persistence config. Mounts a volume at /app/Data
 type PersistenceConfig struct {
 	// Enables mounting a persistent volume
@@ -192,6 +467,67 @@ type PocketIDInstanceSpec struct {
 	// Creates an HTTPRoute when enabled. Requires Gateway API CRDs to be installed.
 	// +optional
 	Route *HTTPRouteConfig `json:"route,omitempty"`
+
+	// S3 file backend configuration
+	// When present, FILE_BACKEND is automatically set to "s3"
+	// +optional
+	S3 *S3Config `json:"s3,omitempty"`
+
+	// SMTP email transport configuration
+	// When present, SMTP is automatically enabled
+	// +optional
+	SMTP *SMTPConfig `json:"smtp,omitempty"`
+
+	// Email notification settings
+	// Only relevant when SMTP is configured
+	// +optional
+	EmailNotifications *EmailNotificationsConfig `json:"emailNotifications,omitempty"`
+
+	// LDAP authentication configuration
+	// When present, LDAP is automatically enabled
+	// +optional
+	LDAP *LDAPConfig `json:"ldap,omitempty"`
+
+	// Logging configuration
+	// +optional
+	Logging *LoggingConfig `json:"logging,omitempty"`
+
+	// OpenTelemetry tracing configuration
+	// When present, tracing is automatically enabled
+	// Configure exporter-specific OTEL_* variables via the env escape hatch
+	// +optional
+	Tracing *TracingConfig `json:"tracing,omitempty"`
+
+	// UI configuration
+	// The operator always sets UI_CONFIG_DISABLED=true to ensure env var overrides take effect
+	// +optional
+	UI *UIConfig `json:"ui,omitempty"`
+
+	// User registration and account management settings
+	// +optional
+	UserManagement *UserManagementConfig `json:"userManagement,omitempty"`
+
+	// GeoIP/MaxMind integration for audit log geolocation
+	// +optional
+	GeoIP *GeoIPConfig `json:"geoip,omitempty"`
+
+	// Audit log retention in days
+	// +optional
+	AuditLogRetentionDays *int32 `json:"auditLogRetentionDays,omitempty"`
+
+	// Disable anonymous 24-hour usage analytics heartbeat
+	// +kubebuilder:default=false
+	// +optional
+	AnalyticsDisabled bool `json:"analyticsDisabled,omitempty"`
+
+	// Disable GitHub version checks
+	// +kubebuilder:default=false
+	// +optional
+	VersionCheckDisabled bool `json:"versionCheckDisabled,omitempty"`
+
+	// Internal base URL for OIDC .well-known endpoints (for split-horizon DNS)
+	// +optional
+	InternalAppURL string `json:"internalAppUrl,omitempty"`
 }
 
 // PocketIDInstanceStatus defines the observed state of PocketIDInstance.
