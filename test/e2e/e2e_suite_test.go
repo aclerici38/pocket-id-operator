@@ -35,6 +35,8 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	// This runs only on process 1
 	projectImage = resolveProjectImage()
 
+	By(fmt.Sprintf("using operator image: %s", projectImage))
+	By(fmt.Sprintf("using pocket-id image: %s", pocketIDImage()))
 	By("building the operator image")
 	if os.Getenv("IMG") == "" {
 		cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
