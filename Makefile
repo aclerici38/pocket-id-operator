@@ -72,6 +72,9 @@ test-only: setup-envtest ## Run tests without generating manifests.
 # CertManager is installed by default; skip with:
 CERT_MANAGER_INSTALL_SKIP=true
 KIND_CLUSTER ?= pocket-id-operator-test-e2e
+# E2E_FOCUS_FILE optionally scopes e2e runs to a specific file/line pattern via ginkgo --focus-file.
+# Example: E2E_FOCUS_FILE=test/e2e/httproute_test.go make test-e2e
+E2E_FOCUS_FILE ?=
 
 .PHONY: setup-test-e2e
 setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
@@ -91,8 +94,8 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 test-e2e: setup-test-e2e manifests generate fmt vet test-e2e-only ## Run the e2e tests. Expected an isolated environment using Kind.
 
 .PHONY: test-e2e-only
-test-e2e-only: setup-test-e2e ginkgo ## Run e2e tests without generating manifests.
-	$(if $(filter file,$(origin IMG)),,IMG=$(IMG) )KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) "$(GINKGO)" -tags=e2e -v -procs=8 ./test/e2e/
+test-e2e-only: setup-test-e2e ginkgo ## Run e2e tests without generating manifests. Use E2E_FOCUS_FILE to run a specific e2e file.
+	$(if $(filter file,$(origin IMG)),,IMG=$(IMG) )KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) "$(GINKGO)" -tags=e2e -v -procs=8 $(if $(strip $(E2E_FOCUS_FILE)),--focus-file='$(E2E_FOCUS_FILE)',) ./test/e2e/
 	$(MAKE) cleanup-test-e2e
 
 .PHONY: cleanup-test-e2e

@@ -52,7 +52,17 @@ var _ = Describe("HTTPRoute", Serial, Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 	}
 
+	uninstallGatewayHTTPRouteCRD := func() {
+		gatewayCRDPath, err := gatewayAPIHTTPRouteCRDPath()
+		Expect(err).NotTo(HaveOccurred())
+
+		cmd := exec.Command("kubectl", "delete", "--ignore-not-found", "-f", gatewayCRDPath)
+		_, err = utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred())
+	}
+
 	BeforeAll(func() {
+		uninstallGatewayHTTPRouteCRD()
 		waitForReady("pocketidinstance", instanceName, instanceNS)
 		setSharedInstanceRoute(false, nil)
 		waitForResourceDeleted("httproute", routeName, instanceNS)
@@ -61,6 +71,7 @@ var _ = Describe("HTTPRoute", Serial, Ordered, func() {
 	AfterAll(func() {
 		setSharedInstanceRoute(false, nil)
 		waitForResourceDeleted("httproute", routeName, instanceNS)
+		uninstallGatewayHTTPRouteCRD()
 	})
 
 	It("should log an error when route is enabled without Gateway API CRDs", func() {
@@ -71,7 +82,7 @@ var _ = Describe("HTTPRoute", Serial, Ordered, func() {
 			g.Expect(podName).NotTo(BeEmpty())
 
 			logs := kubectlLogs(podName, namespace)
-			g.Expect(logs).To(ContainSubstring("httproute is enabled but Gateway API CRDs (gateway.networking.k8s.io/v1) are not installed"))
+			g.Expect(logs).To(ContainSubstring("httproute is enabled but Gateway API CRDs are not installed"))
 
 			route := kubectlGet("httproute", routeName, "-n", instanceNS, "-o", "name")
 			g.Expect(route).To(BeEmpty())

@@ -598,6 +598,12 @@ func (r *Reconciler) reconcileHTTPRoute(ctx context.Context, instance *pocketidi
 		return client.IgnoreNotFound(err)
 	}
 
+	// Check CRD availability at reconcile-time so the controller can start even when
+	// Gateway API is absent and pick it up later if installed.
+	if err := r.ensureHTTPRouteCRDAvailable(ctx, instance.Namespace); err != nil {
+		return err
+	}
+
 	ownerRef, err := common.ControllerOwnerReference(instance, r.Scheme)
 	if err != nil {
 		return err
@@ -664,14 +670,32 @@ func (r *Reconciler) reconcileHTTPRoute(ctx context.Context, instance *pocketidi
 	return nil
 }
 
+func (r *Reconciler) ensureHTTPRouteCRDAvailable(ctx context.Context, namespace string) error {
+	list := &gatewayv1.HTTPRouteList{}
+	err := r.APIReader.List(ctx, list, client.InNamespace(namespace), client.Limit(1))
+	if err == nil {
+		return nil
+	}
+	if isHTTPRouteCRDUnavailableError(err) {
+		return fmt.Errorf("httproute is enabled but Gateway API CRDs are not installed")
+	}
+	return err
+}
+
 func isHTTPRouteCRDUnavailableError(err error) bool {
 	if err == nil {
 		return false
 	}
+	if errors.IsNotFound(err) {
+		return true
+	}
 	if meta.IsNoMatchError(err) {
 		return true
 	}
-	return strings.Contains(err.Error(), `no matches for kind "HTTPRoute"`)
+	if strings.Contains(err.Error(), `no matches for kind "HTTPRoute"`) {
+		return true
+	}
+	return strings.Contains(err.Error(), "the server could not find the requested resource")
 }
 
 func (r *Reconciler) reconcileVolume(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
