@@ -162,6 +162,11 @@ type PocketIDInstanceSpec struct {
 
 // PocketIDInstanceStatus defines the observed state of PocketIDInstance.
 type PocketIDInstanceStatus struct {
+	// Version is the current deployed version of the PocketID instance,
+	// retrieved from the /api/version/current endpoint.
+	// +optional
+	Version string `json:"version,omitempty"`
+
 	// StaticAPIKeySecretName is the name of the secret containing the STATIC_API_KEY
 	// +optional
 	StaticAPIKeySecretName string `json:"staticApiKeySecretName,omitempty"`

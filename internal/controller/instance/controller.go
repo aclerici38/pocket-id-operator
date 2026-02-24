@@ -26,6 +26,7 @@ import (
 	"maps"
 	"reflect"
 
+	"golang.org/x/mod/semver"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -47,6 +48,10 @@ import (
 )
 
 const (
+	// latestTestedPocketIDVersion is the most recent pocket-id upstream version tested.
+	// renovate: datasource=docker depName=ghcr.io/pocket-id/pocket-id
+	latestTestedPocketIDVersion = "v2.3.0"
+
 	// Environment variable mapping
 	envEncryptionKey      = "ENCRYPTION_KEY"
 	envDBConnectionString = "DB_CONNECTION_STRING"
@@ -90,18 +95,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	log.Info("Reconciling PocketIDInstance", "name", instance.Name)
 
-	if vStr, newer := pocketIDVersionStatus(instance.Spec.Image); newer {
-		log.Info("WARNING: pocket-id version is newer than the latest tested version, the operator may not work correctly",
-			"detectedVersion", vStr,
-			"latestTestedVersion", latestTestedPocketIDVersion,
-		)
-	} else if vStr == "" {
-		log.Info("WARNING: pocket-id image tag is not a recognised semver, version compatibility unknown",
-			"image", instance.Spec.Image,
-			"latestTestedVersion", latestTestedPocketIDVersion,
-		)
-	}
-
 	// Ensure static API key secret exists
 	if err := r.ensureStaticAPIKeySecret(ctx, instance); err != nil {
 		return ctrl.Result{}, fmt.Errorf("ensure static API key secret: %w", err)
@@ -121,6 +114,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	if err := r.updateStatus(ctx, instance); err != nil {
 		return ctrl.Result{}, err
+	}
+
+	// Fetch and store the deployed PocketID version (non-fatal on failure)
+	if err := r.reconcileVersion(ctx, instance); err != nil {
+		log.Info("WARNING: could not fetch PocketID version from API", "error", err)
 	}
 
 	return common.ApplyResync(ctrl.Result{}), nil
@@ -641,6 +639,34 @@ func (r *Reconciler) reconcileVolume(ctx context.Context, instance *pocketidinte
 		return r.Update(ctx, existing)
 	}
 
+	return nil
+}
+
+func (r *Reconciler) reconcileVersion(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
+	apiClient, err := common.GetAPIClient(ctx, r.Client, r.APIReader, instance)
+	if err != nil {
+		return err
+	}
+
+	log := logf.FromContext(ctx)
+
+	version, err := apiClient.GetCurrentVersion(ctx)
+	if err != nil {
+		return err
+	}
+
+	if semver.IsValid(version) && semver.Compare(version, latestTestedPocketIDVersion) > 0 {
+		log.Info("WARNING: pocket-id version is newer than the latest tested version, the operator may not work correctly",
+			"detectedVersion", version,
+			"latestTestedVersion", latestTestedPocketIDVersion,
+		)
+	}
+
+	if instance.Status.Version != version {
+		base := instance.DeepCopy()
+		instance.Status.Version = version
+		return r.Status().Patch(ctx, instance, client.MergeFrom(base))
+	}
 	return nil
 }
 
