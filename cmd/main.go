@@ -27,13 +27,17 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -61,6 +65,24 @@ func init() {
 	utilruntime.Must(pocketidinternalv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(gatewayv1.Install(scheme))
 	// +kubebuilder:scaffold:scheme
+}
+
+func supportsHTTPRoute(cfg *rest.Config) (bool, error) {
+	restMapper, err := apiutil.NewDynamicRESTMapper(cfg)
+	if err != nil {
+		return false, err
+	}
+
+	groupKind := schema.GroupKind{Group: gatewayv1.GroupVersion.Group, Kind: "HTTPRoute"}
+	_, err = restMapper.RESTMapping(groupKind, gatewayv1.GroupVersion.Version)
+	if err != nil {
+		if meta.IsNoMatchError(err) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return true, nil
 }
 
 // nolint:gocyclo
@@ -111,6 +133,16 @@ func main() {
 
 	if !enableHTTP2 {
 		tlsOpts = append(tlsOpts, disableHTTP2)
+	}
+
+	cfg := ctrl.GetConfigOrDie()
+	gatewayHTTPRouteAvailable, err := supportsHTTPRoute(cfg)
+	if err != nil {
+		setupLog.Error(err, "failed to determine if Gateway API CRDs are available")
+		os.Exit(1)
+	}
+	if !gatewayHTTPRouteAvailable {
+		setupLog.Info("Gateway API CRDs not found, disabling HTTPRoute support")
 	}
 
 	// Initial webhook TLS options
@@ -168,18 +200,21 @@ func main() {
 	managedBySelector := labels.SelectorFromSet(labels.Set{
 		common.ManagedByLabelKey: common.ManagedByLabelValue,
 	})
+	byObject := map[client.Object]cache.ByObject{
+		&appsv1.Deployment{}:            {Label: managedBySelector},
+		&appsv1.StatefulSet{}:           {Label: managedBySelector},
+		&corev1.Service{}:               {Label: managedBySelector},
+		&corev1.PersistentVolumeClaim{}: {Label: managedBySelector},
+		&corev1.Secret{}:                {Label: managedBySelector},
+	}
+	if gatewayHTTPRouteAvailable {
+		byObject[&gatewayv1.HTTPRoute{}] = cache.ByObject{Label: managedBySelector}
+	}
 	cacheOptions := cache.Options{
-		ByObject: map[client.Object]cache.ByObject{
-			&appsv1.Deployment{}:            {Label: managedBySelector},
-			&appsv1.StatefulSet{}:           {Label: managedBySelector},
-			&corev1.Service{}:               {Label: managedBySelector},
-			&corev1.PersistentVolumeClaim{}: {Label: managedBySelector},
-			&corev1.Secret{}:                {Label: managedBySelector},
-			&gatewayv1.HTTPRoute{}:          {Label: managedBySelector},
-		},
+		ByObject: byObject,
 	}
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:                 scheme,
 		Cache:                  cacheOptions,
 		Metrics:                metricsServerOptions,
@@ -205,9 +240,10 @@ func main() {
 	}
 
 	if err := (&instance.Reconciler{
-		Client:    mgr.GetClient(),
-		APIReader: mgr.GetAPIReader(),
-		Scheme:    mgr.GetScheme(),
+		Client:              mgr.GetClient(),
+		APIReader:           mgr.GetAPIReader(),
+		Scheme:              mgr.GetScheme(),
+		GatewayAPIAvailable: gatewayHTTPRouteAvailable,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PocketIDInstance")
 		os.Exit(1)

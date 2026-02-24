@@ -73,6 +73,8 @@ type Reconciler struct {
 	client.Client
 	APIReader client.Reader
 	Scheme    *runtime.Scheme
+
+	GatewayAPIAvailable bool
 }
 
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidinstances,verbs=get;list;watch;create;update;patch;delete
@@ -581,6 +583,13 @@ func (r *Reconciler) reconcileService(ctx context.Context, instance *pocketidint
 }
 
 func (r *Reconciler) reconcileHTTPRoute(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
+	if !r.GatewayAPIAvailable {
+		if instance.Spec.Route != nil && instance.Spec.Route.Enabled {
+			return fmt.Errorf("httproute is enabled but Gateway API CRDs (gateway.networking.k8s.io/v1) are not installed")
+		}
+		return nil
+	}
+
 	routeName := instance.Name
 	if instance.Spec.Route != nil && instance.Spec.Route.Name != "" {
 		routeName = instance.Spec.Route.Name
@@ -890,14 +899,17 @@ func (r *Reconciler) computeStaticAPIKeyHash(ctx context.Context, instance *pock
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	builder := ctrl.NewControllerManagedBy(mgr).
 		For(&pocketidinternalv1alpha1.PocketIDInstance{}).
 		Owns(&appsv1.Deployment{}).
 		Owns(&appsv1.StatefulSet{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
-		Owns(&corev1.Secret{}).
-		Owns(&gatewayv1.HTTPRoute{}).
-		Named("pocketidinstance").
-		Complete(r)
+		Owns(&corev1.Secret{})
+
+	if r.GatewayAPIAvailable {
+		builder = builder.Owns(&gatewayv1.HTTPRoute{})
+	}
+
+	return builder.Named("pocketidinstance").Complete(r)
 }
