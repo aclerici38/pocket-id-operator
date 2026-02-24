@@ -153,34 +153,6 @@ jobs:
       image: ${{ needs.meta.outputs.build_image }}
     secrets: inherit
 
-  latest-release:
-    name: Resolve Latest Release
-    runs-on: ubuntu-latest
-    outputs:
-      image: ${{ steps.release.outputs.image }}
-    steps:
-      - name: Get latest release tag
-        id: release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          TAG=$(gh release view --repo ${{ github.repository }} --json tagName -q .tagName)
-          REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          IMAGE="ghcr.io/${REPO_OWNER}/pocket-id-operator:${TAG}"
-          echo "Latest release tag: ${TAG}"
-          echo "Latest release image: ${IMAGE}"
-          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
-
-  e2e-latest-release:
-    name: E2E Tests (Latest Release)
-    needs: [latest-release]
-    if: ${{ !cancelled() && !failure() }}
-    uses: ./.github/workflows/test-e2e.yml
-    with:
-      image: ${{ needs.latest-release.outputs.image }}
-      skip_artifact: true
-    secrets: inherit
-
   publish:
     name: Publish
     needs:

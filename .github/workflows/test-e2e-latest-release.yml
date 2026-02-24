@@ -1,0 +1,84 @@
+name: E2E Tests (Latest Release)
+
+on:
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".gitignore"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+  packages: read
+
+env:
+  # renovate: datasource=github-releases depName=kubernetes-sigs/kind
+  KIND_VERSION: v0.31.0
+  # renovate: datasource=github-releases depName=kubernetes-sigs/controller-tools
+  CONTROLLER_TOOLS_VERSION: v0.20.1
+  # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize
+  KUSTOMIZE_VERSION: v5.7.1
+  # renovate: datasource=github-releases depName=onsi/ginkgo
+  GINKGO_VERSION: v2.28.1
+  # renovate: datasource=docker depName=ghcr.io/pocket-id/pocket-id
+  POCKET_ID_IMAGE: ghcr.io/pocket-id/pocket-id:v2.2.0-distroless@sha256:ad2d21a7b31d6b4f1d999caec794a5b5edeb97fc40801947158d62befd4203e3
+
+jobs:
+  test-e2e-latest-release:
+    name: Run e2e tests against latest release
+    if: ${{ contains(github.event.pull_request.labels.*.name, 'pocket-id-upgrade') || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve latest release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=$(gh release view --repo ${{ github.repository }} --json tagName -q .tagName)
+          REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE="ghcr.io/${REPO_OWNER}/pocket-id-operator:${TAG}"
+          echo "Latest release tag: ${TAG}"
+          echo "Latest release image: ${IMAGE}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout latest release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Cache tool binaries
+        uses: actions/cache@v5
+        with:
+          path: bin
+          key: tools-${{ runner.os }}-go-${{ hashFiles('go.mod') }}-kustomize-${{ env.KUSTOMIZE_VERSION }}-controller-gen-${{ env.CONTROLLER_TOOLS_VERSION }}-ginkgo-${{ env.GINKGO_VERSION }}
+
+      - name: Cache kind
+        id: cache-kind
+        uses: actions/cache@v5
+        with:
+          path: /usr/local/bin/kind
+          key: kind-${{ runner.os }}-${{ runner.arch }}-${{ env.KIND_VERSION }}
+
+      - name: Install kind
+        if: steps.cache-kind.outputs.cache-hit != 'true'
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/${{ env.KIND_VERSION }}/kind-linux-$(go env GOARCH)
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Pull operator image
+        run: docker pull ${{ steps.release.outputs.image }}
+
+      - name: Run e2e tests
+        run: make test-e2e-only IMG=${{ steps.release.outputs.image }}

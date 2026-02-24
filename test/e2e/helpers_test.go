@@ -6,6 +6,7 @@ package e2e
 import (
 	"encoding/base64"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -43,7 +44,11 @@ func (o InstanceOptions) withDefaults() InstanceOptions {
 		o.Namespace = instanceNS
 	}
 	if o.Image == "" {
-		o.Image = "ghcr.io/pocket-id/pocket-id:v2.2.0-distroless@sha256:ad2d21a7b31d6b4f1d999caec794a5b5edeb97fc40801947158d62befd4203e3"
+		if img := os.Getenv("POCKET_ID_IMAGE"); img != "" {
+			o.Image = img
+		} else {
+			o.Image = "ghcr.io/pocket-id/pocket-id:v2.2.0-distroless@sha256:ad2d21a7b31d6b4f1d999caec794a5b5edeb97fc40801947158d62befd4203e3"
+		}
 	}
 	return o
 }
