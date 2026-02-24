@@ -90,6 +90,18 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	log.Info("Reconciling PocketIDInstance", "name", instance.Name)
 
+	if vStr, newer := pocketIDVersionStatus(instance.Spec.Image); newer {
+		log.Info("WARNING: pocket-id version is newer than the latest tested version, the operator may not work correctly",
+			"detectedVersion", vStr,
+			"latestTestedVersion", latestTestedPocketIDVersion,
+		)
+	} else if vStr == "" {
+		log.Info("WARNING: pocket-id image tag is not a recognised semver, version compatibility unknown",
+			"image", instance.Spec.Image,
+			"latestTestedVersion", latestTestedPocketIDVersion,
+		)
+	}
+
 	// Ensure static API key secret exists
 	if err := r.ensureStaticAPIKeySecret(ctx, instance); err != nil {
 		return ctrl.Result{}, fmt.Errorf("ensure static API key secret: %w", err)
