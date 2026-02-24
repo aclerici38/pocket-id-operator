@@ -35,8 +35,6 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	// This runs only on process 1
 	projectImage = resolveProjectImage()
 
-	By(fmt.Sprintf("using operator image: %s", projectImage))
-	By(fmt.Sprintf("using pocket-id image: %s", pocketIDImage()))
 	By("building the operator image")
 	if os.Getenv("IMG") == "" {
 		cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
@@ -90,6 +88,10 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 			"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
 		g.Expect(output).To(Equal("True"))
 	}, 5*time.Minute, 5*time.Second).Should(Succeed())
+
+	actualImage := kubectlGet("pod", "-n", instanceNS, "-l", "app.kubernetes.io/name=pocket-id",
+		"-o", "jsonpath={.items[0].spec.containers[0].image}")
+	By(fmt.Sprintf("pocket-id pod is running image: %s", actualImage))
 
 	return nil
 }, func(_ []byte) {
