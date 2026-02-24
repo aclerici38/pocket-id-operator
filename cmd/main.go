@@ -19,7 +19,6 @@ package main
 import (
 	"crypto/tls"
 	"flag"
-	"net/http"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -69,7 +68,11 @@ func init() {
 }
 
 func supportsHTTPRoute(cfg *rest.Config) (bool, error) {
-	restMapper, err := apiutil.NewDynamicRESTMapper(cfg, http.DefaultClient)
+	httpClient, err := rest.HTTPClientFor(cfg)
+	if err != nil {
+		return false, err
+	}
+	restMapper, err := apiutil.NewDynamicRESTMapper(cfg, httpClient)
 	if err != nil {
 		return false, err
 	}
