@@ -667,15 +667,15 @@ func TestReconcileDelete_KeepFinalizerWhenAPIClientNotReady(t *testing.T) {
 // fakeSCIMAPI is a minimal implementation of PocketIDOIDCClientAPI for SCIM tests.
 // Only SCIM-related methods are used; the rest panic if called unexpectedly.
 type fakeSCIMAPI struct {
-	existingProvider    *pocketid.SCIMServiceProvider // returned by GetOIDCClientSCIMServiceProvider
-	getProviderErr      error
-	createErr           error
-	updateErr           error
-	deleteErr           error
-	created             *pocketid.SCIMServiceProviderInput
-	updated             map[string]pocketid.SCIMServiceProviderInput // keyed by SCIM provider ID
-	deleted             []string                                     // SCIM provider IDs passed to Delete
-	getProviderCallIDs  []string                                     // oidcClientIDs passed to GetOIDCClientSCIMServiceProvider
+	existingProvider   *pocketid.SCIMServiceProvider // returned by GetOIDCClientSCIMServiceProvider
+	getProviderErr     error
+	createErr          error
+	updateErr          error
+	deleteErr          error
+	created            *pocketid.SCIMServiceProviderInput
+	updated            map[string]pocketid.SCIMServiceProviderInput // keyed by SCIM provider ID
+	deleted            []string                                     // SCIM provider IDs passed to Delete
+	getProviderCallIDs []string                                     // oidcClientIDs passed to GetOIDCClientSCIMServiceProvider
 }
 
 func (f *fakeSCIMAPI) ListOIDCClients(_ context.Context, _ string) ([]*pocketid.OIDCClient, error) {
