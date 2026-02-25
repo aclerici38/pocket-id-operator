@@ -339,6 +339,125 @@ var _ = Describe("Bidirectional UserGroup and OIDCClient Assignment", Ordered, f
 	})
 })
 
+var _ = Describe("Group-OIDC Reference Removal", Ordered, func() {
+	// These tests verify that removing a relationship cleans up correctly in Pocket-ID.
+
+	Context("Forward removal: OIDCClient drops group from allowedUserGroups", func() {
+		const (
+			fwdRemovalGroup  = "fwd-removal-group"
+			fwdRemovalClient = "fwd-removal-client"
+		)
+
+		BeforeAll(func() {
+			By("creating a user group")
+			createUserGroupAndWaitReady(UserGroupOptions{
+				Name:         fwdRemovalGroup,
+				GroupName:    "fwd-removal-group",
+				FriendlyName: "Fwd Removal Group",
+			})
+
+			By("creating an OIDC client that references the group")
+			createOIDCClientAndWaitReady(OIDCClientOptions{
+				Name:              fwdRemovalClient,
+				CallbackURLs:      []string{"https://fwd-removal.example.com/callback"},
+				AllowedUserGroups: []string{fwdRemovalGroup},
+			})
+
+			groupID := kubectlGet("pocketidusergroup", fwdRemovalGroup, "-n", userNS,
+				"-o", "jsonpath={.status.groupID}")
+
+			By("confirming the group is initially present in allowedUserGroupIDs")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidoidcclient", fwdRemovalClient, "-n", userNS,
+					"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+				g.Expect(output).To(ContainSubstring(groupID))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+
+		It("should remove the group from allowedUserGroupIDs after reference is dropped", func() {
+			groupID := kubectlGet("pocketidusergroup", fwdRemovalGroup, "-n", userNS,
+				"-o", "jsonpath={.status.groupID}")
+
+			By("updating the OIDC client to remove allowedUserGroups")
+			createOIDCClient(OIDCClientOptions{
+				Name:         fwdRemovalClient,
+				CallbackURLs: []string{"https://fwd-removal.example.com/callback"},
+				// AllowedUserGroups intentionally absent
+			})
+			waitForReady("pocketidoidcclient", fwdRemovalClient, userNS)
+
+			By("verifying the group ID is gone from allowedUserGroupIDs")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidoidcclient", fwdRemovalClient, "-n", userNS,
+					"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+				g.Expect(output).NotTo(ContainSubstring(groupID))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+	})
+
+	Context("Reverse removal: UserGroup drops client from allowedOIDCClients", func() {
+		// When a UserGroup removes a client from allowedOIDCClients, the OIDCClient
+		// controller is not immediately re-queued (requestsForUserGroup only sees the
+		// updated spec, which no longer contains the reference). The OIDCClient picks
+		// up the removal on its next periodic resync (ResyncInterval = 2 min + jitter).
+		// Use a 5-minute timeout to cover the worst-case jitter window.
+		const (
+			revRemovalGroup  = "rev-removal-group"
+			revRemovalClient = "rev-removal-client"
+		)
+
+		BeforeAll(func() {
+			By("creating an OIDC client")
+			createOIDCClientAndWaitReady(OIDCClientOptions{
+				Name:         revRemovalClient,
+				CallbackURLs: []string{"https://rev-removal.example.com/callback"},
+			})
+
+			By("creating a user group that references the OIDC client")
+			createUserGroupAndWaitReady(UserGroupOptions{
+				Name:               revRemovalGroup,
+				GroupName:          "rev-removal-group",
+				FriendlyName:       "Rev Removal Group",
+				AllowedOIDCClients: []ResourceRef{{Name: revRemovalClient}},
+			})
+
+			groupID := kubectlGet("pocketidusergroup", revRemovalGroup, "-n", userNS,
+				"-o", "jsonpath={.status.groupID}")
+
+			By("confirming the group is initially in the OIDCClient's allowedUserGroupIDs")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidoidcclient", revRemovalClient, "-n", userNS,
+					"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+				g.Expect(output).To(ContainSubstring(groupID))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+
+		It("should remove the group from the OIDCClient's allowedUserGroupIDs after reverse reference is dropped", func() {
+			groupID := kubectlGet("pocketidusergroup", revRemovalGroup, "-n", userNS,
+				"-o", "jsonpath={.status.groupID}")
+
+			By("updating the user group to remove the OIDC client from allowedOIDCClients")
+			createUserGroup(UserGroupOptions{
+				Name:         revRemovalGroup,
+				GroupName:    "rev-removal-group",
+				FriendlyName: "Rev Removal Group",
+				// AllowedOIDCClients intentionally absent
+			})
+			waitForReady("pocketidusergroup", revRemovalGroup, userNS)
+
+			// OIDCClient is not immediately re-queued when a reverse reference is removed
+			// (requestsForUserGroup sees the new spec with no allowedOIDCClients).
+			// Allow the full resync window plus buffer.
+			By("verifying the group ID is gone from the OIDCClient's allowedUserGroupIDs")
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidoidcclient", revRemovalClient, "-n", userNS,
+					"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+				g.Expect(output).NotTo(ContainSubstring(groupID))
+			}, 5*time.Minute, 5*time.Second).Should(Succeed())
+		})
+	})
+})
+
 var _ = Describe("UserGroup with Usernames and UserIds", Ordered, func() {
 	const (
 		usernameGroupName = "test-username-group"

@@ -600,7 +600,7 @@ func createUserGroup(opts UserGroupOptions) {
 func createUserGroupAndWaitReady(opts UserGroupOptions) {
 	opts = opts.withDefaults()
 	createUserGroup(opts)
-	waitForStatusFieldNotEmpty("pocketidusergroup", opts.Name, opts.Namespace, ".status.groupID")
+	waitForReady("pocketidusergroup", opts.Name, opts.Namespace)
 }
 
 func createOIDCClient(opts OIDCClientOptions) {
