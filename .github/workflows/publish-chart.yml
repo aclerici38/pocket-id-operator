@@ -51,6 +51,7 @@ on:
 permissions:
   actions: write
   contents: read
+  id-token: write
   packages: write
 
 jobs:
@@ -59,10 +60,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Setup Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
 
       - name: Package chart
         run: |
@@ -79,12 +80,16 @@ jobs:
             --password "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Push chart (OCI)
+        id: push
         run: |
-          helm push dist/chart-packages/*.tgz \
-            oci://ghcr.io/${{ inputs.repo_owner }}/charts
+          PUSH_OUTPUT=$(helm push dist/chart-packages/*.tgz \
+            oci://ghcr.io/${{ inputs.repo_owner }}/charts 2>&1)
+          echo "$PUSH_OUTPUT"
+          DIGEST=$(echo "$PUSH_OUTPUT" | grep "Digest:" | awk '{print $2}')
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
       - name: Setup ORAS
-        uses: oras-project/setup-oras@v1
+        uses: oras-project/setup-oras@22ce207df3b08e061f537244349aac6ae1d214f6 # v1.2.4
 
       - name: Log in to ORAS registry
         run: |
@@ -106,3 +111,19 @@ jobs:
           oras tag \
             ghcr.io/${{ inputs.repo_owner }}/charts/${CHART_NAME}:${{ inputs.chart_version }} \
             "${{ inputs.additional_tag }}"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
+
+      - name: Sign chart
+        run: |
+          CHART_NAME=$(awk -F': ' '$1=="name"{print $2}' dist/chart/Chart.yaml | tr -d '"')
+          cosign sign --yes \
+            ghcr.io/${{ inputs.repo_owner }}/charts/${CHART_NAME}@${{ steps.push.outputs.digest }}
