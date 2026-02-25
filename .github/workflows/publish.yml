@@ -33,6 +33,7 @@ on:
 permissions:
   actions: write
   contents: read
+  id-token: write
   packages: write
 
 jobs:
