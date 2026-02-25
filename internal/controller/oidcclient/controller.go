@@ -860,7 +860,11 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&pocketidinternalv1alpha1.PocketIDOIDCClient{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&pocketidinternalv1alpha1.PocketIDUserGroup{}, handler.EnqueueRequestsFromMapFunc(r.requestsForUserGroup)).
+		Watches(
+			&pocketidinternalv1alpha1.PocketIDUserGroup{},
+			handler.EnqueueRequestsFromMapFunc(r.requestsForUserGroup),
+			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
+		).
 		Named("pocketidoidcclient").
 		Complete(r)
 }

@@ -17,6 +17,15 @@ func IsNotFoundError(err error) bool {
 	return false
 }
 
+// IsServerError returns true if the error is an HTTP 500 internal server error.
+func IsServerError(err error) bool {
+	var apiErr *runtime.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.IsCode(http.StatusInternalServerError)
+	}
+	return false
+}
+
 // IsAlreadyExistsError returns true if the error indicates the resource already exists (HTTP 400 or 409).
 // Pocket-ID returns HTTP 400 with "already in use" or "already exists" messages for duplicate resources.
 func IsAlreadyExistsError(err error) bool {
