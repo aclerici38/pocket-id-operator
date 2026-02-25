@@ -125,6 +125,11 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ needs.validate.outputs.version }}
+          fetch-depth: 0
+
+      - name: Extract release notes
+        run: |
+          git show origin/${{ github.ref_name }}:RELEASE_NOTES.md > /tmp/release_notes.md 2>/dev/null || touch /tmp/release_notes.md
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -148,5 +153,6 @@ jobs:
           tag_name: ${{ needs.validate.outputs.version }}
           name: ${{ needs.validate.outputs.version }}
           generate_release_notes: true
+          body_path: /tmp/release_notes.md
           files: |
             dist/install.yaml
