@@ -173,6 +173,10 @@ func (r *BaseReconciler) ReconcileDeleteWithPocketID(
 	// Delete from PocketID
 	logger.Info("Deleting from PocketID", "statusID", statusID)
 	if err := deleteFunc(ctx, apiClient, statusID); err != nil {
+		if IsTransientDependencyError(err) {
+			logger.Info("Pocket-ID is temporarily unavailable for delete, requeuing", "statusID", statusID, "error", err.Error())
+			return ctrl.Result{RequeueAfter: Requeue}, nil
+		}
 		logger.Error(err, "Failed to delete from PocketID")
 		return ctrl.Result{}, err
 	}

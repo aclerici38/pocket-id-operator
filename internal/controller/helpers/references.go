@@ -9,6 +9,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	pocketidv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 )
 
 // IsResourceReady checks if a resource has the Ready condition set to True
@@ -37,7 +38,14 @@ func ResolveUserReferences(
 		}
 
 		user := &pocketidv1alpha1.PocketIDUser{}
-		if err := c.Get(ctx, client.ObjectKey{Namespace: namespace, Name: ref.Name}, user); err != nil {
+		if err := common.RetryKubernetesRead(ctx, common.SecretReadRetryAttempts, func() error {
+			current := &pocketidv1alpha1.PocketIDUser{}
+			getErr := c.Get(ctx, client.ObjectKey{Namespace: namespace, Name: ref.Name}, current)
+			if getErr == nil {
+				user = current
+			}
+			return getErr
+		}); err != nil {
 			return nil, fmt.Errorf("get user %s: %w", ref.Name, err)
 		}
 
@@ -75,7 +83,14 @@ func ResolveOIDCClientReferences(
 		}
 
 		oidcClient := &pocketidv1alpha1.PocketIDOIDCClient{}
-		if err := c.Get(ctx, client.ObjectKey{Namespace: namespace, Name: ref.Name}, oidcClient); err != nil {
+		if err := common.RetryKubernetesRead(ctx, common.SecretReadRetryAttempts, func() error {
+			current := &pocketidv1alpha1.PocketIDOIDCClient{}
+			getErr := c.Get(ctx, client.ObjectKey{Namespace: namespace, Name: ref.Name}, current)
+			if getErr == nil {
+				oidcClient = current
+			}
+			return getErr
+		}); err != nil {
 			return nil, fmt.Errorf("get OIDC client %s: %w", ref.Name, err)
 		}
 
@@ -113,7 +128,14 @@ func ResolveUserGroupReferences(
 		}
 
 		group := &pocketidv1alpha1.PocketIDUserGroup{}
-		if err := c.Get(ctx, client.ObjectKey{Namespace: namespace, Name: ref.Name}, group); err != nil {
+		if err := common.RetryKubernetesRead(ctx, common.SecretReadRetryAttempts, func() error {
+			current := &pocketidv1alpha1.PocketIDUserGroup{}
+			getErr := c.Get(ctx, client.ObjectKey{Namespace: namespace, Name: ref.Name}, current)
+			if getErr == nil {
+				group = current
+			}
+			return getErr
+		}); err != nil {
 			return nil, fmt.Errorf("get user group %s: %w", ref.Name, err)
 		}
 

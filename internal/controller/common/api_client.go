@@ -34,10 +34,15 @@ func getAPIKeyForInstance(ctx context.Context, apiReader client.Reader, instance
 	}
 
 	secretName := StaticAPIKeySecretName(instance.Name)
-
-	// Retrieve the secret using APIReader to bypass cache.
 	secret := &corev1.Secret{}
-	if err := apiReader.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: secretName}, secret); err != nil {
+	if err := RetryKubernetesRead(ctx, SecretReadRetryAttempts, func() error {
+		current := &corev1.Secret{}
+		getErr := apiReader.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: secretName}, current)
+		if getErr == nil {
+			secret = current
+		}
+		return getErr
+	}); err != nil {
 		return "", fmt.Errorf("%w: get static API key secret: %w", ErrAPIClientNotReady, err)
 	}
 

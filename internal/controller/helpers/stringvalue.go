@@ -8,6 +8,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	pocketidv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 )
 
 // ResolveStringValue resolves a StringValue to its actual string representation
@@ -74,7 +75,14 @@ func getSecretValue(
 	}
 
 	secret := &corev1.Secret{}
-	if err := reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: secretName}, secret); err != nil {
+	if err := common.RetryKubernetesRead(ctx, common.SecretReadRetryAttempts, func() error {
+		current := &corev1.Secret{}
+		getErr := reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: secretName}, current)
+		if getErr == nil {
+			secret = current
+		}
+		return getErr
+	}); err != nil {
 		return "", fmt.Errorf("get secret %s: %w", secretName, err)
 	}
 

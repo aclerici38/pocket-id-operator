@@ -2,9 +2,11 @@ package oidcclient
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -388,6 +390,76 @@ func TestReconcileSecret_CreateForPublicClient(t *testing.T) {
 	}
 	if _, ok := secret.Data["issuer_url"]; !ok {
 		t.Error("expected secret to have issuer_url key")
+	}
+}
+
+type failingGetClient struct {
+	client.Client
+	failKey client.ObjectKey
+	err     error
+}
+
+func (c *failingGetClient) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+	if key == c.failKey {
+		return c.err
+	}
+	return c.Client.Get(ctx, key, obj, opts...)
+}
+
+func TestReconcileSecret_NonNotFoundSecretReadError_DoesNotRegenerate(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-non-public",
+			Namespace: testNamespace,
+			UID:       "test-uid-non-public",
+		},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			IsPublic: false,
+		},
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
+			ClientID: "client-123",
+		},
+	}
+
+	instance := &pocketidinternalv1alpha1.PocketIDInstance{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-instance",
+			Namespace: testNamespace,
+		},
+		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+			AppURL:        "http://test.example.com",
+			EncryptionKey: pocketidinternalv1alpha1.EnvValue{Value: "0123456789abcdef"},
+		},
+	}
+
+	baseClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(oidcClient, instance).
+		Build()
+
+	reconciler := &Reconciler{
+		Client: &failingGetClient{
+			Client:  baseClient,
+			failKey: client.ObjectKey{Name: "test-non-public-oidc-credentials", Namespace: testNamespace},
+			err:     apierrors.NewTimeoutError("simulated timeout", 1),
+		},
+		Scheme: scheme,
+	}
+
+	err := reconciler.ReconcileSecret(ctx, oidcClient, instance, nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "get existing secret") {
+		t.Fatalf("expected existing secret read error, got: %v", err)
+	}
+	if strings.Contains(err.Error(), "apiClient is required to regenerate client secret") {
+		t.Fatalf("unexpected client secret regeneration path taken: %v", err)
 	}
 }
 

@@ -27,6 +27,7 @@ import (
 	"net/url"
 	"reflect"
 	"strings"
+	"time"
 
 	"golang.org/x/mod/semver"
 	appsv1 "k8s.io/api/apps/v1"
@@ -49,6 +50,7 @@ import (
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
 const (
@@ -121,8 +123,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	if err := r.updateStatus(ctx, instance); err != nil {
+	ready, err := r.updateStatus(ctx, instance)
+	if err != nil {
 		return ctrl.Result{}, err
+	}
+	if !ready {
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
 	// Fetch and store the deployed PocketID version
@@ -726,7 +732,7 @@ func (r *Reconciler) reconcileVersion(ctx context.Context, instance *pocketidint
 	return nil
 }
 
-func (r *Reconciler) updateStatus(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
+func (r *Reconciler) updateStatus(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) (bool, error) {
 	base := instance.DeepCopy()
 	ready := metav1.ConditionFalse
 	reason := "Progressing"
@@ -752,6 +758,30 @@ func (r *Reconciler) updateStatus(ctx context.Context, instance *pocketidinterna
 		}
 	}
 
+	staticAPIKeySecret := common.StaticAPIKeySecretName(instance.Name)
+	if instance.Status.StaticAPIKeySecretName != staticAPIKeySecret {
+		instance.Status.StaticAPIKeySecretName = staticAPIKeySecret
+	}
+
+	if ready == metav1.ConditionTrue {
+		apiProbeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+
+		apiClient, err := common.GetAPIClient(apiProbeCtx, r.Client, r.APIReader, instance)
+		if err != nil {
+			ready = metav1.ConditionFalse
+			reason = "APIUnavailable"
+			message = fmt.Sprintf("Waiting for Pocket-ID API client to be available: %v", err)
+		} else if _, err := apiClient.GetCurrentVersion(apiProbeCtx); err != nil {
+			// /api/version/current exists in v2.3.0+. If this specific endpoint is missing, API is still reachable.
+			if !pocketid.IsNotFoundError(err) {
+				ready = metav1.ConditionFalse
+				reason = "APIUnavailable"
+				message = fmt.Sprintf("Waiting for Pocket-ID API to become reachable: %v", err)
+			}
+		}
+	}
+
 	meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{
 		Type:               readyConditionType,
 		Status:             ready,
@@ -760,12 +790,11 @@ func (r *Reconciler) updateStatus(ctx context.Context, instance *pocketidinterna
 		ObservedGeneration: instance.Generation,
 	})
 
-	staticAPIKeySecret := common.StaticAPIKeySecretName(instance.Name)
-	if instance.Status.StaticAPIKeySecretName != staticAPIKeySecret {
-		instance.Status.StaticAPIKeySecretName = staticAPIKeySecret
+	if err := r.Status().Patch(ctx, instance, client.MergeFrom(base)); err != nil {
+		return false, err
 	}
 
-	return r.Status().Patch(ctx, instance, client.MergeFrom(base))
+	return ready == metav1.ConditionTrue, nil
 }
 
 // generateSecureToken generates a cryptographically secure random token
@@ -782,8 +811,15 @@ func (r *Reconciler) ensureStaticAPIKeySecret(ctx context.Context, instance *poc
 	secretName := common.StaticAPIKeySecretName(instance.Name)
 	secret := &corev1.Secret{}
 
-	// Check if secret already exists using APIReader to bypass cache
-	err := r.APIReader.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: secretName}, secret)
+	// Check if secret already exists using APIReader to bypass cache.
+	err := common.RetryKubernetesRead(ctx, common.SecretReadRetryAttempts, func() error {
+		current := &corev1.Secret{}
+		getErr := r.APIReader.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: secretName}, current)
+		if getErr == nil {
+			secret = current
+		}
+		return getErr
+	})
 	if err == nil {
 		if token, ok := secret.Data["token"]; ok && len(token) > 0 {
 			return nil
@@ -846,7 +882,14 @@ func (r *Reconciler) computeStaticAPIKeyHash(ctx context.Context, instance *pock
 	secretName := common.StaticAPIKeySecretName(instance.Name)
 	secret := &corev1.Secret{}
 
-	err := r.APIReader.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: secretName}, secret)
+	err := common.RetryKubernetesRead(ctx, common.SecretReadRetryAttempts, func() error {
+		current := &corev1.Secret{}
+		getErr := r.APIReader.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: secretName}, current)
+		if getErr == nil {
+			secret = current
+		}
+		return getErr
+	})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return "", nil

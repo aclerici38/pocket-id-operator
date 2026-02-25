@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -115,6 +116,15 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 				}
 				return ctrl.Result{Requeue: true}, nil
 			}
+			if result, handled := r.HandleTransientDependencyError(
+				ctx,
+				oidcClient,
+				err,
+				"InstanceUnavailable",
+				fmt.Sprintf("Waiting for Pocket-ID instance '%s/%s' to become reachable", instance.Namespace, instance.Name),
+			); handled {
+				return *result, nil
+			}
 			_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "GetError", err.Error())
 			return ctrl.Result{RequeueAfter: common.Requeue}, nil
 		}
@@ -129,6 +139,15 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if oidcClient.Status.ClientID == "" {
 		requeue, err := r.createOrAdoptOIDCClient(ctx, oidcClient, apiClient)
 		if err != nil {
+			if result, handled := r.HandleTransientDependencyError(
+				ctx,
+				oidcClient,
+				err,
+				"InstanceUnavailable",
+				fmt.Sprintf("Waiting for Pocket-ID instance '%s/%s' to become reachable", instance.Namespace, instance.Name),
+			); handled {
+				return *result, nil
+			}
 			log.Error(err, "Failed to create or adopt OIDC client")
 			_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "ReconcileError", err.Error())
 			return ctrl.Result{RequeueAfter: common.Requeue}, nil
@@ -140,18 +159,50 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	if err := r.pushOIDCClientState(ctx, oidcClient, apiClient); err != nil {
+		if common.IsDependencyNotReadyError(err) {
+			log.Info("Referenced dependency is not ready yet, waiting before retry", "error", err.Error())
+			_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "DependencyNotReady", err.Error())
+			return ctrl.Result{RequeueAfter: common.DependencyRequeue}, nil
+		}
+		if result, handled := r.HandleTransientDependencyError(
+			ctx,
+			oidcClient,
+			err,
+			"DependencyUnavailable",
+			"Waiting for dependent resources and Pocket-ID instance to become reachable",
+		); handled {
+			return *result, nil
+		}
 		log.Error(err, "Failed to push OIDC client state")
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
 	if err := r.ReconcileSCIM(ctx, oidcClient, apiClient); err != nil {
+		if result, handled := r.HandleTransientDependencyError(
+			ctx,
+			oidcClient,
+			err,
+			"DependencyUnavailable",
+			"Waiting for SCIM dependencies and Pocket-ID instance to become reachable",
+		); handled {
+			return *result, nil
+		}
 		log.Error(err, "Failed to reconcile SCIM service provider")
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "SCIMReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
 	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient); err != nil {
+		if result, handled := r.HandleTransientDependencyError(
+			ctx,
+			oidcClient,
+			err,
+			"DependencyUnavailable",
+			"Waiting for secret dependencies and Pocket-ID instance to become reachable",
+		); handled {
+			return *result, nil
+		}
 		log.Error(err, "Failed to reconcile OIDC client secret")
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "SecretReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
@@ -612,11 +663,20 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 	if !enabled {
 		// Delete the secret if it exists but is now disabled
 		secret := &corev1.Secret{}
-		err := r.Get(ctx, client.ObjectKey{Name: secretName, Namespace: oidcClient.Namespace}, secret)
+		err := common.RetryKubernetesRead(ctx, common.SecretReadRetryAttempts, func() error {
+			current := &corev1.Secret{}
+			getErr := r.Get(ctx, client.ObjectKey{Name: secretName, Namespace: oidcClient.Namespace}, current)
+			if getErr == nil {
+				secret = current
+			}
+			return getErr
+		})
 		if err == nil {
 			if err := r.Delete(ctx, secret); err != nil {
 				return fmt.Errorf("failed to delete disabled secret: %w", err)
 			}
+		} else if !errors.IsNotFound(err) {
+			return fmt.Errorf("failed to get disabled secret %s: %w", secretName, err)
 		}
 		return nil
 	}
@@ -633,12 +693,21 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 	// Only regenerate if the secret doesn't exist yet or if explicitly requested via annotation
 	if !oidcClient.Spec.IsPublic && oidcClient.Status.ClientID != "" {
 		existingSecret := &corev1.Secret{}
-		err := r.Get(ctx, client.ObjectKey{Name: secretName, Namespace: oidcClient.Namespace}, existingSecret)
+		err := common.RetryKubernetesRead(ctx, common.SecretReadRetryAttempts, func() error {
+			current := &corev1.Secret{}
+			getErr := r.Get(ctx, client.ObjectKey{Name: secretName, Namespace: oidcClient.Namespace}, current)
+			if getErr == nil {
+				existingSecret = current
+			}
+			return getErr
+		})
 
 		shouldRegenerateSecret := false
-		if err != nil {
+		if errors.IsNotFound(err) {
 			// Secret doesn't exist, we need to generate it
 			shouldRegenerateSecret = true
+		} else if err != nil {
+			return fmt.Errorf("get existing secret %s: %w", secretName, err)
 		} else if _, exists := existingSecret.Data[keys.ClientSecret]; !exists {
 			// Secret exists but doesn't have the client_secret key
 			shouldRegenerateSecret = true
@@ -827,6 +896,28 @@ func (r *Reconciler) requestsForUserGroup(ctx context.Context, obj client.Object
 	return requests
 }
 
+func userGroupDependencyPredicate() predicate.Funcs {
+	return predicate.Funcs{
+		CreateFunc:  func(event.CreateEvent) bool { return true },
+		DeleteFunc:  func(event.DeleteEvent) bool { return true },
+		GenericFunc: func(event.GenericEvent) bool { return true },
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldObj, okOld := e.ObjectOld.(*pocketidinternalv1alpha1.PocketIDUserGroup)
+			newObj, okNew := e.ObjectNew.(*pocketidinternalv1alpha1.PocketIDUserGroup)
+			if !okOld || !okNew {
+				return true
+			}
+			if oldObj.Generation != newObj.Generation {
+				return true
+			}
+			if oldObj.Status.GroupID != newObj.Status.GroupID {
+				return true
+			}
+			return helpers.IsResourceReady(oldObj.Status.Conditions) != helpers.IsResourceReady(newObj.Status.Conditions)
+		},
+	}
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	ctx := context.Background()
@@ -858,7 +949,11 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&pocketidinternalv1alpha1.PocketIDOIDCClient{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&pocketidinternalv1alpha1.PocketIDUserGroup{}, handler.EnqueueRequestsFromMapFunc(r.requestsForUserGroup)).
+		Watches(
+			&pocketidinternalv1alpha1.PocketIDUserGroup{},
+			handler.EnqueueRequestsFromMapFunc(r.requestsForUserGroup),
+			builder.WithPredicates(userGroupDependencyPredicate()),
+		).
 		Named("pocketidoidcclient").
 		Complete(r)
 }

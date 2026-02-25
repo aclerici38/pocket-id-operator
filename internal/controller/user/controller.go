@@ -124,6 +124,15 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 				}
 				return ctrl.Result{Requeue: true}, nil
 			}
+			if result, handled := r.HandleTransientDependencyError(
+				ctx,
+				user,
+				err,
+				"InstanceUnavailable",
+				fmt.Sprintf("Waiting for Pocket-ID instance '%s/%s' to become reachable", instance.Namespace, instance.Name),
+			); handled {
+				return *result, nil
+			}
 			_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "GetError", err.Error())
 			return ctrl.Result{RequeueAfter: common.Requeue}, nil
 		}
@@ -138,6 +147,15 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if user.Status.UserID == "" {
 		requeue, err := r.createOrAdoptUser(ctx, user, apiClient, instance)
 		if err != nil {
+			if result, handled := r.HandleTransientDependencyError(
+				ctx,
+				user,
+				err,
+				"InstanceUnavailable",
+				fmt.Sprintf("Waiting for Pocket-ID instance '%s/%s' to become reachable", instance.Namespace, instance.Name),
+			); handled {
+				return *result, nil
+			}
 			log.Error(err, "Failed to create or adopt user")
 			_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "ReconcileError", err.Error())
 			return ctrl.Result{RequeueAfter: common.Requeue}, nil
@@ -149,18 +167,45 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	if err := r.pushUserState(ctx, user, apiClient); err != nil {
+		if result, handled := r.HandleTransientDependencyError(
+			ctx,
+			user,
+			err,
+			"DependencyUnavailable",
+			"Waiting for dependent resources and Pocket-ID instance to become reachable",
+		); handled {
+			return *result, nil
+		}
 		log.Error(err, "Failed to push user state")
 		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
 	if err := r.reconcileAPIKeys(ctx, user, apiClient); err != nil {
+		if result, handled := r.HandleTransientDependencyError(
+			ctx,
+			user,
+			err,
+			"DependencyUnavailable",
+			"Waiting for API keys, secrets, or Pocket-ID instance to become reachable",
+		); handled {
+			return *result, nil
+		}
 		log.Error(err, "Failed to reconcile API keys")
 		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "APIKeyError", err.Error())
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
 	if err := r.ensureOneTimeLoginStatus(ctx, user, apiClient, instance); err != nil {
+		if result, handled := r.HandleTransientDependencyError(
+			ctx,
+			user,
+			err,
+			"InstanceUnavailable",
+			fmt.Sprintf("Waiting for Pocket-ID instance '%s/%s' to become reachable", instance.Namespace, instance.Name),
+		); handled {
+			return *result, nil
+		}
 		log.Error(err, "Failed to ensure one-time login status")
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
@@ -628,7 +673,14 @@ func (r *Reconciler) reconcileAPIKeys(ctx context.Context, user *pocketidinterna
 				reader = r.Client
 			}
 			secret := &corev1.Secret{}
-			if err := reader.Get(ctx, client.ObjectKey{Namespace: user.Namespace, Name: spec.SecretRef.Name}, secret); err != nil {
+			if err := common.RetryKubernetesRead(ctx, common.SecretReadRetryAttempts, func() error {
+				current := &corev1.Secret{}
+				getErr := reader.Get(ctx, client.ObjectKey{Namespace: user.Namespace, Name: spec.SecretRef.Name}, current)
+				if getErr == nil {
+					secret = current
+				}
+				return getErr
+			}); err != nil {
 				return fmt.Errorf("get secret %s for API key %s: %w", spec.SecretRef.Name, spec.Name, err)
 			}
 
@@ -758,7 +810,11 @@ func (r *Reconciler) requestsForUserGroup(ctx context.Context, obj client.Object
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&pocketidinternalv1alpha1.PocketIDUser{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&pocketidinternalv1alpha1.PocketIDUserGroup{}, handler.EnqueueRequestsFromMapFunc(r.requestsForUserGroup)).
+		Watches(
+			&pocketidinternalv1alpha1.PocketIDUserGroup{},
+			handler.EnqueueRequestsFromMapFunc(r.requestsForUserGroup),
+			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
+		).
 		Owns(&corev1.Secret{}).
 		Named("pocketiduser").
 		Complete(r)

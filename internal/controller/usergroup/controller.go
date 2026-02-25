@@ -27,6 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -111,6 +112,15 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 				}
 				return ctrl.Result{Requeue: true}, nil
 			}
+			if result, handled := r.HandleTransientDependencyError(
+				ctx,
+				userGroup,
+				err,
+				"InstanceUnavailable",
+				fmt.Sprintf("Waiting for Pocket-ID instance '%s/%s' to become reachable", instance.Namespace, instance.Name),
+			); handled {
+				return *result, nil
+			}
 			_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "GetError", err.Error())
 			return ctrl.Result{RequeueAfter: common.Requeue}, nil
 		}
@@ -125,6 +135,15 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if userGroup.Status.GroupID == "" {
 		requeue, err := r.createOrAdoptUserGroup(ctx, userGroup, apiClient)
 		if err != nil {
+			if result, handled := r.HandleTransientDependencyError(
+				ctx,
+				userGroup,
+				err,
+				"InstanceUnavailable",
+				fmt.Sprintf("Waiting for Pocket-ID instance '%s/%s' to become reachable", instance.Namespace, instance.Name),
+			); handled {
+				return *result, nil
+			}
 			log.Error(err, "Failed to create or adopt user group")
 			_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "ReconcileError", err.Error())
 			return ctrl.Result{RequeueAfter: common.Requeue}, nil
@@ -136,6 +155,20 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	if err := r.pushUserGroupState(ctx, userGroup, apiClient); err != nil {
+		if common.IsDependencyNotReadyError(err) {
+			log.Info("Referenced dependency is not ready yet, waiting before retry", "error", err.Error())
+			_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "DependencyNotReady", err.Error())
+			return ctrl.Result{RequeueAfter: common.DependencyRequeue}, nil
+		}
+		if result, handled := r.HandleTransientDependencyError(
+			ctx,
+			userGroup,
+			err,
+			"DependencyUnavailable",
+			"Waiting for dependent resources and Pocket-ID instance to become reachable",
+		); handled {
+			return *result, nil
+		}
 		log.Error(err, "Failed to push user group state")
 		_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
@@ -576,6 +609,50 @@ func toCustomClaims(claims []pocketid.CustomClaim) []pocketidinternalv1alpha1.Cu
 	return result
 }
 
+func userDependencyPredicate() predicate.Funcs {
+	return predicate.Funcs{
+		CreateFunc:  func(event.CreateEvent) bool { return true },
+		DeleteFunc:  func(event.DeleteEvent) bool { return true },
+		GenericFunc: func(event.GenericEvent) bool { return true },
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldObj, okOld := e.ObjectOld.(*pocketidinternalv1alpha1.PocketIDUser)
+			newObj, okNew := e.ObjectNew.(*pocketidinternalv1alpha1.PocketIDUser)
+			if !okOld || !okNew {
+				return true
+			}
+			if oldObj.Generation != newObj.Generation {
+				return true
+			}
+			if oldObj.Status.UserID != newObj.Status.UserID {
+				return true
+			}
+			return helpers.IsResourceReady(oldObj.Status.Conditions) != helpers.IsResourceReady(newObj.Status.Conditions)
+		},
+	}
+}
+
+func oidcClientDependencyPredicate() predicate.Funcs {
+	return predicate.Funcs{
+		CreateFunc:  func(event.CreateEvent) bool { return true },
+		DeleteFunc:  func(event.DeleteEvent) bool { return true },
+		GenericFunc: func(event.GenericEvent) bool { return true },
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldObj, okOld := e.ObjectOld.(*pocketidinternalv1alpha1.PocketIDOIDCClient)
+			newObj, okNew := e.ObjectNew.(*pocketidinternalv1alpha1.PocketIDOIDCClient)
+			if !okOld || !okNew {
+				return true
+			}
+			if oldObj.Generation != newObj.Generation {
+				return true
+			}
+			if oldObj.Status.ClientID != newObj.Status.ClientID {
+				return true
+			}
+			return helpers.IsResourceReady(oldObj.Status.Conditions) != helpers.IsResourceReady(newObj.Status.Conditions)
+		},
+	}
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	ctx := context.Background()
@@ -633,8 +710,16 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&pocketidinternalv1alpha1.PocketIDUserGroup{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&pocketidinternalv1alpha1.PocketIDUser{}, handler.EnqueueRequestsFromMapFunc(r.requestsForUser)).
-		Watches(&pocketidinternalv1alpha1.PocketIDOIDCClient{}, handler.EnqueueRequestsFromMapFunc(r.requestsForOIDCClient)).
+		Watches(
+			&pocketidinternalv1alpha1.PocketIDUser{},
+			handler.EnqueueRequestsFromMapFunc(r.requestsForUser),
+			builder.WithPredicates(userDependencyPredicate()),
+		).
+		Watches(
+			&pocketidinternalv1alpha1.PocketIDOIDCClient{},
+			handler.EnqueueRequestsFromMapFunc(r.requestsForOIDCClient),
+			builder.WithPredicates(oidcClientDependencyPredicate()),
+		).
 		Named("pocketidusergroup").
 		Complete(r)
 }
