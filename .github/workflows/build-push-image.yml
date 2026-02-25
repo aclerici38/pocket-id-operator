@@ -152,7 +152,7 @@ jobs:
       - name: Inspect manifest digest
         id: inspect
         run: |
-          DIGEST=$(docker buildx imagetools inspect ${{ inputs.image }} --format '{{.Descriptor.Digest}}')
+          DIGEST=$(docker buildx imagetools inspect ${{ inputs.image }} --format '{{printf "%s" .Manifest.Digest}}')
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
   attest:
