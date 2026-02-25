@@ -42,7 +42,7 @@ jobs:
           echo "tag=${IMAGE##*:}" >> "$GITHUB_OUTPUT"
 
       - name: Lint Helm chart
-        run: helm lint dist/chart
+        run: helm lint dist/chart --set instance.spec.encryptionKey.value="lint-placeholder"
 
       - name: Package chart
         run: |

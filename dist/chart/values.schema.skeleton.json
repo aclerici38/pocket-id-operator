@@ -1,0 +1,184 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "instance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Create a PocketIDInstance custom resource",
+          "default": true
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the PocketIDInstance resource",
+          "default": "pocket-id"
+        },
+        "labels": {
+          "type": "object",
+          "description": "Additional labels for the PocketIDInstance resource",
+          "additionalProperties": { "type": "string" },
+          "default": {}
+        },
+        "annotations": {
+          "type": "object",
+          "description": "Additional annotations for the PocketIDInstance resource",
+          "additionalProperties": { "type": "string" },
+          "default": {}
+        },
+        "spec": {},
+        "serviceMonitor": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "ServiceMonitor for the PocketIDInstance (requires spec.metrics.enabled)",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Create a ServiceMonitor for the PocketIDInstance",
+              "default": false
+            },
+            "interval": {
+              "type": "string",
+              "description": "Scrape interval (e.g. 30s, 1m)"
+            },
+            "labels": {
+              "type": "object",
+              "description": "Additional labels for the ServiceMonitor",
+              "additionalProperties": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "users": {
+      "type": "array",
+      "description": "List of PocketIDUser custom resources to create",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": ["name", "spec"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the PocketIDUser resource"
+          },
+          "labels": {
+            "type": "object",
+            "description": "Additional labels for the PocketIDUser resource",
+            "additionalProperties": { "type": "string" }
+          },
+          "annotations": {
+            "type": "object",
+            "description": "Additional annotations for the PocketIDUser resource",
+            "additionalProperties": { "type": "string" }
+          },
+          "spec": {}
+        }
+      }
+    },
+    "operator": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Operator deployment configuration",
+      "properties": {
+        "replicas": {
+          "type": "integer",
+          "description": "Number of operator replicas",
+          "default": 1,
+          "minimum": 1
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repository": {
+              "type": "string",
+              "description": "Operator image repository",
+              "default": "ghcr.io/aclerici38/pocket-id-operator"
+            },
+            "tag": {
+              "type": "string",
+              "description": "Operator image tag (defaults to Chart.appVersion)",
+              "default": ""
+            },
+            "pullPolicy": {
+              "type": "string",
+              "description": "Image pull policy",
+              "enum": ["Always", "IfNotPresent", "Never"],
+              "default": "IfNotPresent"
+            }
+          }
+        },
+        "args": {
+          "type": "array",
+          "description": "Additional arguments for the operator container",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "env": {
+          "type": "array",
+          "description": "Additional environment variables for the operator container",
+          "items": { "type": "object" },
+          "default": []
+        },
+        "podSecurityContext": {
+          "type": "object",
+          "description": "Pod-level security context for the operator"
+        },
+        "securityContext": {
+          "type": "object",
+          "description": "Container-level security context for the operator"
+        },
+        "resources": {
+          "type": "object",
+          "description": "Resource requests and limits for the operator container"
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Operator metrics configuration",
+      "properties": {
+        "enable": {
+          "type": "boolean",
+          "description": "Enable the operator metrics endpoint",
+          "default": false
+        },
+        "port": {
+          "type": "integer",
+          "description": "Port for the operator metrics endpoint",
+          "default": 8443
+        }
+      }
+    },
+    "prometheus": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Prometheus ServiceMonitor for the operator itself",
+      "properties": {
+        "enable": {
+          "type": "boolean",
+          "description": "Create a ServiceMonitor for the operator metrics",
+          "default": false
+        }
+      }
+    },
+    "certManager": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "cert-manager integration for operator metrics TLS",
+      "properties": {
+        "enable": {
+          "type": "boolean",
+          "description": "Use cert-manager for metrics TLS certificates",
+          "default": false
+        }
+      }
+    }
+  }
+}

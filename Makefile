@@ -56,6 +56,10 @@ generate-schemas: manifests ## Generate JSON schemas from CRDs for yaml-language
 	@rm -f dist/schemas/*.json
 	@curl -sfL https://raw.githubusercontent.com/yannh/kubeconform/master/scripts/openapi2jsonschema.py -o /tmp/openapi2jsonschema.py
 	@cd dist/schemas && uvx --with pyyaml python /tmp/openapi2jsonschema.py $(CURDIR)/config/crd/bases/*.yaml
+	@jq --slurpfile instance dist/schemas/pocketidinstance_v1alpha1.json \
+		--slurpfile user dist/schemas/pocketiduser_v1alpha1.json \
+		'.properties.instance.properties.spec = $$instance[0].properties.spec | .properties.users.items.properties.spec = $$user[0].properties.spec' \
+		dist/chart/values.schema.skeleton.json > dist/chart/values.schema.json
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
