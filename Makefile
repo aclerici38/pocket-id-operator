@@ -1,5 +1,5 @@
 # Image URL to use all building/pushing image targets
-IMG ?= ghcr.io/aclerici38/pocket-id-operator:v0.3.1@sha256:da551a6036ac2a243f90eec0757c4455a57502a980a757bd01a2917f4ca9466d
+IMG ?= ghcr.io/aclerici38/pocket-id-operator:v0.3.2@sha256:cd5836640b8ecfef4e9f11c59cee5c65016791e2375020e90da0f5e25dc16c26
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
