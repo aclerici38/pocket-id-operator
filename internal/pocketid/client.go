@@ -450,18 +450,33 @@ func (c *Client) DeleteOIDCClient(ctx context.Context, id string) error {
 }
 
 func (c *Client) UpdateOIDCClientAllowedGroups(ctx context.Context, id string, groupIDs []string) error {
-	params := oidc.NewPutAPIOidcClientsIDAllowedUserGroupsParams().
-		WithContext(ctx).
-		WithID(id).
-		WithGroups(&models.GithubComPocketIDPocketIDBackendInternalDtoOidcUpdateAllowedUserGroupsDto{
-			UserGroupIds: groupIDs,
-		})
-
-	if _, err := c.raw.OIDc.PutAPIOidcClientsIDAllowedUserGroups(params); err != nil {
-		return fmt.Errorf("update OIDC client allowed groups failed: %w", err)
+	// Retry on 500 errors as it's usually transient
+	retryDelays := []time.Duration{150 * time.Millisecond, 350 * time.Millisecond}
+	var lastErr error
+	for attempt := 0; attempt <= len(retryDelays); attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(retryDelays[attempt-1]):
+			}
+		}
+		params := oidc.NewPutAPIOidcClientsIDAllowedUserGroupsParams().
+			WithContext(ctx).
+			WithID(id).
+			WithGroups(&models.GithubComPocketIDPocketIDBackendInternalDtoOidcUpdateAllowedUserGroupsDto{
+				UserGroupIds: groupIDs,
+			})
+		if _, err := c.raw.OIDc.PutAPIOidcClientsIDAllowedUserGroups(params); err != nil {
+			if IsServerError(err) {
+				lastErr = fmt.Errorf("update OIDC client allowed groups failed: %w", err)
+				continue
+			}
+			return fmt.Errorf("update OIDC client allowed groups failed: %w", err)
+		}
+		return nil
 	}
-
-	return nil
+	return lastErr
 }
 
 // RegenerateOIDCClientSecret regenerates the client secret and returns it.

@@ -898,3 +898,90 @@ var _ = Describe("OIDC Client Secrets", Ordered, func() {
 		})
 	})
 })
+
+// SharedGroup tests the scenario where multiple OIDC clients reference the same
+// user group. This is the configuration that historically triggered DB deadlocks
+// in Pocket ID when the usergroup and oidcclient controllers wrote concurrently
+// to related join tables. All three clients must converge to the correct state
+// even if transient 500s occur during reconciliation.
+var _ = Describe("Multiple OIDC Clients Sharing a User Group", Ordered, func() {
+	const (
+		sharedGroupName = "shared-group"
+		sharedClientA   = "shared-client-a"
+		sharedClientB   = "shared-client-b"
+		sharedClientC   = "shared-client-c"
+		sharedUserName  = "shared-test-user"
+	)
+
+	BeforeAll(func() {
+		By("creating a user for the shared group")
+		createUserAndWaitReady(UserOptions{
+			Name:     sharedUserName,
+			Username: sharedUserName,
+			Email:    sharedUserName + "@example.com",
+		})
+
+		By("creating a shared user group with that user")
+		createUserGroupAndWaitReady(UserGroupOptions{
+			Name:     sharedGroupName,
+			UserRefs: []ResourceRef{{Name: sharedUserName}},
+		})
+
+		By("creating three OIDC clients that all reference the shared group")
+		for _, name := range []string{sharedClientA, sharedClientB, sharedClientC} {
+			createOIDCClientAndWaitReady(OIDCClientOptions{
+				Name:              name,
+				CallbackURLs:      []string{"https://" + name + ".example.com/callback"},
+				AllowedUserGroups: []string{sharedGroupName},
+			})
+		}
+	})
+
+	It("should reflect the shared group in all three clients' allowedUserGroupIDs", func() {
+		groupID := kubectlGet("pocketidusergroup", sharedGroupName, "-n", userNS,
+			"-o", "jsonpath={.status.groupID}")
+		Expect(groupID).NotTo(BeEmpty())
+
+		for _, name := range []string{sharedClientA, sharedClientB, sharedClientC} {
+			clientName := name
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
+					"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+				g.Expect(output).To(ContainSubstring(groupID),
+					"client %s should have the shared group in allowedUserGroupIDs", clientName)
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}
+	})
+
+	It("should keep all clients converged after the shared group is updated", func() {
+		By("adding a second user to trigger a group reconcile")
+		secondUser := sharedUserName + "-2"
+		createUserAndWaitReady(UserOptions{
+			Name:     secondUser,
+			Username: secondUser,
+			Email:    secondUser + "@example.com",
+		})
+
+		err := kubectlPatch("pocketidusergroup", sharedGroupName, userNS,
+			`{"spec":{"users":{"userRefs":[{"name":"`+sharedUserName+`"},{"name":"`+secondUser+`"}]}}}`)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting for the group to be Ready after the update")
+		waitForReady("pocketidusergroup", sharedGroupName, userNS)
+
+		By("verifying all three clients are still Ready with the correct group")
+		groupID := kubectlGet("pocketidusergroup", sharedGroupName, "-n", userNS,
+			"-o", "jsonpath={.status.groupID}")
+
+		for _, name := range []string{sharedClientA, sharedClientB, sharedClientC} {
+			clientName := name
+			By("checking client " + clientName)
+			waitForReady("pocketidoidcclient", clientName, userNS)
+			Eventually(func(g Gomega) {
+				output := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
+					"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+				g.Expect(output).To(ContainSubstring(groupID))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}
+	})
+})

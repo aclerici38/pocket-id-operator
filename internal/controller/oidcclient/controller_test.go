@@ -667,13 +667,15 @@ func TestReconcileDelete_KeepFinalizerWhenAPIClientNotReady(t *testing.T) {
 // fakeSCIMAPI is a minimal implementation of PocketIDOIDCClientAPI for SCIM tests.
 // Only SCIM-related methods are used; the rest panic if called unexpectedly.
 type fakeSCIMAPI struct {
-	existingProvider *pocketid.SCIMServiceProvider // returned by GetOIDCClientSCIMServiceProvider
-	createErr        error
-	updateErr        error
-	deleteErr        error
-	created          *pocketid.SCIMServiceProviderInput
-	updated          map[string]pocketid.SCIMServiceProviderInput // keyed by SCIM provider ID
-	deleted          []string                                     // SCIM provider IDs passed to Delete
+	existingProvider   *pocketid.SCIMServiceProvider // returned by GetOIDCClientSCIMServiceProvider
+	getProviderErr     error
+	createErr          error
+	updateErr          error
+	deleteErr          error
+	created            *pocketid.SCIMServiceProviderInput
+	updated            map[string]pocketid.SCIMServiceProviderInput // keyed by SCIM provider ID
+	deleted            []string                                     // SCIM provider IDs passed to Delete
+	getProviderCallIDs []string                                     // oidcClientIDs passed to GetOIDCClientSCIMServiceProvider
 }
 
 func (f *fakeSCIMAPI) ListOIDCClients(_ context.Context, _ string) ([]*pocketid.OIDCClient, error) {
@@ -691,8 +693,9 @@ func (f *fakeSCIMAPI) UpdateOIDCClient(_ context.Context, _ string, _ pocketid.O
 func (f *fakeSCIMAPI) UpdateOIDCClientAllowedGroups(_ context.Context, _ string, _ []string) error {
 	panic("not implemented")
 }
-func (f *fakeSCIMAPI) GetOIDCClientSCIMServiceProvider(_ context.Context, _ string) (*pocketid.SCIMServiceProvider, error) {
-	return f.existingProvider, nil
+func (f *fakeSCIMAPI) GetOIDCClientSCIMServiceProvider(_ context.Context, oidcClientID string) (*pocketid.SCIMServiceProvider, error) {
+	f.getProviderCallIDs = append(f.getProviderCallIDs, oidcClientID)
+	return f.existingProvider, f.getProviderErr
 }
 func (f *fakeSCIMAPI) CreateSCIMServiceProvider(_ context.Context, input pocketid.SCIMServiceProviderInput) (*pocketid.SCIMServiceProvider, error) {
 	if f.createErr != nil {
@@ -749,14 +752,40 @@ func oidcClientWithSCIM(scimSpec *pocketidinternalv1alpha1.SCIMSpec, scimProvide
 }
 
 func TestReconcileSCIM_NoSpec_NoTrackedID_NoExisting(t *testing.T) {
-	// spec.scim == nil, status.scimProviderID == "", pocket-id has nothing → no-op
+	// spec.scim == nil, status.scimProviderID == "", client not yet ready (adoption path):
+	// should call GetOIDCClientSCIMServiceProvider to check for stale providers, find none, no-op.
 	ctx := context.Background()
-	oidcClient := oidcClientWithSCIM(nil, "")
+	oidcClient := oidcClientWithSCIM(nil, "") // no conditions → not ready
 	r := newSCIMReconciler(t, oidcClient)
 	api := &fakeSCIMAPI{existingProvider: nil}
 
 	if err := r.ReconcileSCIM(ctx, oidcClient, api); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(api.getProviderCallIDs) == 0 {
+		t.Error("expected GetOIDCClientSCIMServiceProvider to be called on first reconcile (not-ready path)")
+	}
+	if len(api.deleted) > 0 {
+		t.Errorf("expected no deletions, got %v", api.deleted)
+	}
+}
+
+func TestReconcileSCIM_NoSpec_NoTrackedID_SkipsCheckWhenReady(t *testing.T) {
+	// spec.scim == nil, status.scimProviderID == "", client already Ready:
+	// should NOT call GetOIDCClientSCIMServiceProvider — state is already known clean.
+	ctx := context.Background()
+	oidcClient := oidcClientWithSCIM(nil, "")
+	oidcClient.Status.Conditions = []metav1.Condition{
+		{Type: "Ready", Status: metav1.ConditionTrue, Reason: "Reconciled"},
+	}
+	r := newSCIMReconciler(t, oidcClient)
+	api := &fakeSCIMAPI{}
+
+	if err := r.ReconcileSCIM(ctx, oidcClient, api); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(api.getProviderCallIDs) > 0 {
+		t.Errorf("expected GetOIDCClientSCIMServiceProvider to be skipped when Ready, but it was called with %v", api.getProviderCallIDs)
 	}
 	if len(api.deleted) > 0 {
 		t.Errorf("expected no deletions, got %v", api.deleted)
@@ -782,9 +811,10 @@ func TestReconcileSCIM_NoSpec_WithTrackedID_DeletesIt(t *testing.T) {
 }
 
 func TestReconcileSCIM_NoSpec_NoTrackedID_StaleInPocketID_DeletesIt(t *testing.T) {
-	// Adoption scenario: spec.scim == nil, no tracked ID, but pocket-id has an existing provider
+	// Adoption scenario: spec.scim == nil, no tracked ID, client not yet ready,
+	// but pocket-id has an existing provider — should detect and delete it.
 	ctx := context.Background()
-	oidcClient := oidcClientWithSCIM(nil, "")
+	oidcClient := oidcClientWithSCIM(nil, "") // no conditions → not ready, triggers stale check
 	r := newSCIMReconciler(t, oidcClient)
 	api := &fakeSCIMAPI{
 		existingProvider: &pocketid.SCIMServiceProvider{ID: "stale-scim-id", Endpoint: "https://old.example.com/scim"},
@@ -792,6 +822,9 @@ func TestReconcileSCIM_NoSpec_NoTrackedID_StaleInPocketID_DeletesIt(t *testing.T
 
 	if err := r.ReconcileSCIM(ctx, oidcClient, api); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(api.getProviderCallIDs) == 0 {
+		t.Error("expected GetOIDCClientSCIMServiceProvider to be called to detect stale provider")
 	}
 	if len(api.deleted) != 1 || api.deleted[0] != "stale-scim-id" {
 		t.Errorf("expected deletion of stale-scim-id, got %v", api.deleted)
