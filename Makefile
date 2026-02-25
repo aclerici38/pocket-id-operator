@@ -49,6 +49,22 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 	@cp config/crd/bases/*.yaml dist/chart/crds/
 	@cp config/rbac/role.yaml dist/chart/templates/rbac/manager-role.yaml
 
+.PHONY: generate-schemas
+generate-schemas: manifests ## Generate JSON schemas from CRDs for yaml-language-server support.
+	@command -v uvx >/dev/null 2>&1 || { echo "Error: uvx not found. Install uv: https://docs.astral.sh/uv/getting-started/installation/"; exit 1; }
+	@mkdir -p dist/schemas
+	@rm -f dist/schemas/*.json
+	@curl -sfL https://raw.githubusercontent.com/yannh/kubeconform/master/scripts/openapi2jsonschema.py -o /tmp/openapi2jsonschema.py
+	@cd dist/schemas && uvx --with pyyaml python /tmp/openapi2jsonschema.py $(CURDIR)/config/crd/bases/*.yaml
+	@jq --slurpfile instance dist/schemas/pocketidinstance_v1alpha1.json \
+		--slurpfile user dist/schemas/pocketiduser_v1alpha1.json \
+		'.properties.instance.properties.spec = $$instance[0].properties.spec | .properties.users.items.properties.spec = $$user[0].properties.spec' \
+		dist/chart/values.schema.skeleton.json > dist/chart/values.schema.json
+	@curl -sfL https://datreeio.github.io/CRDs-catalog/helm.toolkit.fluxcd.io/helmrelease_v2.json -o /tmp/helmrelease_v2.json
+	@jq --slurpfile values dist/chart/values.schema.json \
+		'.properties.spec.properties.values = $$values[0]' \
+		/tmp/helmrelease_v2.json > dist/schemas/helmrelease_v2_pocket-id-operator.json
+
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	"$(CONTROLLER_GEN)" object:headerFile="hack/boilerplate.go.txt" paths="./..."
