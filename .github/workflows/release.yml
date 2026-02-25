@@ -158,3 +158,5 @@ jobs:
           body_path: /tmp/release_notes.md
           files: |
             dist/install.yaml
+            dist/schemas/*.json
+            dist/chart/values.schema.json
