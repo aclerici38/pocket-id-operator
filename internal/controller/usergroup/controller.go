@@ -251,65 +251,7 @@ func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketid
 		}
 	}
 
-	// Aggregate allowed OIDC clients from both directions and push
-	clientIDs, err := r.aggregateAllowedOIDCClientIDs(ctx, userGroup)
-	if err != nil {
-		return fmt.Errorf("aggregate allowed OIDC clients: %w", err)
-	}
-	if clientIDs != nil {
-		if err := apiClient.UpdateUserGroupAllowedOIDCClients(ctx, userGroup.Status.GroupID, clientIDs); err != nil {
-			return err
-		}
-	}
-
 	return nil
-}
-
-// aggregateAllowedOIDCClientIDs returns the union of:
-// Direct refs from spec.allowedOIDCClients
-// OIDCClients whose spec.allowedUserGroups references this group
-// Returns nil if neither source contributes.
-func (r *Reconciler) aggregateAllowedOIDCClientIDs(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup) ([]string, error) {
-	// Find OIDCClients whose spec.allowedUserGroups references this group
-	groupKey := fmt.Sprintf("%s/%s", userGroup.Namespace, userGroup.Name)
-	oidcClients := &pocketidinternalv1alpha1.PocketIDOIDCClientList{}
-	if err := r.List(ctx, oidcClients, client.MatchingFields{
-		common.OIDCClientAllowedGroupIndexKey: groupKey,
-	}); err != nil {
-		return nil, fmt.Errorf("list OIDC clients referencing user group: %w", err)
-	}
-
-	hasDirectRefs := len(userGroup.Spec.AllowedOIDCClients) > 0
-	hasReverseRefs := len(oidcClients.Items) > 0
-
-	if !hasDirectRefs && !hasReverseRefs {
-		return nil, nil
-	}
-
-	clientIDSet := make(map[string]struct{})
-
-	if hasDirectRefs {
-		directIDs, err := helpers.ResolveOIDCClientReferences(ctx, r.Client, userGroup.Spec.AllowedOIDCClients, userGroup.Namespace)
-		if err != nil {
-			return nil, fmt.Errorf("resolve allowed OIDC clients: %w", err)
-		}
-		for _, id := range directIDs {
-			clientIDSet[id] = struct{}{}
-		}
-	}
-
-	// Reverse: extract status.ClientID from ready OIDCClients that reference this group
-	for _, oc := range oidcClients.Items {
-		if helpers.IsResourceReady(oc.Status.Conditions) && oc.Status.ClientID != "" {
-			clientIDSet[oc.Status.ClientID] = struct{}{}
-		}
-	}
-
-	clientIDs := make([]string, 0, len(clientIDSet))
-	for id := range clientIDSet {
-		clientIDs = append(clientIDs, id)
-	}
-	return clientIDs, nil
 }
 
 // setGroupID persists only the group ID to status.
