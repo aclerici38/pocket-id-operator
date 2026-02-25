@@ -111,7 +111,7 @@ jobs:
       chart_version: ${{ needs.validate.outputs.helm_version }}
       app_version: ${{ needs.validate.outputs.version }}
       repo_owner: ${{ needs.validate.outputs.repo_owner }}
-      primary_tag: ${{ needs.validate.outputs.version }}
+      primary_tag: ${{ needs.validate.outputs.helm_version }}
     secrets: inherit
 
   create-release:
