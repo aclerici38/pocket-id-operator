@@ -182,14 +182,21 @@
         },
         "databaseUrl": {
           "description": "URL to access database at\nSee the official documentation for DB_CONNECTION_STRING\nFor sqlite only add the filepath e.g. \"/app/data/pocket-id.db\"\nUses application default (/app/data/pocket-id.db) if empty",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object"
+            }
+          ],
           "properties": {
             "value": {
-              "description": "Plain text value 16 byte minimum",
-              "minLength": 16,
+              "description": "Plain text value",
               "type": "string"
             },
             "valueFrom": {
-              "description": "Source for the environment variable's value",
+              "description": "Source for the value (e.g. secretKeyRef, configMapKeyRef)",
               "properties": {
                 "configMapKeyRef": {
                   "description": "Selects a key of a ConfigMap.",
@@ -325,7 +332,6 @@
               "additionalProperties": false
             }
           },
-          "type": "object",
           "additionalProperties": false
         },
         "deploymentType": {
@@ -371,14 +377,21 @@
         },
         "encryptionKey": {
           "description": "Encryption Key\nRequired since Pocket-ID v2\nSee the official documentation for ENCRYPTION_KEY environment variable",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object"
+            }
+          ],
           "properties": {
             "value": {
-              "description": "Plain text value 16 byte minimum",
-              "minLength": 16,
+              "description": "Plain text value",
               "type": "string"
             },
             "valueFrom": {
-              "description": "Source for the environment variable's value",
+              "description": "Source for the value (e.g. secretKeyRef, configMapKeyRef)",
               "properties": {
                 "configMapKeyRef": {
                   "description": "Selects a key of a ConfigMap.",
@@ -514,7 +527,12 @@
               "additionalProperties": false
             }
           },
-          "type": "object",
+          "x-kubernetes-validations": [
+            {
+              "message": "encryption key must be at least 16 characters",
+              "rule": "!has(self.value) || size(self.value) >= 16"
+            }
+          ],
           "additionalProperties": false
         },
         "env": {
@@ -693,6 +711,14 @@
             },
             "dbUrl": {
               "description": "Custom URL to download the GeoLite2 database from\nMay contain credentials so supports secretKeyRef",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object"
+                }
+              ],
               "properties": {
                 "value": {
                   "description": "Plain text value",
@@ -835,11 +861,18 @@
                   "additionalProperties": false
                 }
               },
-              "type": "object",
               "additionalProperties": false
             },
             "maxmindLicenseKey": {
               "description": "MaxMind license key for downloading GeoLite2 database",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object"
+                }
+              ],
               "properties": {
                 "value": {
                   "description": "Plain text value",
@@ -982,7 +1015,6 @@
                   "additionalProperties": false
                 }
               },
-              "type": "object",
               "additionalProperties": false
             }
           },
@@ -1070,6 +1102,14 @@
             },
             "bindPassword": {
               "description": "LDAP bind password",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object"
+                }
+              ],
               "properties": {
                 "value": {
                   "description": "Plain text value",
@@ -1212,7 +1252,6 @@
                   "additionalProperties": false
                 }
               },
-              "type": "object",
               "additionalProperties": false
             },
             "skipCertVerify": {
@@ -1974,6 +2013,14 @@
           "properties": {
             "accessKeyId": {
               "description": "S3 access key ID",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object"
+                }
+              ],
               "properties": {
                 "value": {
                   "description": "Plain text value",
@@ -2116,7 +2163,6 @@
                   "additionalProperties": false
                 }
               },
-              "type": "object",
               "additionalProperties": false
             },
             "bucket": {
@@ -2125,6 +2171,14 @@
             },
             "endpoint": {
               "description": "S3 endpoint URL (for MinIO, Ceph, or other S3-compatible stores)",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object"
+                }
+              ],
               "properties": {
                 "value": {
                   "description": "Plain text value",
@@ -2267,7 +2321,6 @@
                   "additionalProperties": false
                 }
               },
-              "type": "object",
               "additionalProperties": false
             },
             "forcePathStyle": {
@@ -2277,6 +2330,14 @@
             },
             "region": {
               "description": "S3 region",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object"
+                }
+              ],
               "properties": {
                 "value": {
                   "description": "Plain text value",
@@ -2419,11 +2480,18 @@
                   "additionalProperties": false
                 }
               },
-              "type": "object",
               "additionalProperties": false
             },
             "secretAccessKey": {
               "description": "S3 secret access key",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object"
+                }
+              ],
               "properties": {
                 "value": {
                   "description": "Plain text value",
@@ -2566,7 +2634,6 @@
                   "additionalProperties": false
                 }
               },
-              "type": "object",
               "additionalProperties": false
             }
           },
@@ -2592,6 +2659,14 @@
             },
             "password": {
               "description": "SMTP authentication password",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object"
+                }
+              ],
               "properties": {
                 "value": {
                   "description": "Plain text value",
@@ -2734,7 +2809,6 @@
                   "additionalProperties": false
                 }
               },
-              "type": "object",
               "additionalProperties": false
             },
             "port": {

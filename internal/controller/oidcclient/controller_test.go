@@ -252,7 +252,7 @@ func TestReconcileSecret_DeleteWhenDisabled(t *testing.T) {
 		},
 		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 			AppURL:        "http://test.example.com",
-			EncryptionKey: pocketidinternalv1alpha1.EnvValue{Value: "0123456789abcdef"},
+			EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{Value: "0123456789abcdef"},
 		},
 	}
 
@@ -304,7 +304,7 @@ func TestReconcileSecret_NoErrorWhenDisablingNonExistent(t *testing.T) {
 		},
 		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 			AppURL:        "http://test.example.com",
-			EncryptionKey: pocketidinternalv1alpha1.EnvValue{Value: "0123456789abcdef"},
+			EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{Value: "0123456789abcdef"},
 		},
 	}
 
@@ -352,7 +352,7 @@ func TestReconcileSecret_CreateForPublicClient(t *testing.T) {
 		},
 		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 			AppURL:        "http://test.example.com",
-			EncryptionKey: pocketidinternalv1alpha1.EnvValue{Value: "0123456789abcdef"},
+			EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{Value: "0123456789abcdef"},
 		},
 	}
 
@@ -619,7 +619,7 @@ func TestReconcileDelete_KeepFinalizerWhenAPIClientNotReady(t *testing.T) {
 			Namespace: testNamespace,
 		},
 		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-			EncryptionKey: pocketidinternalv1alpha1.EnvValue{Value: "0123456789abcdef"},
+			EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{Value: "0123456789abcdef"},
 		},
 	}
 

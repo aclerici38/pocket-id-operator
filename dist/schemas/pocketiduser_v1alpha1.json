@@ -80,6 +80,14 @@
         },
         "displayName": {
           "description": "DisplayName of the user\nDefaults to \"spec.FirstName spec.LastName\"",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object"
+            }
+          ],
           "properties": {
             "value": {
               "description": "Plain text value",
@@ -115,6 +123,14 @@
         },
         "email": {
           "description": "Email of the user\nCan be a plain value or reference a secret\nRequired unless email is disabled in pocket-id",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object"
+            }
+          ],
           "properties": {
             "value": {
               "description": "Plain text value",
@@ -150,6 +166,14 @@
         },
         "firstName": {
           "description": "First name of the user\nCan be a plain value or reference a secret\nDefaults to metadata.name of the Resource",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object"
+            }
+          ],
           "properties": {
             "value": {
               "description": "Plain text value",
@@ -232,6 +256,14 @@
         },
         "lastName": {
           "description": "Last name of the user\nCan be a plain value or reference a secret",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object"
+            }
+          ],
           "properties": {
             "value": {
               "description": "Plain text value",
@@ -284,6 +316,14 @@
         },
         "username": {
           "description": "Username of the user. Defaults to the metadata.name\nCan be a plain value or reference a secret",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object"
+            }
+          ],
           "properties": {
             "value": {
               "description": "Plain text value",

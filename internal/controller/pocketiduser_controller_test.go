@@ -284,7 +284,7 @@ var _ = Describe("PocketIDUser Controller", func() {
 					},
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					EncryptionKey: pocketidinternalv1alpha1.EnvValue{Value: "test-encryption-key-1234"},
+					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{Value: "test-encryption-key-1234"},
 				},
 			}
 			instanceB = &pocketidinternalv1alpha1.PocketIDInstance{
@@ -296,7 +296,7 @@ var _ = Describe("PocketIDUser Controller", func() {
 					},
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					EncryptionKey: pocketidinternalv1alpha1.EnvValue{Value: "test-encryption-key-5678"},
+					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{Value: "test-encryption-key-5678"},
 				},
 			}
 

@@ -112,7 +112,7 @@ var _ = Describe("PocketIDUserGroup Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					EncryptionKey: pocketidinternalv1alpha1.EnvValue{Value: "0123456789abcdef"},
+					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{Value: "0123456789abcdef"},
 				},
 			}
 			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
@@ -172,7 +172,7 @@ var _ = Describe("PocketIDUserGroup Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					EncryptionKey: pocketidinternalv1alpha1.EnvValue{Value: "0123456789abcdef"},
+					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{Value: "0123456789abcdef"},
 				},
 			}
 			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
@@ -182,7 +182,7 @@ var _ = Describe("PocketIDUserGroup Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					EncryptionKey: pocketidinternalv1alpha1.EnvValue{Value: "fedcba9876543210"},
+					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{Value: "fedcba9876543210"},
 				},
 			}
 			Expect(k8sClient.Create(ctx, instance)).To(Succeed())

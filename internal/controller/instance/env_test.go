@@ -60,7 +60,7 @@ func minimalInstance() *pocketidinternalv1alpha1.PocketIDInstance {
 	inst := &pocketidinternalv1alpha1.PocketIDInstance{}
 	inst.Name = "test-instance"
 	inst.Namespace = "default"
-	inst.Spec.EncryptionKey = pocketidinternalv1alpha1.EnvValue{Value: "test-encryption-key-32chars!!!!!"}
+	inst.Spec.EncryptionKey = pocketidinternalv1alpha1.SensitiveValue{Value: "test-encryption-key-32chars!!!!!"}
 	return inst
 }
 
@@ -80,7 +80,7 @@ func TestBuildEnvVars_CoreAlwaysSet(t *testing.T) {
 
 func TestBuildEnvVars_DatabaseUrl(t *testing.T) {
 	inst := minimalInstance()
-	inst.Spec.DatabaseUrl = &pocketidinternalv1alpha1.EnvValue{Value: "postgres://localhost/pocket-id"}
+	inst.Spec.DatabaseUrl = &pocketidinternalv1alpha1.SensitiveValue{Value: "postgres://localhost/pocket-id"}
 
 	env := buildEnvVars(inst)
 	requireEnv(t, env, "DB_CONNECTION_STRING", "postgres://localhost/pocket-id")
@@ -88,7 +88,7 @@ func TestBuildEnvVars_DatabaseUrl(t *testing.T) {
 
 func TestBuildEnvVars_DatabaseUrlFromSecret(t *testing.T) {
 	inst := minimalInstance()
-	inst.Spec.DatabaseUrl = &pocketidinternalv1alpha1.EnvValue{
+	inst.Spec.DatabaseUrl = &pocketidinternalv1alpha1.SensitiveValue{
 		ValueFrom: &corev1.EnvVarSource{
 			SecretKeyRef: &corev1.SecretKeySelector{
 				LocalObjectReference: corev1.LocalObjectReference{Name: "db-secret"},
@@ -208,6 +208,20 @@ func TestBuildEnvVars_S3RegionFromSecret(t *testing.T) {
 	requireEnvFromSecret(t, env, "S3_ENDPOINT", "s3-creds", "endpoint")
 }
 
+func TestBuildEnvVars_S3EndpointAbsentWhenNil(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.S3 = &pocketidinternalv1alpha1.S3Config{
+		Bucket:          "my-bucket",
+		Region:          pocketidinternalv1alpha1.SensitiveValue{Value: "us-east-1"},
+		AccessKeyID:     pocketidinternalv1alpha1.SensitiveValue{Value: "key"},
+		SecretAccessKey: pocketidinternalv1alpha1.SensitiveValue{Value: "secret"},
+	}
+
+	env := buildEnvVars(inst)
+	requireEnv(t, env, "S3_REGION", "us-east-1")
+	requireEnvAbsent(t, env, "S3_ENDPOINT")
+}
+
 func TestBuildEnvVars_S3Absent(t *testing.T) {
 	inst := minimalInstance()
 	env := buildEnvVars(inst)
@@ -238,6 +252,26 @@ func TestBuildEnvVars_SMTP(t *testing.T) {
 	requireEnv(t, env, "SMTP_PASSWORD", "smtp-pass")
 	requireEnv(t, env, "SMTP_TLS", "starttls")
 	requireEnv(t, env, "SMTP_SKIP_CERT_VERIFY", "true")
+}
+
+func TestBuildEnvVars_SMTPPasswordFromSecret(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.SMTP = &pocketidinternalv1alpha1.SMTPConfig{
+		Host: "smtp.example.com",
+		Port: 587,
+		From: "noreply@example.com",
+		Password: &pocketidinternalv1alpha1.SensitiveValue{
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: "smtp-creds"},
+					Key:                  "password",
+				},
+			},
+		},
+	}
+
+	env := buildEnvVars(inst)
+	requireEnvFromSecret(t, env, "SMTP_PASSWORD", "smtp-creds", "password")
 }
 
 func TestBuildEnvVars_SMTPMinimal(t *testing.T) {
@@ -330,6 +364,19 @@ func TestBuildEnvVars_LDAP(t *testing.T) {
 	requireEnv(t, env, "LDAP_ATTRIBUTE_USER_LAST_NAME", "sn")
 	requireEnv(t, env, "LDAP_ATTRIBUTE_GROUP_MEMBER", "member")
 	requireEnv(t, env, "LDAP_ATTRIBUTE_GROUP_NAME", "cn")
+}
+
+func TestBuildEnvVars_LDAPBindPasswordPlainValue(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.LDAP = &pocketidinternalv1alpha1.LDAPConfig{
+		URL:          "ldaps://ldap.example.com",
+		BindDN:       "cn=admin,dc=example,dc=com",
+		BindPassword: pocketidinternalv1alpha1.SensitiveValue{Value: "my-ldap-password"},
+		Base:         "dc=example,dc=com",
+	}
+
+	env := buildEnvVars(inst)
+	requireEnv(t, env, "LDAP_BIND_PASSWORD", "my-ldap-password")
 }
 
 func TestBuildEnvVars_Logging(t *testing.T) {
@@ -438,6 +485,32 @@ func TestBuildEnvVars_GeoIP(t *testing.T) {
 	requireEnv(t, env, "MAXMIND_LICENSE_KEY", "my-key")
 	requireEnv(t, env, "GEOLITE_DB_PATH", "/data/GeoLite2.mmdb")
 	requireEnv(t, env, "GEOLITE_DB_URL", "https://custom.example.com/db")
+}
+
+func TestBuildEnvVars_GeoIPFromSecret(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.GeoIP = &pocketidinternalv1alpha1.GeoIPConfig{
+		MaxmindLicenseKey: &pocketidinternalv1alpha1.SensitiveValue{
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: "geoip-creds"},
+					Key:                  "license-key",
+				},
+			},
+		},
+		DBURL: &pocketidinternalv1alpha1.SensitiveValue{
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: "geoip-creds"},
+					Key:                  "db-url",
+				},
+			},
+		},
+	}
+
+	env := buildEnvVars(inst)
+	requireEnvFromSecret(t, env, "MAXMIND_LICENSE_KEY", "geoip-creds", "license-key")
+	requireEnvFromSecret(t, env, "GEOLITE_DB_URL", "geoip-creds", "db-url")
 }
 
 func TestBuildEnvVars_StandaloneSettings(t *testing.T) {

@@ -26,20 +26,27 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// Environment variable value that can be either a plain value or from a Kubernetes resource
-type EnvValue struct {
-	// Plain text value 16 byte minimum
-	// +optional
-	// +kubebuilder:validation:MinLength=16
-	Value string `json:"value,omitempty"`
-
-	// Source for the environment variable's value
-	// +optional
-	ValueFrom *corev1.EnvVarSource `json:"valueFrom,omitempty"`
-}
-
-// SensitiveValue holds a value that can be provided as plain text or from a Kubernetes secret/configmap.
-// Unlike EnvValue, this has no minimum length constraint.
+// SensitiveValue holds a value that can be provided as a plain inline string,
+// an object with a "value" field, or an object with a "valueFrom" field
+// referencing a Kubernetes secret/configmap.
+//
+// Examples:
+//
+//	# Inline string
+//	region: us-east-1
+//
+//	# Explicit value
+//	region:
+//	  value: us-east-1
+//
+//	# From a secret
+//	region:
+//	  valueFrom:
+//	    secretKeyRef:
+//	      name: my-secret
+//	      key: region
+//
+// +kubebuilder:validation:Type=""
 type SensitiveValue struct {
 	// Plain text value
 	// +optional
@@ -401,14 +408,15 @@ type PocketIDInstanceSpec struct {
 	// Required since Pocket-ID v2
 	// See the official documentation for ENCRYPTION_KEY environment variable
 	// +kubebuilder:validation:Required
-	EncryptionKey EnvValue `json:"encryptionKey"`
+	// +kubebuilder:validation:XValidation:rule="!has(self.value) || size(self.value) >= 16",message="encryption key must be at least 16 characters"
+	EncryptionKey SensitiveValue `json:"encryptionKey"`
 
 	// URL to access database at
 	// See the official documentation for DB_CONNECTION_STRING
 	// For sqlite only add the filepath e.g. "/app/data/pocket-id.db"
 	// Uses application default (/app/data/pocket-id.db) if empty
 	// +optional
-	DatabaseUrl *EnvValue `json:"databaseUrl,omitempty"`
+	DatabaseUrl *SensitiveValue `json:"databaseUrl,omitempty"`
 
 	// External URL Pocket-id can be reached at
 	// See the official documentation for APP_URL

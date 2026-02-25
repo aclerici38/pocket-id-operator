@@ -102,6 +102,9 @@ spec:
                 description: |-
                   DisplayName of the user
                   Defaults to "spec.FirstName spec.LastName"
+                oneOf:
+                - type: string
+                - type: object
                 properties:
                   value:
                     description: Plain text value
@@ -136,6 +139,9 @@ spec:
                   Email of the user
                   Can be a plain value or reference a secret
                   Required unless email is disabled in pocket-id
+                oneOf:
+                - type: string
+                - type: object
                 properties:
                   value:
                     description: Plain text value
@@ -170,6 +176,9 @@ spec:
                   First name of the user
                   Can be a plain value or reference a secret
                   Defaults to metadata.name of the Resource
+                oneOf:
+                - type: string
+                - type: object
                 properties:
                   value:
                     description: Plain text value
@@ -251,6 +260,9 @@ spec:
                 description: |-
                   Last name of the user
                   Can be a plain value or reference a secret
+                oneOf:
+                - type: string
+                - type: object
                 properties:
                   value:
                     description: Plain text value
@@ -305,6 +317,9 @@ spec:
                 description: |-
                   Username of the user. Defaults to the metadata.name
                   Can be a plain value or reference a secret
+                oneOf:
+                - type: string
+                - type: object
                 properties:
                   value:
                     description: Plain text value

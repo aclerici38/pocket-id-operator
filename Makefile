@@ -44,6 +44,7 @@ help: ## Display this help.
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	"$(CONTROLLER_GEN)" rbac:roleName=pocket-id-operator-manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	@go run hack/patch-sensitive-value-schema.go config/crd/bases/*.yaml
 	@rm -rf dist/chart/crds
 	@mkdir -p dist/chart/crds
 	@cp config/crd/bases/*.yaml dist/chart/crds/

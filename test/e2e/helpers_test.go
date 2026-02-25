@@ -25,6 +25,24 @@ const (
 
 // --- YAML Builders ---
 
+// S3Options configures the s3 block of a PocketIDInstance.
+type S3Options struct {
+	Bucket string
+	// Region can be an inline string or a SecretKeyRef
+	Region          string
+	RegionSecretRef *SecretKeyRef
+	// Endpoint can be an inline string or a SecretKeyRef
+	Endpoint          string
+	EndpointSecretRef *SecretKeyRef
+	// AccessKeyID can be an inline string or a SecretKeyRef
+	AccessKeyID          string
+	AccessKeyIDSecretRef *SecretKeyRef
+	// SecretAccessKey can be an inline string or a SecretKeyRef
+	SecretAccessKey          string
+	SecretAccessKeySecretRef *SecretKeyRef
+	ForcePathStyle           bool
+}
+
 // InstanceOptions configures a PocketIDInstance YAML.
 type InstanceOptions struct {
 	Name               string
@@ -34,6 +52,7 @@ type InstanceOptions struct {
 	PersistenceEnabled *bool
 	PersistenceSize    string
 	ExistingClaim      string
+	S3                 *S3Options
 }
 
 const defaultPocketIDImage = "ghcr.io/pocket-id/pocket-id:v2.3.0-distroless@sha256:85a7485108325e34679b0fbca0baeb8418401f6d6cf59944d50f3ec013aafd09"
@@ -80,6 +99,21 @@ func buildInstanceYAML(opts InstanceOptions) string {
 		}
 	}
 
+	var s3Config string
+	if opts.S3 != nil {
+		s3Config = "  s3:\n"
+		s3Config += fmt.Sprintf("    bucket: %s\n", opts.S3.Bucket)
+		s3Config += buildSensitiveValueYAML("    ", "region", opts.S3.Region, opts.S3.RegionSecretRef)
+		if opts.S3.Endpoint != "" || opts.S3.EndpointSecretRef != nil {
+			s3Config += buildSensitiveValueYAML("    ", "endpoint", opts.S3.Endpoint, opts.S3.EndpointSecretRef)
+		}
+		s3Config += buildSensitiveValueYAML("    ", "accessKeyId", opts.S3.AccessKeyID, opts.S3.AccessKeyIDSecretRef)
+		s3Config += buildSensitiveValueYAML("    ", "secretAccessKey", opts.S3.SecretAccessKey, opts.S3.SecretAccessKeySecretRef)
+		if opts.S3.ForcePathStyle {
+			s3Config += "    forcePathStyle: true\n"
+		}
+	}
+
 	return fmt.Sprintf(`apiVersion: pocketid.internal/v1alpha1
 kind: PocketIDInstance
 metadata:
@@ -93,7 +127,7 @@ metadata:
         name: pocket-id-encryption
         key: key
   appUrl: "http://%s.%s.svc.cluster.local:1411"
-%s`, opts.Name, opts.Namespace, labels, opts.Image, opts.Name, opts.Namespace, persistence)
+%s%s`, opts.Name, opts.Namespace, labels, opts.Image, opts.Name, opts.Namespace, persistence, s3Config)
 }
 
 // UserOptions configures a PocketIDUser YAML.
@@ -432,6 +466,17 @@ metadata:
   namespace: %s
 spec:
 %s`, opts.Name, opts.Namespace, spec.String())
+}
+
+// buildSensitiveValueYAML emits YAML for a SensitiveValue field.
+// If secretRef is non-nil, emits a valueFrom/secretKeyRef block.
+// Otherwise emits the value as an inline string.
+func buildSensitiveValueYAML(indent, fieldName, plainValue string, secretRef *SecretKeyRef) string {
+	if secretRef != nil {
+		return fmt.Sprintf("%s%s:\n%s  valueFrom:\n%s    secretKeyRef:\n%s      name: %s\n%s      key: %s\n",
+			indent, fieldName, indent, indent, indent, secretRef.Name, indent, secretRef.Key)
+	}
+	return fmt.Sprintf("%s%s: %s\n", indent, fieldName, plainValue)
 }
 
 // --- kubectl Helpers ---
