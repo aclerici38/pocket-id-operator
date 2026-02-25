@@ -44,8 +44,11 @@ jobs:
           path: bin
           key: tools-${{ runner.os }}-go-${{ hashFiles('go.mod') }}-controller-gen-${{ env.CONTROLLER_TOOLS_VERSION }}-kustomize-${{ env.KUSTOMIZE_VERSION }}
 
+      - name: Setup uv
+        uses: astral-sh/setup-uv@eac588ad8def6316056a12d4907a9d4d84ff7a3b # v7.3.0
+
       - name: Regenerate manifests
-        run: make manifests generate fmt build-installer
+        run: make manifests generate fmt build-installer generate-schemas
 
       - name: Commit changes
         run: |

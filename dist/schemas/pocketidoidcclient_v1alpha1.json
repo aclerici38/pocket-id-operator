@@ -1,0 +1,390 @@
+{
+  "description": "PocketIDOIDCClient is the Schema for the pocketidoidcclients API",
+  "properties": {
+    "apiVersion": {
+      "description": "APIVersion defines the versioned schema of this representation of an object.\nServers should convert recognized schemas to the latest internal value, and\nmay reject unrecognized values.\nMore info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+      "type": "string"
+    },
+    "kind": {
+      "description": "Kind is a string value representing the REST resource this object represents.\nServers may infer this from the endpoint the client submits requests to.\nCannot be updated.\nIn CamelCase.\nMore info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object"
+    },
+    "spec": {
+      "description": "spec defines the desired state of PocketIDOIDCClient",
+      "properties": {
+        "allowedUserGroups": {
+          "description": "AllowedUserGroups restricts access to the listed PocketIDUserGroups",
+          "items": {
+            "description": "NamespacedUserGroupReference references a PocketIDUserGroup by name and namespace.",
+            "properties": {
+              "name": {
+                "description": "Name is the name of the PocketIDUserGroup CR",
+                "type": "string"
+              },
+              "namespace": {
+                "description": "Namespace is the namespace of the PocketIDUserGroup CR\nDefaults to the PocketIDOIDCClient namespace",
+                "type": "string"
+              }
+            },
+            "type": "object",
+            "additionalProperties": false
+          },
+          "type": "array"
+        },
+        "callbackUrls": {
+          "description": "Callback URLs for the client\nNote: a feature of pocket-id is to autosave the callback URL based on the url params passed by the client.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "clientID": {
+          "description": "ClientID is the optional OIDC client ID to use instead of a generated one\nThe Client ID is immutable and cannot be changed once the oidc client is created",
+          "maxLength": 128,
+          "minLength": 2,
+          "type": "string"
+        },
+        "darkLogoUrl": {
+          "description": "Dark logo URL for the client",
+          "type": "string"
+        },
+        "federatedIdentities": {
+          "description": "FederatedIdentities configures JWT assertion identities",
+          "items": {
+            "description": "OIDCClientFederatedIdentity defines a federated identity for OIDC client credentials.",
+            "properties": {
+              "audience": {
+                "description": "Audience is the audience for the identity",
+                "type": "string"
+              },
+              "issuer": {
+                "description": "Issuer is the OIDC issuer for the identity",
+                "type": "string"
+              },
+              "jwks": {
+                "description": "JWKS is the URL or JSON for the identity's JWKS",
+                "type": "string"
+              },
+              "subject": {
+                "description": "Subject is the subject for the identity",
+                "type": "string"
+              }
+            },
+            "type": "object",
+            "additionalProperties": false
+          },
+          "type": "array"
+        },
+        "instanceSelector": {
+          "description": "InstanceSelector selects the PocketIDInstance to reconcile against.\nIf omitted, the controller expects exactly one instance in the cluster.",
+          "properties": {
+            "matchExpressions": {
+              "description": "matchExpressions is a list of label selector requirements. The requirements are ANDed.",
+              "items": {
+                "description": "A label selector requirement is a selector that contains values, a key, and an operator that\nrelates the key and values.",
+                "properties": {
+                  "key": {
+                    "description": "key is the label key that the selector applies to.",
+                    "type": "string"
+                  },
+                  "operator": {
+                    "description": "operator represents a key's relationship to a set of values.\nValid operators are In, NotIn, Exists and DoesNotExist.",
+                    "type": "string"
+                  },
+                  "values": {
+                    "description": "values is an array of string values. If the operator is In or NotIn,\nthe values array must be non-empty. If the operator is Exists or DoesNotExist,\nthe values array must be empty. This array is replaced during a strategic\nmerge patch.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array",
+                    "x-kubernetes-list-type": "atomic"
+                  }
+                },
+                "required": [
+                  "key",
+                  "operator"
+                ],
+                "type": "object",
+                "additionalProperties": false
+              },
+              "type": "array",
+              "x-kubernetes-list-type": "atomic"
+            },
+            "matchLabels": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels\nmap is equivalent to an element of matchExpressions, whose key field is \"key\", the\noperator is \"In\", and the values array contains only \"value\". The requirements are ANDed.",
+              "type": "object"
+            }
+          },
+          "type": "object",
+          "x-kubernetes-map-type": "atomic",
+          "additionalProperties": false
+        },
+        "isPublic": {
+          "default": false,
+          "description": "Indicates if the client is public (no client secret)",
+          "type": "boolean"
+        },
+        "launchUrl": {
+          "description": "Launch URL for the client",
+          "type": "string"
+        },
+        "logoUrl": {
+          "description": "Logo URL for the client",
+          "type": "string"
+        },
+        "logoutCallbackUrls": {
+          "description": "Logout callback URLs for the client",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "pkceEnabled": {
+          "default": false,
+          "description": "Enables PKCE for the client",
+          "type": "boolean"
+        },
+        "requiresReauthentication": {
+          "default": false,
+          "description": "Requires reauthentication on login",
+          "type": "boolean"
+        },
+        "scim": {
+          "description": "SCIM configures SCIM provisioning for this OIDC client.\nPocket ID will push user/group changes to the configured endpoint.",
+          "properties": {
+            "endpoint": {
+              "description": "Endpoint is the URL of the external SCIM service provider.",
+              "type": "string"
+            },
+            "tokenSecretRef": {
+              "description": "TokenSecretRef references a Kubernetes Secret key containing the\nbearer token used to authenticate with the SCIM endpoint.\nIf omitted, no Authorization header is sent.",
+              "properties": {
+                "key": {
+                  "description": "The key of the secret to select from.  Must be a valid secret key.",
+                  "type": "string"
+                },
+                "name": {
+                  "default": "",
+                  "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
+                  "type": "string"
+                },
+                "optional": {
+                  "description": "Specify whether the Secret or its key must be defined",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "key"
+              ],
+              "type": "object",
+              "x-kubernetes-map-type": "atomic",
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "endpoint"
+          ],
+          "type": "object",
+          "additionalProperties": false
+        },
+        "secret": {
+          "description": "Secret defines how OIDC client credentials should be stored in a Kubernetes Secret.",
+          "properties": {
+            "enabled": {
+              "default": true,
+              "description": "Enabled controls whether to create a secret with OIDC client credentials.\nIf false, no secret will be created. Defaults to true",
+              "type": "boolean"
+            },
+            "keys": {
+              "description": "Keys allows customization of the secret keys for each credential field.",
+              "properties": {
+                "authorizationUrl": {
+                  "default": "authorization_url",
+                  "description": "AuthorizationURL is the key name for the OIDC authorization endpoint URL.\nDefaults to authorization_url",
+                  "type": "string"
+                },
+                "callbackUrls": {
+                  "default": "callback_urls",
+                  "description": "CallbackURLs is the key name for the callback URLs.\nDefaults to callback_urls",
+                  "type": "string"
+                },
+                "clientID": {
+                  "default": "client_id",
+                  "description": "ClientID is the key name for the OIDC client ID.\nDefaults to client_id",
+                  "type": "string"
+                },
+                "clientSecret": {
+                  "default": "client_secret",
+                  "description": "ClientSecret is the key name for the OIDC client secret.\nDefaults to client_secret",
+                  "type": "string"
+                },
+                "discoveryUrl": {
+                  "default": "discovery_url",
+                  "description": "DiscoveryURL is the key name for the OIDC discovery URL.\nDefaults to discovery_url",
+                  "type": "string"
+                },
+                "endSessionUrl": {
+                  "default": "end_session_url",
+                  "description": "EndSessionURL is the key name for the OIDC end session (logout) endpoint URL.\nDefaults to end_session_url",
+                  "type": "string"
+                },
+                "issuerUrl": {
+                  "default": "issuer_url",
+                  "description": "IssuerURL is the key name for the OIDC issuer URL.\nDefaults to issuer_url",
+                  "type": "string"
+                },
+                "jwksUrl": {
+                  "default": "jwks_url",
+                  "description": "JwksURL is the key name for the OIDC JWKS (JSON Web Key Set) endpoint URL.\nDefaults to jwks_url",
+                  "type": "string"
+                },
+                "logoutCallbackUrls": {
+                  "default": "logout_callback_urls",
+                  "description": "LogoutCallbackURLs is the key name for the logout callback URLs.\nDefaults to logout_callback_urls",
+                  "type": "string"
+                },
+                "tokenUrl": {
+                  "default": "token_url",
+                  "description": "TokenURL is the key name for the OIDC token endpoint URL.\nDefaults to token_url",
+                  "type": "string"
+                },
+                "userinfoUrl": {
+                  "default": "userinfo_url",
+                  "description": "UserinfoURL is the key name for the OIDC userinfo endpoint URL.\nDefaults to userinfo_url",
+                  "type": "string"
+                }
+              },
+              "type": "object",
+              "additionalProperties": false
+            },
+            "name": {
+              "description": "Name is the name of the secret to create.\nDefaults to metadata.name + \"-oidc-credentials\"",
+              "type": "string"
+            }
+          },
+          "type": "object",
+          "additionalProperties": false
+        }
+      },
+      "type": "object",
+      "x-kubernetes-validations": [
+        {
+          "message": "clientID is immutable",
+          "rule": "has(self.clientID) == has(oldSelf.clientID) && (!has(self.clientID) || self.clientID == oldSelf.clientID)"
+        }
+      ],
+      "additionalProperties": false
+    },
+    "status": {
+      "description": "status defines the observed state of PocketIDOIDCClient",
+      "properties": {
+        "allowedUserGroupIDs": {
+          "description": "AllowedUserGroupIDs are the resolved group IDs assigned to the client",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "callbackUrls": {
+          "description": "CallbackURLs are the current callback URLs from Pocket-ID",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "clientID": {
+          "description": "ClientID is the ID assigned by Pocket-ID",
+          "type": "string"
+        },
+        "conditions": {
+          "description": "Conditions represent the current state of the PocketIDOIDCClient resource.",
+          "items": {
+            "description": "Condition contains details for one aspect of the current state of this API Resource.",
+            "properties": {
+              "lastTransitionTime": {
+                "description": "lastTransitionTime is the last time the condition transitioned from one status to another.\nThis should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.",
+                "format": "date-time",
+                "type": "string"
+              },
+              "message": {
+                "description": "message is a human readable message indicating details about the transition.\nThis may be an empty string.",
+                "maxLength": 32768,
+                "type": "string"
+              },
+              "observedGeneration": {
+                "description": "observedGeneration represents the .metadata.generation that the condition was set based upon.\nFor instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date\nwith respect to the current state of the instance.",
+                "format": "int64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "reason": {
+                "description": "reason contains a programmatic identifier indicating the reason for the condition's last transition.\nProducers of specific condition types may define expected values and meanings for this field,\nand whether the values are considered a guaranteed API.\nThe value should be a CamelCase string.\nThis field may not be empty.",
+                "maxLength": 1024,
+                "minLength": 1,
+                "pattern": "^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$",
+                "type": "string"
+              },
+              "status": {
+                "description": "status of the condition, one of True, False, Unknown.",
+                "enum": [
+                  "True",
+                  "False",
+                  "Unknown"
+                ],
+                "type": "string"
+              },
+              "type": {
+                "description": "type of condition in CamelCase or in foo.example.com/CamelCase.",
+                "maxLength": 316,
+                "pattern": "^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "lastTransitionTime",
+              "message",
+              "reason",
+              "status",
+              "type"
+            ],
+            "type": "object",
+            "additionalProperties": false
+          },
+          "type": "array",
+          "x-kubernetes-list-map-keys": [
+            "type"
+          ],
+          "x-kubernetes-list-type": "map"
+        },
+        "createdAt": {
+          "description": "CreatedAt is the creation timestamp from Pocket-ID",
+          "type": "string"
+        },
+        "logoutCallbackUrls": {
+          "description": "LogoutCallbackURLs are the current logout callback URLs from Pocket-ID",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "description": "Name is the resolved name from Pocket-ID",
+          "type": "string"
+        },
+        "scimProviderID": {
+          "description": "SCIMProviderID is the pocket-id ID of the SCIM service provider for this client, if configured.",
+          "type": "string"
+        }
+      },
+      "type": "object",
+      "additionalProperties": false
+    }
+  },
+  "type": "object"
+}

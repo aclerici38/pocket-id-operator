@@ -49,6 +49,14 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 	@cp config/crd/bases/*.yaml dist/chart/crds/
 	@cp config/rbac/role.yaml dist/chart/templates/rbac/manager-role.yaml
 
+.PHONY: generate-schemas
+generate-schemas: manifests ## Generate JSON schemas from CRDs for yaml-language-server support.
+	@command -v uvx >/dev/null 2>&1 || { echo "Error: uvx not found. Install uv: https://docs.astral.sh/uv/getting-started/installation/"; exit 1; }
+	@mkdir -p dist/schemas
+	@rm -f dist/schemas/*.json
+	@curl -sfL https://raw.githubusercontent.com/yannh/kubeconform/master/scripts/openapi2jsonschema.py -o /tmp/openapi2jsonschema.py
+	@cd dist/schemas && uvx --with pyyaml python /tmp/openapi2jsonschema.py $(CURDIR)/config/crd/bases/*.yaml
+
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	"$(CONTROLLER_GEN)" object:headerFile="hack/boilerplate.go.txt" paths="./..."
