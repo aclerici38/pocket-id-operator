@@ -276,4 +276,3 @@ func TestReconcileDelete_KeepFinalizerWhenAPIClientNotReady(t *testing.T) {
 		t.Error("expected UserGroupFinalizer to be kept")
 	}
 }
-
