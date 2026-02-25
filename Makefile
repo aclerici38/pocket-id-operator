@@ -60,6 +60,10 @@ generate-schemas: manifests ## Generate JSON schemas from CRDs for yaml-language
 		--slurpfile user dist/schemas/pocketiduser_v1alpha1.json \
 		'.properties.instance.properties.spec = $$instance[0].properties.spec | .properties.users.items.properties.spec = $$user[0].properties.spec' \
 		dist/chart/values.schema.skeleton.json > dist/chart/values.schema.json
+	@curl -sfL https://datreeio.github.io/CRDs-catalog/helm.toolkit.fluxcd.io/helmrelease_v2.json -o /tmp/helmrelease_v2.json
+	@jq --slurpfile values dist/chart/values.schema.json \
+		'.properties.spec.properties.values = $$values[0]' \
+		/tmp/helmrelease_v2.json > dist/schemas/helmrelease_v2_pocket-id-operator.json
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
