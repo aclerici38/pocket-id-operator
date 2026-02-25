@@ -119,10 +119,10 @@ func buildS3Env(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.En
 	env := []corev1.EnvVar{
 		{Name: "FILE_BACKEND", Value: "s3"},
 		{Name: "S3_BUCKET", Value: s3.Bucket},
-		{Name: "S3_REGION", Value: s3.Region},
 	}
-	if s3.Endpoint != "" {
-		env = append(env, corev1.EnvVar{Name: "S3_ENDPOINT", Value: s3.Endpoint})
+	env = append(env, sensitiveValueToEnvVar("S3_REGION", &s3.Region))
+	if s3.Endpoint != nil {
+		env = append(env, sensitiveValueToEnvVar("S3_ENDPOINT", s3.Endpoint))
 	}
 	env = append(env, sensitiveValueToEnvVar("S3_ACCESS_KEY_ID", &s3.AccessKeyID))
 	env = append(env, sensitiveValueToEnvVar("S3_SECRET_ACCESS_KEY", &s3.SecretAccessKey))

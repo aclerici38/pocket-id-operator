@@ -122,7 +122,7 @@ func TestBuildEnvVars_FileBackendIgnoredWhenS3Present(t *testing.T) {
 	inst.Spec.FileBackend = "s3"
 	inst.Spec.S3 = &pocketidinternalv1alpha1.S3Config{
 		Bucket:          "my-bucket",
-		Region:          "us-east-1",
+		Region:          pocketidinternalv1alpha1.SensitiveValue{Value: "us-east-1"},
 		AccessKeyID:     pocketidinternalv1alpha1.SensitiveValue{Value: "key"},
 		SecretAccessKey: pocketidinternalv1alpha1.SensitiveValue{Value: "secret"},
 	}
@@ -152,9 +152,11 @@ func TestBuildEnvVars_FileBackendAbsentByDefault(t *testing.T) {
 func TestBuildEnvVars_S3(t *testing.T) {
 	inst := minimalInstance()
 	inst.Spec.S3 = &pocketidinternalv1alpha1.S3Config{
-		Bucket:   "my-bucket",
-		Region:   "us-east-1",
-		Endpoint: "https://minio.example.com",
+		Bucket: "my-bucket",
+		Region: pocketidinternalv1alpha1.SensitiveValue{Value: "us-east-1"},
+		Endpoint: &pocketidinternalv1alpha1.SensitiveValue{
+			Value: "https://minio.example.com",
+		},
 		AccessKeyID: pocketidinternalv1alpha1.SensitiveValue{
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
@@ -175,6 +177,35 @@ func TestBuildEnvVars_S3(t *testing.T) {
 	requireEnvFromSecret(t, env, "S3_ACCESS_KEY_ID", "s3-creds", "access-key")
 	requireEnv(t, env, "S3_SECRET_ACCESS_KEY", "my-secret-key")
 	requireEnv(t, env, "S3_FORCE_PATH_STYLE", "true")
+}
+
+func TestBuildEnvVars_S3RegionFromSecret(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.S3 = &pocketidinternalv1alpha1.S3Config{
+		Bucket: "my-bucket",
+		Region: pocketidinternalv1alpha1.SensitiveValue{
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: "s3-creds"},
+					Key:                  "region",
+				},
+			},
+		},
+		Endpoint: &pocketidinternalv1alpha1.SensitiveValue{
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: "s3-creds"},
+					Key:                  "endpoint",
+				},
+			},
+		},
+		AccessKeyID:     pocketidinternalv1alpha1.SensitiveValue{Value: "key"},
+		SecretAccessKey: pocketidinternalv1alpha1.SensitiveValue{Value: "secret"},
+	}
+
+	env := buildEnvVars(inst)
+	requireEnvFromSecret(t, env, "S3_REGION", "s3-creds", "region")
+	requireEnvFromSecret(t, env, "S3_ENDPOINT", "s3-creds", "endpoint")
 }
 
 func TestBuildEnvVars_S3Absent(t *testing.T) {

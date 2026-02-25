@@ -59,11 +59,11 @@ type S3Config struct {
 
 	// S3 region
 	// +kubebuilder:validation:Required
-	Region string `json:"region"`
+	Region SensitiveValue `json:"region"`
 
 	// S3 endpoint URL (for MinIO, Ceph, or other S3-compatible stores)
 	// +optional
-	Endpoint string `json:"endpoint,omitempty"`
+	Endpoint *SensitiveValue `json:"endpoint,omitempty"`
 
 	// S3 access key ID
 	// +kubebuilder:validation:Required
