@@ -51,6 +51,7 @@ on:
 permissions:
   actions: write
   contents: read
+  id-token: write
   packages: write
 
 jobs:
@@ -79,9 +80,13 @@ jobs:
             --password "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Push chart (OCI)
+        id: push
         run: |
-          helm push dist/chart-packages/*.tgz \
-            oci://ghcr.io/${{ inputs.repo_owner }}/charts
+          PUSH_OUTPUT=$(helm push dist/chart-packages/*.tgz \
+            oci://ghcr.io/${{ inputs.repo_owner }}/charts 2>&1)
+          echo "$PUSH_OUTPUT"
+          DIGEST=$(echo "$PUSH_OUTPUT" | grep "Digest:" | awk '{print $2}')
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
       - name: Setup ORAS
         uses: oras-project/setup-oras@v1
@@ -106,3 +111,19 @@ jobs:
           oras tag \
             ghcr.io/${{ inputs.repo_owner }}/charts/${CHART_NAME}:${{ inputs.chart_version }} \
             "${{ inputs.additional_tag }}"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
+
+      - name: Sign chart
+        run: |
+          CHART_NAME=$(awk -F': ' '$1=="name"{print $2}' dist/chart/Chart.yaml | tr -d '"')
+          cosign sign --yes \
+            ghcr.io/${{ inputs.repo_owner }}/charts/${CHART_NAME}@${{ steps.push.outputs.digest }}
