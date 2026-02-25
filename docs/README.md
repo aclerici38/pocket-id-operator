@@ -25,7 +25,7 @@ Add to the top of any YAML file:
 **From a release (recommended):**
 To always fetch the latest schemas:
 ```
-https://github.com/aclerici38/pocket-id-operator/releases/download/latest/pocketidinstance_v1alpha1.json
+https://github.com/aclerici38/pocket-id-operator/releases/latest/download/pocketidinstance_v1alpha1.json
 ```
 To fetch for a specific tag:
 ```
