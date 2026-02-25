@@ -8,6 +8,8 @@ import (
 	"testing"
 )
 
+const allowedUserGroupsPath = "/api/oidc/clients/test-id/allowed-user-groups"
+
 // oidcClientResponse is the JSON shape returned by pocket-id for OIDC client endpoints.
 type oidcClientResponse struct {
 	ID                 string   `json:"id"`
@@ -75,7 +77,7 @@ func TestUpdateOIDCClient_SendsCallbackURLsAsProvided(t *testing.T) {
 func TestUpdateOIDCClientAllowedGroups_RetriesOn500(t *testing.T) {
 	attempts := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPut && r.URL.Path == "/api/oidc/clients/test-id/allowed-user-groups" {
+		if r.Method == http.MethodPut && r.URL.Path == allowedUserGroupsPath {
 			attempts++
 			if attempts < 3 {
 				// Simulate a DB deadlock 500 on the first two attempts.
@@ -105,7 +107,7 @@ func TestUpdateOIDCClientAllowedGroups_RetriesOn500(t *testing.T) {
 func TestUpdateOIDCClientAllowedGroups_ReturnsErrAfterAllRetries(t *testing.T) {
 	attempts := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPut && r.URL.Path == "/api/oidc/clients/test-id/allowed-user-groups" {
+		if r.Method == http.MethodPut && r.URL.Path == allowedUserGroupsPath {
 			attempts++
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -130,7 +132,7 @@ func TestUpdateOIDCClientAllowedGroups_ReturnsErrAfterAllRetries(t *testing.T) {
 func TestUpdateOIDCClientAllowedGroups_NoRetryOnNon500(t *testing.T) {
 	attempts := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPut && r.URL.Path == "/api/oidc/clients/test-id/allowed-user-groups" {
+		if r.Method == http.MethodPut && r.URL.Path == allowedUserGroupsPath {
 			attempts++
 			// 400 Bad Request — should not be retried.
 			w.WriteHeader(http.StatusBadRequest)
