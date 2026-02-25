@@ -431,15 +431,17 @@ func (r *Reconciler) ReconcileSCIM(ctx context.Context, oidcClient *pocketidinte
 			}
 			return r.clearSCIMProviderID(ctx, oidcClient)
 		}
-		// Clean up stale providers
-		existing, err := apiClient.GetOIDCClientSCIMServiceProvider(ctx, oidcClient.Status.ClientID)
-		if err != nil {
-			return fmt.Errorf("get SCIM service provider: %w", err)
-		}
-		if existing != nil {
-			log.Info("Deleting untracked SCIM service provider found on adopted OIDC client", "scimProviderID", existing.ID)
-			if err := apiClient.DeleteSCIMServiceProvider(ctx, existing.ID); err != nil && !pocketid.IsNotFoundError(err) {
-				return fmt.Errorf("delete untracked SCIM service provider: %w", err)
+		// Clean up stale providers only on first reconcile.
+		if !helpers.IsResourceReady(oidcClient.Status.Conditions) {
+			existing, err := apiClient.GetOIDCClientSCIMServiceProvider(ctx, oidcClient.Status.ClientID)
+			if err != nil && !pocketid.IsNotFoundError(err) {
+				return fmt.Errorf("get SCIM service provider: %w", err)
+			}
+			if existing != nil {
+				log.Info("Deleting untracked SCIM service provider found on adopted OIDC client", "scimProviderID", existing.ID)
+				if err := apiClient.DeleteSCIMServiceProvider(ctx, existing.ID); err != nil && !pocketid.IsNotFoundError(err) {
+					return fmt.Errorf("delete untracked SCIM service provider: %w", err)
+				}
 			}
 		}
 		return nil
