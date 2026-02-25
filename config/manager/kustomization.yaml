@@ -5,4 +5,4 @@ kind: Kustomization
 images:
   - name: ghcr.io/aclerici38/pocket-id-operator
     newName: ghcr.io/aclerici38/pocket-id-operator
-    newTag: v0.2.1@sha256:aedef9d0434b2b798de0529d16fb0e600cd11f25857b10c22028f18d47306c5b
+    newTag: v0.3.1@sha256:da551a6036ac2a243f90eec0757c4455a57502a980a757bd01a2917f4ca9466d
