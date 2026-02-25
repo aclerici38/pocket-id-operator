@@ -17,7 +17,8 @@
         "ghcr.io/aclerici38/charts/pocket-id-operator"
       ],
       "groupName": "pocket-id-operator",
-      "automergeType": "branch"
+      "automergeType": "branch",
+      "ignoreTests": true
     },
     {
       "matchPackageNames": ["ghcr.io/pocket-id/pocket-id"],
