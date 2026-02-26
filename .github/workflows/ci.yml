@@ -25,12 +25,6 @@ permissions:
   packages: write
   security-events: write
 
-env:
-  # renovate: datasource=github-releases depName=kubernetes-sigs/controller-tools
-  CONTROLLER_TOOLS_VERSION: v0.20.1
-  # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize
-  KUSTOMIZE_VERSION: v5.7.1
-
 jobs:
   meta:
     name: Metadata
@@ -65,70 +59,26 @@ jobs:
 
   generate:
     name: Generate
-    if: ${{ github.event_name == 'push' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Setup Go
-        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
-        with:
-          go-version-file: go.mod
-          cache: true
-          cache-dependency-path: go.sum
-
-      - name: Cache tool binaries
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
-        with:
-          path: bin
-          key: tools-${{ runner.os }}-go-${{ hashFiles('go.mod') }}-controller-gen-${{ env.CONTROLLER_TOOLS_VERSION }}-kustomize-${{ env.KUSTOMIZE_VERSION }}
-
-      - name: Generate manifests and code
-        run: |
-          make manifests
-          make generate
-          make build-installer
-
-      - name: Run go fmt
-        run: make fmt
-
-      - name: Run go vet
-        run: make vet
-
-      - name: Check for uncommitted changes
-        run: |
-          if [ -n "$(git status --porcelain)" ]; then
-            echo "::error::Generated files are out of date. Please run 'make manifests generate fmt build-installer' and commit the changes."
-            git diff
-            exit 1
-          fi
-
-  regenerate:
-    name: Regenerate Manifests
-    if: ${{ github.event_name == 'pull_request' }}
     uses: ./.github/workflows/regenerate-manifests.yml
     secrets: inherit
 
   test:
     name: Tests
-    needs: [generate, regenerate]
-    if: ${{ !cancelled() && !failure() }}
+    needs: [generate]
     uses: ./.github/workflows/test.yml
     secrets: inherit
 
   lint:
     name: Lint
-    needs: [generate, regenerate]
-    if: ${{ !cancelled() && !failure() }}
+    needs: [generate]
     uses: ./.github/workflows/lint.yml
     secrets: inherit
 
   build:
     name: Build Image
-    needs: [meta, generate, regenerate]
+    needs: [meta, generate]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     uses: ./.github/workflows/build-push-image.yml
-    if: ${{ !cancelled() && !failure() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
     with:
       image: ${{ needs.meta.outputs.build_image }}
     secrets: inherit
@@ -138,7 +88,6 @@ jobs:
     needs:
       - meta
       - build
-    if: ${{ !cancelled() && !failure() }}
     uses: ./.github/workflows/test-e2e.yml
     with:
       image: ${{ needs.meta.outputs.build_image }}
@@ -149,7 +98,6 @@ jobs:
     needs:
       - meta
       - build
-    if: ${{ !cancelled() && !failure() }}
     uses: ./.github/workflows/test-chart.yml
     with:
       image: ${{ needs.meta.outputs.build_image }}
@@ -160,13 +108,12 @@ jobs:
     needs:
       - meta
       - generate
-      - regenerate
       - e2e
       - test
       - lint
       - build
       - test-chart
-    if: ${{ !cancelled() && !failure() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     uses: ./.github/workflows/publish.yml
     with:
       image: ${{ needs.meta.outputs.build_image }}
