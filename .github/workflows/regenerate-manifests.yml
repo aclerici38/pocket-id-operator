@@ -52,10 +52,7 @@ jobs:
           ignore-nothing-to-cache: true
 
       - name: Regenerate manifests
-        run: make manifests generate fmt build-installer generate-schemas
-
-      - name: Run go vet
-        run: make vet
+        run: make build-installer generate-schemas fmt vet
 
       - name: Commit changes
         if: ${{ github.head_ref != '' }}
