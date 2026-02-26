@@ -129,6 +129,9 @@ func buildS3Env(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.En
 	if s3.ForcePathStyle {
 		env = append(env, corev1.EnvVar{Name: "S3_FORCE_PATH_STYLE", Value: "true"})
 	}
+	if s3.DisableDefaultIntegrityChecks {
+		env = append(env, corev1.EnvVar{Name: "S3_DISABLE_DEFAULT_INTEGRITY_CHECKS", Value: "true"})
+	}
 	return env
 }
 
@@ -349,6 +352,12 @@ func buildStandaloneEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []c
 	}
 	if instance.Spec.InternalAppURL != "" {
 		env = append(env, corev1.EnvVar{Name: "INTERNAL_APP_URL", Value: instance.Spec.InternalAppURL})
+	}
+	if instance.Spec.LocalIPv6Ranges != "" {
+		env = append(env, corev1.EnvVar{Name: "LOCAL_IPV6_RANGES", Value: instance.Spec.LocalIPv6Ranges})
+	}
+	if instance.Spec.Timezone != "" {
+		env = append(env, corev1.EnvVar{Name: "TZ", Value: instance.Spec.Timezone})
 	}
 	return env
 }

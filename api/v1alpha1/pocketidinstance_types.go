@@ -77,6 +77,11 @@ type S3Config struct {
 	// +kubebuilder:default=false
 	// +optional
 	ForcePathStyle bool `json:"forcePathStyle,omitempty"`
+
+	// Disable default S3 integrity checks
+	// +kubebuilder:default=false
+	// +optional
+	DisableDefaultIntegrityChecks bool `json:"disableDefaultIntegrityChecks,omitempty"`
 }
 
 // SMTPConfig configures SMTP email transport.
@@ -535,6 +540,15 @@ type PocketIDInstanceSpec struct {
 	// Internal base URL for OIDC .well-known endpoints (for split-horizon DNS)
 	// +optional
 	InternalAppURL string `json:"internalAppUrl,omitempty"`
+
+	// Custom local IPv6 ranges for audit log IP classification (comma-separated CIDRs)
+	// +optional
+	LocalIPv6Ranges string `json:"localIPv6Ranges,omitempty"`
+
+	// Timezone for the Pocket-ID instance (e.g. "America/New_York")
+	// Sets the TZ environment variable
+	// +optional
+	Timezone string `json:"timezone,omitempty"`
 }
 
 // PocketIDInstanceStatus defines the observed state of PocketIDInstance.

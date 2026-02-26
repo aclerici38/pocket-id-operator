@@ -1403,6 +1403,10 @@
           "type": "object",
           "additionalProperties": false
         },
+        "localIPv6Ranges": {
+          "description": "Custom local IPv6 ranges for audit log IP classification (comma-separated CIDRs)",
+          "type": "string"
+        },
         "logging": {
           "description": "Logging configuration",
           "properties": {
@@ -2123,6 +2127,11 @@
               "description": "S3 bucket name",
               "type": "string"
             },
+            "disableDefaultIntegrityChecks": {
+              "default": false,
+              "description": "Disable default S3 integrity checks",
+              "type": "boolean"
+            },
             "endpoint": {
               "description": "S3 endpoint URL (for MinIO, Ceph, or other S3-compatible stores)",
               "type": "string"
@@ -2483,6 +2492,10 @@
           ],
           "type": "object",
           "additionalProperties": false
+        },
+        "timezone": {
+          "description": "Timezone for the Pocket-ID instance (e.g. \"America/New_York\")\nSets the TZ environment variable",
+          "type": "string"
         },
         "tracing": {
           "description": "OpenTelemetry tracing configuration\nWhen present, tracing is automatically enabled\nConfigure exporter-specific OTEL_* variables via the env escape hatch",
