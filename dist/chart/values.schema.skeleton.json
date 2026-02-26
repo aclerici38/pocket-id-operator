@@ -164,31 +164,26 @@
           "type": "integer",
           "description": "Port for the operator metrics endpoint",
           "default": 8443
+        },
+        "serviceMonitor": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "ServiceMonitor for the operator metrics",
+          "properties": {
+            "enable": {
+              "type": "boolean",
+              "description": "Create a ServiceMonitor for the operator metrics",
+              "default": false
+            }
+          }
         }
-      }
-    },
-    "prometheus": {
-      "type": "object",
-      "additionalProperties": false,
-      "description": "Prometheus ServiceMonitor for the operator itself",
-      "properties": {
-        "enable": {
-          "type": "boolean",
-          "description": "Create a ServiceMonitor for the operator metrics",
-          "default": false
-        }
-      }
-    },
-    "certManager": {
-      "type": "object",
-      "additionalProperties": false,
-      "description": "cert-manager integration for operator metrics TLS",
-      "properties": {
-        "enable": {
-          "type": "boolean",
-          "description": "Use cert-manager for metrics TLS certificates",
-          "default": false
-        }
+      },
+      "if": {
+        "properties": { "enable": { "const": true } },
+        "required": ["enable"]
+      },
+      "then": {
+        "required": ["port"]
       }
     }
   }
