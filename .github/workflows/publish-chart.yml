@@ -127,3 +127,11 @@ jobs:
           CHART_NAME=$(awk -F': ' '$1=="name"{print $2}' dist/chart/Chart.yaml | tr -d '"')
           cosign sign --yes \
             ghcr.io/${{ inputs.repo_owner }}/charts/${CHART_NAME}@${{ steps.push.outputs.digest }}
+
+      - name: Verify chart signature
+        run: |
+          CHART_NAME=$(awk -F': ' '$1=="name"{print $2}' dist/chart/Chart.yaml | tr -d '"')
+          cosign verify \
+            --certificate-identity-regexp "https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            ghcr.io/${{ inputs.repo_owner }}/charts/${CHART_NAME}@${{ steps.push.outputs.digest }}
