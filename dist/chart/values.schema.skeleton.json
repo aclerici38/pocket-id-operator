@@ -51,6 +51,17 @@
             }
           }
         }
+      },
+      "if": {
+        "not": {
+          "properties": { "enabled": { "const": false } },
+          "required": ["enabled"]
+        }
+      },
+      "then": {
+        "properties": {
+          "spec": {}
+        }
       }
     },
     "users": {

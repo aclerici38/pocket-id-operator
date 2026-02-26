@@ -58,7 +58,7 @@ generate-schemas: manifests ## Generate JSON schemas from CRDs for yaml-language
 	@cd dist/schemas && uvx --with pyyaml python /tmp/openapi2jsonschema.py $(CURDIR)/config/crd/bases/*.yaml
 	@jq --slurpfile instance dist/schemas/pocketidinstance_v1alpha1.json \
 		--slurpfile user dist/schemas/pocketiduser_v1alpha1.json \
-		'.properties.instance.properties.spec = $$instance[0].properties.spec | .properties.users.items.properties.spec = $$user[0].properties.spec' \
+		'.properties.instance.then.properties.spec = $$instance[0].properties.spec | .properties.users.items.properties.spec = $$user[0].properties.spec' \
 		dist/chart/values.schema.skeleton.json > dist/chart/values.schema.json
 	@curl -sfL https://datreeio.github.io/CRDs-catalog/helm.toolkit.fluxcd.io/helmrelease_v2.json -o /tmp/helmrelease_v2.json
 	@jq --slurpfile values dist/chart/values.schema.json \

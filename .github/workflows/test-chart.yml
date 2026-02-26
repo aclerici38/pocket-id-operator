@@ -41,8 +41,11 @@ jobs:
           echo "repository=${IMAGE%:*}" >> "$GITHUB_OUTPUT"
           echo "tag=${IMAGE##*:}" >> "$GITHUB_OUTPUT"
 
-      - name: Lint Helm chart
+      - name: Lint Helm chart with instance
         run: helm lint dist/chart --set instance.spec.encryptionKey.value="lint-placeholder"
+        
+      - name: Lint Helm chart without instance
+        run: helm lint dist/chart --set instance.enabled=false
 
       - name: Package chart
         run: |
