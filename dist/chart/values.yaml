@@ -83,3 +83,10 @@ operator:
     requests:
       cpu: 10m
       memory: 64Mi
+
+# Operator metrics configuration
+metrics:
+  enable: false
+  port: 8443
+  serviceMonitor:
+    enable: false

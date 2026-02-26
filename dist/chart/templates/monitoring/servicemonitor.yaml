@@ -1,4 +1,4 @@
-{{- if and .Values.prometheus .Values.prometheus.enable }}
+{{- if and .Values.metrics .Values.metrics.serviceMonitor .Values.metrics.serviceMonitor.enable }}
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -14,25 +14,7 @@ spec:
       scheme: https
       bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
       tlsConfig:
-        {{- if and .Values.certManager .Values.certManager.enable }}
-        serverName: pocket-id-operator-metrics-service.{{ .Release.Namespace }}.svc
-        # Apply secure TLS configuration with cert-manager
-        insecureSkipVerify: false
-        ca:
-          secret:
-            name: metrics-server-cert
-            key: ca.crt
-        cert:
-          secret:
-            name: metrics-server-cert
-            key: tls.crt
-        keySecret:
-          name: metrics-server-cert
-          key: tls.key
-        {{- else }}
-        # Development/Test mode (insecure configuration)
         insecureSkipVerify: true
-        {{- end }}
   selector:
     matchLabels:
       control-plane: controller-manager
