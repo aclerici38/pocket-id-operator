@@ -82,6 +82,8 @@ spec:
     enabled: true
   versionCheckDisabled: true
   auditLogRetentionDays: 30
+  timezone: "America/New_York"
+  localIPv6Ranges: "fd00::/8,fe80::/10"
 ```
 
 ## S3 File Backend
@@ -105,6 +107,7 @@ spec:
           name: s3-creds
           key: secret-key
     forcePathStyle: true                     # required for most S3-compatible stores
+    disableDefaultIntegrityChecks: false      # disable S3 default integrity checks
 ```
 
 ## SMTP
@@ -384,6 +387,9 @@ spec:
   - `APP_NAME`, `SESSION_DURATION`, `HOME_PAGE_URL`, `DISABLE_ANIMATIONS`, `ACCENT_COLOR` (from `spec.ui`)
   - `EMAILS_VERIFIED`, `ALLOW_OWN_ACCOUNT_EDIT`, `ALLOW_USER_SIGNUPS`, `SIGNUP_DEFAULT_*` (from `spec.userManagement`)
   - `MAXMIND_LICENSE_KEY`, `GEOLITE_DB_PATH`, `GEOLITE_DB_URL` (from `spec.geoip`)
+  - `TZ` (from `spec.timezone`)
+  - `LOCAL_IPV6_RANGES` (from `spec.localIPv6Ranges`)
+  - `S3_DISABLE_DEFAULT_INTEGRITY_CHECKS` (from `spec.s3.disableDefaultIntegrityChecks`)
   - `AUDIT_LOG_RETENTION_DAYS`, `ANALYTICS_DISABLED`, `VERSION_CHECK_DISABLED`
   - Any additional values from `spec.env` (applied last, can override anything above)
 
