@@ -2296,40 +2296,23 @@
                             "type": "object",
                             "additionalProperties": false
                           },
-                          "required": [
-                            "port"
-                          ],
-                          "type": "object",
-                          "additionalProperties": false
-                        },
-                        "terminationGracePeriodSeconds": {
-                          "description": "Optional duration in seconds the pod needs to terminate gracefully upon probe failure.\nThe grace period is the duration in seconds after the processes running in the pod are sent\na termination signal and the time when the processes are forcibly halted with a kill signal.\nSet this value longer than the expected cleanup time for your process.\nIf this value is nil, the pod's terminationGracePeriodSeconds will be used. Otherwise, this\nvalue overrides the value provided by the pod spec.\nValue must be non-negative integer. The value zero indicates stop immediately via\nthe kill signal (no opportunity to shut down).\nThis is a beta field and requires enabling ProbeTerminationGracePeriod feature gate.\nMinimum value is 1. spec.terminationGracePeriodSeconds is used if unset.",
-                          "format": "int64",
-                          "type": "integer"
-                        },
-                        "timeoutSeconds": {
-                          "description": "Number of seconds after which the probe times out.\nDefaults to 1 second. Minimum value is 1.\nMore info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes",
-                          "format": "int32",
-                          "type": "integer"
-                        }
-                      },
-                      "type": "object",
-                      "additionalProperties": false
-                    },
-                    "localIPv6Ranges": {
-                      "description": "Custom local IPv6 ranges for audit log IP classification (comma-separated CIDRs)",
-                      "type": "string"
-                    },
-                    "logging": {
-                      "description": "Logging configuration",
-                      "properties": {
-                        "json": {
-                          "default": false,
-                          "description": "Output logs as JSON",
-                          "type": "boolean"
+                          "terminationGracePeriodSeconds": {
+                            "description": "Optional duration in seconds the pod needs to terminate gracefully upon probe failure.\nThe grace period is the duration in seconds after the processes running in the pod are sent\na termination signal and the time when the processes are forcibly halted with a kill signal.\nSet this value longer than the expected cleanup time for your process.\nIf this value is nil, the pod's terminationGracePeriodSeconds will be used. Otherwise, this\nvalue overrides the value provided by the pod spec.\nValue must be non-negative integer. The value zero indicates stop immediately via\nthe kill signal (no opportunity to shut down).\nThis is a beta field and requires enabling ProbeTerminationGracePeriod feature gate.\nMinimum value is 1. spec.terminationGracePeriodSeconds is used if unset.",
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "timeoutSeconds": {
+                            "description": "Number of seconds after which the probe times out.\nDefaults to 1 second. Minimum value is 1.\nMore info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes",
+                            "format": "int32",
+                            "type": "integer"
+                          }
                         },
                         "type": "object",
                         "additionalProperties": false
+                      },
+                      "localIPv6Ranges": {
+                        "description": "Custom local IPv6 ranges for audit log IP classification (comma-separated CIDRs)",
+                        "type": "string"
                       },
                       "logging": {
                         "description": "Logging configuration",
@@ -2759,30 +2742,38 @@
                             ],
                             "x-kubernetes-list-type": "map"
                           },
-                          "type": "object",
-                          "additionalProperties": false
-                        },
-                        "bucket": {
-                          "description": "S3 bucket name",
-                          "type": "string"
-                        },
-                        "disableDefaultIntegrityChecks": {
-                          "default": false,
-                          "description": "Disable default S3 integrity checks",
-                          "type": "boolean"
-                        },
-                        "endpoint": {
-                          "description": "S3 endpoint URL (for MinIO, Ceph, or other S3-compatible stores)",
-                          "type": "string"
-                        },
-                        "forcePathStyle": {
-                          "default": false,
-                          "description": "Force path-style URLs instead of virtual-hosted-style",
-                          "type": "boolean"
-                        },
-                        "region": {
-                          "description": "S3 region",
-                          "type": "string"
+                          "limits": {
+                            "additionalProperties": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "string"
+                                }
+                              ],
+                              "pattern": "^(\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))))?$",
+                              "x-kubernetes-int-or-string": true
+                            },
+                            "description": "Limits describes the maximum amount of compute resources allowed.\nMore info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/",
+                            "type": "object"
+                          },
+                          "requests": {
+                            "additionalProperties": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "string"
+                                }
+                              ],
+                              "pattern": "^(\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))))?$",
+                              "x-kubernetes-int-or-string": true
+                            },
+                            "description": "Requests describes the minimum amount of compute resources required.\nIf Requests is omitted for a container, it defaults to Limits if that is explicitly specified,\notherwise to an implementation-defined value. Requests cannot exceed Limits.\nMore info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/",
+                            "type": "object"
+                          }
                         },
                         "type": "object",
                         "additionalProperties": false
@@ -3042,6 +3033,11 @@
                           "bucket": {
                             "description": "S3 bucket name",
                             "type": "string"
+                          },
+                          "disableDefaultIntegrityChecks": {
+                            "default": false,
+                            "description": "Disable default S3 integrity checks",
+                            "type": "boolean"
                           },
                           "endpoint": {
                             "description": "S3 endpoint URL (for MinIO, Ceph, or other S3-compatible stores)",
@@ -3404,47 +3400,13 @@
                         "type": "object",
                         "additionalProperties": false
                       },
-                      "required": [
-                        "from",
-                        "host",
-                        "port"
-                      ],
-                      "type": "object",
-                      "additionalProperties": false
-                    },
-                    "timezone": {
-                      "description": "Timezone for the Pocket-ID instance (e.g. \"America/New_York\")\nSets the TZ environment variable",
-                      "type": "string"
-                    },
-                    "tracing": {
-                      "description": "OpenTelemetry tracing configuration\nWhen present, tracing is automatically enabled\nConfigure exporter-specific OTEL_* variables via the env escape hatch",
-                      "type": "object"
-                    },
-                    "ui": {
-                      "description": "UI configuration\nThe operator always sets UI_CONFIG_DISABLED=true to ensure env var overrides take effect",
-                      "properties": {
-                        "accentColor": {
-                          "description": "Custom CSS color value for UI accent theme",
-                          "type": "string"
-                        },
-                        "appName": {
-                          "description": "Application display name",
-                          "type": "string"
-                        },
-                        "disableAnimations": {
-                          "default": false,
-                          "description": "Turn off UI animations",
-                          "type": "boolean"
-                        },
-                        "homePageUrl": {
-                          "description": "Post-login redirect page",
-                          "type": "string"
-                        },
-                        "sessionDuration": {
-                          "description": "User session timeout in minutes",
-                          "format": "int32",
-                          "type": "integer"
-                        }
+                      "timezone": {
+                        "description": "Timezone for the Pocket-ID instance (e.g. \"America/New_York\")\nSets the TZ environment variable",
+                        "type": "string"
+                      },
+                      "tracing": {
+                        "description": "OpenTelemetry tracing configuration\nWhen present, tracing is automatically enabled\nConfigure exporter-specific OTEL_* variables via the env escape hatch",
+                        "type": "object"
                       },
                       "ui": {
                         "description": "UI configuration\nThe operator always sets UI_CONFIG_DISABLED=true to ensure env var overrides take effect",
@@ -3533,23 +3495,6 @@
                     ],
                     "additionalProperties": false
                   }
-                }
-              },
-              "if": {
-                "not": {
-                  "properties": {
-                    "enabled": {
-                      "const": false
-                    }
-                  },
-                  "required": [
-                    "enabled"
-                  ]
-                }
-              },
-              "then": {
-                "properties": {
-                  "spec": {}
                 }
               }
             },
