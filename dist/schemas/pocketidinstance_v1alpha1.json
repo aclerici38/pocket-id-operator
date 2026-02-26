@@ -2129,7 +2129,7 @@
             },
             "disableDefaultIntegrityChecks": {
               "default": false,
-              "description": "Disable default S3 integrity checks (needed by some S3-compatible backends)",
+              "description": "Disable default S3 integrity checks",
               "type": "boolean"
             },
             "endpoint": {

@@ -2253,8 +2253,7 @@ spec:
                     type: string
                   disableDefaultIntegrityChecks:
                     default: false
-                    description: Disable default S3 integrity checks (needed by some
-                      S3-compatible backends)
+                    description: Disable default S3 integrity checks
                     type: boolean
                   endpoint:
                     description: S3 endpoint URL (for MinIO, Ceph, or other S3-compatible
