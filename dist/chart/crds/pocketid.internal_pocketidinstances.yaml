@@ -1390,6 +1390,10 @@ spec:
                     format: int32
                     type: integer
                 type: object
+              localIPv6Ranges:
+                description: Custom local IPv6 ranges for audit log IP classification
+                  (comma-separated CIDRs)
+                type: string
               logging:
                 description: Logging configuration
                 properties:
@@ -2247,6 +2251,10 @@ spec:
                   bucket:
                     description: S3 bucket name
                     type: string
+                  disableDefaultIntegrityChecks:
+                    default: false
+                    description: Disable default S3 integrity checks
+                    type: boolean
                   endpoint:
                     description: S3 endpoint URL (for MinIO, Ceph, or other S3-compatible
                       stores)
@@ -2571,6 +2579,11 @@ spec:
                 - host
                 - port
                 type: object
+              timezone:
+                description: |-
+                  Timezone for the Pocket-ID instance (e.g. "America/New_York")
+                  Sets the TZ environment variable
+                type: string
               tracing:
                 description: |-
                   OpenTelemetry tracing configuration

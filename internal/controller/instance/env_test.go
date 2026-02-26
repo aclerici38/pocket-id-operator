@@ -175,6 +175,21 @@ func TestBuildEnvVars_S3(t *testing.T) {
 	requireEnvFromSecret(t, env, "S3_ACCESS_KEY_ID", "s3-creds", "access-key")
 	requireEnv(t, env, "S3_SECRET_ACCESS_KEY", "my-secret-key")
 	requireEnv(t, env, "S3_FORCE_PATH_STYLE", "true")
+	requireEnvAbsent(t, env, "S3_DISABLE_DEFAULT_INTEGRITY_CHECKS")
+}
+
+func TestBuildEnvVars_S3DisableIntegrityChecks(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.S3 = &pocketidinternalv1alpha1.S3Config{
+		Bucket:                        "my-bucket",
+		Region:                        "us-east-1",
+		AccessKeyID:                   pocketidinternalv1alpha1.SensitiveValue{Value: "key"},
+		SecretAccessKey:               pocketidinternalv1alpha1.SensitiveValue{Value: "secret"},
+		DisableDefaultIntegrityChecks: true,
+	}
+
+	env := buildEnvVars(inst)
+	requireEnv(t, env, "S3_DISABLE_DEFAULT_INTEGRITY_CHECKS", "true")
 }
 
 func TestBuildEnvVars_S3Absent(t *testing.T) {
@@ -424,6 +439,22 @@ func TestBuildEnvVars_StandaloneSettings(t *testing.T) {
 	requireEnv(t, env, "INTERNAL_APP_URL", "http://pocket-id.pocket-id.svc:1411")
 }
 
+func TestBuildEnvVars_LocalIPv6Ranges(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.LocalIPv6Ranges = "fd00::/8,fe80::/10"
+
+	env := buildEnvVars(inst)
+	requireEnv(t, env, "LOCAL_IPV6_RANGES", "fd00::/8,fe80::/10")
+}
+
+func TestBuildEnvVars_Timezone(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.Timezone = "America/New_York"
+
+	env := buildEnvVars(inst)
+	requireEnv(t, env, "TZ", "America/New_York")
+}
+
 func TestBuildEnvVars_StandaloneSettingsAbsentByDefault(t *testing.T) {
 	inst := minimalInstance()
 	env := buildEnvVars(inst)
@@ -431,6 +462,8 @@ func TestBuildEnvVars_StandaloneSettingsAbsentByDefault(t *testing.T) {
 	requireEnvAbsent(t, env, "ANALYTICS_DISABLED")
 	requireEnvAbsent(t, env, "VERSION_CHECK_DISABLED")
 	requireEnvAbsent(t, env, "INTERNAL_APP_URL")
+	requireEnvAbsent(t, env, "LOCAL_IPV6_RANGES")
+	requireEnvAbsent(t, env, "TZ")
 }
 
 func TestBuildEnvVars_UserEnvOverrides(t *testing.T) {
