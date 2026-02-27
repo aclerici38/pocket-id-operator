@@ -47,7 +47,6 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@eac588ad8def6316056a12d4907a9d4d84ff7a3b # v7.3.0
         with:
-          # renovate: datasource=pypi depName=uv
           version: "0.10.6"
           ignore-nothing-to-cache: true
 
