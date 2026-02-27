@@ -103,28 +103,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return *result, err
 	}
 
-	// Sync status from Pocket ID
-	if oidcClient.Status.ClientID != "" {
-		current, err := apiClient.GetOIDCClient(ctx, oidcClient.Status.ClientID)
-		if err != nil {
-			if pocketid.IsNotFoundError(err) {
-				log.Info("OIDC client was deleted externally, will recreate", "clientID", oidcClient.Status.ClientID)
-				if err := r.clearClientStatus(ctx, oidcClient); err != nil {
-					return ctrl.Result{}, err
-				}
-				return ctrl.Result{Requeue: true}, nil
-			}
-			_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "GetError", err.Error())
-			return ctrl.Result{RequeueAfter: common.Requeue}, nil
-		}
-
-		if err := r.UpdateOIDCClientStatus(ctx, oidcClient, current); err != nil {
-			log.Error(err, "Failed to update OIDC client status")
-			return ctrl.Result{RequeueAfter: common.Requeue}, nil
-		}
-	}
-
-	// Ensure resource exists and update state
+	// No client ID yet, create or adopt
 	if oidcClient.Status.ClientID == "" {
 		requeue, err := r.createOrAdoptOIDCClient(ctx, oidcClient, apiClient)
 		if err != nil {
@@ -138,7 +117,26 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return common.ApplyResync(ctrl.Result{}), nil
 	}
 
-	if err := r.pushOIDCClientState(ctx, oidcClient, apiClient); err != nil {
+	// Fetch current state from Pocket ID
+	current, err := apiClient.GetOIDCClient(ctx, oidcClient.Status.ClientID)
+	if err != nil {
+		if pocketid.IsNotFoundError(err) {
+			log.Info("OIDC client was deleted externally, will recreate", "clientID", oidcClient.Status.ClientID)
+			if err := r.clearClientStatus(ctx, oidcClient); err != nil {
+				return ctrl.Result{}, err
+			}
+			return ctrl.Result{Requeue: true}, nil
+		}
+		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "GetError", err.Error())
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+	}
+
+	if err := r.UpdateOIDCClientStatus(ctx, oidcClient, current); err != nil {
+		log.Error(err, "Failed to update OIDC client status")
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+	}
+
+	if err := r.pushOIDCClientState(ctx, oidcClient, apiClient, current); err != nil {
 		log.Error(err, "Failed to push OIDC client state")
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
@@ -275,22 +273,36 @@ func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *po
 	return true, nil
 }
 
-// pushOIDCClientState pushes the desired state from the CR spec into Pocket ID.
-func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client) error {
+// pushOIDCClientState compares the desired state from the CR spec against the current
+// state fetched from Pocket ID and only pushes updates if they differ.
+func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client, current *pocketid.OIDCClient) error {
+	log := logf.FromContext(ctx)
+
 	// Aggregate allowed groups before building input so IsGroupRestricted is correct
 	groupIDs, err := r.aggregateAllowedUserGroupIDs(ctx, oidcClient)
 	if err != nil {
 		return fmt.Errorf("aggregate allowed user groups: %w", err)
 	}
 
-	input := r.OidcClientInput(oidcClient)
-	input.IsGroupRestricted = len(groupIDs) > 0
+	desired := r.OidcClientInput(oidcClient)
+	desired.IsGroupRestricted = len(groupIDs) > 0
 
-	if _, err := apiClient.UpdateOIDCClient(ctx, oidcClient.Status.ClientID, input); err != nil {
-		return fmt.Errorf("update OIDC client: %w", err)
+	currentInput := current.ToInput()
+	clientChanged := !desired.Equal(currentInput)
+	groupsChanged := !pocketid.SortedEqual(groupIDs, current.AllowedUserGroupIDs)
+
+	if !clientChanged && !groupsChanged {
+		log.V(2).Info("OIDC client state is in sync, skipping update")
+		return nil
 	}
 
-	if groupIDs != nil {
+	if clientChanged {
+		if _, err := apiClient.UpdateOIDCClient(ctx, oidcClient.Status.ClientID, desired); err != nil {
+			return fmt.Errorf("update OIDC client: %w", err)
+		}
+	}
+
+	if groupsChanged && groupIDs != nil {
 		if err := apiClient.UpdateOIDCClientAllowedGroups(ctx, oidcClient.Status.ClientID, groupIDs); err != nil {
 			return err
 		}
