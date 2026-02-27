@@ -17,7 +17,7 @@ import (
 //   - Clearing a field (removing users/claims) sends an empty array, not nil
 
 var _ = Describe("User State Sync", func() {
-	Context("User field update propagates to Pocket-ID", func() {
+	Context("User field update propagates to Pocket-ID", Ordered, func() {
 		const userName = "sync-user-field-update"
 
 		BeforeAll(func() {
