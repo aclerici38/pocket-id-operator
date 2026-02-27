@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -375,6 +376,7 @@ func (r *Reconciler) aggregateAllowedUserGroupIDs(ctx context.Context, oidcClien
 	for id := range groupIDSet {
 		groupIDs = append(groupIDs, id)
 	}
+	sort.Strings(groupIDs)
 	return groupIDs, nil
 }
 
@@ -517,11 +519,12 @@ func (r *Reconciler) ReconcileSCIM(ctx context.Context, oidcClient *pocketidinte
 		return fmt.Errorf("get SCIM service provider: %w", err)
 	}
 	if current == nil {
-		log.Info("SCIM service provider not found externally, clearing status for recreation", "scimProviderID", oidcClient.Status.SCIMProviderID)
+		staleID := oidcClient.Status.SCIMProviderID
+		log.Info("SCIM service provider not found externally, clearing status for recreation", "scimProviderID", staleID)
 		if err := r.clearSCIMProviderID(ctx, oidcClient); err != nil {
 			return err
 		}
-		return fmt.Errorf("SCIM service provider %s not found, will recreate on next reconcile", oidcClient.Status.SCIMProviderID)
+		return fmt.Errorf("SCIM service provider %s not found, will recreate on next reconcile", staleID)
 	}
 
 	// Token is write-only and cannot be read back from the API, so always push
