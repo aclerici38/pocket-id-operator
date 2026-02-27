@@ -292,14 +292,21 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 	hasCredentials := desired.Credentials != nil
 	groupsChanged := !pocketid.SortedEqual(groupIDs, current.AllowedUserGroupIDs)
 
-	if !clientChanged && !hasCredentials && !groupsChanged {
+	// Clear any existing credentials if the CR doesn't specify any when adopting
+	firstReconcile := !helpers.IsResourceReady(oidcClient.Status.Conditions)
+	if firstReconcile && !hasCredentials {
+		desired.Credentials = &pocketid.OIDCClientCredentials{FederatedIdentities: []pocketid.OIDCClientFederatedIdentity{}}
+	}
+	shouldPushCredentials := hasCredentials || (firstReconcile && !hasCredentials)
+
+	if !clientChanged && !shouldPushCredentials && !groupsChanged {
 		log.V(2).Info("OIDC client state is in sync, skipping update")
 		return nil
 	}
 
-	// Always push when credentials are present since they are write-only
-	// and cannot be compared against the fetched state.
-	if clientChanged || hasCredentials {
+	// Always push when credentials are present since they
+	// are write-only and cannot be compared against the fetched state.
+	if clientChanged || shouldPushCredentials {
 		if _, err := apiClient.UpdateOIDCClient(ctx, oidcClient.Status.ClientID, desired); err != nil {
 			return fmt.Errorf("update OIDC client: %w", err)
 		}
