@@ -215,11 +215,25 @@ func (i UserGroupInput) Equal(other UserGroupInput) bool {
 	if !SortedEqual(i.UserIDs, other.UserIDs) {
 		return false
 	}
-	if len(i.CustomClaims) != len(other.CustomClaims) {
+	if !customClaimsEqual(i.CustomClaims, other.CustomClaims) {
 		return false
 	}
-	for j := range i.CustomClaims {
-		if i.CustomClaims[j] != other.CustomClaims[j] {
+	return true
+}
+
+func customClaimsEqual(a, b []CustomClaim) bool {
+	if len(a) == 0 && len(b) == 0 {
+		return true
+	}
+	if len(a) != len(b) {
+		return false
+	}
+	aMap := make(map[string]string, len(a))
+	for _, c := range a {
+		aMap[c.Key] = c.Value
+	}
+	for _, c := range b {
+		if v, ok := aMap[c.Key]; !ok || v != c.Value {
 			return false
 		}
 	}
