@@ -143,10 +143,10 @@ func (i OIDCClientInput) Equal(other OIDCClientInput) bool {
 		i.RequiresReauthentication != other.RequiresReauthentication {
 		return false
 	}
-	if !SortedEqual(i.CallbackURLs, other.CallbackURLs) {
+	if !orderedEqual(i.CallbackURLs, other.CallbackURLs) {
 		return false
 	}
-	if !SortedEqual(i.LogoutCallbackURLs, other.LogoutCallbackURLs) {
+	if !orderedEqual(i.LogoutCallbackURLs, other.LogoutCallbackURLs) {
 		return false
 	}
 	return true
@@ -235,6 +235,21 @@ func CustomClaimsEqual(a, b []CustomClaim) bool {
 	}
 	for _, c := range b {
 		if v, ok := aMap[c.Key]; !ok || v != c.Value {
+			return false
+		}
+	}
+	return true
+}
+
+func orderedEqual(a, b []string) bool {
+	if len(a) == 0 && len(b) == 0 {
+		return true
+	}
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
 			return false
 		}
 	}
