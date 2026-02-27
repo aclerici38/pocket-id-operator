@@ -155,7 +155,7 @@
       "additionalProperties": false,
       "description": "Operator metrics configuration",
       "properties": {
-        "enable": {
+        "enabled": {
           "type": "boolean",
           "description": "Enable the operator metrics endpoint",
           "default": false
@@ -170,7 +170,7 @@
           "additionalProperties": false,
           "description": "ServiceMonitor for the operator metrics",
           "properties": {
-            "enable": {
+            "enabled": {
               "type": "boolean",
               "description": "Create a ServiceMonitor for the operator metrics",
               "default": false
@@ -182,7 +182,7 @@
           "additionalProperties": false,
           "description": "Grafana dashboard ConfigMap and optional GrafanaDashboard CRD",
           "properties": {
-            "enable": {
+            "enabled": {
               "type": "boolean",
               "description": "Create a ConfigMap containing the Grafana dashboard JSON",
               "default": false
@@ -190,9 +190,9 @@
             "grafanaDashboard": {
               "type": "object",
               "additionalProperties": false,
-              "description": "GrafanaDashboard CRD configuration (requires grafana-operator and dashboard.enable: true)",
+              "description": "GrafanaDashboard CRD configuration (requires grafana-operator and dashboard.enabled: true)",
               "properties": {
-                "enable": {
+                "enabled": {
                   "type": "boolean",
                   "description": "Create a GrafanaDashboard resource referencing the dashboard ConfigMap",
                   "default": false
@@ -219,15 +219,15 @@
           },
           "if": {
             "not": {
-              "properties": { "enable": { "const": true } },
-              "required": ["enable"]
+              "properties": { "enabled": { "const": true } },
+              "required": ["enabled"]
             }
           },
           "then": {
             "properties": {
               "grafanaDashboard": {
                 "properties": {
-                  "enable": { "const": false }
+                  "enabled": { "const": false }
                 }
               }
             }
@@ -235,8 +235,8 @@
         }
       },
       "if": {
-        "properties": { "enable": { "const": true } },
-        "required": ["enable"]
+        "properties": { "enabled": { "const": true } },
+        "required": ["enabled"]
       },
       "then": {
         "required": ["port"]

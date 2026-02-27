@@ -1,4 +1,4 @@
-{{- if and .Values.metrics .Values.metrics.dashboard .Values.metrics.dashboard.grafanaDashboard .Values.metrics.dashboard.grafanaDashboard.enable }}
+{{- if and .Values.metrics .Values.metrics.dashboard .Values.metrics.dashboard.grafanaDashboard .Values.metrics.dashboard.grafanaDashboard.enabled }}
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:

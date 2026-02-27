@@ -86,14 +86,14 @@ operator:
 
 # Operator metrics configuration
 metrics:
-  enable: false
+  enabled: false
   port: 8080
   serviceMonitor:
-    enable: false
+    enabled: false
   dashboard:
-    enable: false
+    enabled: false
     grafanaDashboard:
-      enable: false
+      enabled: false
       allowCrossNamespaceImport: true
       instanceSelector:
         matchLabels:
