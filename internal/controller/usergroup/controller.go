@@ -95,7 +95,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: validationResult.RequeueAfter}, validationResult.Error
 	}
 
-	apiClient, result, err := r.GetAPIClientOrWait(ctx, userGroup, instance)
+	apiClient, result, err := r.GetAPIClientOrRequeue(ctx, userGroup, instance)
 	if result != nil {
 		return *result, err
 	}
