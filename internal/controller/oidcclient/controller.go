@@ -224,6 +224,13 @@ func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *po
 	log := logf.FromContext(ctx)
 	input := r.OidcClientInput(oidcClient, nil)
 
+	// Aggregate all allowed groups
+	groupIDs, err := r.aggregateAllowedUserGroupIDs(ctx, oidcClient)
+	if err != nil {
+		return false, fmt.Errorf("aggregate allowed user groups: %w", err)
+	}
+	input.IsGroupRestricted = len(groupIDs) > 0
+
 	resourceID := oidcClient.Spec.ClientID
 	if resourceID == "" {
 		resourceID = "(auto-generated)"
@@ -504,15 +511,28 @@ func (r *Reconciler) ReconcileSCIM(ctx context.Context, oidcClient *pocketidinte
 		return r.setSCIMProviderID(ctx, oidcClient, created.ID)
 	}
 
-	// Update existing
-	if _, err := apiClient.UpdateSCIMServiceProvider(ctx, oidcClient.Status.SCIMProviderID, input); err != nil {
-		if pocketid.IsNotFoundError(err) {
-			log.Info("SCIM service provider not found, will recreate", "scimProviderID", oidcClient.Status.SCIMProviderID)
-			if err := r.clearSCIMProviderID(ctx, oidcClient); err != nil {
-				return err
-			}
-			return r.ReconcileSCIM(ctx, oidcClient, apiClient)
+	// Fetch current state to detect changes and handle external deletion.
+	current, err := apiClient.GetOIDCClientSCIMServiceProvider(ctx, oidcClient.Status.ClientID)
+	if err != nil && !pocketid.IsNotFoundError(err) {
+		return fmt.Errorf("get SCIM service provider: %w", err)
+	}
+	if current == nil {
+		log.Info("SCIM service provider not found externally, clearing status for recreation", "scimProviderID", oidcClient.Status.SCIMProviderID)
+		if err := r.clearSCIMProviderID(ctx, oidcClient); err != nil {
+			return err
 		}
+		return fmt.Errorf("SCIM service provider %s not found, will recreate on next reconcile", oidcClient.Status.SCIMProviderID)
+	}
+
+	// Token is write-only and cannot be read back from the API, so always push
+	// when one is configured. Otherwise only update if the endpoint changed.
+	hasToken := token != ""
+	if !hasToken && current.Endpoint == input.Endpoint {
+		log.V(2).Info("SCIM service provider is in sync, skipping update")
+		return nil
+	}
+
+	if _, err := apiClient.UpdateSCIMServiceProvider(ctx, oidcClient.Status.SCIMProviderID, input); err != nil {
 		return fmt.Errorf("update SCIM service provider: %w", err)
 	}
 	return nil
