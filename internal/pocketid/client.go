@@ -233,6 +233,20 @@ type UserInput struct {
 	Locale      string
 }
 
+// ToInput converts a User into a UserInput for comparison with desired state.
+func (u *User) ToInput() UserInput {
+	return UserInput{
+		Username:    u.Username,
+		FirstName:   u.FirstName,
+		LastName:    u.LastName,
+		Email:       u.Email,
+		DisplayName: u.DisplayName,
+		IsAdmin:     u.IsAdmin,
+		Disabled:    u.Disabled,
+		Locale:      u.Locale,
+	}
+}
+
 func (c *Client) CreateUser(ctx context.Context, input UserInput) (*User, error) {
 	params := users.NewPostAPIUsersParams().
 		WithContext(ctx).
