@@ -293,7 +293,9 @@ func NewClient(baseURL string, apiKey string) (*Client, error) {
 // GetCurrentVersion returns the currently deployed version of the PocketID instance.
 func (c *Client) GetCurrentVersion(ctx context.Context) (string, error) {
 	params := pocketidversion.NewGetAPIVersionCurrentParamsWithContext(ctx)
+	start := time.Now()
 	resp, err := c.raw.Version.GetAPIVersionCurrent(params)
+	recordCall("get_current_version", err, time.Since(start))
 	if err != nil {
 		return "", fmt.Errorf("get current version failed: %w", err)
 	}
@@ -311,7 +313,9 @@ func (c *Client) GetUser(ctx context.Context, id string) (*User, error) {
 		WithContext(ctx).
 		WithID(id)
 
+	start := time.Now()
 	resp, err := c.raw.Users.GetAPIUsersID(params)
+	recordCall("get_user", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("get user failed: %w", err)
 	}
@@ -328,7 +332,9 @@ func (c *Client) ListUsers(ctx context.Context, search string) ([]*User, error) 
 		params = params.WithSearch(&search)
 	}
 
+	start := time.Now()
 	resp, err := c.raw.Users.GetAPIUsers(params)
+	recordCall("list_users", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("list users failed: %w", err)
 	}
@@ -384,7 +390,9 @@ func (c *Client) CreateUser(ctx context.Context, input UserInput) (*User, error)
 			EmailVerified: input.EmailVerified,
 		})
 
+	start := time.Now()
 	resp, err := c.raw.Users.PostAPIUsers(params)
+	recordCall("create_user", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("create user failed: %w", err)
 	}
@@ -409,7 +417,9 @@ func (c *Client) UpdateUser(ctx context.Context, id string, input UserInput) (*U
 			EmailVerified: input.EmailVerified,
 		})
 
+	start := time.Now()
 	resp, err := c.raw.Users.PutAPIUsersID(params)
+	recordCall("update_user", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("update user failed: %w", err)
 	}
@@ -422,7 +432,9 @@ func (c *Client) DeleteUser(ctx context.Context, id string) error {
 		WithContext(ctx).
 		WithID(id)
 
+	start := time.Now()
 	_, err := c.raw.Users.DeleteAPIUsersID(params)
+	recordCall("delete_user", err, time.Since(start))
 	if err != nil {
 		return fmt.Errorf("delete user failed: %w", err)
 	}
@@ -433,7 +445,10 @@ func (c *Client) DeleteUser(ctx context.Context, id string) error {
 // --- API Key Operations ---
 
 // CreateAPIKeyForUser creates an API key for the specified user by exchanging a one-time access token for a session.
-func (c *Client) CreateAPIKeyForUser(ctx context.Context, userID, name, expiresAt, description string, tokenTTLMinutes int) (*APIKeyWithToken, error) {
+func (c *Client) CreateAPIKeyForUser(ctx context.Context, userID, name, expiresAt, description string, tokenTTLMinutes int) (result *APIKeyWithToken, err error) {
+	start := time.Now()
+	defer func() { recordCall("create_api_key_for_user", err, time.Since(start)) }()
+
 	token, err := c.CreateOneTimeAccessToken(ctx, userID, tokenTTLMinutes)
 	if err != nil {
 		return nil, fmt.Errorf("create one-time access token: %w", err)
@@ -467,7 +482,9 @@ func (c *Client) DeleteAPIKey(ctx context.Context, id string) error {
 		WithContext(ctx).
 		WithID(id)
 
+	start := time.Now()
 	_, err := c.raw.APIKeys.DeleteAPIAPIKeysID(params)
+	recordCall("delete_api_key", err, time.Since(start))
 	if err != nil {
 		return fmt.Errorf("delete API key failed: %w", err)
 	}
@@ -486,7 +503,9 @@ func (c *Client) ListOIDCClients(ctx context.Context, search string) ([]*OIDCCli
 		params = params.WithSearch(&search)
 	}
 
+	start := time.Now()
 	resp, err := c.raw.OIDc.GetAPIOidcClients(params)
+	recordCall("list_oidc_clients", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("list OIDC clients failed: %w", err)
 	}
@@ -525,7 +544,9 @@ func (c *Client) CreateOIDCClient(ctx context.Context, input OIDCClientInput) (*
 		WithContext(ctx).
 		WithClient(dto)
 
+	start := time.Now()
 	resp, err := c.raw.OIDc.PostAPIOidcClients(params)
+	recordCall("create_oidc_client", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("create OIDC client failed: %w", err)
 	}
@@ -553,7 +574,9 @@ func (c *Client) UpdateOIDCClient(ctx context.Context, id string, input OIDCClie
 			Credentials:              oidcCredentialsToDTO(input.Credentials),
 		})
 
+	start := time.Now()
 	resp, err := c.raw.OIDc.PutAPIOidcClientsID(params)
+	recordCall("update_oidc_client", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("update OIDC client failed: %w", err)
 	}
@@ -566,7 +589,9 @@ func (c *Client) GetOIDCClient(ctx context.Context, id string) (*OIDCClient, err
 		WithContext(ctx).
 		WithID(id)
 
+	start := time.Now()
 	resp, err := c.raw.OIDc.GetAPIOidcClientsID(params)
+	recordCall("get_oidc_client", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("get OIDC client failed: %w", err)
 	}
@@ -579,7 +604,9 @@ func (c *Client) DeleteOIDCClient(ctx context.Context, id string) error {
 		WithContext(ctx).
 		WithID(id)
 
+	start := time.Now()
 	_, err := c.raw.OIDc.DeleteAPIOidcClientsID(params)
+	recordCall("delete_oidc_client", err, time.Since(start))
 	if err != nil {
 		return fmt.Errorf("delete OIDC client failed: %w", err)
 	}
@@ -605,12 +632,15 @@ func (c *Client) UpdateOIDCClientAllowedGroups(ctx context.Context, id string, g
 			WithGroups(&models.GithubComPocketIDPocketIDBackendInternalDtoOidcUpdateAllowedUserGroupsDto{
 				UserGroupIds: groupIDs,
 			})
-		if _, err := c.raw.OIDc.PutAPIOidcClientsIDAllowedUserGroups(params); err != nil {
-			if IsServerError(err) {
-				lastErr = fmt.Errorf("update OIDC client allowed groups failed: %w", err)
+		start := time.Now()
+		_, callErr := c.raw.OIDc.PutAPIOidcClientsIDAllowedUserGroups(params)
+		recordCall("update_oidc_client_allowed_groups", callErr, time.Since(start))
+		if callErr != nil {
+			if IsServerError(callErr) {
+				lastErr = fmt.Errorf("update OIDC client allowed groups failed: %w", callErr)
 				continue
 			}
-			return fmt.Errorf("update OIDC client allowed groups failed: %w", err)
+			return fmt.Errorf("update OIDC client allowed groups failed: %w", callErr)
 		}
 		return nil
 	}
@@ -625,7 +655,9 @@ func (c *Client) RegenerateOIDCClientSecret(ctx context.Context, id string) (str
 		WithContext(ctx).
 		WithID(id)
 
+	start := time.Now()
 	resp, err := c.raw.OIDc.PostAPIOidcClientsIDSecret(params)
+	recordCall("regenerate_oidc_client_secret", err, time.Since(start))
 	if err != nil {
 		return "", fmt.Errorf("regenerate OIDC client secret failed: %w", err)
 	}
@@ -653,7 +685,9 @@ func (c *Client) GetOIDCClientSCIMServiceProvider(ctx context.Context, oidcClien
 		WithContext(ctx).
 		WithID(oidcClientID)
 
+	start := time.Now()
 	resp, err := c.raw.OIDc.GetAPIOidcClientsIDScimServiceProvider(params)
+	recordCall("get_oidc_client_scim_service_provider", err, time.Since(start))
 	if err != nil {
 		if IsNotFoundError(err) {
 			return nil, nil
@@ -674,7 +708,9 @@ func (c *Client) CreateSCIMServiceProvider(ctx context.Context, input SCIMServic
 			Token:        input.Token,
 		})
 
+	start := time.Now()
 	resp, err := c.raw.Scim.PostAPIScimServiceProvider(params)
+	recordCall("create_scim_service_provider", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("create SCIM service provider failed: %w", err)
 	}
@@ -693,7 +729,9 @@ func (c *Client) UpdateSCIMServiceProvider(ctx context.Context, id string, input
 			Token:        input.Token,
 		})
 
+	start := time.Now()
 	resp, err := c.raw.Scim.PutAPIScimServiceProviderID(params)
+	recordCall("update_scim_service_provider", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("update SCIM service provider failed: %w", err)
 	}
@@ -707,7 +745,10 @@ func (c *Client) DeleteSCIMServiceProvider(ctx context.Context, id string) error
 		WithContext(ctx).
 		WithID(id)
 
-	if _, err := c.raw.Scim.DeleteAPIScimServiceProviderID(params); err != nil {
+	start := time.Now()
+	_, err := c.raw.Scim.DeleteAPIScimServiceProviderID(params)
+	recordCall("delete_scim_service_provider", err, time.Since(start))
+	if err != nil {
 		return fmt.Errorf("delete SCIM service provider failed: %w", err)
 	}
 
@@ -725,7 +766,9 @@ func (c *Client) ListUserGroups(ctx context.Context, search string) ([]*UserGrou
 		params = params.WithSearch(&search)
 	}
 
+	start := time.Now()
 	resp, err := c.raw.UserGroups.GetAPIUserGroups(params)
+	recordCall("list_user_groups", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("list user groups failed: %w", err)
 	}
@@ -746,7 +789,9 @@ func (c *Client) CreateUserGroup(ctx context.Context, name, friendlyName string)
 			FriendlyName: &friendlyName,
 		})
 
+	start := time.Now()
 	resp, err := c.raw.UserGroups.PostAPIUserGroups(params)
+	recordCall("create_user_group", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("create user group failed: %w", err)
 	}
@@ -763,7 +808,9 @@ func (c *Client) UpdateUserGroup(ctx context.Context, id, name, friendlyName str
 			FriendlyName: &friendlyName,
 		})
 
+	start := time.Now()
 	resp, err := c.raw.UserGroups.PutAPIUserGroupsID(params)
+	recordCall("update_user_group", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("update user group failed: %w", err)
 	}
@@ -776,7 +823,9 @@ func (c *Client) GetUserGroup(ctx context.Context, id string) (*UserGroup, error
 		WithContext(ctx).
 		WithID(id)
 
+	start := time.Now()
 	resp, err := c.raw.UserGroups.GetAPIUserGroupsID(params)
+	recordCall("get_user_group", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("get user group failed: %w", err)
 	}
@@ -789,7 +838,10 @@ func (c *Client) DeleteUserGroup(ctx context.Context, id string) error {
 		WithContext(ctx).
 		WithID(id)
 
-	if _, err := c.raw.UserGroups.DeleteAPIUserGroupsID(params); err != nil {
+	start := time.Now()
+	_, err := c.raw.UserGroups.DeleteAPIUserGroupsID(params)
+	recordCall("delete_user_group", err, time.Since(start))
+	if err != nil {
 		return fmt.Errorf("delete user group failed: %w", err)
 	}
 
@@ -804,7 +856,10 @@ func (c *Client) UpdateUserGroupUsers(ctx context.Context, id string, userIDs []
 			UserIds: userIDs,
 		})
 
-	if _, err := c.raw.UserGroups.PutAPIUserGroupsIDUsers(params); err != nil {
+	start := time.Now()
+	_, err := c.raw.UserGroups.PutAPIUserGroupsIDUsers(params)
+	recordCall("update_user_group_users", err, time.Since(start))
+	if err != nil {
 		return fmt.Errorf("update user group users failed: %w", err)
 	}
 
@@ -819,7 +874,10 @@ func (c *Client) UpdateUserGroupAllowedOIDCClients(ctx context.Context, id strin
 			OidcClientIds: clientIDs,
 		})
 
-	if _, err := c.raw.OIDc.PutAPIUserGroupsIDAllowedOidcClients(params); err != nil {
+	start := time.Now()
+	_, err := c.raw.OIDc.PutAPIUserGroupsIDAllowedOidcClients(params)
+	recordCall("update_user_group_allowed_oidc_clients", err, time.Since(start))
+	if err != nil {
 		return fmt.Errorf("update user group allowed OIDC clients failed: %w", err)
 	}
 
@@ -842,7 +900,9 @@ func (c *Client) UpdateUserGroupCustomClaims(ctx context.Context, id string, cla
 		WithUserGroupID(id).
 		WithClaims(payload)
 
+	start := time.Now()
 	resp, err := c.raw.CustomClaims.PutAPICustomClaimsUserGroupUserGroupID(params)
+	recordCall("update_user_group_custom_claims", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("update user group custom claims failed: %w", err)
 	}
@@ -868,7 +928,9 @@ func (c *Client) CreateOneTimeAccessToken(ctx context.Context, userID string, ex
 			"ttl":    fmt.Sprintf("%dm", expiresInMinutes),
 		})
 
+	start := time.Now()
 	resp, err := c.raw.Users.PostAPIUsersIDOneTimeAccessToken(params)
+	recordCall("create_one_time_access_token", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("create one-time access token failed: %w", err)
 	}

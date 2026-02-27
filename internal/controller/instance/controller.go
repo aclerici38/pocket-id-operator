@@ -49,6 +49,7 @@ import (
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
+	"github.com/aclerici38/pocket-id-operator/internal/metrics"
 )
 
 const (
@@ -95,6 +96,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	instance := &pocketidinternalv1alpha1.PocketIDInstance{}
 	if err := r.Get(ctx, req.NamespacedName, instance); err != nil {
+		if client.IgnoreNotFound(err) == nil {
+			metrics.DeleteReadinessGauge("PocketIDInstance", req.Namespace, req.Name)
+		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
@@ -125,9 +129,15 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	// Fetch and store the deployed PocketID version
+	// Fetch and store the deployed PocketID version; also updates InstanceInfo gauge.
 	if err := r.reconcileVersion(ctx, instance); err != nil {
 		log.Info("WARNING: could not fetch PocketID version from API. Endpoint added in v2.3.0", "error", err)
+		// Still record info gauge with whatever version is currently known (may be empty).
+		deploymentType := instance.Spec.DeploymentType
+		if deploymentType == "" {
+			deploymentType = deploymentTypeDeployment
+		}
+		metrics.RecordInstanceInfo(instance.Namespace, instance.Name, instance.Status.Version, instance.Status.Version, deploymentType)
 	}
 
 	return common.ApplyResync(ctrl.Result{}), nil
@@ -718,11 +728,21 @@ func (r *Reconciler) reconcileVersion(ctx context.Context, instance *pocketidint
 		)
 	}
 
+	deploymentType := instance.Spec.DeploymentType
+	if deploymentType == "" {
+		deploymentType = deploymentTypeDeployment
+	}
+
+	oldVersion := instance.Status.Version
 	if instance.Status.Version != version {
 		base := instance.DeepCopy()
 		instance.Status.Version = version
-		return r.Status().Patch(ctx, instance, client.MergeFrom(base))
+		if err := r.Status().Patch(ctx, instance, client.MergeFrom(base)); err != nil {
+			return err
+		}
 	}
+
+	metrics.RecordInstanceInfo(instance.Namespace, instance.Name, oldVersion, version, deploymentType)
 	return nil
 }
 
@@ -765,7 +785,12 @@ func (r *Reconciler) updateStatus(ctx context.Context, instance *pocketidinterna
 		instance.Status.StaticAPIKeySecretName = staticAPIKeySecret
 	}
 
-	return r.Status().Patch(ctx, instance, client.MergeFrom(base))
+	if err := r.Status().Patch(ctx, instance, client.MergeFrom(base)); err != nil {
+		return err
+	}
+
+	metrics.RecordReadiness("PocketIDInstance", instance.Namespace, instance.Name, ready == metav1.ConditionTrue)
+	return nil
 }
 
 // generateSecureToken generates a cryptographically secure random token

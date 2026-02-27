@@ -38,6 +38,7 @@ import (
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/helpers"
+	"github.com/aclerici38/pocket-id-operator/internal/metrics"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
@@ -70,6 +71,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
 	if err := r.Get(ctx, req.NamespacedName, oidcClient); err != nil {
+		if client.IgnoreNotFound(err) == nil {
+			metrics.DeleteReadinessGauge("PocketIDOIDCClient", req.Namespace, req.Name)
+		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
@@ -123,6 +127,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err != nil {
 		if pocketid.IsNotFoundError(err) {
 			log.Info("OIDC client was deleted externally, will recreate", "clientID", oidcClient.Status.ClientID)
+			metrics.ExternalDeletions.WithLabelValues("PocketIDOIDCClient").Inc()
 			if err := r.clearClientStatus(ctx, oidcClient); err != nil {
 				return ctrl.Result{}, err
 			}
@@ -246,6 +251,7 @@ func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *po
 		}
 		if existing != nil {
 			log.Info("Found existing OIDC client by name, adopting", "name", oidcClient.Name, "clientID", existing.ID)
+			metrics.ResourceOperations.WithLabelValues("PocketIDOIDCClient", "adopted").Inc()
 			if err := r.setClientID(ctx, oidcClient, existing.ID); err != nil {
 				return false, err
 			}
@@ -274,6 +280,12 @@ func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *po
 	if result.Resource == nil {
 		return true, nil
 	}
+
+	operation := "adopted"
+	if result.IsNewlyCreated {
+		operation = "created"
+	}
+	metrics.ResourceOperations.WithLabelValues("PocketIDOIDCClient", operation).Inc()
 
 	if err := r.setClientID(ctx, oidcClient, result.Resource.ID); err != nil {
 		return false, err
@@ -329,6 +341,7 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 		}
 	}
 
+	metrics.ResourceOperations.WithLabelValues("PocketIDOIDCClient", "updated").Inc()
 	return nil
 }
 
@@ -644,16 +657,24 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, oidcClient *pocketidin
 
 	// SCIM service providers are cascade-deleted by pocket-id when the
 	// OIDC client is removed, so no explicit SCIM cleanup is needed here.
-	return r.ReconcileDeleteWithPocketID(
+	result, err := r.ReconcileDeleteWithPocketID(
 		ctx,
 		oidcClient,
 		oidcClient.Status.ClientID,
 		oidcClient.Spec.InstanceSelector,
 		oidcClientFinalizer,
 		func(ctx context.Context, apiClient *pocketid.Client, id string) error {
-			return apiClient.DeleteOIDCClient(ctx, id)
+			if err := apiClient.DeleteOIDCClient(ctx, id); err != nil {
+				return err
+			}
+			metrics.ResourceOperations.WithLabelValues("PocketIDOIDCClient", "deleted").Inc()
+			return nil
 		},
 	)
+	if err == nil && result == (ctrl.Result{}) {
+		metrics.DeleteReadinessGauge("PocketIDOIDCClient", oidcClient.Namespace, oidcClient.Name)
+	}
+	return result, err
 }
 
 func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, instance *pocketidinternalv1alpha1.PocketIDInstance, apiClient *pocketid.Client) error {
