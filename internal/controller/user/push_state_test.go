@@ -175,18 +175,30 @@ func TestPushUserState_UpdatesForEachField(t *testing.T) {
 		current pocketid.User
 	}{
 		{
-			name:    "FirstName changed",
-			spec:    func() pocketidinternalv1alpha1.PocketIDUserSpec { s := baseSpec(); s.FirstName = sv("NewFirst"); return s }(),
+			name: "FirstName changed",
+			spec: func() pocketidinternalv1alpha1.PocketIDUserSpec {
+				s := baseSpec()
+				s.FirstName = sv("NewFirst")
+				return s
+			}(),
 			current: baseCurrent(),
 		},
 		{
-			name:    "LastName changed",
-			spec:    func() pocketidinternalv1alpha1.PocketIDUserSpec { s := baseSpec(); s.LastName = sv("NewLast"); return s }(),
+			name: "LastName changed",
+			spec: func() pocketidinternalv1alpha1.PocketIDUserSpec {
+				s := baseSpec()
+				s.LastName = sv("NewLast")
+				return s
+			}(),
 			current: baseCurrent(),
 		},
 		{
-			name:    "DisplayName changed",
-			spec:    func() pocketidinternalv1alpha1.PocketIDUserSpec { s := baseSpec(); s.DisplayName = sv("New Name"); return s }(),
+			name: "DisplayName changed",
+			spec: func() pocketidinternalv1alpha1.PocketIDUserSpec {
+				s := baseSpec()
+				s.DisplayName = sv("New Name")
+				return s
+			}(),
 			current: baseCurrent(),
 		},
 		{

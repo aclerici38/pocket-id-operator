@@ -384,4 +384,3 @@ func TestPushUserGroupState_ClearsUsersWithEmptySlice(t *testing.T) {
 		}
 	}
 }
-
