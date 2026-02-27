@@ -190,14 +190,16 @@
               "namespace": "Namespace",
               "Value": "Status",
               "version": "Version",
-              "deployment_type": "Deployment Type"
+              "deployment_type": "Deployment Type",
+              "app_url": "App URL"
             },
             "indexByName": {
               "name": 0,
               "namespace": 1,
               "Value": 2,
               "version": 3,
-              "deployment_type": 4
+              "deployment_type": 4,
+              "app_url": 5
             }
           }
         }
@@ -206,7 +208,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "pocketid_operator_resource_ready{kind=\"PocketIDInstance\"} * on(namespace, name) group_right(version, deployment_type) pocketid_operator_instance_info",
+          "expr": "pocketid_operator_resource_ready{kind=\"PocketIDInstance\"} * on(namespace, name) group_right(version, deployment_type, app_url) pocketid_operator_instance_info",
           "instant": true,
           "legendFormat": "",
           "refId": "A"

@@ -211,7 +211,7 @@ secrets) do not increment this counter.
 #### `pocketid_operator_instance_info`
 
 **Type:** Gauge (info-style, always `1`)
-**Labels:** `namespace`, `name`, `version`, `deployment_type`
+**Labels:** `namespace`, `name`, `version`, `deployment_type`, `app_url`
 
 Exposes metadata about each managed `PocketIDInstance`. The value is always `1`; use
 the label values to identify the instance. When the Pocket-ID version changes, the old
@@ -223,6 +223,7 @@ label set is deleted and replaced so stale series do not accumulate.
 | `name` | Kubernetes name of the `PocketIDInstance` |
 | `version` | Pocket-ID version string (e.g. `v2.3.0`), empty if not yet fetched |
 | `deployment_type` | `Deployment` or `StatefulSet` |
+| `app_url` | Value of `spec.appUrl`, empty string if not set |
 
 ---
 

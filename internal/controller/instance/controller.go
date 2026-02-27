@@ -137,7 +137,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		if deploymentType == "" {
 			deploymentType = deploymentTypeDeployment
 		}
-		metrics.RecordInstanceInfo(instance.Namespace, instance.Name, instance.Status.Version, instance.Status.Version, deploymentType)
+		metrics.RecordInstanceInfo(instance.Namespace, instance.Name, instance.Status.Version, instance.Status.Version, deploymentType, instance.Spec.AppURL)
 	}
 
 	return common.ApplyResync(ctrl.Result{}), nil
@@ -742,7 +742,7 @@ func (r *Reconciler) reconcileVersion(ctx context.Context, instance *pocketidint
 		}
 	}
 
-	metrics.RecordInstanceInfo(instance.Namespace, instance.Name, oldVersion, version, deploymentType)
+	metrics.RecordInstanceInfo(instance.Namespace, instance.Name, oldVersion, version, deploymentType, instance.Spec.AppURL)
 	return nil
 }
 

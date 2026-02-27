@@ -99,12 +99,13 @@ var (
 	//	name            - Kubernetes name of the PocketIDInstance
 	//	version         - Pocket-ID version string (e.g. "v2.3.0"), empty if not yet fetched
 	//	deployment_type - "Deployment" or "StatefulSet"
+	//	app_url         - value of spec.appUrl, empty if not set
 	InstanceInfo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "pocketid_operator_instance_info",
 			Help: "Information about a managed PocketIDInstance. Value is always 1; use labels to identify the instance.",
 		},
-		[]string{"namespace", "name", "version", "deployment_type"},
+		[]string{"namespace", "name", "version", "deployment_type", "app_url"},
 	)
 
 	// UserGroupMemberCount tracks the current number of members in each user group
@@ -169,17 +170,17 @@ func DeleteReadinessGauge(kind, namespace, name string) {
 // RecordInstanceInfo sets the InstanceInfo gauge for an instance to 1.
 // oldVersion should be the previous version label value (may be empty) so that
 // stale label sets from a version change can be deleted before writing the new one.
-func RecordInstanceInfo(namespace, name, oldVersion, newVersion, deploymentType string) {
+func RecordInstanceInfo(namespace, name, oldVersion, newVersion, deploymentType, appURL string) {
 	if oldVersion != newVersion && oldVersion != "" {
-		InstanceInfo.DeleteLabelValues(namespace, name, oldVersion, deploymentType)
+		InstanceInfo.DeleteLabelValues(namespace, name, oldVersion, deploymentType, appURL)
 	}
-	InstanceInfo.WithLabelValues(namespace, name, newVersion, deploymentType).Set(1)
+	InstanceInfo.WithLabelValues(namespace, name, newVersion, deploymentType, appURL).Set(1)
 }
 
 // DeleteInstanceInfo removes the InstanceInfo gauge entry for an instance.
 // Call this when a PocketIDInstance is deleted.
-func DeleteInstanceInfo(namespace, name, version, deploymentType string) {
-	InstanceInfo.DeleteLabelValues(namespace, name, version, deploymentType)
+func DeleteInstanceInfo(namespace, name, version, deploymentType, appURL string) {
+	InstanceInfo.DeleteLabelValues(namespace, name, version, deploymentType, appURL)
 }
 
 // DeleteUserGroupMemberCount removes the UserGroupMemberCount gauge entry for a group.
