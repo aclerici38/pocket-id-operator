@@ -883,13 +883,15 @@ func TestReconcileSCIM_WithSpec_NoTrackedID_ExistingInPocketID_Adopts(t *testing
 }
 
 func TestReconcileSCIM_WithSpec_WithTrackedID_Updates(t *testing.T) {
-	// spec.scim set, tracked ID exists → update
+	// spec.scim set, tracked ID exists, endpoint changed → update
 	ctx := context.Background()
 	oidcClient := oidcClientWithSCIM(&pocketidinternalv1alpha1.SCIMSpec{
 		Endpoint: "https://scim.example.com/v2",
 	}, "tracked-scim-id")
 	r := newSCIMReconciler(t, oidcClient)
-	api := &fakeSCIMAPI{}
+	api := &fakeSCIMAPI{
+		existingProvider: &pocketid.SCIMServiceProvider{ID: "tracked-scim-id", Endpoint: "https://old.example.com/scim"},
+	}
 
 	if err := r.ReconcileSCIM(ctx, oidcClient, api); err != nil {
 		t.Fatalf("unexpected error: %v", err)
