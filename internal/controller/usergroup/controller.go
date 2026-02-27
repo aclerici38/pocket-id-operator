@@ -260,20 +260,27 @@ func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketid
 		return err
 	}
 
-	if desired.Equal(current.ToInput()) {
+	currentInput := current.ToInput()
+	nameChanged := desired.Name != currentInput.Name || desired.FriendlyName != currentInput.FriendlyName
+	claimsChanged := !pocketid.CustomClaimsEqual(desired.CustomClaims, currentInput.CustomClaims)
+	usersChanged := !pocketid.SortedEqual(desired.UserIDs, currentInput.UserIDs)
+
+	if !nameChanged && !claimsChanged && !usersChanged {
 		log.V(2).Info("User group state is in sync, skipping update")
 	} else {
-		if _, err := apiClient.UpdateUserGroup(ctx, userGroup.Status.GroupID, desired.Name, desired.FriendlyName); err != nil {
-			return fmt.Errorf("update user group: %w", err)
+		if nameChanged {
+			if _, err := apiClient.UpdateUserGroup(ctx, userGroup.Status.GroupID, desired.Name, desired.FriendlyName); err != nil {
+				return fmt.Errorf("update user group: %w", err)
+			}
 		}
 
-		if desired.CustomClaims != nil {
+		if claimsChanged && desired.CustomClaims != nil {
 			if _, err := apiClient.UpdateUserGroupCustomClaims(ctx, userGroup.Status.GroupID, desired.CustomClaims); err != nil {
 				return err
 			}
 		}
 
-		if desired.UserIDs != nil {
+		if usersChanged && desired.UserIDs != nil {
 			if err := apiClient.UpdateUserGroupUsers(ctx, userGroup.Status.GroupID, desired.UserIDs); err != nil {
 				return err
 			}

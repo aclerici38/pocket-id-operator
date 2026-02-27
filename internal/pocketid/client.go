@@ -215,13 +215,14 @@ func (i UserGroupInput) Equal(other UserGroupInput) bool {
 	if !SortedEqual(i.UserIDs, other.UserIDs) {
 		return false
 	}
-	if !customClaimsEqual(i.CustomClaims, other.CustomClaims) {
+	if !CustomClaimsEqual(i.CustomClaims, other.CustomClaims) {
 		return false
 	}
 	return true
 }
 
-func customClaimsEqual(a, b []CustomClaim) bool {
+// CustomClaimsEqual compares two CustomClaim slices for equality regardless of order.
+func CustomClaimsEqual(a, b []CustomClaim) bool {
 	if len(a) == 0 && len(b) == 0 {
 		return true
 	}
