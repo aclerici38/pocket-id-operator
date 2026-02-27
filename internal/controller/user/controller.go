@@ -475,6 +475,10 @@ func (r *Reconciler) pushUserState(ctx context.Context, user *pocketidinternalv1
 		return err
 	}
 
+	// EmailVerified is managed by Pocket-ID.
+	// Always preserve the current value so the operator never resets it.
+	desired.EmailVerified = current.EmailVerified
+
 	if desired == current.ToInput() {
 		log.V(2).Info("User state is in sync, skipping update")
 		return nil
@@ -532,6 +536,7 @@ func (r *Reconciler) updateUserStatus(ctx context.Context, user *pocketidinterna
 		latest.Status.IsAdmin = pUser.IsAdmin
 		latest.Status.Disabled = pUser.Disabled
 		latest.Status.Locale = pUser.Locale
+		latest.Status.EmailVerified = pUser.EmailVerified
 
 		return r.Status().Patch(ctx, latest, client.MergeFrom(base))
 	})
