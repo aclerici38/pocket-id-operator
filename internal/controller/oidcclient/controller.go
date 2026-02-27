@@ -289,14 +289,17 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 
 	currentInput := current.ToInput()
 	clientChanged := !desired.Equal(currentInput)
+	hasCredentials := desired.Credentials != nil
 	groupsChanged := !pocketid.SortedEqual(groupIDs, current.AllowedUserGroupIDs)
 
-	if !clientChanged && !groupsChanged {
+	if !clientChanged && !hasCredentials && !groupsChanged {
 		log.V(2).Info("OIDC client state is in sync, skipping update")
 		return nil
 	}
 
-	if clientChanged {
+	// Always push when credentials are present since they are write-only
+	// and cannot be compared against the fetched state.
+	if clientChanged || hasCredentials {
 		if _, err := apiClient.UpdateOIDCClient(ctx, oidcClient.Status.ClientID, desired); err != nil {
 			return fmt.Errorf("update OIDC client: %w", err)
 		}
