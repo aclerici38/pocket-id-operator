@@ -107,34 +107,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: validationResult.RequeueAfter}, validationResult.Error
 	}
 
-	// Get API client from pool
-	apiClient, result, err := r.GetAPIClientOrWait(ctx, user, instance)
+	apiClient, result, err := r.GetAPIClientOrRequeue(ctx, user, instance)
 	if result != nil {
 		return *result, err
 	}
 
-	// Sync status from Pocket ID
-	if user.Status.UserID != "" {
-		pUser, err := apiClient.GetUser(ctx, user.Status.UserID)
-		if err != nil {
-			if pocketid.IsNotFoundError(err) {
-				log.Info("User was deleted externally, will recreate", "userID", user.Status.UserID)
-				if err := r.clearUserStatus(ctx, user); err != nil {
-					return ctrl.Result{}, err
-				}
-				return ctrl.Result{Requeue: true}, nil
-			}
-			_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "GetError", err.Error())
-			return ctrl.Result{RequeueAfter: common.Requeue}, nil
-		}
-
-		if err := r.updateUserStatus(ctx, user, pUser); err != nil {
-			log.Error(err, "Failed to update user status")
-			return ctrl.Result{RequeueAfter: common.Requeue}, nil
-		}
-	}
-
-	// Ensure resource exists or push state from CR
+	// No user ID yet, create or adopt
 	if user.Status.UserID == "" {
 		requeue, err := r.createOrAdoptUser(ctx, user, apiClient, instance)
 		if err != nil {
@@ -148,7 +126,26 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return common.ApplyResync(ctrl.Result{}), nil
 	}
 
-	if err := r.pushUserState(ctx, user, apiClient); err != nil {
+	// Fetch current state from Pocket ID
+	pUser, err := apiClient.GetUser(ctx, user.Status.UserID)
+	if err != nil {
+		if pocketid.IsNotFoundError(err) {
+			log.Info("User was deleted externally, will recreate", "userID", user.Status.UserID)
+			if err := r.clearUserStatus(ctx, user); err != nil {
+				return ctrl.Result{}, err
+			}
+			return ctrl.Result{Requeue: true}, nil
+		}
+		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "GetError", err.Error())
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+	}
+
+	if err := r.updateUserStatus(ctx, user, pUser); err != nil {
+		log.Error(err, "Failed to update user status")
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+	}
+
+	if err := r.pushUserState(ctx, user, apiClient, pUser); err != nil {
 		log.Error(err, "Failed to push user state")
 		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
@@ -160,18 +157,18 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
-	if err := r.ensureOneTimeLoginStatus(ctx, user, apiClient, instance); err != nil {
-		log.Error(err, "Failed to ensure one-time login status")
+	if err := r.createOneTimeToken(ctx, user, apiClient, instance); err != nil {
+		log.Error(err, "Failed to create one-time login token")
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+	}
+
+	cleanupResult, err := r.cleanupOneTimeToken(ctx, user)
+	if err != nil {
+		log.Error(err, "Failed to cleanup expired one-time login token")
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
 	_ = r.SetReadyCondition(ctx, user, metav1.ConditionTrue, "Reconciled", "User and API keys are in sync")
-
-	cleanupResult, err := r.ReconcileOneTimeLoginStatus(ctx, user)
-	if err != nil {
-		log.Error(err, "Failed to reconcile one-time login status")
-		return ctrl.Result{RequeueAfter: common.Requeue}, nil
-	}
 
 	if cleanupResult.RequeueAfter > 0 {
 		return common.ApplyResync(cleanupResult), nil
@@ -468,14 +465,22 @@ func (r *Reconciler) createOrAdoptUser(ctx context.Context, user *pocketidintern
 	return true, nil
 }
 
-// pushUserState pushes the desired state from the CR spec into Pocket ID.
-func (r *Reconciler) pushUserState(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client) error {
-	input, err := r.buildUserInput(ctx, user)
+// pushUserState compares the desired state from the CR spec against the current
+// state fetched from Pocket ID and only pushes an update if they differ.
+func (r *Reconciler) pushUserState(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client, current *pocketid.User) error {
+	log := logf.FromContext(ctx)
+
+	desired, err := r.buildUserInput(ctx, user)
 	if err != nil {
 		return err
 	}
 
-	if _, err := apiClient.UpdateUser(ctx, user.Status.UserID, input); err != nil {
+	if desired == current.ToInput() {
+		log.V(2).Info("User state is in sync, skipping update")
+		return nil
+	}
+
+	if _, err := apiClient.UpdateUser(ctx, user.Status.UserID, desired); err != nil {
 		return fmt.Errorf("update user: %w", err)
 	}
 
@@ -503,6 +508,7 @@ func (r *Reconciler) updateUserStatus(ctx context.Context, user *pocketidinterna
 		if err := r.Get(ctx, client.ObjectKeyFromObject(user), latest); err != nil {
 			return err
 		}
+		base := latest.DeepCopy()
 
 		oldSecretName := latest.Status.UserInfoSecretName
 		secretName := userInfoOutputSecretName(latest.Name)
@@ -527,7 +533,7 @@ func (r *Reconciler) updateUserStatus(ctx context.Context, user *pocketidinterna
 		latest.Status.Disabled = pUser.Disabled
 		latest.Status.Locale = pUser.Locale
 
-		return r.Status().Update(ctx, latest)
+		return r.Status().Patch(ctx, latest, client.MergeFrom(base))
 	})
 }
 
@@ -548,7 +554,9 @@ func (r *Reconciler) SetOneTimeLoginStatus(ctx context.Context, user *pocketidin
 	return r.Status().Patch(ctx, user, client.MergeFrom(base))
 }
 
-func (r *Reconciler) ensureOneTimeLoginStatus(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
+// createOneTimeToken generates a one-time login token for the user
+// if one doesn't already exist, and writes it to the CR status.
+func (r *Reconciler) createOneTimeToken(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
 	if user.Status.UserID == "" {
 		return nil
 	}
@@ -564,7 +572,9 @@ func (r *Reconciler) ensureOneTimeLoginStatus(ctx context.Context, user *pocketi
 	return r.SetOneTimeLoginStatus(ctx, user, instance, token.Token)
 }
 
-func (r *Reconciler) ReconcileOneTimeLoginStatus(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser) (ctrl.Result, error) {
+// cleanupOneTimeToken clears the one-time login token from status if it
+// has expired, or returns a requeue result to clean it up when it does expire.
+func (r *Reconciler) cleanupOneTimeToken(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser) (ctrl.Result, error) {
 	if user.Status.OneTimeLoginExpiresAt == "" {
 		return ctrl.Result{}, nil
 	}
@@ -695,8 +705,6 @@ func (r *Reconciler) reconcileAPIKeys(ctx context.Context, user *pocketidinterna
 		}
 
 		log.Info("Deleting API key", "name", name)
-
-		// Delete from Pocket-ID
 		if keyStatus.ID != "" {
 			if err := apiClient.DeleteAPIKey(ctx, keyStatus.ID); err != nil {
 				log.Error(err, "Failed to delete API key from Pocket-ID", "name", name)

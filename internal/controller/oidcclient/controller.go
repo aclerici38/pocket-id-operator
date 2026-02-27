@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -98,34 +99,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: validationResult.RequeueAfter}, validationResult.Error
 	}
 
-	// Get API client from pool
-	apiClient, result, err := r.GetAPIClientOrWait(ctx, oidcClient, instance)
+	apiClient, result, err := r.GetAPIClientOrRequeue(ctx, oidcClient, instance)
 	if result != nil {
 		return *result, err
 	}
 
-	// Sync status from Pocket ID
-	if oidcClient.Status.ClientID != "" {
-		current, err := apiClient.GetOIDCClient(ctx, oidcClient.Status.ClientID)
-		if err != nil {
-			if pocketid.IsNotFoundError(err) {
-				log.Info("OIDC client was deleted externally, will recreate", "clientID", oidcClient.Status.ClientID)
-				if err := r.clearClientStatus(ctx, oidcClient); err != nil {
-					return ctrl.Result{}, err
-				}
-				return ctrl.Result{Requeue: true}, nil
-			}
-			_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "GetError", err.Error())
-			return ctrl.Result{RequeueAfter: common.Requeue}, nil
-		}
-
-		if err := r.UpdateOIDCClientStatus(ctx, oidcClient, current); err != nil {
-			log.Error(err, "Failed to update OIDC client status")
-			return ctrl.Result{RequeueAfter: common.Requeue}, nil
-		}
-	}
-
-	// Ensure resource exists and update state
+	// No client ID yet, create or adopt
 	if oidcClient.Status.ClientID == "" {
 		requeue, err := r.createOrAdoptOIDCClient(ctx, oidcClient, apiClient)
 		if err != nil {
@@ -139,7 +118,26 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return common.ApplyResync(ctrl.Result{}), nil
 	}
 
-	if err := r.pushOIDCClientState(ctx, oidcClient, apiClient); err != nil {
+	// Fetch current state from Pocket ID
+	current, err := apiClient.GetOIDCClient(ctx, oidcClient.Status.ClientID)
+	if err != nil {
+		if pocketid.IsNotFoundError(err) {
+			log.Info("OIDC client was deleted externally, will recreate", "clientID", oidcClient.Status.ClientID)
+			if err := r.clearClientStatus(ctx, oidcClient); err != nil {
+				return ctrl.Result{}, err
+			}
+			return ctrl.Result{Requeue: true}, nil
+		}
+		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "GetError", err.Error())
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+	}
+
+	if err := r.UpdateOIDCClientStatus(ctx, oidcClient, current); err != nil {
+		log.Error(err, "Failed to update OIDC client status")
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+	}
+
+	if err := r.pushOIDCClientState(ctx, oidcClient, apiClient, current); err != nil {
 		log.Error(err, "Failed to push OIDC client state")
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
@@ -225,7 +223,14 @@ func (r *Reconciler) FindExistingOIDCClient(ctx context.Context, apiClient Pocke
 // so the next reconcile loop can GET the canonical state.
 func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client) (bool, error) {
 	log := logf.FromContext(ctx)
-	input := r.OidcClientInput(oidcClient)
+	input := r.OidcClientInput(oidcClient, nil)
+
+	// Aggregate all allowed groups
+	groupIDs, err := r.aggregateAllowedUserGroupIDs(ctx, oidcClient)
+	if err != nil {
+		return false, fmt.Errorf("aggregate allowed user groups: %w", err)
+	}
+	input.IsGroupRestricted = len(groupIDs) > 0
 
 	resourceID := oidcClient.Spec.ClientID
 	if resourceID == "" {
@@ -276,22 +281,49 @@ func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *po
 	return true, nil
 }
 
-// pushOIDCClientState pushes the desired state from the CR spec into Pocket ID.
-func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client) error {
+// pushOIDCClientState compares the desired state from the CR spec against the current
+// state fetched from Pocket ID and only pushes updates if they differ.
+func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client, current *pocketid.OIDCClient) error {
+	log := logf.FromContext(ctx)
+
 	// Aggregate allowed groups before building input so IsGroupRestricted is correct
 	groupIDs, err := r.aggregateAllowedUserGroupIDs(ctx, oidcClient)
 	if err != nil {
 		return fmt.Errorf("aggregate allowed user groups: %w", err)
 	}
 
-	input := r.OidcClientInput(oidcClient)
-	input.IsGroupRestricted = len(groupIDs) > 0
+	desired := r.OidcClientInput(oidcClient, current)
+	desired.IsGroupRestricted = len(groupIDs) > 0
 
-	if _, err := apiClient.UpdateOIDCClient(ctx, oidcClient.Status.ClientID, input); err != nil {
-		return fmt.Errorf("update OIDC client: %w", err)
+	currentInput := current.ToInput()
+	clientChanged := !desired.Equal(currentInput)
+	hasCredentials := desired.Credentials != nil
+	groupsChanged := !pocketid.SortedEqual(groupIDs, current.AllowedUserGroupIDs)
+
+	// Clear any existing credentials if the CR doesn't specify any when adopting
+	firstReconcile := !helpers.IsResourceReady(oidcClient.Status.Conditions)
+	if firstReconcile && !hasCredentials {
+		desired.Credentials = &pocketid.OIDCClientCredentials{FederatedIdentities: []pocketid.OIDCClientFederatedIdentity{}}
+	}
+	shouldPushCredentials := hasCredentials || firstReconcile
+
+	if !clientChanged && !shouldPushCredentials && !groupsChanged {
+		log.V(2).Info("OIDC client state is in sync, skipping update")
+		return nil
 	}
 
-	if groupIDs != nil {
+	// Always push when credentials are present since they
+	// are write-only and cannot be compared against the fetched state.
+	if clientChanged || shouldPushCredentials {
+		if _, err := apiClient.UpdateOIDCClient(ctx, oidcClient.Status.ClientID, desired); err != nil {
+			return fmt.Errorf("update OIDC client: %w", err)
+		}
+	}
+
+	if groupsChanged {
+		if groupIDs == nil {
+			groupIDs = []string{}
+		}
 		if err := apiClient.UpdateOIDCClientAllowedGroups(ctx, oidcClient.Status.ClientID, groupIDs); err != nil {
 			return err
 		}
@@ -344,6 +376,7 @@ func (r *Reconciler) aggregateAllowedUserGroupIDs(ctx context.Context, oidcClien
 	for id := range groupIDSet {
 		groupIDs = append(groupIDs, id)
 	}
+	sort.Strings(groupIDs)
 	return groupIDs, nil
 }
 
@@ -354,7 +387,9 @@ func (r *Reconciler) setClientID(ctx context.Context, oidcClient *pocketidintern
 	return r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
 }
 
-func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) pocketid.OIDCClientInput {
+// OidcClientInput builds an OIDCClientInput from the CR spec.
+// When current is provided, it is used as the fallback for callback URLs not set in the spec
+func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, current *pocketid.OIDCClient) pocketid.OIDCClientInput {
 	name := oidcClient.Name
 
 	// Only set client ID if in spec
@@ -380,15 +415,15 @@ func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.Pocket
 	hasLogo := oidcClient.Spec.LogoURL != ""
 	hasDarkLogo := oidcClient.Spec.DarkLogoURL != ""
 
-	// When callback URLs are not in the spec, preserve the server-side values
+	// When callback URLs are not in the spec, preserve the server-side values.
 	// This prevents overwriting pocket-id's TOFU auto-detected URLs.
 	callbackURLs := oidcClient.Spec.CallbackURLs
-	if len(callbackURLs) == 0 {
-		callbackURLs = oidcClient.Status.CallbackURLs
+	if len(callbackURLs) == 0 && current != nil {
+		callbackURLs = current.CallbackURLs
 	}
 	logoutCallbackURLs := oidcClient.Spec.LogoutCallbackURLs
-	if len(logoutCallbackURLs) == 0 {
-		logoutCallbackURLs = oidcClient.Status.LogoutCallbackURLs
+	if len(logoutCallbackURLs) == 0 && current != nil {
+		logoutCallbackURLs = current.LogoutCallbackURLs
 	}
 
 	return pocketid.OIDCClientInput{
@@ -478,16 +513,34 @@ func (r *Reconciler) ReconcileSCIM(ctx context.Context, oidcClient *pocketidinte
 		return r.setSCIMProviderID(ctx, oidcClient, created.ID)
 	}
 
-	// Update existing
-	if _, err := apiClient.UpdateSCIMServiceProvider(ctx, oidcClient.Status.SCIMProviderID, input); err != nil {
-		if pocketid.IsNotFoundError(err) {
-			log.Info("SCIM service provider not found, will recreate", "scimProviderID", oidcClient.Status.SCIMProviderID)
-			if err := r.clearSCIMProviderID(ctx, oidcClient); err != nil {
-				return err
-			}
-			return r.ReconcileSCIM(ctx, oidcClient, apiClient)
+	// Fetch current state to detect changes and handle external deletion.
+	// GetOIDCClientSCIMServiceProvider returns nil, nil on 404.
+	current, err := apiClient.GetOIDCClientSCIMServiceProvider(ctx, oidcClient.Status.ClientID)
+	if err != nil {
+		return fmt.Errorf("get SCIM service provider: %w", err)
+	}
+	if current == nil {
+		staleID := oidcClient.Status.SCIMProviderID
+		log.Info("SCIM service provider not found externally, clearing status for recreation", "scimProviderID", staleID)
+		if err := r.clearSCIMProviderID(ctx, oidcClient); err != nil {
+			return err
 		}
+		return fmt.Errorf("SCIM service provider %s not found, will recreate on next reconcile", staleID)
+	}
+
+	// Token is write-only and cannot be read back from the API, so always push
+	// when one is configured. Otherwise only update if the endpoint changed.
+	hasToken := token != ""
+	if !hasToken && current.Endpoint == input.Endpoint {
+		log.V(2).Info("SCIM service provider is in sync, skipping update")
+		return nil
+	}
+
+	if _, err := apiClient.UpdateSCIMServiceProvider(ctx, current.ID, input); err != nil {
 		return fmt.Errorf("update SCIM service provider: %w", err)
+	}
+	if current.ID != oidcClient.Status.SCIMProviderID {
+		return r.setSCIMProviderID(ctx, oidcClient, current.ID)
 	}
 	return nil
 }

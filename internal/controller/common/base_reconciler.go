@@ -85,8 +85,8 @@ func (r *BaseReconciler) ValidateInstanceReady(ctx context.Context, obj Conditio
 	}
 }
 
-// GetAPIClientOrWait retrieves an API client for the instance.
-func (r *BaseReconciler) GetAPIClientOrWait(ctx context.Context, obj ConditionedResource, instance *pocketidv1alpha1.PocketIDInstance) (*pocketid.Client, *ctrl.Result, error) {
+// GetAPIClientOrRequeue creates an API client for the instance, or returns a requeue result if not ready.
+func (r *BaseReconciler) GetAPIClientOrRequeue(ctx context.Context, obj ConditionedResource, instance *pocketidv1alpha1.PocketIDInstance) (*pocketid.Client, *ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
 
 	apiClient, err := GetAPIClient(ctx, r.Client, r.APIReader, instance)
@@ -159,7 +159,6 @@ func (r *BaseReconciler) ReconcileDeleteWithPocketID(
 		return ctrl.Result{}, err
 	}
 
-	// Get API client from pool
 	apiClient, err := GetAPIClient(ctx, r.Client, r.APIReader, instance)
 	if err != nil {
 		if stderrors.Is(err, ErrAPIClientNotReady) {

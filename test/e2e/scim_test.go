@@ -210,6 +210,43 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 		})
 	})
 
+	Context("SCIM idempotency", func() {
+		const clientName = "test-scim-idempotent"
+
+		It("should not modify SCIM endpoint on reconcile when nothing has changed", func() {
+			By("creating an OIDC client with a SCIM endpoint")
+			applyYAML(buildOIDCClientYAML(OIDCClientOptions{
+				Name: clientName,
+				SCIM: &SCIMConfig{
+					Endpoint: "https://idempotent.example.com/scim",
+				},
+			}))
+			waitForReady("pocketidoidcclient", clientName, userNS)
+			oidcClientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
+
+			By("verifying the initial SCIM endpoint in Pocket-ID")
+			initialEndpoint := getSCIMProviderEndpoint("scim-idempotent-check-1", userNS, oidcClientID)
+			Expect(initialEndpoint).To(Equal("https://idempotent.example.com/scim"))
+
+			By("triggering another reconcile by annotating the client")
+			Expect(kubectlAnnotate("pocketidoidcclient", clientName, userNS, "test/trigger-reconcile=1")).To(Succeed())
+			// The RESYNC_INTERVAL env var is 5s in e2e — wait for at least two cycles.
+			time.Sleep(15 * time.Second)
+			waitForReady("pocketidoidcclient", clientName, userNS)
+
+			By("verifying the SCIM endpoint is unchanged after no-op reconcile")
+			// Clean up any previous check pod from this name
+			kubectlDelete("pod", "scim-idempotent-check-2", userNS)
+			endpointAfter := getSCIMProviderEndpoint("scim-idempotent-check-2", userNS, oidcClientID)
+			Expect(endpointAfter).To(Equal("https://idempotent.example.com/scim"))
+		})
+
+		AfterAll(func() {
+			kubectlDelete("pocketidoidcclient", clientName, userNS)
+			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
+		})
+	})
+
 	Context("SCIM stale cleanup on adoption without spec.scim", func() {
 		const clientName = "test-scim-stale-cleanup"
 

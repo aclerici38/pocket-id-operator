@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"sort"
 	"time"
 
 	"github.com/go-openapi/runtime"
@@ -65,8 +66,6 @@ type OIDCClient struct {
 	CallbackURLs             []string
 	LogoutCallbackURLs       []string
 	LaunchURL                string
-	LogoURL                  string
-	DarkLogoURL              string
 	HasLogo                  bool
 	HasDarkLogo              bool
 	IsPublic                 bool
@@ -74,6 +73,26 @@ type OIDCClient struct {
 	PKCEEnabled              bool
 	RequiresReauthentication bool
 	AllowedUserGroupIDs      []string
+}
+
+// ToInput converts an OIDCClient into an OIDCClientInput for comparison with desired state.
+// ID and Credentials are not included since they aren't returned by the GET API.
+// LogoURL and DarkLogoURL are write-only (not returned by the API); logo presence is
+// tracked via HasLogo/HasDarkLogo instead.
+// AllowedUserGroupIDs is managed separately and excluded from the input.
+func (c *OIDCClient) ToInput() OIDCClientInput {
+	return OIDCClientInput{
+		Name:                     c.Name,
+		CallbackURLs:             c.CallbackURLs,
+		LogoutCallbackURLs:       c.LogoutCallbackURLs,
+		LaunchURL:                c.LaunchURL,
+		HasLogo:                  c.HasLogo,
+		HasDarkLogo:              c.HasDarkLogo,
+		IsPublic:                 c.IsPublic,
+		IsGroupRestricted:        c.IsGroupRestricted,
+		PKCEEnabled:              c.PKCEEnabled,
+		RequiresReauthentication: c.RequiresReauthentication,
+	}
 }
 
 // OIDCClientFederatedIdentity represents a federated identity for OIDC clients.
@@ -105,6 +124,30 @@ type OIDCClientInput struct {
 	PKCEEnabled              bool
 	RequiresReauthentication bool
 	Credentials              *OIDCClientCredentials
+}
+
+// Equal compares two OIDCClientInputs for equality on the fields that can be
+// compared (excludes ID and Credentials which are create-time or write-only,
+// and excludes LogoURL/DarkLogoURL which are not returned by the GET API —
+// logo presence is compared via HasLogo/HasDarkLogo instead).
+func (i OIDCClientInput) Equal(other OIDCClientInput) bool {
+	if i.Name != other.Name ||
+		i.LaunchURL != other.LaunchURL ||
+		i.HasLogo != other.HasLogo ||
+		i.HasDarkLogo != other.HasDarkLogo ||
+		i.IsPublic != other.IsPublic ||
+		i.IsGroupRestricted != other.IsGroupRestricted ||
+		i.PKCEEnabled != other.PKCEEnabled ||
+		i.RequiresReauthentication != other.RequiresReauthentication {
+		return false
+	}
+	if !orderedEqual(i.CallbackURLs, other.CallbackURLs) {
+		return false
+	}
+	if !orderedEqual(i.LogoutCallbackURLs, other.LogoutCallbackURLs) {
+		return false
+	}
+	return true
 }
 
 // CustomClaim represents a custom claim key/value pair.
@@ -141,6 +184,82 @@ type UserGroup struct {
 	UserIDs              []string
 	CustomClaims         []CustomClaim
 	AllowedOIDCClientIDs []string
+}
+
+// UserGroupInput contains the fields the operator manages for a user group.
+// AllowedOIDCClientIDs is excluded because the OIDC client controller owns that relationship.
+type UserGroupInput struct {
+	Name         string
+	FriendlyName string
+	CustomClaims []CustomClaim
+	UserIDs      []string
+}
+
+// ToInput converts a UserGroup into a UserGroupInput for comparison with desired state.
+func (g *UserGroup) ToInput() UserGroupInput {
+	return UserGroupInput{
+		Name:         g.Name,
+		FriendlyName: g.FriendlyName,
+		CustomClaims: g.CustomClaims,
+		UserIDs:      g.UserIDs,
+	}
+}
+
+// CustomClaimsEqual compares two CustomClaim slices for equality regardless of order.
+func CustomClaimsEqual(a, b []CustomClaim) bool {
+	if len(a) == 0 && len(b) == 0 {
+		return true
+	}
+	if len(a) != len(b) {
+		return false
+	}
+	aMap := make(map[string]string, len(a))
+	for _, c := range a {
+		aMap[c.Key] = c.Value
+	}
+	for _, c := range b {
+		if v, ok := aMap[c.Key]; !ok || v != c.Value {
+			return false
+		}
+	}
+	return true
+}
+
+func orderedEqual(a, b []string) bool {
+	if len(a) == 0 && len(b) == 0 {
+		return true
+	}
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// SortedEqual compares two string slices for equality regardless of order.
+func SortedEqual(a, b []string) bool {
+	if len(a) == 0 && len(b) == 0 {
+		return true
+	}
+	if len(a) != len(b) {
+		return false
+	}
+	aCopy := make([]string, len(a))
+	bCopy := make([]string, len(b))
+	copy(aCopy, a)
+	copy(bCopy, b)
+	sort.Strings(aCopy)
+	sort.Strings(bCopy)
+	for i := range aCopy {
+		if aCopy[i] != bCopy[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // NewClient creates a new Pocket-ID client for the given base URL with optional API key.
@@ -231,6 +350,20 @@ type UserInput struct {
 	IsAdmin     bool
 	Disabled    bool
 	Locale      string
+}
+
+// ToInput converts a User into a UserInput for comparison with desired state.
+func (u *User) ToInput() UserInput {
+	return UserInput{
+		Username:    u.Username,
+		FirstName:   u.FirstName,
+		LastName:    u.LastName,
+		Email:       u.Email,
+		DisplayName: u.DisplayName,
+		IsAdmin:     u.IsAdmin,
+		Disabled:    u.Disabled,
+		Locale:      u.Locale,
+	}
 }
 
 func (c *Client) CreateUser(ctx context.Context, input UserInput) (*User, error) {
@@ -814,8 +947,6 @@ func oidcClientFromListDTO(dto *models.GithubComPocketIDPocketIDBackendInternalD
 		CallbackURLs:             dto.CallbackURLs,
 		LogoutCallbackURLs:       dto.LogoutCallbackURLs,
 		LaunchURL:                dto.LaunchURL,
-		LogoURL:                  "",
-		DarkLogoURL:              "",
 		HasLogo:                  dto.HasLogo,
 		HasDarkLogo:              dto.HasDarkLogo,
 		IsPublic:                 dto.IsPublic,
@@ -843,8 +974,6 @@ func oidcClientFromAllowedGroupsDTO(dto *models.GithubComPocketIDPocketIDBackend
 		CallbackURLs:             dto.CallbackURLs,
 		LogoutCallbackURLs:       dto.LogoutCallbackURLs,
 		LaunchURL:                dto.LaunchURL,
-		LogoURL:                  "",
-		DarkLogoURL:              "",
 		HasLogo:                  dto.HasLogo,
 		HasDarkLogo:              dto.HasDarkLogo,
 		IsPublic:                 dto.IsPublic,
