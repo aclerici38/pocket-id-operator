@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"sort"
 	"time"
 
 	"github.com/go-openapi/runtime"
@@ -141,6 +142,65 @@ type UserGroup struct {
 	UserIDs              []string
 	CustomClaims         []CustomClaim
 	AllowedOIDCClientIDs []string
+}
+
+// UserGroupInput contains the fields the operator manages for a user group.
+// AllowedOIDCClientIDs is excluded because the OIDC client controller owns that relationship.
+type UserGroupInput struct {
+	Name         string
+	FriendlyName string
+	CustomClaims []CustomClaim
+	UserIDs      []string
+}
+
+// ToInput converts a UserGroup into a UserGroupInput for comparison with desired state.
+func (g *UserGroup) ToInput() UserGroupInput {
+	return UserGroupInput{
+		Name:         g.Name,
+		FriendlyName: g.FriendlyName,
+		CustomClaims: g.CustomClaims,
+		UserIDs:      g.UserIDs,
+	}
+}
+
+// Equal compares two UserGroupInputs for equality.
+func (i UserGroupInput) Equal(other UserGroupInput) bool {
+	if i.Name != other.Name || i.FriendlyName != other.FriendlyName {
+		return false
+	}
+	if !sortedEqual(i.UserIDs, other.UserIDs) {
+		return false
+	}
+	if len(i.CustomClaims) != len(other.CustomClaims) {
+		return false
+	}
+	for j := range i.CustomClaims {
+		if i.CustomClaims[j] != other.CustomClaims[j] {
+			return false
+		}
+	}
+	return true
+}
+
+func sortedEqual(a, b []string) bool {
+	if len(a) == 0 && len(b) == 0 {
+		return true
+	}
+	if len(a) != len(b) {
+		return false
+	}
+	aCopy := make([]string, len(a))
+	bCopy := make([]string, len(b))
+	copy(aCopy, a)
+	copy(bCopy, b)
+	sort.Strings(aCopy)
+	sort.Strings(bCopy)
+	for i := range aCopy {
+		if aCopy[i] != bCopy[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // NewClient creates a new Pocket-ID client for the given base URL with optional API key.
