@@ -170,6 +170,10 @@ type PocketIDUserStatus struct {
 	// +optional
 	Locale string `json:"locale,omitempty"`
 
+	// EmailVerified reflects whether the user's email has been verified in Pocket-ID.
+	// +optional
+	EmailVerified bool `json:"emailVerified,omitempty"`
+
 	// OneTimeLoginToken is the one-time login token for a newly created user
 	// +optional
 	OneTimeLoginToken string `json:"oneTimeLoginToken,omitempty"`

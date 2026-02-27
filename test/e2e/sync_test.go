@@ -4,6 +4,7 @@
 package e2e
 
 import (
+	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -250,3 +251,104 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 		})
 	})
 })
+
+var _ = Describe("EmailVerified Preservation", Ordered, func() {
+	// Verifies that the operator never resets a user's emailVerified status in Pocket-ID.
+	// A user created directly via the Pocket-ID API with emailVerified=true is adopted by
+	// a CR, and after multiple reconcile cycles the flag must remain true.
+
+	const (
+		crName   = "sync-email-verified"
+		username = "sync-email-verified-user"
+	)
+
+	BeforeAll(func() {
+		By("creating a user directly in Pocket-ID with emailVerified=true")
+		createUserInPocketIDWithVerifiedEmail("create-verified-user", userNS, username, "sync-verified@example.local")
+	})
+
+	It("should adopt the pre-existing user and reflect emailVerified=true in status", func() {
+		By("creating a PocketIDUser CR whose username matches the pre-existing user")
+		createUserAndWaitReady(UserOptions{
+			Name:      crName,
+			Username:  username,
+			FirstName: "Verified",
+			LastName:  "User",
+			Email:     "sync-verified@example.local",
+		})
+
+		By("verifying status.emailVerified is true after adoption")
+		waitForStatusField("pocketiduser", crName, userNS, ".status.emailVerified", "true")
+	})
+
+	It("should preserve emailVerified=true across multiple reconcile cycles", func() {
+		By("waiting for at least 2 reconcile cycles at RESYNC_INTERVAL=5s")
+		time.Sleep(15 * time.Second)
+
+		By("verifying status.emailVerified is still true")
+		Expect(kubectlGet("pocketiduser", crName, "-n", userNS,
+			"-o", "jsonpath={.status.emailVerified}")).To(Equal("true"))
+
+		By("verifying Pocket-ID still has emailVerified=true for the user")
+		userID := kubectlGet("pocketiduser", crName, "-n", userNS,
+			"-o", "jsonpath={.status.userID}")
+		Expect(getUserEmailVerified("check-email-verified", userNS, userID)).To(Equal("true"))
+	})
+
+	AfterAll(func() {
+		kubectlDelete("pocketiduser", crName, userNS)
+		waitForResourceDeleted("pocketiduser", crName, userNS)
+		kubectlDelete("pod", "create-verified-user", userNS)
+		kubectlDelete("pod", "check-email-verified", userNS)
+	})
+})
+
+// --- User API Helpers ---
+
+// createUserInPocketIDWithVerifiedEmail creates a user directly in Pocket-ID via the API
+// with emailVerified=true and waits for the curl pod to succeed.
+func createUserInPocketIDWithVerifiedEmail(podName, namespace, username, email string) {
+	staticSecretName := instanceName + "-static-api-key"
+	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
+		"-o", "jsonpath={.data.token}")
+	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
+
+	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
+BODY=$(curl -s -X POST \
+  -H "X-API-KEY: $API_KEY" -H "Content-Type: application/json" \
+  -d '{"username":"%s","firstName":"%s","displayName":"%s","email":"%s","emailVerified":true}' \
+  -o /tmp/body -w '%%{http_code}' \
+  %s/api/users)
+HTTP_CODE="$BODY"
+BODY=$(cat /tmp/body)
+if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
+  echo "Failed to create user: HTTP $HTTP_CODE: $BODY" >&2
+  exit 1
+fi`,
+		apiKeyBase64, username, username, username, email, formatInstanceURL())
+
+	applyYAML(createCurlPodYAML(podName, namespace, script))
+	waitForPodSucceeded(podName, namespace)
+}
+
+// getUserEmailVerified queries Pocket-ID for a user by ID and returns "true" or "false"
+// based on the emailVerified field.
+func getUserEmailVerified(podName, namespace, userID string) string {
+	staticSecretName := instanceName + "-static-api-key"
+	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
+		"-o", "jsonpath={.data.token}")
+	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
+
+	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
+BODY=$(curl -s -H "X-API-KEY: $API_KEY" %s/api/users/%s)
+if echo "$BODY" | grep -q '"emailVerified":true'; then
+  echo "true"
+else
+  echo "false"
+fi`,
+		apiKeyBase64, formatInstanceURL(), userID)
+
+	applyYAML(createCurlPodYAML(podName, namespace, script))
+	waitForPodSucceeded(podName, namespace)
+	return kubectlLogs(podName, namespace)
+}

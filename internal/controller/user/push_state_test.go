@@ -135,6 +135,100 @@ func TestPushUserState_UpdatesWhenFieldChanged(t *testing.T) {
 	}
 }
 
+// TestPushUserState_PreservesEmailVerified covers two EmailVerified behaviours:
+//
+//  1. When current.EmailVerified=true and all other spec fields match, no update
+//     is issued — EmailVerified does NOT create a spurious diff.
+//  2. When another field changes and an update is triggered, the payload sent to
+//     Pocket-ID preserves current.EmailVerified rather than resetting it to false.
+func TestPushUserState_PreservesEmailVerified(t *testing.T) {
+	sv := func(v string) pocketidinternalv1alpha1.StringValue {
+		return pocketidinternalv1alpha1.StringValue{Value: v}
+	}
+	baseSpec := pocketidinternalv1alpha1.PocketIDUserSpec{
+		Username: sv("eve"), FirstName: sv("Eve"), LastName: sv("Test"),
+		Email: sv("eve@example.com"), DisplayName: sv("Eve Test"),
+	}
+	baseCurrent := pocketid.User{
+		ID: "uid-eve", Username: "eve", FirstName: "Eve", LastName: "Test",
+		Email: "eve@example.com", DisplayName: "Eve Test",
+		EmailVerified: true,
+	}
+
+	t.Run("no spurious update when only EmailVerified differs from zero", func(t *testing.T) {
+		// Spec has no EmailVerified field (always false/zero). Current has EmailVerified=true.
+		// pushUserState must NOT treat this as a diff — it should preserve and skip.
+		ctx := context.Background()
+		scheme := runtime.NewScheme()
+		_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+		userCR := &pocketidinternalv1alpha1.PocketIDUser{
+			ObjectMeta: metav1.ObjectMeta{Name: "eve", Namespace: "default"},
+			Spec:       baseSpec,
+			Status:     pocketidinternalv1alpha1.PocketIDUserStatus{UserID: "uid-eve"},
+		}
+		current := baseCurrent
+
+		r := newUserPushReconciler(scheme)
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			t.Error("unexpected API call: EmailVerified alone must not cause an update")
+			http.Error(w, "unexpected", http.StatusInternalServerError)
+		}))
+		defer ts.Close()
+		apiClient, _ := pocketid.NewClient(ts.URL, "")
+
+		if err := r.pushUserState(ctx, userCR, apiClient, &current); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("update preserves EmailVerified=true when another field changes", func(t *testing.T) {
+		// Email differs from current → update is triggered.
+		// The payload sent to Pocket-ID must carry EmailVerified=true, not false.
+		ctx := context.Background()
+		scheme := runtime.NewScheme()
+		_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+		spec := baseSpec
+		spec.Email = sv("eve-new@example.com")
+		userCR := &pocketidinternalv1alpha1.PocketIDUser{
+			ObjectMeta: metav1.ObjectMeta{Name: "eve", Namespace: "default"},
+			Spec:       spec,
+			Status:     pocketidinternalv1alpha1.PocketIDUserStatus{UserID: "uid-eve"},
+		}
+		current := baseCurrent // EmailVerified=true, old email
+
+		r := newUserPushReconciler(scheme)
+
+		var sentVerified *bool
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if req.Method == http.MethodPut && req.URL.Path == "/api/users/uid-eve" {
+				var body struct {
+					EmailVerified bool `json:"emailVerified"`
+				}
+				_ = json.NewDecoder(req.Body).Decode(&body)
+				v := body.EmailVerified
+				sentVerified = &v
+				okUserResponse(w, "uid-eve", "eve")
+				return
+			}
+			http.NotFound(w, req)
+		}))
+		defer ts.Close()
+		apiClient, _ := pocketid.NewClient(ts.URL, "")
+
+		if err := r.pushUserState(ctx, userCR, apiClient, &current); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if sentVerified == nil {
+			t.Fatal("expected UpdateUser to be called")
+		}
+		if !*sentVerified {
+			t.Error("expected emailVerified=true to be preserved in update payload, got false")
+		}
+	})
+}
+
 // TestPushUserState_UpdatesForEachField exercises every field of UserInput to verify that a
 // single-field difference between desired and current always triggers UpdateUser.
 // This guards against accidentally missing a field in the equality comparison.
