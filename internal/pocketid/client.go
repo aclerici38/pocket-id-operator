@@ -79,6 +79,8 @@ type OIDCClient struct {
 
 // ToInput converts an OIDCClient into an OIDCClientInput for comparison with desired state.
 // ID and Credentials are not included since they aren't returned by the GET API.
+// LogoURL and DarkLogoURL are write-only (not returned by the API); logo presence is
+// tracked via HasLogo/HasDarkLogo instead.
 // AllowedUserGroupIDs is managed separately and excluded from the input.
 func (c *OIDCClient) ToInput() OIDCClientInput {
 	return OIDCClientInput{
@@ -86,8 +88,6 @@ func (c *OIDCClient) ToInput() OIDCClientInput {
 		CallbackURLs:             c.CallbackURLs,
 		LogoutCallbackURLs:       c.LogoutCallbackURLs,
 		LaunchURL:                c.LaunchURL,
-		LogoURL:                  c.LogoURL,
-		DarkLogoURL:              c.DarkLogoURL,
 		HasLogo:                  c.HasLogo,
 		HasDarkLogo:              c.HasDarkLogo,
 		IsPublic:                 c.IsPublic,
@@ -129,12 +129,12 @@ type OIDCClientInput struct {
 }
 
 // Equal compares two OIDCClientInputs for equality on the fields that can be
-// compared (excludes ID and Credentials which are create-time or write-only).
+// compared (excludes ID and Credentials which are create-time or write-only,
+// and excludes LogoURL/DarkLogoURL which are not returned by the GET API —
+// logo presence is compared via HasLogo/HasDarkLogo instead).
 func (i OIDCClientInput) Equal(other OIDCClientInput) bool {
 	if i.Name != other.Name ||
 		i.LaunchURL != other.LaunchURL ||
-		i.LogoURL != other.LogoURL ||
-		i.DarkLogoURL != other.DarkLogoURL ||
 		i.HasLogo != other.HasLogo ||
 		i.HasDarkLogo != other.HasDarkLogo ||
 		i.IsPublic != other.IsPublic ||
