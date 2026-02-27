@@ -176,7 +176,7 @@ spec:
 
 ## UI Configuration
 
-The operator always sets `UI_CONFIG_DISABLED=true` so that environment variable overrides take effect.
+The operator automatically sets `UI_CONFIG_DISABLED=true` when any of the `ui`, `userManagement`, `smtp`, `emailNotifications`, or `ldap` sections are configured.
 
 ```yaml
 spec:
@@ -370,9 +370,9 @@ spec:
   - `ENCRYPTION_KEY` (from `spec.encryptionKey`)
   - `TRUST_PROXY=true`
   - `DISABLE_RATE_LIMITING=true`
-  - `UI_CONFIG_DISABLED=true`
   - `STATIC_API_KEY` (secret reference)
 - Conditionally set from spec fields:
+  - `UI_CONFIG_DISABLED=true` (when `spec.ui`, `spec.userManagement`, `spec.smtp`, `spec.emailNotifications`, or `spec.ldap` is configured)
   - `DB_CONNECTION_STRING` (from `spec.databaseUrl`)
   - `APP_URL` (from `spec.appUrl`)
   - `INTERNAL_APP_URL` (from `spec.internalAppUrl`)
