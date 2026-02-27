@@ -536,8 +536,11 @@ func (r *Reconciler) ReconcileSCIM(ctx context.Context, oidcClient *pocketidinte
 		return nil
 	}
 
-	if _, err := apiClient.UpdateSCIMServiceProvider(ctx, oidcClient.Status.SCIMProviderID, input); err != nil {
+	if _, err := apiClient.UpdateSCIMServiceProvider(ctx, current.ID, input); err != nil {
 		return fmt.Errorf("update SCIM service provider: %w", err)
+	}
+	if current.ID != oidcClient.Status.SCIMProviderID {
+		return r.setSCIMProviderID(ctx, oidcClient, current.ID)
 	}
 	return nil
 }

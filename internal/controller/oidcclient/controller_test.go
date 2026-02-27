@@ -908,6 +908,35 @@ func TestReconcileSCIM_WithSpec_WithTrackedID_Updates(t *testing.T) {
 	}
 }
 
+func TestReconcileSCIM_StaleStatusID_UsesCurrentID(t *testing.T) {
+	// status.SCIMProviderID is stale; GetOIDCClientSCIMServiceProvider returns a provider
+	// with a different ID. The update must use current.ID, and status must be patched.
+	ctx := context.Background()
+	oidcClient := oidcClientWithSCIM(&pocketidinternalv1alpha1.SCIMSpec{
+		Endpoint: "https://scim.example.com/v2",
+	}, "stale-id")
+	r := newSCIMReconciler(t, oidcClient)
+	api := &fakeSCIMAPI{
+		existingProvider: &pocketid.SCIMServiceProvider{ID: "real-id", Endpoint: "https://old.example.com/scim"},
+	}
+
+	if err := r.ReconcileSCIM(ctx, oidcClient, api); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if api.created != nil {
+		t.Error("expected no create call")
+	}
+	if _, ok := api.updated["stale-id"]; ok {
+		t.Error("expected update to use current ID, not stale status ID")
+	}
+	if _, ok := api.updated["real-id"]; !ok {
+		t.Errorf("expected update of real-id, updated map: %v", api.updated)
+	}
+	if oidcClient.Status.SCIMProviderID != "real-id" {
+		t.Errorf("expected status.SCIMProviderID patched to %q, got %q", "real-id", oidcClient.Status.SCIMProviderID)
+	}
+}
+
 func TestReconcileSCIM_TokenFromSecret(t *testing.T) {
 	// spec.scim.tokenSecretRef resolves correctly from a K8s Secret
 	ctx := context.Background()
