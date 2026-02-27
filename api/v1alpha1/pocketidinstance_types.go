@@ -253,7 +253,7 @@ type TracingConfig struct {
 }
 
 // UIConfig configures Pocket-ID UI settings.
-// The operator always sets UI_CONFIG_DISABLED=true to ensure env var overrides take effect.
+// The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured.
 type UIConfig struct {
 	// Application display name
 	// +optional
@@ -511,7 +511,7 @@ type PocketIDInstanceSpec struct {
 	Tracing *TracingConfig `json:"tracing,omitempty"`
 
 	// UI configuration
-	// The operator always sets UI_CONFIG_DISABLED=true to ensure env var overrides take effect
+	// The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured
 	// +optional
 	UI *UIConfig `json:"ui,omitempty"`
 

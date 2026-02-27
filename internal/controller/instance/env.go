@@ -60,10 +60,10 @@ func buildCoreEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.
 		env = append(env, corev1.EnvVar{Name: envAppURL, Value: instance.Spec.AppURL})
 	}
 
-	env = append(env,
-		corev1.EnvVar{Name: "DISABLE_RATE_LIMITING", Value: "true"},
-		corev1.EnvVar{Name: "UI_CONFIG_DISABLED", Value: "true"},
-	)
+	env = append(env, corev1.EnvVar{Name: "DISABLE_RATE_LIMITING", Value: "true"})
+	if needsUIConfigDisabled(instance) {
+		env = append(env, corev1.EnvVar{Name: "UI_CONFIG_DISABLED", Value: "true"})
+	}
 
 	// Static API key for operator authentication
 	staticAPIKeySecret := common.StaticAPIKeySecretName(instance.Name)
@@ -80,6 +80,17 @@ func buildCoreEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.
 	})
 
 	return env
+}
+
+// needsUIConfigDisabled returns true if any spec section that maps to a
+// Pocket-ID UI-config override variable is configured. UI_CONFIG_DISABLED must
+// be set for those env vars to take effect.
+func needsUIConfigDisabled(instance *pocketidinternalv1alpha1.PocketIDInstance) bool {
+	return instance.Spec.UI != nil ||
+		instance.Spec.UserManagement != nil ||
+		instance.Spec.SMTP != nil ||
+		instance.Spec.EmailNotifications != nil ||
+		instance.Spec.LDAP != nil
 }
 
 func buildMetricsEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.EnvVar {

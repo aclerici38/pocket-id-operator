@@ -73,9 +73,53 @@ func TestBuildEnvVars_CoreAlwaysSet(t *testing.T) {
 	requireEnv(t, env, "ENCRYPTION_KEY", "test-encryption-key-32chars!!!!!")
 	requireEnv(t, env, "TRUST_PROXY", "true")
 	requireEnv(t, env, "DISABLE_RATE_LIMITING", "true")
-	requireEnv(t, env, "UI_CONFIG_DISABLED", "true")
 	requireEnv(t, env, "APP_URL", "https://id.example.com")
 	requireEnvFromSecret(t, env, "STATIC_API_KEY", "test-instance-static-api-key", "token")
+}
+
+func TestBuildEnvVars_UIConfigDisabledAbsentByDefault(t *testing.T) {
+	inst := minimalInstance()
+	env := buildEnvVars(inst)
+	requireEnvAbsent(t, env, "UI_CONFIG_DISABLED")
+}
+
+func TestBuildEnvVars_UIConfigDisabledWhenUISet(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.UI = &pocketidinternalv1alpha1.UIConfig{AppName: "Test"}
+	requireEnv(t, buildEnvVars(inst), "UI_CONFIG_DISABLED", "true")
+}
+
+func TestBuildEnvVars_UIConfigDisabledWhenUserManagementSet(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.UserManagement = &pocketidinternalv1alpha1.UserManagementConfig{EmailsVerified: true}
+	requireEnv(t, buildEnvVars(inst), "UI_CONFIG_DISABLED", "true")
+}
+
+func TestBuildEnvVars_UIConfigDisabledWhenSMTPSet(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.SMTP = &pocketidinternalv1alpha1.SMTPConfig{
+		Host: "smtp.example.com",
+		Port: 25,
+		From: "noreply@example.com",
+	}
+	requireEnv(t, buildEnvVars(inst), "UI_CONFIG_DISABLED", "true")
+}
+
+func TestBuildEnvVars_UIConfigDisabledWhenEmailNotificationsSet(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.EmailNotifications = &pocketidinternalv1alpha1.EmailNotificationsConfig{}
+	requireEnv(t, buildEnvVars(inst), "UI_CONFIG_DISABLED", "true")
+}
+
+func TestBuildEnvVars_UIConfigDisabledWhenLDAPSet(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.LDAP = &pocketidinternalv1alpha1.LDAPConfig{
+		URL:          "ldaps://ldap.example.com",
+		BindDN:       "cn=admin,dc=example,dc=com",
+		BindPassword: pocketidinternalv1alpha1.SensitiveValue{Value: "secret"},
+		Base:         "dc=example,dc=com",
+	}
+	requireEnv(t, buildEnvVars(inst), "UI_CONFIG_DISABLED", "true")
 }
 
 func TestBuildEnvVars_DatabaseUrl(t *testing.T) {
