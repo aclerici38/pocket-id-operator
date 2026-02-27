@@ -1,0 +1,17 @@
+{{- if and .Values.metrics .Values.metrics.dashboard .Values.metrics.dashboard.grafanaDashboard .Values.metrics.dashboard.grafanaDashboard.enabled }}
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+  name: pocket-id-operator
+  namespace: {{ .Release.Namespace }}
+spec:
+  allowCrossNamespaceImport: {{ .Values.metrics.dashboard.grafanaDashboard.allowCrossNamespaceImport }}
+  instanceSelector:
+    matchLabels:
+      {{- toYaml .Values.metrics.dashboard.grafanaDashboard.instanceSelector.matchLabels | nindent 6 }}
+  configMapRef:
+    name: pocket-id-operator-dashboard
+    key: dashboard.json
+{{- end }}

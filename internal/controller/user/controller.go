@@ -39,6 +39,7 @@ import (
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/helpers"
+	"github.com/aclerici38/pocket-id-operator/internal/metrics"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
@@ -77,6 +78,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	user := &pocketidinternalv1alpha1.PocketIDUser{}
 	if err := r.Get(ctx, req.NamespacedName, user); err != nil {
+		if client.IgnoreNotFound(err) == nil {
+			metrics.DeleteReadinessGauge("PocketIDUser", req.Namespace, req.Name)
+		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
@@ -131,6 +135,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err != nil {
 		if pocketid.IsNotFoundError(err) {
 			log.Info("User was deleted externally, will recreate", "userID", user.Status.UserID)
+			metrics.ExternalDeletions.WithLabelValues("PocketIDUser").Inc()
 			if err := r.clearUserStatus(ctx, user); err != nil {
 				return ctrl.Result{}, err
 			}
@@ -151,7 +156,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
-	if err := r.reconcileAPIKeys(ctx, user, apiClient); err != nil {
+	if err := r.reconcileAPIKeys(ctx, user, apiClient, instance.Namespace, instance.Name); err != nil {
 		log.Error(err, "Failed to reconcile API keys")
 		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "APIKeyError", err.Error())
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
@@ -281,6 +286,7 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, user *pocketidinternal
 				log.Error(err, "Failed to delete user from Pocket-ID")
 				return ctrl.Result{}, err
 			}
+			metrics.ResourceOperations.WithLabelValues("PocketIDUser", "deleted").Inc()
 		}
 	} else if user.Status.UserID != "" {
 		log.Info("Skipping Pocket-ID user deletion (annotation not set)", "userID", user.Status.UserID, "annotation", DeleteFromPocketIDAnnotation)
@@ -296,6 +302,8 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, user *pocketidinternal
 	if err := helpers.DeleteSecretsIfExist(ctx, r.Client, user.Namespace, secretNames); err != nil {
 		log.Error(err, "Failed to delete secrets")
 	}
+
+	metrics.DeleteReadinessGauge("PocketIDUser", user.Namespace, user.Name)
 
 	// Remove finalizers
 	if err := helpers.RemoveFinalizers(ctx, r.Client, user, UserFinalizer, UserGroupUserFinalizer); err != nil {
@@ -446,6 +454,12 @@ func (r *Reconciler) createOrAdoptUser(ctx context.Context, user *pocketidintern
 		return true, nil
 	}
 
+	operation := "adopted"
+	if result.IsNewlyCreated {
+		operation = "created"
+	}
+	metrics.ResourceOperations.WithLabelValues("PocketIDUser", operation).Inc()
+
 	if err := r.setUserID(ctx, user, result.Resource.ID); err != nil {
 		return false, err
 	}
@@ -488,6 +502,7 @@ func (r *Reconciler) pushUserState(ctx context.Context, user *pocketidinternalv1
 		return fmt.Errorf("update user: %w", err)
 	}
 
+	metrics.ResourceOperations.WithLabelValues("PocketIDUser", "updated").Inc()
 	return nil
 }
 
@@ -615,7 +630,7 @@ func (r *Reconciler) clearOneTimeLoginStatus(ctx context.Context, user *pocketid
 }
 
 // reconcileAPIKeys ensures API keys exist in Pocket-ID and secrets are created
-func (r *Reconciler) reconcileAPIKeys(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client) error {
+func (r *Reconciler) reconcileAPIKeys(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client, instanceNamespace, instanceName string) error {
 	log := logf.FromContext(ctx)
 
 	existingKeys := make(map[string]*pocketidinternalv1alpha1.APIKeyStatus)
@@ -681,6 +696,7 @@ func (r *Reconciler) reconcileAPIKeys(ctx context.Context, user *pocketidinterna
 		if err != nil {
 			return fmt.Errorf("create API key %s: %w", spec.Name, err)
 		}
+		metrics.APIKeyOperations.WithLabelValues(instanceNamespace, instanceName, "created").Inc()
 
 		// Create secret for the token: {username}-{apikeyname}-key
 		secretName := fmt.Sprintf("%s-%s-key", user.Name, spec.Name)
@@ -713,6 +729,8 @@ func (r *Reconciler) reconcileAPIKeys(ctx context.Context, user *pocketidinterna
 		if keyStatus.ID != "" {
 			if err := apiClient.DeleteAPIKey(ctx, keyStatus.ID); err != nil {
 				log.Error(err, "Failed to delete API key from Pocket-ID", "name", name)
+			} else {
+				metrics.APIKeyOperations.WithLabelValues(instanceNamespace, instanceName, "deleted").Inc()
 			}
 		}
 

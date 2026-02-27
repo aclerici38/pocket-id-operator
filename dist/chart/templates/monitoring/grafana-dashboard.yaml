@@ -1,0 +1,13 @@
+{{- if and .Values.metrics .Values.metrics.dashboard .Values.metrics.dashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    grafana_dashboard: "1"
+  name: pocket-id-operator-dashboard
+  namespace: {{ .Release.Namespace }}
+data:
+  dashboard.json: |-
+    {{ .Files.Get "files/grafana-dashboard.json" | nindent 4 }}
+{{- end }}

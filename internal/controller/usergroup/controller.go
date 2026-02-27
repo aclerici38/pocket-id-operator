@@ -36,6 +36,7 @@ import (
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/helpers"
+	"github.com/aclerici38/pocket-id-operator/internal/metrics"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
@@ -66,6 +67,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	userGroup := &pocketidinternalv1alpha1.PocketIDUserGroup{}
 	if err := r.Get(ctx, req.NamespacedName, userGroup); err != nil {
+		if client.IgnoreNotFound(err) == nil {
+			metrics.DeleteReadinessGauge("PocketIDUserGroup", req.Namespace, req.Name)
+			metrics.DeleteUserGroupMemberCount(req.Namespace, req.Name)
+		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
@@ -120,6 +125,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err != nil {
 		if pocketid.IsNotFoundError(err) {
 			log.Info("User group was deleted externally, will recreate", "groupID", userGroup.Status.GroupID)
+			metrics.ExternalDeletions.WithLabelValues("PocketIDUserGroup").Inc()
 			if err := r.clearGroupStatus(ctx, userGroup); err != nil {
 				return ctrl.Result{}, err
 			}
@@ -209,6 +215,12 @@ func (r *Reconciler) createOrAdoptUserGroup(ctx context.Context, userGroup *pock
 		return true, nil
 	}
 
+	operation := "adopted"
+	if result.IsNewlyCreated {
+		operation = "created"
+	}
+	metrics.ResourceOperations.WithLabelValues("PocketIDUserGroup", operation).Inc()
+
 	if err := r.setGroupID(ctx, userGroup, result.Resource.ID); err != nil {
 		return false, err
 	}
@@ -294,6 +306,8 @@ func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketid
 				return err
 			}
 		}
+
+		metrics.ResourceOperations.WithLabelValues("PocketIDUserGroup", "updated").Inc()
 	}
 
 	// Always validate that referenced OIDC clients exist and are ready, even when
@@ -405,7 +419,11 @@ func (r *Reconciler) updateUserGroupStatus(ctx context.Context, userGroup *pocke
 	userGroup.Status.UserIDs = current.UserIDs
 	userGroup.Status.CustomClaims = toCustomClaims(current.CustomClaims)
 	userGroup.Status.AllowedOIDCClientIDs = current.AllowedOIDCClientIDs
-	return r.Status().Patch(ctx, userGroup, client.MergeFrom(base))
+	if err := r.Status().Patch(ctx, userGroup, client.MergeFrom(base)); err != nil {
+		return err
+	}
+	metrics.UserGroupMemberCount.WithLabelValues(userGroup.Namespace, userGroup.Name).Set(float64(current.UserCount))
+	return nil
 }
 
 func (r *Reconciler) ReconcileUserGroupFinalizers(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup) (bool, error) {
@@ -479,16 +497,25 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, userGroup *pocketidint
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	return r.ReconcileDeleteWithPocketID(
+	result, err := r.ReconcileDeleteWithPocketID(
 		ctx,
 		userGroup,
 		userGroup.Status.GroupID,
 		userGroup.Spec.InstanceSelector,
 		UserGroupFinalizer,
 		func(ctx context.Context, client *pocketid.Client, id string) error {
-			return client.DeleteUserGroup(ctx, id)
+			if err := client.DeleteUserGroup(ctx, id); err != nil {
+				return err
+			}
+			metrics.ResourceOperations.WithLabelValues("PocketIDUserGroup", "deleted").Inc()
+			return nil
 		},
 	)
+	if err == nil && result == (ctrl.Result{}) {
+		metrics.DeleteReadinessGauge("PocketIDUserGroup", userGroup.Namespace, userGroup.Name)
+		metrics.DeleteUserGroupMemberCount(userGroup.Namespace, userGroup.Name)
+	}
+	return result, err
 }
 
 func (r *Reconciler) requestsForUser(ctx context.Context, obj client.Object) []reconcile.Request {

@@ -14,6 +14,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	pocketidv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
+	"github.com/aclerici38/pocket-id-operator/internal/metrics"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
@@ -36,6 +37,22 @@ func (r *BaseReconciler) EnsureClient(fallback client.Client) {
 	}
 }
 
+// resourceKind returns a human-readable kind string for a managed resource.
+func resourceKind(obj client.Object) string {
+	switch obj.(type) {
+	case *pocketidv1alpha1.PocketIDUser:
+		return "PocketIDUser"
+	case *pocketidv1alpha1.PocketIDUserGroup:
+		return "PocketIDUserGroup"
+	case *pocketidv1alpha1.PocketIDOIDCClient:
+		return "PocketIDOIDCClient"
+	case *pocketidv1alpha1.PocketIDInstance:
+		return "PocketIDInstance"
+	default:
+		return obj.GetObjectKind().GroupVersionKind().Kind
+	}
+}
+
 // SetReadyCondition updates the Ready condition on a resource
 func (r *BaseReconciler) SetReadyCondition(ctx context.Context, obj ConditionedResource, status metav1.ConditionStatus, reason, message string) error {
 	logger := logf.FromContext(ctx)
@@ -55,6 +72,8 @@ func (r *BaseReconciler) SetReadyCondition(ctx context.Context, obj ConditionedR
 		logger.Error(err, "Failed to update status condition")
 		return err
 	}
+
+	metrics.RecordReadiness(resourceKind(obj), obj.GetNamespace(), obj.GetName(), status == metav1.ConditionTrue)
 
 	return nil
 }
