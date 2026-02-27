@@ -222,7 +222,7 @@ func (r *Reconciler) FindExistingOIDCClient(ctx context.Context, apiClient Pocke
 // so the next reconcile loop can GET the canonical state.
 func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client) (bool, error) {
 	log := logf.FromContext(ctx)
-	input := r.OidcClientInput(oidcClient)
+	input := r.OidcClientInput(oidcClient, nil)
 
 	resourceID := oidcClient.Spec.ClientID
 	if resourceID == "" {
@@ -284,7 +284,7 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 		return fmt.Errorf("aggregate allowed user groups: %w", err)
 	}
 
-	desired := r.OidcClientInput(oidcClient)
+	desired := r.OidcClientInput(oidcClient, current)
 	desired.IsGroupRestricted = len(groupIDs) > 0
 
 	currentInput := current.ToInput()
@@ -368,7 +368,9 @@ func (r *Reconciler) setClientID(ctx context.Context, oidcClient *pocketidintern
 	return r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
 }
 
-func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) pocketid.OIDCClientInput {
+// OidcClientInput builds an OIDCClientInput from the CR spec.
+// When current is provided, it is used as the fallback for callback URLs not set in the spec
+func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, current *pocketid.OIDCClient) pocketid.OIDCClientInput {
 	name := oidcClient.Name
 
 	// Only set client ID if in spec
@@ -394,15 +396,15 @@ func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.Pocket
 	hasLogo := oidcClient.Spec.LogoURL != ""
 	hasDarkLogo := oidcClient.Spec.DarkLogoURL != ""
 
-	// When callback URLs are not in the spec, preserve the server-side values
+	// When callback URLs are not in the spec, preserve the server-side values.
 	// This prevents overwriting pocket-id's TOFU auto-detected URLs.
 	callbackURLs := oidcClient.Spec.CallbackURLs
-	if len(callbackURLs) == 0 {
-		callbackURLs = oidcClient.Status.CallbackURLs
+	if len(callbackURLs) == 0 && current != nil {
+		callbackURLs = current.CallbackURLs
 	}
 	logoutCallbackURLs := oidcClient.Spec.LogoutCallbackURLs
-	if len(logoutCallbackURLs) == 0 {
-		logoutCallbackURLs = oidcClient.Status.LogoutCallbackURLs
+	if len(logoutCallbackURLs) == 0 && current != nil {
+		logoutCallbackURLs = current.LogoutCallbackURLs
 	}
 
 	return pocketid.OIDCClientInput{

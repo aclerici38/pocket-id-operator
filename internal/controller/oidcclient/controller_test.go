@@ -47,7 +47,7 @@ func TestOidcClientInput(t *testing.T) {
 		},
 	}
 
-	input := reconciler.OidcClientInput(oidc)
+	input := reconciler.OidcClientInput(oidc, nil)
 	if input.Name != "fallback-name" {
 		t.Errorf("expected Name %q, got %q", "fallback-name", input.Name)
 	}
