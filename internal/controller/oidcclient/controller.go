@@ -514,8 +514,9 @@ func (r *Reconciler) ReconcileSCIM(ctx context.Context, oidcClient *pocketidinte
 	}
 
 	// Fetch current state to detect changes and handle external deletion.
+	// GetOIDCClientSCIMServiceProvider returns nil, nil on 404.
 	current, err := apiClient.GetOIDCClientSCIMServiceProvider(ctx, oidcClient.Status.ClientID)
-	if err != nil && !pocketid.IsNotFoundError(err) {
+	if err != nil {
 		return fmt.Errorf("get SCIM service provider: %w", err)
 	}
 	if current == nil {

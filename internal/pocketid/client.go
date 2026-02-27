@@ -66,8 +66,6 @@ type OIDCClient struct {
 	CallbackURLs             []string
 	LogoutCallbackURLs       []string
 	LaunchURL                string
-	LogoURL                  string
-	DarkLogoURL              string
 	HasLogo                  bool
 	HasDarkLogo              bool
 	IsPublic                 bool
@@ -205,20 +203,6 @@ func (g *UserGroup) ToInput() UserGroupInput {
 		CustomClaims: g.CustomClaims,
 		UserIDs:      g.UserIDs,
 	}
-}
-
-// Equal compares two UserGroupInputs for equality.
-func (i UserGroupInput) Equal(other UserGroupInput) bool {
-	if i.Name != other.Name || i.FriendlyName != other.FriendlyName {
-		return false
-	}
-	if !SortedEqual(i.UserIDs, other.UserIDs) {
-		return false
-	}
-	if !CustomClaimsEqual(i.CustomClaims, other.CustomClaims) {
-		return false
-	}
-	return true
 }
 
 // CustomClaimsEqual compares two CustomClaim slices for equality regardless of order.
@@ -963,8 +947,6 @@ func oidcClientFromListDTO(dto *models.GithubComPocketIDPocketIDBackendInternalD
 		CallbackURLs:             dto.CallbackURLs,
 		LogoutCallbackURLs:       dto.LogoutCallbackURLs,
 		LaunchURL:                dto.LaunchURL,
-		LogoURL:                  "",
-		DarkLogoURL:              "",
 		HasLogo:                  dto.HasLogo,
 		HasDarkLogo:              dto.HasDarkLogo,
 		IsPublic:                 dto.IsPublic,
@@ -992,8 +974,6 @@ func oidcClientFromAllowedGroupsDTO(dto *models.GithubComPocketIDPocketIDBackend
 		CallbackURLs:             dto.CallbackURLs,
 		LogoutCallbackURLs:       dto.LogoutCallbackURLs,
 		LaunchURL:                dto.LaunchURL,
-		LogoURL:                  "",
-		DarkLogoURL:              "",
 		HasLogo:                  dto.HasLogo,
 		HasDarkLogo:              dto.HasDarkLogo,
 		IsPublic:                 dto.IsPublic,
