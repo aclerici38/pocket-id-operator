@@ -274,14 +274,22 @@ func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketid
 			}
 		}
 
-		if claimsChanged && desired.CustomClaims != nil {
-			if _, err := apiClient.UpdateUserGroupCustomClaims(ctx, userGroup.Status.GroupID, desired.CustomClaims); err != nil {
+		if claimsChanged {
+			claims := desired.CustomClaims
+			if claims == nil {
+				claims = []pocketid.CustomClaim{}
+			}
+			if _, err := apiClient.UpdateUserGroupCustomClaims(ctx, userGroup.Status.GroupID, claims); err != nil {
 				return err
 			}
 		}
 
-		if usersChanged && desired.UserIDs != nil {
-			if err := apiClient.UpdateUserGroupUsers(ctx, userGroup.Status.GroupID, desired.UserIDs); err != nil {
+		if usersChanged {
+			userIDs := desired.UserIDs
+			if userIDs == nil {
+				userIDs = []string{}
+			}
+			if err := apiClient.UpdateUserGroupUsers(ctx, userGroup.Status.GroupID, userIDs); err != nil {
 				return err
 			}
 		}

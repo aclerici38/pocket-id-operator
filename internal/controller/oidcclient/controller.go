@@ -302,7 +302,10 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 		}
 	}
 
-	if groupsChanged && groupIDs != nil {
+	if groupsChanged {
+		if groupIDs == nil {
+			groupIDs = []string{}
+		}
 		if err := apiClient.UpdateOIDCClientAllowedGroups(ctx, oidcClient.Status.ClientID, groupIDs); err != nil {
 			return err
 		}
