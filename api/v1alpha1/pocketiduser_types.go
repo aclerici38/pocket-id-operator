@@ -158,6 +158,10 @@ type PocketIDUserStatus struct {
 	// +optional
 	UserInfoSecretName string `json:"userInfoSecretName,omitempty"`
 
+	// EmailVerified reflects whether the user's email is verified in Pocket-ID
+	// +optional
+	EmailVerified bool `json:"emailVerified,omitempty"`
+
 	// IsAdmin reflects whether the user is an admin in Pocket-ID
 	// +optional
 	IsAdmin bool `json:"isAdmin,omitempty"`

@@ -407,14 +407,15 @@ func (r *Reconciler) buildUserInput(ctx context.Context, user *pocketidinternalv
 	}
 
 	return pocketid.UserInput{
-		Username:    username,
-		FirstName:   firstName,
-		LastName:    lastName,
-		Email:       email,
-		DisplayName: displayName,
-		IsAdmin:     user.Spec.Admin,
-		Disabled:    user.Spec.Disabled,
-		Locale:      user.Spec.Locale,
+		Username:      username,
+		FirstName:     firstName,
+		LastName:      lastName,
+		Email:         email,
+		DisplayName:   displayName,
+		IsAdmin:       user.Spec.Admin,
+		Disabled:      user.Spec.Disabled,
+		Locale:        user.Spec.Locale,
+		EmailVerified: user.Status.EmailVerified,
 	}, nil
 }
 
@@ -523,6 +524,7 @@ func (r *Reconciler) updateUserStatus(ctx context.Context, user *pocketidinterna
 
 		latest.Status.UserID = pUser.ID
 		latest.Status.UserInfoSecretName = secretName
+		latest.Status.EmailVerified = pUser.EmailVerified
 		latest.Status.IsAdmin = pUser.IsAdmin
 		latest.Status.Disabled = pUser.Disabled
 		latest.Status.Locale = pUser.Locale

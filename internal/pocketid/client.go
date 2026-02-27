@@ -31,15 +31,16 @@ type Client struct {
 
 // User represents a Pocket-ID user with clean field names.
 type User struct {
-	ID          string
-	Username    string
-	FirstName   string
-	LastName    string
-	Email       string
-	DisplayName string
-	IsAdmin     bool
-	Disabled    bool
-	Locale      string
+	ID            string
+	Username      string
+	FirstName     string
+	LastName      string
+	Email         string
+	DisplayName   string
+	IsAdmin       bool
+	Disabled      bool
+	Locale        string
+	EmailVerified bool
 }
 
 // APIKey represents a Pocket-ID API key.
@@ -223,14 +224,15 @@ func (c *Client) ListUsers(ctx context.Context, search string) ([]*User, error) 
 
 // UserInput contains the fields for creating or updating a user.
 type UserInput struct {
-	Username    string
-	FirstName   string
-	LastName    string
-	Email       string
-	DisplayName string
-	IsAdmin     bool
-	Disabled    bool
-	Locale      string
+	Username      string
+	FirstName     string
+	LastName      string
+	Email         string
+	DisplayName   string
+	IsAdmin       bool
+	Disabled      bool
+	Locale        string
+	EmailVerified bool
 }
 
 func (c *Client) CreateUser(ctx context.Context, input UserInput) (*User, error) {
@@ -261,14 +263,15 @@ func (c *Client) UpdateUser(ctx context.Context, id string, input UserInput) (*U
 		WithContext(ctx).
 		WithID(id).
 		WithUser(&models.GithubComPocketIDPocketIDBackendInternalDtoUserCreateDto{
-			Username:    &input.Username,
-			FirstName:   &input.FirstName,
-			LastName:    input.LastName,
-			Email:       input.Email,
-			DisplayName: &input.DisplayName,
-			IsAdmin:     input.IsAdmin,
-			Disabled:    input.Disabled,
-			Locale:      input.Locale,
+			Username:      &input.Username,
+			FirstName:     &input.FirstName,
+			LastName:      input.LastName,
+			Email:         input.Email,
+			DisplayName:   &input.DisplayName,
+			IsAdmin:       input.IsAdmin,
+			Disabled:      input.Disabled,
+			Locale:        input.Locale,
+			EmailVerified: input.EmailVerified,
 		})
 
 	resp, err := c.raw.Users.PutAPIUsersID(params)
@@ -761,15 +764,16 @@ func userFromDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoUserDto)
 		return nil
 	}
 	return &User{
-		ID:          dto.ID,
-		Username:    dto.Username,
-		FirstName:   dto.FirstName,
-		LastName:    dto.LastName,
-		Email:       dto.Email,
-		DisplayName: dto.DisplayName,
-		IsAdmin:     dto.IsAdmin,
-		Disabled:    dto.Disabled,
-		Locale:      dto.Locale,
+		ID:            dto.ID,
+		Username:      dto.Username,
+		FirstName:     dto.FirstName,
+		LastName:      dto.LastName,
+		Email:         dto.Email,
+		DisplayName:   dto.DisplayName,
+		IsAdmin:       dto.IsAdmin,
+		Disabled:      dto.Disabled,
+		Locale:        dto.Locale,
+		EmailVerified: dto.EmailVerified,
 	}
 }
 
