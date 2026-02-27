@@ -2502,7 +2502,7 @@
           "type": "object"
         },
         "ui": {
-          "description": "UI configuration\nThe operator always sets UI_CONFIG_DISABLED=true to ensure env var overrides take effect",
+          "description": "UI configuration\nThe operator automatically sets UI_CONFIG_DISABLED=true when this section is configured",
           "properties": {
             "accentColor": {
               "description": "Custom CSS color value for UI accent theme",

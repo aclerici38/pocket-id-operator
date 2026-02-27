@@ -2601,7 +2601,7 @@ spec:
               ui:
                 description: |-
                   UI configuration
-                  The operator always sets UI_CONFIG_DISABLED=true to ensure env var overrides take effect
+                  The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured
                 properties:
                   accentColor:
                     description: Custom CSS color value for UI accent theme
