@@ -14,7 +14,7 @@ import (
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 )
 
-func TestReconcileOneTimeLoginStatus_ExpiredClears(t *testing.T) {
+func TestCleanupOneTimeToken_ExpiredClears(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
 	_ = corev1.AddToScheme(scheme)
@@ -39,8 +39,8 @@ func TestReconcileOneTimeLoginStatus_ExpiredClears(t *testing.T) {
 		Build()
 
 	reconciler := &Reconciler{Client: client, APIReader: client, Scheme: scheme}
-	if _, err := reconciler.ReconcileOneTimeLoginStatus(context.Background(), user); err != nil {
-		t.Fatalf("ReconcileOneTimeLoginStatus returned error: %v", err)
+	if _, err := reconciler.cleanupOneTimeToken(context.Background(), user); err != nil {
+		t.Fatalf("cleanupOneTimeToken returned error: %v", err)
 	}
 
 	updated := &pocketidinternalv1alpha1.PocketIDUser{}
@@ -53,7 +53,7 @@ func TestReconcileOneTimeLoginStatus_ExpiredClears(t *testing.T) {
 	}
 }
 
-func TestReconcileOneTimeLoginStatus_FutureRequeues(t *testing.T) {
+func TestCleanupOneTimeToken_FutureRequeues(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
 	_ = corev1.AddToScheme(scheme)
@@ -78,9 +78,9 @@ func TestReconcileOneTimeLoginStatus_FutureRequeues(t *testing.T) {
 		Build()
 
 	reconciler := &Reconciler{Client: client, APIReader: client, Scheme: scheme}
-	result, err := reconciler.ReconcileOneTimeLoginStatus(context.Background(), user)
+	result, err := reconciler.cleanupOneTimeToken(context.Background(), user)
 	if err != nil {
-		t.Fatalf("ReconcileOneTimeLoginStatus returned error: %v", err)
+		t.Fatalf("cleanupOneTimeToken returned error: %v", err)
 	}
 	if result.RequeueAfter <= 0 {
 		t.Fatalf("expected positive RequeueAfter, got %s", result.RequeueAfter)
@@ -96,7 +96,7 @@ func TestReconcileOneTimeLoginStatus_FutureRequeues(t *testing.T) {
 	}
 }
 
-func TestReconcileOneTimeLoginStatus_InvalidTimestampClears(t *testing.T) {
+func TestCleanupOneTimeToken_InvalidTimestampClears(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
 	_ = corev1.AddToScheme(scheme)
@@ -120,8 +120,8 @@ func TestReconcileOneTimeLoginStatus_InvalidTimestampClears(t *testing.T) {
 		Build()
 
 	reconciler := &Reconciler{Client: client, APIReader: client, Scheme: scheme}
-	if _, err := reconciler.ReconcileOneTimeLoginStatus(context.Background(), user); err != nil {
-		t.Fatalf("ReconcileOneTimeLoginStatus returned error: %v", err)
+	if _, err := reconciler.cleanupOneTimeToken(context.Background(), user); err != nil {
+		t.Fatalf("cleanupOneTimeToken returned error: %v", err)
 	}
 
 	updated := &pocketidinternalv1alpha1.PocketIDUser{}

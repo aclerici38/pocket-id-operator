@@ -157,18 +157,18 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
-	if err := r.ensureOneTimeLoginStatus(ctx, user, apiClient, instance); err != nil {
-		log.Error(err, "Failed to ensure one-time login status")
+	if err := r.createOneTimeToken(ctx, user, apiClient, instance); err != nil {
+		log.Error(err, "Failed to create one-time login token")
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+	}
+
+	cleanupResult, err := r.cleanupOneTimeToken(ctx, user)
+	if err != nil {
+		log.Error(err, "Failed to cleanup expired one-time login token")
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
 	_ = r.SetReadyCondition(ctx, user, metav1.ConditionTrue, "Reconciled", "User and API keys are in sync")
-
-	cleanupResult, err := r.ReconcileOneTimeLoginStatus(ctx, user)
-	if err != nil {
-		log.Error(err, "Failed to reconcile one-time login status")
-		return ctrl.Result{RequeueAfter: common.Requeue}, nil
-	}
 
 	if cleanupResult.RequeueAfter > 0 {
 		return common.ApplyResync(cleanupResult), nil
@@ -553,7 +553,9 @@ func (r *Reconciler) SetOneTimeLoginStatus(ctx context.Context, user *pocketidin
 	return r.Status().Patch(ctx, user, client.MergeFrom(base))
 }
 
-func (r *Reconciler) ensureOneTimeLoginStatus(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
+// createOneTimeToken generates a one-time login token for the user
+// if one doesn't already exist, and writes it to the CR status.
+func (r *Reconciler) createOneTimeToken(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
 	if user.Status.UserID == "" {
 		return nil
 	}
@@ -569,7 +571,9 @@ func (r *Reconciler) ensureOneTimeLoginStatus(ctx context.Context, user *pocketi
 	return r.SetOneTimeLoginStatus(ctx, user, instance, token.Token)
 }
 
-func (r *Reconciler) ReconcileOneTimeLoginStatus(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser) (ctrl.Result, error) {
+// cleanupOneTimeToken clears the one-time login token from status if it
+// has expired, or returns a requeue result to clean it up when it does expire.
+func (r *Reconciler) cleanupOneTimeToken(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser) (ctrl.Result, error) {
 	if user.Status.OneTimeLoginExpiresAt == "" {
 		return ctrl.Result{}, nil
 	}
