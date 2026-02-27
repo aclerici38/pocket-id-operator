@@ -87,6 +87,6 @@ operator:
 # Operator metrics configuration
 metrics:
   enable: false
-  port: 8443
+  port: 8080
   serviceMonitor:
     enable: false
