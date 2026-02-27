@@ -19,6 +19,7 @@ package usergroup
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -361,6 +362,7 @@ func (r *Reconciler) resolveUsers(ctx context.Context, userGroup *pocketidintern
 	for id := range userIDSet {
 		userIDs = append(userIDs, id)
 	}
+	sort.Strings(userIDs)
 
 	return userIDs, nil
 }
