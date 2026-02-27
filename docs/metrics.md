@@ -38,7 +38,7 @@ spec:
 ### Static Scrape Config
 
 If you are not using the Prometheus Operator, point your scrape config directly at the
-metrics service (port `8443`, HTTPS):
+metrics service (port `8080`, HTTP):
 
 ```yaml
 - job_name: pocket-id-operator
@@ -52,7 +52,25 @@ metrics service (port `8443`, HTTPS):
 
 ---
 
-## Framework Metrics
+## Grafana Dashboard
+
+A pre-built dashboard is included in the chart at `dist/chart/files/grafana-dashboard.json`.
+
+**Helm (ConfigMap):** set `metrics.dashboard.enable: true` — the chart creates a ConfigMap
+with the label `grafana_dashboard: "1"` that Grafana's sidecar will pick up automatically.
+
+**Helm (GrafanaDashboard CRD):** set `metrics.dashboard.grafanaDashboard.enable: true` —
+the chart additionally creates a `GrafanaDashboard` resource (requires
+[grafana-operator](https://github.com/grafana/grafana-operator)) that references the
+ConfigMap. The `instanceSelector` labels can be overridden via
+`metrics.dashboard.grafanaDashboard.instanceSelector.matchLabels`.
+
+**Manual import:** in Grafana go to Dashboards → Import → Upload JSON file, and select
+`dist/chart/files/grafana-dashboard.json` from the repository.
+
+---
+
+## Default Metrics
 
 The following metrics are emitted by controller-runtime and are available automatically.
 They are **not** duplicated by the custom metrics below.

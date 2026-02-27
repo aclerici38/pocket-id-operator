@@ -3073,7 +3073,7 @@
         "port": {
           "type": "integer",
           "description": "Port for the operator metrics endpoint",
-          "default": 8443
+          "default": 8080
         },
         "serviceMonitor": {
           "type": "object",
@@ -3084,6 +3084,72 @@
               "type": "boolean",
               "description": "Create a ServiceMonitor for the operator metrics",
               "default": false
+            }
+          }
+        },
+        "dashboard": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Grafana dashboard ConfigMap and optional GrafanaDashboard CRD",
+          "properties": {
+            "enable": {
+              "type": "boolean",
+              "description": "Create a ConfigMap containing the Grafana dashboard JSON",
+              "default": false
+            },
+            "grafanaDashboard": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "GrafanaDashboard CRD configuration (requires grafana-operator and dashboard.enable: true)",
+              "properties": {
+                "enable": {
+                  "type": "boolean",
+                  "description": "Create a GrafanaDashboard resource referencing the dashboard ConfigMap",
+                  "default": false
+                },
+                "allowCrossNamespaceImport": {
+                  "type": "boolean",
+                  "description": "Allow Grafana instances in other namespaces to import this dashboard",
+                  "default": true
+                },
+                "instanceSelector": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Label selector to target a specific Grafana instance",
+                  "properties": {
+                    "matchLabels": {
+                      "type": "object",
+                      "description": "Labels to match against Grafana instances",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "if": {
+            "not": {
+              "properties": {
+                "enable": {
+                  "const": true
+                }
+              },
+              "required": [
+                "enable"
+              ]
+            }
+          },
+          "then": {
+            "properties": {
+              "grafanaDashboard": {
+                "properties": {
+                  "enable": {
+                    "const": false
+                  }
+                }
+              }
             }
           }
         }

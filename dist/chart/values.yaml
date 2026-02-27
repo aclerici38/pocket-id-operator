@@ -90,3 +90,11 @@ metrics:
   port: 8080
   serviceMonitor:
     enable: false
+  dashboard:
+    enable: false
+    grafanaDashboard:
+      enable: false
+      allowCrossNamespaceImport: true
+      instanceSelector:
+        matchLabels:
+          grafana.internal/instance: grafana
