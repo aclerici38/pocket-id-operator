@@ -3866,6 +3866,10 @@ spec:
               disabled:
                 description: Disabled reflects whether the user is disabled in Pocket-ID
                 type: boolean
+              emailVerified:
+                description: EmailVerified reflects whether the user's email is verified
+                  in Pocket-ID
+                type: boolean
               isAdmin:
                 description: IsAdmin reflects whether the user is an admin in Pocket-ID
                 type: boolean
