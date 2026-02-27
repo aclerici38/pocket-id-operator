@@ -40,7 +40,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 1 },
       "id": 2,
       "options": {
         "colorMode": "value",
@@ -78,7 +78,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 1 },
       "id": 3,
       "options": {
         "colorMode": "value",
@@ -116,7 +116,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 1 },
       "id": 4,
       "options": {
         "colorMode": "value",
@@ -151,42 +151,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 5 },
-      "id": 6,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "auto"
-      },
-      "title": "Instances",
-      "type": "stat",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "count(pocketid_operator_resource_ready{kind=\"PocketIDInstance\"}) or vector(0)",
-          "instant": true,
-          "legendFormat": "Instances",
-          "refId": "A"
-        }
-      ]
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "fixedColor": "blue", "mode": "fixed" },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "color": "blue", "value": null }]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 5 },
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 5 },
       "id": 7,
       "options": {
         "colorMode": "value",
@@ -221,7 +186,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 5 },
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 5 },
       "id": 8,
       "options": {
         "colorMode": "value",
@@ -256,7 +221,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 5 },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 5 },
       "id": 18,
       "options": {
         "colorMode": "value",
@@ -608,6 +573,6 @@
   "timepicker": {},
   "timezone": "browser",
   "title": "Pocket-ID Operator",
-  "uid": "pocket-id-operator",
+  "uid": "pocket_id_operator",
   "version": 1
 }
