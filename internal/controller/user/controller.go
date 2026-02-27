@@ -508,6 +508,7 @@ func (r *Reconciler) updateUserStatus(ctx context.Context, user *pocketidinterna
 		if err := r.Get(ctx, client.ObjectKeyFromObject(user), latest); err != nil {
 			return err
 		}
+		base := latest.DeepCopy()
 
 		oldSecretName := latest.Status.UserInfoSecretName
 		secretName := userInfoOutputSecretName(latest.Name)
@@ -532,7 +533,7 @@ func (r *Reconciler) updateUserStatus(ctx context.Context, user *pocketidinterna
 		latest.Status.Disabled = pUser.Disabled
 		latest.Status.Locale = pUser.Locale
 
-		return r.Status().Update(ctx, latest)
+		return r.Status().Patch(ctx, latest, client.MergeFrom(base))
 	})
 }
 

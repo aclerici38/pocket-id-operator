@@ -296,9 +296,10 @@ func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketid
 		}
 	}
 
-	// Validate that referenced OIDC clients exist and are ready.
-	// The relationship itself is written exclusively by the OIDC client controller
-	// to avoid concurrent writes to the shared join table causing DB deadlocks.
+	// Always validate that referenced OIDC clients exist and are ready, even when
+	// no other fields changed. The relationship is written exclusively by the OIDC
+	// client controller to avoid concurrent writes to the shared join table causing
+	// DB deadlocks.
 	if len(userGroup.Spec.AllowedOIDCClients) > 0 {
 		if _, err := helpers.ResolveOIDCClientReferences(ctx, r.Client, userGroup.Spec.AllowedOIDCClients, userGroup.Namespace); err != nil {
 			return fmt.Errorf("resolve allowed OIDC client references: %w", err)

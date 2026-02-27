@@ -304,7 +304,7 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 	if firstReconcile && !hasCredentials {
 		desired.Credentials = &pocketid.OIDCClientCredentials{FederatedIdentities: []pocketid.OIDCClientFederatedIdentity{}}
 	}
-	shouldPushCredentials := hasCredentials || (firstReconcile && !hasCredentials)
+	shouldPushCredentials := hasCredentials || firstReconcile
 
 	if !clientChanged && !shouldPushCredentials && !groupsChanged {
 		log.V(2).Info("OIDC client state is in sync, skipping update")
