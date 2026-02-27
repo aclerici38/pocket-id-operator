@@ -73,6 +73,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err := r.Get(ctx, req.NamespacedName, oidcClient); err != nil {
 		if client.IgnoreNotFound(err) == nil {
 			metrics.DeleteReadinessGauge("PocketIDOIDCClient", req.Namespace, req.Name)
+			metrics.DeleteOIDCClientAllowedGroupCount(req.Namespace, req.Name)
 		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -303,6 +304,7 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 	if err != nil {
 		return fmt.Errorf("aggregate allowed user groups: %w", err)
 	}
+	metrics.OIDCClientAllowedGroupCount.WithLabelValues(oidcClient.Namespace, oidcClient.Name).Set(float64(len(groupIDs)))
 
 	desired := r.OidcClientInput(oidcClient, current)
 	desired.IsGroupRestricted = len(groupIDs) > 0
@@ -673,6 +675,7 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, oidcClient *pocketidin
 	)
 	if err == nil && result == (ctrl.Result{}) {
 		metrics.DeleteReadinessGauge("PocketIDOIDCClient", oidcClient.Namespace, oidcClient.Name)
+		metrics.DeleteOIDCClientAllowedGroupCount(oidcClient.Namespace, oidcClient.Name)
 	}
 	return result, err
 }

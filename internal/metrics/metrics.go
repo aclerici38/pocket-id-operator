@@ -120,6 +120,20 @@ var (
 		},
 		[]string{"namespace", "name"},
 	)
+
+	// OIDCClientAllowedGroupCount tracks the current number of user groups allowed
+	// to access each OIDC client, as resolved by the operator during reconcile.
+	// Labels:
+	//
+	//	namespace - Kubernetes namespace of the PocketIDOIDCClient
+	//	name      - Kubernetes name of the PocketIDOIDCClient
+	OIDCClientAllowedGroupCount = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "pocketid_operator_oidcclient_allowed_group_count",
+			Help: "Current number of user groups allowed to access a PocketIDOIDCClient.",
+		},
+		[]string{"namespace", "name"},
+	)
 )
 
 func init() {
@@ -132,6 +146,7 @@ func init() {
 		ExternalDeletions,
 		InstanceInfo,
 		UserGroupMemberCount,
+		OIDCClientAllowedGroupCount,
 	)
 }
 
@@ -171,4 +186,10 @@ func DeleteInstanceInfo(namespace, name, version, deploymentType string) {
 // Call this when a PocketIDUserGroup is deleted.
 func DeleteUserGroupMemberCount(namespace, name string) {
 	UserGroupMemberCount.DeleteLabelValues(namespace, name)
+}
+
+// DeleteOIDCClientAllowedGroupCount removes the OIDCClientAllowedGroupCount gauge entry for a client.
+// Call this when a PocketIDOIDCClient is deleted.
+func DeleteOIDCClientAllowedGroupCount(namespace, name string) {
+	OIDCClientAllowedGroupCount.DeleteLabelValues(namespace, name)
 }
