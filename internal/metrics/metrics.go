@@ -30,7 +30,7 @@ var (
 		prometheus.HistogramOpts{
 			Name:    "pocketid_operator_pocketid_api_request_duration_seconds",
 			Help:    "Duration of requests made to the Pocket-ID API in seconds, partitioned by operation.",
-			Buckets: prometheus.DefBuckets,
+			Buckets: append([]float64{0.001}, prometheus.DefBuckets...),
 		},
 		[]string{"operation"},
 	)

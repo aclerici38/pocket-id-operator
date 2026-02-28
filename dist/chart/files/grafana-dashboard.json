@@ -273,6 +273,12 @@
               },
               { "id": "custom.displayMode", "value": "color-text" }
             ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "App URL" },
+            "properties": [
+              { "id": "links", "value": [{ "title": "", "url": "${__value.text}" }] }
+            ]
           }
         ]
       },
@@ -289,7 +295,7 @@
         {
           "id": "organize",
           "options": {
-            "excludeByName": { "kind": true, "Time": true },
+            "excludeByName": { "kind": true, "Time": true, "endpoint": true, "exported_namespace": true, "instance": true, "job": true, "pod": true, "service": true },
             "renameByName": {
               "name": "Name",
               "namespace": "Namespace",
@@ -301,10 +307,10 @@
             "indexByName": {
               "name": 0,
               "namespace": 1,
-              "Value": 2,
-              "version": 3,
-              "deployment_type": 4,
-              "app_url": 5
+              "version": 2,
+              "app_url": 3,
+              "Value": 4,
+              "deployment_type": 5
             }
           }
         }
@@ -313,7 +319,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "pocketid_operator_resource_ready{kind=\"PocketIDInstance\"} * on(namespace, name) group_right(version, deployment_type, app_url) pocketid_operator_instance_info",
+          "expr": "pocketid_operator_resource_ready{kind=\"PocketIDInstance\"} * on(namespace, name) group_left(version, deployment_type, app_url) pocketid_operator_instance_info",
           "instant": true,
           "legendFormat": "",
           "refId": "A"
@@ -322,7 +328,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 },
       "id": 9,
       "title": "Pocket-ID API",
       "type": "row"
@@ -343,7 +349,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 27 },
       "id": 10,
       "options": {
         "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
@@ -376,13 +382,13 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 27 },
       "id": 11,
       "options": {
         "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
-      "title": "API Request Latency p99 by Operation",
+      "title": "Slowest API Calls (p99)",
       "type": "timeseries",
       "targets": [
         {
@@ -395,7 +401,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 35 },
       "id": 12,
       "title": "Resource Lifecycle",
       "type": "row"
@@ -416,7 +422,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
       "id": 13,
       "options": {
         "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
@@ -449,7 +455,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 },
       "id": 14,
       "options": {
         "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
@@ -468,7 +474,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 },
       "id": 15,
       "title": "User Groups",
       "type": "row"
@@ -486,11 +492,11 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "gridPos": { "h": 12, "w": 12, "x": 0, "y": 14 },
       "id": 16,
       "options": {
         "displayMode": "gradient",
-        "minVizHeight": 10,
+        "minVizHeight": 0,
         "minVizWidth": 0,
         "namePlacement": "auto",
         "orientation": "horizontal",
@@ -523,11 +529,11 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "gridPos": { "h": 12, "w": 12, "x": 12, "y": 14 },
       "id": 17,
       "options": {
         "displayMode": "gradient",
-        "minVizHeight": 10,
+        "minVizHeight": 0,
         "minVizWidth": 0,
         "namePlacement": "auto",
         "orientation": "horizontal",
