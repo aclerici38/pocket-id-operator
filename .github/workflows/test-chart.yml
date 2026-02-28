@@ -41,8 +41,20 @@ jobs:
           echo "repository=${IMAGE%:*}" >> "$GITHUB_OUTPUT"
           echo "tag=${IMAGE##*:}" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve latest release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=$(gh release view --repo ${{ github.repository }} --json tagName -q .tagName)
+          REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${REPO_OWNER}/pocket-id-operator:${TAG}" >> "$GITHUB_OUTPUT"
+          echo "chart_version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "chart=oci://ghcr.io/${REPO_OWNER}/charts/pocket-id-operator" >> "$GITHUB_OUTPUT"
+
       - name: Lint Helm chart with instance
-        run: helm lint dist/chart --set instance.spec.encryptionKey.value="lint-placeholder"
+        run: helm lint dist/chart --values .github/helm-test-values.yaml
         
       - name: Lint Helm chart without instance
         run: helm lint dist/chart --set instance.enabled=false
@@ -72,14 +84,25 @@ jobs:
       - name: Create kind cluster
         run: kind create cluster
 
-      - name: Test chart installation
+      - name: Install released chart
         run: |
-          helm install test-release dist/chart-packages/*.tgz \
+          helm install test-release ${{ steps.release.outputs.chart }} \
+            --version ${{ steps.release.outputs.chart_version }} \
             --create-namespace \
             --namespace pocket-id-operator-system \
+            --values .github/helm-test-values.yaml \
+            --set operator.image.repository=${{ steps.image.outputs.repository }} \
+            --set operator.image.tag=${{ steps.release.outputs.tag }} \
+            --wait \
+            --timeout 2m
+
+      - name: Upgrade to current chart
+        run: |
+          helm upgrade test-release dist/chart-packages/*.tgz \
+            --namespace pocket-id-operator-system \
+            --values .github/helm-test-values.yaml \
             --set operator.image.repository=${{ steps.image.outputs.repository }} \
             --set operator.image.tag=${{ steps.image.outputs.tag }} \
-            --set instance.spec.encryptionKey.value="test-key-16chars" \
             --wait \
             --timeout 2m
 
@@ -90,6 +113,8 @@ jobs:
           kubectl logs -n pocket-id-operator-system -l control-plane=controller-manager --tail=100 || true
           echo "=== PocketIDInstance Status ==="
           kubectl get pocketidinstance -n pocket-id-operator-system -o yaml || true
+          echo "=== PocketIDUser Status ==="
+          kubectl get pocketiduser -n pocket-id-operator-system -o yaml || true
           echo "=== Pocket-ID Pod Logs ==="
           kubectl logs -n pocket-id-operator-system -l app.kubernetes.io/name=pocket-id --tail=100 || true
           echo "=== All Resources ==="
