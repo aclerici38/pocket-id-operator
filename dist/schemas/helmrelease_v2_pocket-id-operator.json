@@ -850,6 +850,7 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "global": {},
             "instance": {
               "type": "object",
               "additionalProperties": false,
