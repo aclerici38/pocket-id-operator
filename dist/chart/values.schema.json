@@ -2658,8 +2658,7 @@
       "items": {
         "type": "object",
         "required": [
-          "name",
-          "spec"
+          "name"
         ],
         "additionalProperties": false,
         "properties": {
