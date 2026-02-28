@@ -70,7 +70,7 @@
       "default": [],
       "items": {
         "type": "object",
-        "required": ["name", "spec"],
+        "required": ["name"],
         "additionalProperties": false,
         "properties": {
           "name": {
