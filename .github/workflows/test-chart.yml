@@ -108,6 +108,7 @@ jobs:
         run: |
           helm upgrade --install test-release dist/chart-packages/*.tgz \
             --namespace pocket-id-operator-system \
+            --create-namespace \
             --values .github/helm-test-values.yaml \
             --set operator.image.repository=${{ steps.image.outputs.repository }} \
             --set operator.image.tag=${{ steps.image.outputs.tag }} \
