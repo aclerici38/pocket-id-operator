@@ -6,4 +6,7 @@ instance:
       value: "test-key-16chars"
 
 users:
-  - name: test-user
+  - name: test-user-1
+  - name: test-user-2
+    spec:
+      admin: true
