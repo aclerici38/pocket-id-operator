@@ -20,6 +20,7 @@ jobs:
     steps:
       - name: Generate GitHub App token
         id: app-token
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
         with:
           app-id: ${{ secrets.APP_ID }}
@@ -29,7 +30,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ github.head_ref || github.ref }}
-          token: ${{ steps.app-token.outputs.token }}
+          token: ${{ steps.app-token.outputs.token || github.token }}
 
       - name: Setup Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
@@ -54,7 +55,7 @@ jobs:
         run: make build-installer generate-schemas fmt vet
 
       - name: Commit changes
-        if: ${{ github.head_ref != '' }}
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         run: |
           git config user.name "${{ steps.app-token.outputs.app-slug }}[bot]"
           git config user.email "200541989+${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com"
@@ -67,7 +68,7 @@ jobs:
           fi
 
       - name: Check for uncommitted changes
-        if: ${{ github.head_ref == '' }}
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
         run: |
           if [ -n "$(git status --porcelain)" ]; then
             echo "::error::Generated files are out of date. Please run 'make manifests generate fmt build-installer generate-schemas' and commit the changes."
