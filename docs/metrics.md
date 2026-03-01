@@ -24,11 +24,9 @@ metadata:
 spec:
   endpoints:
     - path: /metrics
-      port: https
-      scheme: https
-      bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
-      tlsConfig:
-        insecureSkipVerify: true
+      port: http
+      scheme: http
+      honorLabels: true
   selector:
     matchLabels:
       control-plane: controller-manager
