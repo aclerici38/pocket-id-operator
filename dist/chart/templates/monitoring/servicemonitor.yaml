@@ -5,13 +5,14 @@ metadata:
   labels:
     {{- include "chart.labels" . | nindent 4 }}
     control-plane: controller-manager
-  name: pocket-id-operator-controller-manager-metrics-monitor
+  name: pocket-id-operator
   namespace: {{ .Release.Namespace }}
 spec:
   endpoints:
     - path: /metrics
       port: http
       scheme: http
+      honorLabels: true
   selector:
     matchLabels:
       control-plane: controller-manager
