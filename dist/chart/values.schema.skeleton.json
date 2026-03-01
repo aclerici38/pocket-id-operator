@@ -188,6 +188,12 @@
               "description": "Create a ConfigMap containing the Grafana dashboard JSON",
               "default": false
             },
+            "labels": {
+              "type": "object",
+              "description": "Additional labels for the dashboard ConfigMap for grafana sidecar to import",
+              "additionalProperties": { "type": "string" },
+              "default": { "grafana_dashboard": "1" }
+            },
             "grafanaDashboard": {
               "type": "object",
               "additionalProperties": false,

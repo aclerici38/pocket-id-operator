@@ -1,5 +1,5 @@
 ---
-# yaml-language-server: $schema=https://raw.githubusercontent.com/aclerici38/pocket-id-operator/refs/heads/main/dist/chart/values.schema.json
+# yaml-language-server: $schema=../dist/chart/values.schema.json
 instance:
   spec:
     encryptionKey:

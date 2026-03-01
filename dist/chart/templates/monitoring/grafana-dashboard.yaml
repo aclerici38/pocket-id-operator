@@ -4,7 +4,9 @@ kind: ConfigMap
 metadata:
   labels:
     {{- include "chart.labels" . | nindent 4 }}
-    grafana_dashboard: "1"
+    {{- with .Values.metrics.dashboard.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   name: pocket-id-operator-dashboard
   namespace: {{ .Release.Namespace }}
 data:

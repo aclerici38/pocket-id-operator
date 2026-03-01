@@ -1,3 +1,5 @@
+# yaml-language-server: $schema=./values.schema.json
+
 # PocketIDInstance configuration
 # Creates a PocketIDInstance custom resource when enabled
 # Full documentation: https://github.com/aclerici38/pocket-id-operator/blob/main/docs/pocketidinstance.md
@@ -29,6 +31,8 @@ instance:
       enabled: true
       size: 1Gi
 
+    # Nothing useful exposed by pocket-id right now
+    # https://github.com/pocket-id/pocket-id/issues/1318
     metrics:
       enabled: false
 
@@ -85,13 +89,20 @@ operator:
       memory: 64Mi
 
 # Operator metrics configuration
+# See https://github.com/aclerici38/pocket-id-operator/blob/main/docs/metrics.md
 metrics:
   enabled: false
   port: 8080
   serviceMonitor:
     enabled: false
+  # Setting dashboard.enabled creates a configmap with the dashboard json
+  # dashboard.grafanaDashboard.enabled creates a grafanaDashboard custom resource as well
+  # dashboard.enabled needs to be true for the grafanaDashboard to be created
   dashboard:
     enabled: false
+    labels:
+      grafana_dashboard: "1"
+    # Creates a grafanaDashboard custom resource for the grafana operator
     grafanaDashboard:
       enabled: false
       allowCrossNamespaceImport: true
