@@ -245,12 +245,11 @@
                 "description": "URL to access database at\nSee the official documentation for DB_CONNECTION_STRING\nFor sqlite only add the filepath e.g. \"/app/data/pocket-id.db\"\nUses application default (/app/data/pocket-id.db) if empty",
                 "properties": {
                   "value": {
-                    "description": "Plain text value 16 byte minimum",
-                    "minLength": 16,
+                    "description": "Plain text value",
                     "type": "string"
                   },
                   "valueFrom": {
-                    "description": "Source for the environment variable's value",
+                    "description": "Source for the value (e.g. secretKeyRef, configMapKeyRef)",
                     "properties": {
                       "configMapKeyRef": {
                         "description": "Selects a key of a ConfigMap.",
@@ -434,12 +433,11 @@
                 "description": "Encryption Key\nRequired since Pocket-ID v2\nSee the official documentation for ENCRYPTION_KEY environment variable",
                 "properties": {
                   "value": {
-                    "description": "Plain text value 16 byte minimum",
-                    "minLength": 16,
+                    "description": "Plain text value",
                     "type": "string"
                   },
                   "valueFrom": {
-                    "description": "Source for the environment variable's value",
+                    "description": "Source for the value (e.g. secretKeyRef, configMapKeyRef)",
                     "properties": {
                       "configMapKeyRef": {
                         "description": "Selects a key of a ConfigMap.",
@@ -2645,6 +2643,10 @@
               {
                 "message": "fileBackend must be 's3' (or unset) when s3 config is present",
                 "rule": "!has(self.s3) || !has(self.fileBackend) || self.fileBackend == 's3'"
+              },
+              {
+                "message": "encryptionKey value must be at least 16 characters",
+                "rule": "!has(self.encryptionKey.value) || size(self.encryptionKey.value) == 0 || size(self.encryptionKey.value) >= 16"
               }
             ],
             "additionalProperties": false
