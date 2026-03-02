@@ -1,63 +1,8 @@
 # yaml-language-server: $schema=./values.schema.json
 
-# PocketIDInstance configuration
-# Creates a PocketIDInstance custom resource when enabled
-# Full documentation: https://github.com/aclerici38/pocket-id-operator/blob/main/docs/pocketidinstance.md
-instance:
-  enabled: true
-  name: pocket-id
-  labels: {}
-  annotations: {}
-
-  # PocketIDInstance spec — all fields from the CRD are supported here
-  # See docs for all available options (SMTP, LDAP, S3, UI, user management, etc.)
-  spec:
-    encryptionKey:
-      # value: "your-encryption-key-here-min-16-bytes"
-      # valueFrom:
-      #   secretKeyRef:
-      #     name: pocket-id-encryption-key
-      #     key: encryption-key
-
-    # appUrl: "https://auth.example.com"
-
-    # databaseUrl:
-    #   valueFrom:
-    #     secretKeyRef:
-    #       name: pocket-id-db
-    #       key: uri
-
-    persistence:
-      enabled: true
-      size: 1Gi
-
-    # Nothing useful exposed by pocket-id right now
-    # https://github.com/pocket-id/pocket-id/issues/1318
-    metrics:
-      enabled: false
-
-    # route:
-    #   enabled: true
-    #   parentRefs:
-    #     - name: my-gateway
-
-  # ServiceMonitor for the PocketIDInstance (requires metrics.enabled)
-  serviceMonitor:
-    enabled: false
-
-# PocketIDUser configuration
-# Full documentation: https://github.com/aclerici38/pocket-id-operator/blob/main/docs/pocketiduser.md
-users: []
-  # - name: admin-user
-  #   spec:
-  #     admin: true
-  #     email:
-  #       value: "admin@example.com"
-  #     firstName:
-  #       value: "Admin"
-
 # Operator deployment configuration
 operator:
+  # Leader election is enabled
   replicas: 1
 
   image:
@@ -97,7 +42,7 @@ metrics:
     enabled: false
   # Setting dashboard.enabled creates a configmap with the dashboard json
   # dashboard.grafanaDashboard.enabled creates a grafanaDashboard custom resource as well
-  # dashboard.enabled needs to be true for the grafanaDashboard to be created
+  # dashboard.enabled needs to be true for the grafanaDashboard resource to be created
   dashboard:
     enabled: false
     labels:
@@ -109,3 +54,40 @@ metrics:
       instanceSelector:
         matchLabels:
           grafana.internal/instance: grafana
+
+# PocketIDInstance configuration
+# Creates a PocketIDInstance custom resource when enabled
+# Full documentation: https://github.com/aclerici38/pocket-id-operator/blob/main/docs/pocketidinstance.md
+instance:
+  enabled: true
+  name: pocket-id
+  labels: {}
+  annotations: {}
+  # ServiceMonitor for the PocketIDInstance (requires metrics.enabled)
+  # Nothing useful exposed by pocket-id right now
+  # https://github.com/pocket-id/pocket-id/issues/1318
+  serviceMonitor:
+    enabled: false
+
+  # PocketIDInstance spec — all fields from the CRD are supported here
+  # See docs for all available options (SMTP, LDAP, S3, UI, user management, etc.)
+  spec:
+    encryptionKey:
+      # value: "your-encryption-key-here-min-16-bytes"
+      # valueFrom:
+      #   secretKeyRef:
+      #     name: pocket-id-encryption-key
+      #     key: encryption-key
+
+    # appUrl: "https://auth.example.com"
+
+# PocketIDUser configuration
+# Full documentation: https://github.com/aclerici38/pocket-id-operator/blob/main/docs/pocketiduser.md
+users: []
+  # - name: admin-user
+  #   spec:
+  #     admin: true
+  #     email:
+  #       value: "admin@example.com"
+  #     firstName:
+  #       value: "Admin"
