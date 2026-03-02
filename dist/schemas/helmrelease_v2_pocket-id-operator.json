@@ -3493,7 +3493,7 @@
                       },
                       {
                         "message": "encryptionKey value must be at least 16 characters",
-                        "rule": "!has(self.encryptionKey.value) || self.encryptionKey.value == '' || size(self.encryptionKey.value) >= 16"
+                        "rule": "!has(self.encryptionKey.value) || self.encryptionKey.value == ” || size(self.encryptionKey.value) >= 16"
                       }
                     ],
                     "additionalProperties": false
