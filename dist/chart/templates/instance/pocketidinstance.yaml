@@ -16,20 +16,8 @@ metadata:
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
+{{- with .Values.instance.spec }}
 spec:
-  {{- $specWithoutSpecial := omit .Values.instance.spec "env" "encryptionKey" }}
-  {{- toYaml $specWithoutSpecial | nindent 2 }}
-  {{- if .Values.instance.spec.encryptionKey }}
-  encryptionKey:
-    {{- if .Values.instance.spec.encryptionKey.value }}
-    value: {{ .Values.instance.spec.encryptionKey.value | quote }}
-    {{- else if .Values.instance.spec.encryptionKey.valueFrom }}
-    valueFrom:
-      {{- toYaml .Values.instance.spec.encryptionKey.valueFrom | nindent 6 }}
-    {{- end }}
-  {{- end }}
-  {{- if .Values.instance.spec.env }}
-  env:
-    {{- include "instance.stringifyEnv" .Values.instance.spec.env | nindent 4 }}
-  {{- end }}
+  {{- toYaml . | nindent 2 }}
+{{- end }}
 {{- end }}
