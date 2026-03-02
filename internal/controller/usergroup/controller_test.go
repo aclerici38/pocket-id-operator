@@ -234,7 +234,7 @@ func TestReconcileDelete_KeepFinalizerWhenAPIClientNotReady(t *testing.T) {
 			Namespace: testNamespace,
 		},
 		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-			EncryptionKey: pocketidinternalv1alpha1.EnvValue{Value: "0123456789abcdef"},
+			EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{Value: "0123456789abcdef"},
 		},
 	}
 

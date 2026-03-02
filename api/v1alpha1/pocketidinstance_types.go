@@ -26,20 +26,7 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// Environment variable value that can be either a plain value or from a Kubernetes resource
-type EnvValue struct {
-	// Plain text value 16 byte minimum
-	// +optional
-	// +kubebuilder:validation:MinLength=16
-	Value string `json:"value,omitempty"`
-
-	// Source for the environment variable's value
-	// +optional
-	ValueFrom *corev1.EnvVarSource `json:"valueFrom,omitempty"`
-}
-
 // SensitiveValue holds a value that can be provided as plain text or from a Kubernetes secret/configmap.
-// Unlike EnvValue, this has no minimum length constraint.
 type SensitiveValue struct {
 	// Plain text value
 	// +optional
@@ -386,6 +373,7 @@ type MetricsConfig struct {
 // PocketIDInstanceSpec defines the desired state of PocketIDInstance
 // +kubebuilder:validation:XValidation:rule="self.deploymentType == oldSelf.deploymentType",message="deploymentType is immutable"
 // +kubebuilder:validation:XValidation:rule="!has(self.s3) || !has(self.fileBackend) || self.fileBackend == 's3'",message="fileBackend must be 's3' (or unset) when s3 config is present"
+// +kubebuilder:validation:XValidation:rule="!has(self.encryptionKey.value) || self.encryptionKey.value == ” || size(self.encryptionKey.value) >= 16",message="encryptionKey value must be at least 16 characters"
 type PocketIDInstanceSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
@@ -406,14 +394,14 @@ type PocketIDInstanceSpec struct {
 	// Required since Pocket-ID v2
 	// See the official documentation for ENCRYPTION_KEY environment variable
 	// +kubebuilder:validation:Required
-	EncryptionKey EnvValue `json:"encryptionKey"`
+	EncryptionKey SensitiveValue `json:"encryptionKey"`
 
 	// URL to access database at
 	// See the official documentation for DB_CONNECTION_STRING
 	// For sqlite only add the filepath e.g. "/app/data/pocket-id.db"
 	// Uses application default (/app/data/pocket-id.db) if empty
 	// +optional
-	DatabaseUrl *EnvValue `json:"databaseUrl,omitempty"`
+	DatabaseUrl *SensitiveValue `json:"databaseUrl,omitempty"`
 
 	// External URL Pocket-id can be reached at
 	// See the official documentation for APP_URL

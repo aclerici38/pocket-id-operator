@@ -60,7 +60,7 @@ func minimalInstance() *pocketidinternalv1alpha1.PocketIDInstance {
 	inst := &pocketidinternalv1alpha1.PocketIDInstance{}
 	inst.Name = "test-instance"
 	inst.Namespace = "default"
-	inst.Spec.EncryptionKey = pocketidinternalv1alpha1.EnvValue{Value: "test-encryption-key-32chars!!!!!"}
+	inst.Spec.EncryptionKey = pocketidinternalv1alpha1.SensitiveValue{Value: "test-encryption-key-32chars!!!!!"}
 	return inst
 }
 
@@ -124,7 +124,7 @@ func TestBuildEnvVars_UIConfigDisabledWhenLDAPSet(t *testing.T) {
 
 func TestBuildEnvVars_DatabaseUrl(t *testing.T) {
 	inst := minimalInstance()
-	inst.Spec.DatabaseUrl = &pocketidinternalv1alpha1.EnvValue{Value: "postgres://localhost/pocket-id"}
+	inst.Spec.DatabaseUrl = &pocketidinternalv1alpha1.SensitiveValue{Value: "postgres://localhost/pocket-id"}
 
 	env := buildEnvVars(inst)
 	requireEnv(t, env, "DB_CONNECTION_STRING", "postgres://localhost/pocket-id")
@@ -132,7 +132,7 @@ func TestBuildEnvVars_DatabaseUrl(t *testing.T) {
 
 func TestBuildEnvVars_DatabaseUrlFromSecret(t *testing.T) {
 	inst := minimalInstance()
-	inst.Spec.DatabaseUrl = &pocketidinternalv1alpha1.EnvValue{
+	inst.Spec.DatabaseUrl = &pocketidinternalv1alpha1.SensitiveValue{
 		ValueFrom: &corev1.EnvVarSource{
 			SecretKeyRef: &corev1.SecretKeySelector{
 				LocalObjectReference: corev1.LocalObjectReference{Name: "db-secret"},

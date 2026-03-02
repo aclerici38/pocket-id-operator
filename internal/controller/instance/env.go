@@ -34,26 +34,13 @@ func buildEnvVars(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.
 }
 
 func buildCoreEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.EnvVar {
-	encryptionKeyEnv := corev1.EnvVar{Name: envEncryptionKey}
-	if instance.Spec.EncryptionKey.Value != "" {
-		encryptionKeyEnv.Value = instance.Spec.EncryptionKey.Value
-	} else if instance.Spec.EncryptionKey.ValueFrom != nil {
-		encryptionKeyEnv.ValueFrom = instance.Spec.EncryptionKey.ValueFrom
-	}
-
 	env := []corev1.EnvVar{
-		encryptionKeyEnv,
+		sensitiveValueToEnvVar(envEncryptionKey, &instance.Spec.EncryptionKey),
 		{Name: envTrustProxy, Value: "true"},
 	}
 
 	if instance.Spec.DatabaseUrl != nil {
-		dbUrlEnv := corev1.EnvVar{Name: envDBConnectionString}
-		if instance.Spec.DatabaseUrl.Value != "" {
-			dbUrlEnv.Value = instance.Spec.DatabaseUrl.Value
-		} else if instance.Spec.DatabaseUrl.ValueFrom != nil {
-			dbUrlEnv.ValueFrom = instance.Spec.DatabaseUrl.ValueFrom
-		}
-		env = append(env, dbUrlEnv)
+		env = append(env, sensitiveValueToEnvVar(envDBConnectionString, instance.Spec.DatabaseUrl))
 	}
 
 	if instance.Spec.AppURL != "" {
