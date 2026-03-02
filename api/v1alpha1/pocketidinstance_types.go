@@ -373,7 +373,7 @@ type MetricsConfig struct {
 // PocketIDInstanceSpec defines the desired state of PocketIDInstance
 // +kubebuilder:validation:XValidation:rule="self.deploymentType == oldSelf.deploymentType",message="deploymentType is immutable"
 // +kubebuilder:validation:XValidation:rule="!has(self.s3) || !has(self.fileBackend) || self.fileBackend == 's3'",message="fileBackend must be 's3' (or unset) when s3 config is present"
-// +kubebuilder:validation:XValidation:rule="!has(self.encryptionKey.value) || self.encryptionKey.value == ” || size(self.encryptionKey.value) >= 16",message="encryptionKey value must be at least 16 characters"
+// +kubebuilder:validation:XValidation:rule="!has(self.encryptionKey.value) || size(self.encryptionKey.value) == 0 || size(self.encryptionKey.value) >= 16",message="encryptionKey value must be at least 16 characters"
 type PocketIDInstanceSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file

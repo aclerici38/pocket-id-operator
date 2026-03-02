@@ -1134,8 +1134,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 
 			err := k8sClient.Create(ctx, instance)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("spec.encryptionKey.value"))
-			Expect(err.Error()).To(ContainSubstring("should be at least 16 chars long"))
+			Expect(err.Error()).To(ContainSubstring("encryptionKey value must be at least 16 characters"))
 		})
 	})
 

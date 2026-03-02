@@ -2660,8 +2660,8 @@ spec:
               rule: '!has(self.s3) || !has(self.fileBackend) || self.fileBackend ==
                 ''s3'''
             - message: encryptionKey value must be at least 16 characters
-              rule: '!has(self.encryptionKey.value) || self.encryptionKey.value ==
-                ” || size(self.encryptionKey.value) >= 16'
+              rule: '!has(self.encryptionKey.value) || size(self.encryptionKey.value)
+                == 0 || size(self.encryptionKey.value) >= 16'
           status:
             description: status defines the observed state of PocketIDInstance
             properties:
