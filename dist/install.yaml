@@ -2903,6 +2903,11 @@ spec:
                 items:
                   type: string
                 type: array
+              name:
+                description: |-
+                  Name of the oidc client to create in Pocket ID.
+                  If omitted, defaults to metadata.name of the oidcclient resource.
+                type: string
               pkceEnabled:
                 default: false
                 description: Enables PKCE for the client

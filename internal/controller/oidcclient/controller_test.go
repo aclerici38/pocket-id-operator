@@ -77,6 +77,41 @@ func TestOidcClientInput(t *testing.T) {
 	}
 }
 
+func TestOidcClientName_DefaultsToMetadataName(t *testing.T) {
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "k8s-name"},
+	}
+	if got := oidcClientName(oidcClient); got != "k8s-name" {
+		t.Errorf("expected metadata.name %q, got %q", "k8s-name", got)
+	}
+}
+
+func TestOidcClientName_UsesSpecName(t *testing.T) {
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "k8s-name"},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			Name: "display-name",
+		},
+	}
+	if got := oidcClientName(oidcClient); got != "display-name" {
+		t.Errorf("expected spec.name %q, got %q", "display-name", got)
+	}
+}
+
+func TestOidcClientInput_UsesSpecNameWhenSet(t *testing.T) {
+	reconciler := &Reconciler{}
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "k8s-name"},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			Name: "display-name",
+		},
+	}
+	input := reconciler.OidcClientInput(oidcClient, nil)
+	if input.Name != "display-name" {
+		t.Errorf("expected spec.name %q in OIDCClientInput.Name, got %q", "display-name", input.Name)
+	}
+}
+
 func TestGetSecretName_Default(t *testing.T) {
 	reconciler := &Reconciler{}
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
