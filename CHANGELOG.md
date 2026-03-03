@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/aclerici38/pocket-id-operator/compare/v0.4.2...v0.4.3) (2026-03-03)
+
+
+### Bug Fixes
+
+* workflow perms ([ec35018](https://github.com/aclerici38/pocket-id-operator/commit/ec350180bad9f016543510d5fa4c22a3c2abb7e7))
+
 ## [0.4.2](https://github.com/aclerici38/pocket-id-operator/compare/v0.4.1...v0.4.2) (2026-03-03)
 
 
