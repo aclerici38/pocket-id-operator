@@ -3,6 +3,12 @@ name: Release
 on:
   release:
     types: [created]
+  workflow_call:
+    inputs:
+      tag_name:
+        description: Release tag to publish (e.g. v0.5.0)
+        required: true
+        type: string
 
 permissions:
   actions: write
@@ -30,12 +36,12 @@ jobs:
       - name: Checkout release tag
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ inputs.tag_name || github.event.release.tag_name }}
 
       - name: Extract metadata
         id: meta
         run: |
-          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${{ inputs.tag_name || github.event.release.tag_name }}"
           HELM_VERSION="${VERSION#v}"
           REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           SHORT_SHA=$(git rev-parse --short HEAD)
