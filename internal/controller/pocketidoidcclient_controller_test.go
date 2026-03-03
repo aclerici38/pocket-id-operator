@@ -119,9 +119,24 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 				return k8sClient.Get(ctx, types.NamespacedName{Name: groupName, Namespace: namespace}, group)
 			}, timeout, interval).Should(Succeed())
 
-			// Set up the status - use Eventually because the controller may be racing with us
-			Eventually(func() error {
-				return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      clientName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+					AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
+						{Name: groupName},
+					},
+				},
+			}
+
+			// The UserGroup controller reconciles in the background and will keep overwriting
+			// the status with InstanceSelectionError (no instance in envtest). To avoid losing
+			// the race, we force the status and call ResolveUserGroupReferences atomically
+			// inside a single Eventually retry so we win the window between reconciles.
+			Eventually(func() ([]string, error) {
+				if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 					if err := k8sClient.Get(ctx, types.NamespacedName{Name: groupName, Namespace: namespace}, group); err != nil {
 						return err
 					}
@@ -135,24 +150,10 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 						},
 					}
 					return k8sClient.Status().Update(ctx, group)
-				})
-			}, timeout, interval).Should(Succeed())
-
-			client := &pocketidinternalv1alpha1.PocketIDOIDCClient{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      clientName,
-					Namespace: namespace,
-				},
-				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-					AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
-						{Name: groupName},
-					},
-				},
-			}
-
-			// Use Eventually because the controller may overwrite our status update
-			Eventually(func() ([]string, error) {
-				return helpers.ResolveUserGroupReferences(ctx, k8sClient, client.Spec.AllowedUserGroups, client.Namespace)
+				}); err != nil {
+					return nil, err
+				}
+				return helpers.ResolveUserGroupReferences(ctx, k8sClient, oidcClient.Spec.AllowedUserGroups, oidcClient.Namespace)
 			}, timeout, interval).Should(Equal([]string{"group-id-1"}))
 		})
 
