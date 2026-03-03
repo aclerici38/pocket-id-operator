@@ -1,12 +1,8 @@
 name: Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Release version (e.g., v1.0.0)"
-        required: true
-        type: string
+  release:
+    types: [created]
 
 permissions:
   actions: write
@@ -22,67 +18,36 @@ env:
   KUSTOMIZE_VERSION: v5.7.1
 
 jobs:
-  validate:
-    name: Validate version
+  meta:
+    name: Release metadata
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.validate.outputs.version }}
-      helm_version: ${{ steps.validate.outputs.helm_version }}
-      repo_owner: ${{ steps.validate.outputs.repo_owner }}
+      version: ${{ steps.meta.outputs.version }}
+      helm_version: ${{ steps.meta.outputs.helm_version }}
+      repo_owner: ${{ steps.meta.outputs.repo_owner }}
+      short_sha: ${{ steps.meta.outputs.short_sha }}
     steps:
-      - name: Validate version format
-        id: validate
+      - name: Checkout release tag
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Extract metadata
+        id: meta
         run: |
-          VERSION="${{ inputs.version }}"
-
-          # Ensure version starts with 'v'
-          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9] ]]; then
-            echo "::error::Version must be in format v0.0.0"
-            exit 1
-          fi
-
-          # Remove 'v' prefix for Helm version (Helm doesn't use 'v' prefix)
+          VERSION="${{ github.event.release.tag_name }}"
           HELM_VERSION="${VERSION#v}"
-
           REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          SHORT_SHA=$(git rev-parse --short HEAD)
 
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "helm_version=${HELM_VERSION}" >> "$GITHUB_OUTPUT"
           echo "repo_owner=${REPO_OWNER}" >> "$GITHUB_OUTPUT"
-
-  tag:
-    name: Create Git tag
-    needs: validate
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          ref: main
-          fetch-depth: 0
-
-      - name: Configure git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Check if tag exists
-        run: |
-          if git rev-parse "${{ needs.validate.outputs.version }}" >/dev/null 2>&1; then
-            echo "::error::Tag ${{ needs.validate.outputs.version }} already exists"
-            exit 1
-          fi
-
-      - name: Create and push tag
-        run: |
-          git tag -a "${{ needs.validate.outputs.version }}" -m "Release ${{ needs.validate.outputs.version }}"
-          git push origin "${{ needs.validate.outputs.version }}"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
   retag-image:
     name: Retag Docker image
-    needs:
-      - validate
-      - tag
+    needs: [meta]
     runs-on: ubuntu-latest
     steps:
       - name: Setup Docker Buildx
@@ -95,43 +60,50 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Retag :main image as release version
+      - name: Wait for CI image and retag as release version
         run: |
+          REPO_OWNER="${{ needs.meta.outputs.repo_owner }}"
+          SHORT_SHA="${{ needs.meta.outputs.short_sha }}"
+          # Use the per-commit stable tag published by CI rather than :main,
+          # so we pin to exactly the commit release-please tagged.
+          SOURCE="ghcr.io/${REPO_OWNER}/pocket-id-operator:${SHORT_SHA}-main"
+
+          echo "Waiting for source image: ${SOURCE}"
+          for i in $(seq 1 20); do
+            if docker buildx imagetools inspect "${SOURCE}" >/dev/null 2>&1; then
+              echo "Source image available after attempt ${i}"
+              break
+            fi
+            [ "$i" = "20" ] && { echo "Timed out waiting for source image"; exit 1; }
+            echo "Attempt ${i}/20 — retrying in 30s..."
+            sleep 30
+          done
+
           docker buildx imagetools create \
-            -t ghcr.io/${{ needs.validate.outputs.repo_owner }}/pocket-id-operator:${{ needs.validate.outputs.version }} \
-            ghcr.io/${{ needs.validate.outputs.repo_owner }}/pocket-id-operator:main
+            -t ghcr.io/${REPO_OWNER}/pocket-id-operator:${{ needs.meta.outputs.version }} \
+            "${SOURCE}"
 
   publish-chart:
     name: Publish Helm chart
-    needs:
-      - validate
-      - tag
+    needs: [meta, retag-image]
     uses: ./.github/workflows/publish-chart.yml
     with:
-      chart_version: ${{ needs.validate.outputs.helm_version }}
-      app_version: ${{ needs.validate.outputs.version }}
-      repo_owner: ${{ needs.validate.outputs.repo_owner }}
-      primary_tag: ${{ needs.validate.outputs.helm_version }}
+      chart_version: ${{ needs.meta.outputs.helm_version }}
+      app_version: ${{ needs.meta.outputs.version }}
+      repo_owner: ${{ needs.meta.outputs.repo_owner }}
+      primary_tag: ${{ needs.meta.outputs.helm_version }}
     secrets: inherit
 
-  create-release:
-    name: Create GitHub Release
-    needs:
-      - validate
-      - tag
-      - retag-image
-      - publish-chart
+  upload-artifacts:
+    name: Upload release artifacts
+    needs: [meta, retag-image, publish-chart]
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout release tag
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ needs.validate.outputs.version }}
+          ref: ${{ needs.meta.outputs.version }}
           fetch-depth: 0
-
-      - name: Extract release notes
-        run: |
-          git show origin/${{ github.ref_name }}:RELEASE_NOTES.md > /tmp/release_notes.md 2>/dev/null || touch /tmp/release_notes.md
 
       - name: Set up Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
@@ -147,16 +119,14 @@ jobs:
 
       - name: Generate install manifest
         run: |
-          make build-installer IMG=ghcr.io/${{ needs.validate.outputs.repo_owner }}/pocket-id-operator:${{ needs.validate.outputs.version }}
+          make build-installer IMG=ghcr.io/${{ needs.meta.outputs.repo_owner }}/pocket-id-operator:${{ needs.meta.outputs.version }}
 
-      - name: Create GitHub release
-        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
-        with:
-          tag_name: ${{ needs.validate.outputs.version }}
-          name: ${{ needs.validate.outputs.version }}
-          generate_release_notes: true
-          body_path: /tmp/release_notes.md
-          files: |
-            dist/install.yaml
-            dist/schemas/*.json
-            dist/chart/values.schema.json
+      - name: Upload artifacts to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload ${{ needs.meta.outputs.version }} \
+            dist/install.yaml \
+            dist/schemas/*.json \
+            dist/chart/values.schema.json \
+            --clobber
