@@ -171,6 +171,10 @@ type SCIMSpec struct {
 // PocketIDOIDCClientSpec defines the desired state of PocketIDOIDCClient
 // +kubebuilder:validation:XValidation:rule="has(self.clientID) == has(oldSelf.clientID) && (!has(self.clientID) || self.clientID == oldSelf.clientID)",message="clientID is immutable"
 type PocketIDOIDCClientSpec struct {
+	// Name of the oidc client to create in Pocket ID.
+	// If omitted, defaults to metadata.name of the oidcclient resource.
+	Name string `json:"name,omitempty"`
+
 	// InstanceSelector selects the PocketIDInstance to reconcile against.
 	// If omitted, the controller expects exactly one instance in the cluster.
 	// +optional

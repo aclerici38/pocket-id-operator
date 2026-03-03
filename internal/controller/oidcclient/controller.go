@@ -243,22 +243,24 @@ func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *po
 		resourceID = "(auto-generated)"
 	}
 
+	name := oidcClientName(oidcClient)
+
 	// When spec.clientID is not set, search by name first to adopt
 	if oidcClient.Spec.ClientID == "" {
-		log.Info("No clientID specified, searching for existing OIDC client by name", "name", oidcClient.Name)
-		existing, err := r.FindExistingOIDCClient(ctx, apiClient, "", oidcClient.Name)
+		log.Info("No clientID specified, searching for existing OIDC client by name", "name", name)
+		existing, err := r.FindExistingOIDCClient(ctx, apiClient, "", name)
 		if err != nil {
 			return false, fmt.Errorf("search for existing OIDC client by name: %w", err)
 		}
 		if existing != nil {
-			log.Info("Found existing OIDC client by name, adopting", "name", oidcClient.Name, "clientID", existing.ID)
+			log.Info("Found existing OIDC client by name, adopting", "name", name, "clientID", existing.ID)
 			metrics.ResourceOperations.WithLabelValues("PocketIDOIDCClient", "adopted").Inc()
 			if err := r.setClientID(ctx, oidcClient, existing.ID); err != nil {
 				return false, err
 			}
 			return true, nil
 		}
-		log.Info("No existing OIDC client found by name, creating new", "name", oidcClient.Name)
+		log.Info("No existing OIDC client found by name, creating new", "name", name)
 	}
 
 	result, err := common.CreateOrAdopt(ctx, common.CreateOrAdoptConfig[*pocketid.OIDCClient]{
@@ -268,7 +270,7 @@ func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *po
 			return apiClient.CreateOIDCClient(ctx, input)
 		},
 		FindExisting: func() (*pocketid.OIDCClient, error) {
-			return r.FindExistingOIDCClient(ctx, apiClient, oidcClient.Spec.ClientID, oidcClient.Name)
+			return r.FindExistingOIDCClient(ctx, apiClient, oidcClient.Spec.ClientID, name)
 		},
 		IsNil: func(c *pocketid.OIDCClient) bool {
 			return c == nil
@@ -402,10 +404,19 @@ func (r *Reconciler) setClientID(ctx context.Context, oidcClient *pocketidintern
 	return r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
 }
 
+// oidcClientName returns the Pocket-ID name for the given OIDC client:
+// spec.name if set, otherwise metadata.name.
+func oidcClientName(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) string {
+	if oidcClient.Spec.Name != "" {
+		return oidcClient.Spec.Name
+	}
+	return oidcClient.Name
+}
+
 // OidcClientInput builds an OIDCClientInput from the CR spec.
 // When current is provided, it is used as the fallback for callback URLs not set in the spec
 func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, current *pocketid.OIDCClient) pocketid.OIDCClientInput {
-	name := oidcClient.Name
+	name := oidcClientName(oidcClient)
 
 	// Only set client ID if in spec
 	var clientID *string
