@@ -124,6 +124,8 @@ jobs:
           kubectl get pocketidinstance -n pocket-id-operator-system -o yaml || true
           echo "=== PocketIDUser Status ==="
           kubectl get pocketiduser -n pocket-id-operator-system -o yaml || true
+          echo "=== PocketIDUserGroup Status ==="
+          kubectl get pocketidusergroup -n pocket-id-operator-system -o yaml || true
           echo "=== Pocket-ID Pod Logs ==="
           kubectl logs -n pocket-id-operator-system -l app.kubernetes.io/name=pocket-id --tail=100 || true
           echo "=== All Resources ==="
@@ -135,6 +137,11 @@ jobs:
         run: |
           helm status test-release --namespace pocket-id-operator-system
           kubectl get all -n pocket-id-operator-system
+          echo "=== Verifying all expected CRs are present ==="
+          kubectl get pocketidinstance pocket-id -n pocket-id-operator-system
+          kubectl get pocketiduser test-user-1 -n pocket-id-operator-system
+          kubectl get pocketiduser test-user-2 -n pocket-id-operator-system
+          kubectl get pocketidusergroup test-group -n pocket-id-operator-system
 
       - name: Uninstall test chart
         if: always()

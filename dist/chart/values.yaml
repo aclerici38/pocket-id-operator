@@ -91,3 +91,13 @@ users: []
   #       value: "admin@example.com"
   #     firstName:
   #       value: "Admin"
+
+# PocketIDUserGroup configuration
+# Full documentation: https://github.com/aclerici38/pocket-id-operator/blob/main/docs/pocketidusergroup.md
+userGroups: []
+  # - name: admins
+  #   spec:
+  #     friendlyName: "Admins"
+  #     users:
+  #       userRefs:
+  #         - name: admin-user

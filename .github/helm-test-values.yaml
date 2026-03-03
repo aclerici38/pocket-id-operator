@@ -10,3 +10,11 @@ users:
   - name: test-user-2
     spec:
       admin: true
+
+userGroups:
+  - name: test-group
+    spec:
+      users:
+        userRefs:
+          - name: test-user-1
+          - name: test-user-2

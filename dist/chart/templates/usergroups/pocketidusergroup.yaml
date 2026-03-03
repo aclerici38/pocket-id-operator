@@ -1,0 +1,24 @@
+{{- range .Values.userGroups }}
+---
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUserGroup
+metadata:
+  name: {{ .name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: pocket-id-usergroup
+    app.kubernetes.io/instance: {{ .name }}
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+    helm.sh/chart: {{ include "chart.name" $ }}
+    {{- with .labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- with .spec }}
+spec:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
