@@ -92,6 +92,33 @@
         }
       }
     },
+    "userGroups": {
+      "type": "array",
+      "description": "List of PocketIDUserGroup custom resources to create",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the PocketIDUserGroup resource"
+          },
+          "labels": {
+            "type": "object",
+            "description": "Additional labels for the PocketIDUserGroup resource",
+            "additionalProperties": { "type": "string" }
+          },
+          "annotations": {
+            "type": "object",
+            "description": "Additional annotations for the PocketIDUserGroup resource",
+            "additionalProperties": { "type": "string" }
+          },
+          "spec": {}
+        }
+      }
+    },
     "operator": {
       "type": "object",
       "additionalProperties": false,

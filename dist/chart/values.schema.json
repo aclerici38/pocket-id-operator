@@ -2995,6 +2995,186 @@
         }
       }
     },
+    "userGroups": {
+      "type": "array",
+      "description": "List of PocketIDUserGroup custom resources to create",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the PocketIDUserGroup resource"
+          },
+          "labels": {
+            "type": "object",
+            "description": "Additional labels for the PocketIDUserGroup resource",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "annotations": {
+            "type": "object",
+            "description": "Additional annotations for the PocketIDUserGroup resource",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "spec": {
+            "description": "spec defines the desired state of PocketIDUserGroup",
+            "properties": {
+              "allowedOIDCClients": {
+                "description": "AllowedOIDCClients lists PocketIDOIDCClient CRs that this group grants access to.\nThe final set of allowed clients is the union of this field and any\nOIDCClients that reference this group in their allowedUserGroups.",
+                "items": {
+                  "description": "NamespacedOIDCClientReference references a PocketIDOIDCClient by name and namespace.",
+                  "properties": {
+                    "name": {
+                      "description": "Name is the name of the PocketIDOIDCClient CR",
+                      "type": "string"
+                    },
+                    "namespace": {
+                      "description": "Namespace is the namespace of the PocketIDOIDCClient CR\nDefaults to the referencing resource's namespace",
+                      "type": "string"
+                    }
+                  },
+                  "type": "object",
+                  "additionalProperties": false
+                },
+                "type": "array"
+              },
+              "customClaims": {
+                "description": "CustomClaims are additional claims to attach to users in this group",
+                "items": {
+                  "description": "CustomClaim defines a custom claim key/value pair for a user group.",
+                  "properties": {
+                    "key": {
+                      "description": "Key is the claim key",
+                      "type": "string"
+                    },
+                    "value": {
+                      "description": "Value is the claim value",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "value"
+                  ],
+                  "type": "object",
+                  "additionalProperties": false
+                },
+                "type": "array"
+              },
+              "friendlyName": {
+                "description": "FriendlyName is the display name for the user group",
+                "maxLength": 50,
+                "minLength": 2,
+                "type": "string"
+              },
+              "instanceSelector": {
+                "description": "InstanceSelector selects the PocketIDInstance to reconcile against.\nIf omitted, the controller expects exactly one instance in the cluster.",
+                "properties": {
+                  "matchExpressions": {
+                    "description": "matchExpressions is a list of label selector requirements. The requirements are ANDed.",
+                    "items": {
+                      "description": "A label selector requirement is a selector that contains values, a key, and an operator that\nrelates the key and values.",
+                      "properties": {
+                        "key": {
+                          "description": "key is the label key that the selector applies to.",
+                          "type": "string"
+                        },
+                        "operator": {
+                          "description": "operator represents a key's relationship to a set of values.\nValid operators are In, NotIn, Exists and DoesNotExist.",
+                          "type": "string"
+                        },
+                        "values": {
+                          "description": "values is an array of string values. If the operator is In or NotIn,\nthe values array must be non-empty. If the operator is Exists or DoesNotExist,\nthe values array must be empty. This array is replaced during a strategic\nmerge patch.",
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array",
+                          "x-kubernetes-list-type": "atomic"
+                        }
+                      },
+                      "required": [
+                        "key",
+                        "operator"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false
+                    },
+                    "type": "array",
+                    "x-kubernetes-list-type": "atomic"
+                  },
+                  "matchLabels": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "description": "matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels\nmap is equivalent to an element of matchExpressions, whose key field is \"key\", the\noperator is \"In\", and the values array contains only \"value\". The requirements are ANDed.",
+                    "type": "object"
+                  }
+                },
+                "type": "object",
+                "x-kubernetes-map-type": "atomic",
+                "additionalProperties": false
+              },
+              "name": {
+                "description": "Name of the user group. Defaults to the metadata.name",
+                "maxLength": 255,
+                "minLength": 2,
+                "type": "string"
+              },
+              "users": {
+                "description": "Users defines the users to add to this group",
+                "properties": {
+                  "userIDs": {
+                    "description": "UserIDs are Pocket-ID user IDs to add directly to this group.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "userRefs": {
+                    "description": "UserRefs are PocketIDUser custom resources to add to this group",
+                    "items": {
+                      "description": "NamespacedUserReference references a PocketIDUser by name and namespace.",
+                      "properties": {
+                        "name": {
+                          "description": "Name is the name of the PocketIDUser CR",
+                          "type": "string"
+                        },
+                        "namespace": {
+                          "description": "Namespace is the namespace of the PocketIDUser CR\nDefaults to the referencing resource's namespace",
+                          "type": "string"
+                        }
+                      },
+                      "type": "object",
+                      "additionalProperties": false
+                    },
+                    "type": "array"
+                  },
+                  "usernames": {
+                    "description": "Usernames are Pocket-ID usernames to add to this group.\nThe controller will look up the user ID from Pocket-ID by username.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "type": "object",
+                "additionalProperties": false
+              }
+            },
+            "type": "object",
+            "additionalProperties": false
+          }
+        }
+      }
+    },
     "operator": {
       "type": "object",
       "additionalProperties": false,
