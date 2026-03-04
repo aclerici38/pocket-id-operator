@@ -1,4 +1,4 @@
-{{- if and .Values.metrics .Values.metrics.dashboard .Values.metrics.dashboard.grafanaDashboard .Values.metrics.dashboard.grafanaDashboard.enabled }}
+{{- if and .Values.metrics .Values.metrics.dashboard .Values.metrics.dashboard.enabled (ne (get (.Values.metrics.dashboard.grafanaDashboard | default dict) "enabled") false) (.Capabilities.APIVersions.Has "grafana.integreatly.org/v1beta1") }}
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:
