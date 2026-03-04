@@ -205,6 +205,28 @@
             }
           }
         },
+        "prometheusRule": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "PrometheusRule for operator alerting (created automatically when CRD is available)",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Create a PrometheusRule with default alerting rules",
+              "default": true
+            },
+            "labels": {
+              "type": "object",
+              "description": "Additional labels for the PrometheusRule resource",
+              "additionalProperties": { "type": "string" }
+            },
+            "additionalRules": {
+              "type": "array",
+              "description": "Additional alerting rules appended to the default set",
+              "items": { "type": "object" }
+            }
+          }
+        },
         "dashboard": {
           "type": "object",
           "additionalProperties": false,
