@@ -1,0 +1,117 @@
+{{- if and .Values.metrics .Values.metrics.prometheusRule (ne .Values.metrics.prometheusRule.enabled false) (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1") }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    {{- with .Values.metrics.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  name: pocket-id-operator
+  namespace: {{ .Release.Namespace }}
+spec:
+  groups:
+    - name: pocket-id-operator
+      rules:
+        # -- Pocket-ID instance not ready for over 5 minutes
+        - alert: PocketIDInstanceNotReady
+          expr: pocketid_operator_resource_ready{kind="PocketIDInstance"} == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: >-
+              Pocket-ID instance {{`{{ $labels.namespace }}`}}/{{`{{ $labels.name }}`}} is not ready
+            description: >-
+              The PocketIDInstance {{`{{ $labels.namespace }}`}}/{{`{{ $labels.name }}`}} has been
+              in a non-ready state for more than 5 minutes.
+
+        # -- Managed resource not ready for over 5 minutes
+        - alert: PocketIDResourceNotReady
+          expr: pocketid_operator_resource_ready{kind!="PocketIDInstance"} == 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: >-
+              {{`{{ $labels.kind }}`}} {{`{{ $labels.namespace }}`}}/{{`{{ $labels.name }}`}} is not ready
+            description: >-
+              The {{`{{ $labels.kind }}`}} {{`{{ $labels.namespace }}`}}/{{`{{ $labels.name }}`}} has been
+              in a non-ready state for more than 5 minutes.
+
+        # -- Pocket-ID API error rate exceeds 50%
+        - alert: PocketIDAPIHighErrorRate
+          expr: |-
+            (
+              sum(rate(pocketid_operator_pocketid_api_requests_total{result="error"}[5m]))
+              / sum(rate(pocketid_operator_pocketid_api_requests_total[5m]))
+            ) > 0.5
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: Pocket-ID API error rate is above 50%
+            description: >-
+              More than 50% of Pocket-ID API requests have been failing for over 5 minutes.
+              This usually indicates the Pocket-ID server is unreachable or unhealthy.
+
+        # -- Pocket-ID API p99 latency exceeds 5 seconds
+        - alert: PocketIDAPISlowRequests
+          expr: |-
+            histogram_quantile(0.99,
+              sum by (le) (
+                rate(pocketid_operator_pocketid_api_request_duration_seconds_bucket[5m])
+              )
+            ) > 5
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Pocket-ID API p99 latency is above 5 seconds
+            description: >-
+              The 99th percentile latency of Pocket-ID API requests has exceeded 5 seconds
+              for more than 5 minutes.
+
+        # -- Resources deleted outside the operator
+        - alert: PocketIDExternalDeletions
+          expr: increase(pocketid_operator_external_deletions_total[10m]) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: >-
+              {{`{{ $labels.kind }}`}} resources deleted externally
+            description: >-
+              {{`{{ $value }}`}} {{`{{ $labels.kind }}`}} resource(s) were deleted outside the
+              operator in the last 10 minutes. The operator will recreate them, but this
+              may indicate manual interference or a competing controller.
+
+        # -- Controller reconciliation errors sustained over 10 minutes
+        - alert: PocketIDReconcileErrors
+          expr: rate(controller_runtime_reconcile_total{result="error"}[5m]) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: >-
+              {{`{{ $labels.controller }}`}} controller has sustained reconcile errors
+            description: >-
+              The {{`{{ $labels.controller }}`}} controller has been producing reconcile
+              errors continuously for over 10 minutes.
+
+        # -- Work queue depth growing, indicating the operator is falling behind
+        - alert: PocketIDWorkQueueBackup
+          expr: workqueue_depth > 10
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: >-
+              {{`{{ $labels.name }}`}} work queue depth is {{`{{ $value }}`}}
+            description: >-
+              The {{`{{ $labels.name }}`}} work queue has had more than 10 pending items
+              for over 10 minutes, indicating the operator may be falling behind.
+
+        {{- with .Values.metrics.prometheusRule.additionalRules }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+{{- end }}
