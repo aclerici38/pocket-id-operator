@@ -47,16 +47,16 @@ metrics:
     labels: {}
     # Additional custom alerting rules appended to the default set
     additionalRules: []
-  # Setting dashboard.enabled creates a configmap with the dashboard json
-  # dashboard.grafanaDashboard.enabled creates a grafanaDashboard custom resource as well
-  # dashboard.enabled needs to be true for the grafanaDashboard resource to be created
+  # Setting dashboard.enabled creates a configmap with the dashboard json.
+  # When enabled, the GrafanaDashboard CRD is also created automatically
+  # if the grafana-operator CRD is available on the cluster.
+  # Set grafanaDashboard.enabled to false to explicitly disable it.
   dashboard:
     enabled: false
     labels:
       grafana_dashboard: "1"
-    # Creates a grafanaDashboard custom resource for the grafana operator
     grafanaDashboard:
-      enabled: false
+      enabled: true
       allowCrossNamespaceImport: true
       instanceSelector:
         matchLabels:

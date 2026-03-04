@@ -246,12 +246,12 @@
             "grafanaDashboard": {
               "type": "object",
               "additionalProperties": false,
-              "description": "GrafanaDashboard CRD configuration (requires grafana-operator and dashboard.enabled: true)",
+              "description": "GrafanaDashboard CRD configuration (created automatically when dashboard is enabled and grafana-operator CRD is available)",
               "properties": {
                 "enabled": {
                   "type": "boolean",
-                  "description": "Create a GrafanaDashboard resource referencing the dashboard ConfigMap",
-                  "default": false
+                  "description": "Create a GrafanaDashboard resource when the CRD is available (set to false to explicitly disable)",
+                  "default": true
                 },
                 "allowCrossNamespaceImport": {
                   "type": "boolean",
@@ -269,21 +269,6 @@
                       "additionalProperties": { "type": "string" }
                     }
                   }
-                }
-              }
-            }
-          },
-          "if": {
-            "not": {
-              "properties": { "enabled": { "const": true } },
-              "required": ["enabled"]
-            }
-          },
-          "then": {
-            "properties": {
-              "grafanaDashboard": {
-                "properties": {
-                  "enabled": { "const": false }
                 }
               }
             }
