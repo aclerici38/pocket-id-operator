@@ -40,6 +40,13 @@ metrics:
   port: 8080
   serviceMonitor:
     enabled: false
+  prometheusRule:
+    # Enabled by default when the PrometheusRule CRD is available on the cluster.
+    # Set to false to explicitly disable.
+    enabled: true
+    labels: {}
+    # Additional custom alerting rules appended to the default set
+    additionalRules: []
   # Setting dashboard.enabled creates a configmap with the dashboard json
   # dashboard.grafanaDashboard.enabled creates a grafanaDashboard custom resource as well
   # dashboard.enabled needs to be true for the grafanaDashboard resource to be created
