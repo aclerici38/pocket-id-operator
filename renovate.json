@@ -29,6 +29,11 @@
     {
       "matchDatasources": ["golang-version"],
       "rangeStrategy": "bump"
+    },
+    {
+      "matchPackageNames": ["go", "docker.io/library/golang"],
+      "groupName": "golang",
+      "minimumGroupSize": 2
     }
   ],
   "customManagers": [
