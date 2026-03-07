@@ -721,7 +721,13 @@ func (r *Reconciler) reconcileVersion(ctx context.Context, instance *pocketidint
 		return err
 	}
 
-	if semver.IsValid(version) && semver.Compare(version, latestTestedPocketIDVersion) > 0 {
+	// golang.org/x/mod/semver requires a "v" prefix.
+	normalizedVersion := version
+	if version != "" && version[0] != 'v' {
+		normalizedVersion = "v" + version
+	}
+
+	if semver.IsValid(normalizedVersion) && semver.Compare(normalizedVersion, latestTestedPocketIDVersion) > 0 {
 		log.Info("WARNING: pocket-id version is newer than the latest tested version, the operator may not work correctly",
 			"detectedVersion", version,
 			"latestTestedVersion", latestTestedPocketIDVersion,
