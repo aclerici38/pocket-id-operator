@@ -380,10 +380,10 @@ func (c *Client) CreateUser(ctx context.Context, input UserInput) (*User, error)
 		WithContext(ctx).
 		WithUser(&models.GithubComPocketIDPocketIDBackendInternalDtoUserCreateDto{
 			Username:      &input.Username,
-			FirstName:     &input.FirstName,
+			FirstName:     input.FirstName,
 			LastName:      input.LastName,
 			Email:         input.Email,
-			DisplayName:   &input.DisplayName,
+			DisplayName:   input.DisplayName,
 			IsAdmin:       input.IsAdmin,
 			Disabled:      input.Disabled,
 			Locale:        input.Locale,
@@ -407,10 +407,10 @@ func (c *Client) UpdateUser(ctx context.Context, id string, input UserInput) (*U
 		WithID(id).
 		WithUser(&models.GithubComPocketIDPocketIDBackendInternalDtoUserCreateDto{
 			Username:      &input.Username,
-			FirstName:     &input.FirstName,
+			FirstName:     input.FirstName,
 			LastName:      input.LastName,
 			Email:         input.Email,
-			DisplayName:   &input.DisplayName,
+			DisplayName:   input.DisplayName,
 			IsAdmin:       input.IsAdmin,
 			Disabled:      input.Disabled,
 			Locale:        input.Locale,
