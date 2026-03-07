@@ -129,9 +129,13 @@ jobs:
           ref: ${{ needs.validate.outputs.version }}
           fetch-depth: 0
 
-      - name: Extract release notes
-        run: |
-          git show origin/${{ github.ref_name }}:RELEASE_NOTES.md > /tmp/release_notes.md 2>/dev/null || touch /tmp/release_notes.md
+      - name: Generate changelog
+        uses: orhun/git-cliff-action@c93ef52f3d0ddcdcc9bd5447d98d458a11cd4f72 # v4.7.1
+        with:
+          config: cliff.toml
+          args: --latest --strip header
+        env:
+          OUTPUT: /tmp/changelog.md
 
       - name: Set up Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
@@ -154,8 +158,7 @@ jobs:
         with:
           tag_name: ${{ needs.validate.outputs.version }}
           name: ${{ needs.validate.outputs.version }}
-          generate_release_notes: true
-          body_path: /tmp/release_notes.md
+          body_path: /tmp/changelog.md
           files: |
             dist/install.yaml
             dist/schemas/*.json
