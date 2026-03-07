@@ -149,6 +149,11 @@ func init() {
 		UserGroupMemberCount,
 		OIDCClientAllowedGroupCount,
 	)
+
+	// Init ExternalDeletions to 0 so increase() works in rules
+	for _, kind := range []string{"PocketIDUser", "PocketIDUserGroup", "PocketIDOIDCClient"} {
+		ExternalDeletions.WithLabelValues(kind).Add(0)
+	}
 }
 
 // RecordReadiness updates the ResourceReady gauge for a resource.
