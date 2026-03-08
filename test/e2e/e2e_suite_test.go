@@ -49,8 +49,10 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	err := utils.LoadImageToKindClusterWithName(projectImage)
 	Expect(err).NotTo(HaveOccurred(), "Failed to load operator image into Kind")
 
-	By("cleaning up any resources from previous runs")
-	cleanupAllResources()
+	if os.Getenv("SKIP_CLEANUP") == "" {
+		By("cleaning up any resources from previous runs")
+		cleanupAllResources()
+	}
 
 	By("installing CRDs")
 	cmd := exec.Command("make", "install")
