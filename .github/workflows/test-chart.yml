@@ -30,6 +30,8 @@ permissions:
 env:
   # renovate: datasource=github-releases depName=kubernetes-sigs/kind
   KIND_VERSION: v0.31.0
+  # renovate: datasource=github-releases depName=kubernetes/kubernetes
+  KUBECTL_VERSION: v1.35.2
 
 jobs:
   test:
@@ -68,22 +70,11 @@ jobs:
             --app-version "${{ inputs.image_tag }}" \
             --destination dist/chart-packages
 
-      - name: Cache kind
-        id: cache-kind
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
-        with:
-          path: /usr/local/bin/kind
-          key: kind-${{ runner.os }}-${{ runner.arch }}-${{ env.KIND_VERSION }}
-
-      - name: Install kind
-        if: steps.cache-kind.outputs.cache-hit != 'true'
-        run: |
-          curl -Lo ./kind https://kind.sigs.k8s.io/dl/${{ env.KIND_VERSION }}/kind-linux-$(go env GOARCH)
-          chmod +x ./kind
-          sudo mv ./kind /usr/local/bin/kind
-
       - name: Create kind cluster
-        run: kind create cluster
+        uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          kubectl_version: ${{ env.KUBECTL_VERSION }}
 
       - name: Install released chart
         id: install-released
