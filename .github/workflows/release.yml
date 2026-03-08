@@ -28,7 +28,7 @@ jobs:
     outputs:
       version: ${{ steps.validate.outputs.version }}
       helm_version: ${{ steps.validate.outputs.helm_version }}
-      repo_owner: ${{ steps.validate.outputs.repo_owner }}
+      image_repo: ${{ steps.validate.outputs.image_repo }}
     steps:
       - name: Validate version format
         id: validate
@@ -41,14 +41,12 @@ jobs:
             exit 1
           fi
 
-          # Remove 'v' prefix for Helm version (Helm doesn't use 'v' prefix)
           HELM_VERSION="${VERSION#v}"
-
           REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
 
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "helm_version=${HELM_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "repo_owner=${REPO_OWNER}" >> "$GITHUB_OUTPUT"
+          echo "image_repo=ghcr.io/${REPO_OWNER}/pocket-id-operator" >> "$GITHUB_OUTPUT"
 
   tag:
     name: Create Git tag
@@ -98,20 +96,18 @@ jobs:
       - name: Retag :main image as release version
         run: |
           docker buildx imagetools create \
-            -t ghcr.io/${{ needs.validate.outputs.repo_owner }}/pocket-id-operator:${{ needs.validate.outputs.version }} \
-            ghcr.io/${{ needs.validate.outputs.repo_owner }}/pocket-id-operator:main
+            -t ${{ needs.validate.outputs.image_repo }}:${{ needs.validate.outputs.version }} \
+            ${{ needs.validate.outputs.image_repo }}:main
 
   publish-chart:
     name: Publish Helm chart
     needs:
       - validate
       - tag
-    uses: ./.github/workflows/publish-chart.yml
+    uses: ./.github/workflows/push-chart.yml
     with:
       chart_version: ${{ needs.validate.outputs.helm_version }}
       app_version: ${{ needs.validate.outputs.version }}
-      repo_owner: ${{ needs.validate.outputs.repo_owner }}
-      primary_tag: ${{ needs.validate.outputs.helm_version }}
     secrets: inherit
 
   create-release:
@@ -151,7 +147,7 @@ jobs:
 
       - name: Generate install manifest
         run: |
-          make build-installer IMG=ghcr.io/${{ needs.validate.outputs.repo_owner }}/pocket-id-operator:${{ needs.validate.outputs.version }}
+          make build-installer IMG=${{ needs.validate.outputs.image_repo }}:${{ needs.validate.outputs.version }}
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0

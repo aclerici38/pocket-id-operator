@@ -1,0 +1,37 @@
+name: Resolve Latest Release
+description: Look up the latest GitHub release and derive image and chart references.
+
+inputs:
+  token:
+    description: GitHub token for API access.
+    required: true
+
+outputs:
+  tag:
+    description: Latest release tag (e.g., v1.0.0).
+    value: ${{ steps.resolve.outputs.tag }}
+  image:
+    description: Full operator image reference for the release.
+    value: ${{ steps.resolve.outputs.image }}
+  chart_version:
+    description: Helm chart version (tag without v prefix).
+    value: ${{ steps.resolve.outputs.chart_version }}
+  chart:
+    description: OCI chart reference.
+    value: ${{ steps.resolve.outputs.chart }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve latest release
+      id: resolve
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        TAG=$(gh release view --repo ${{ github.repository }} --json tagName -q .tagName)
+        REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+        echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+        echo "image=ghcr.io/${REPO_OWNER}/pocket-id-operator:${TAG}" >> "$GITHUB_OUTPUT"
+        echo "chart_version=${TAG#v}" >> "$GITHUB_OUTPUT"
+        echo "chart=oci://ghcr.io/${REPO_OWNER}/charts/pocket-id-operator" >> "$GITHUB_OUTPUT"
