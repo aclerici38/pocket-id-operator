@@ -8,9 +8,14 @@ on:
         required: true
         type: string
       image_tag:
-        description: Image tag to build and push.
+        description: Primary image tag to build and push.
         required: true
         type: string
+      additional_tags:
+        description: Space-separated additional tags to apply to the manifest.
+        required: false
+        type: string
+        default: ""
   workflow_dispatch:
     inputs:
       image_repo:
@@ -18,9 +23,14 @@ on:
         required: true
         type: string
       image_tag:
-        description: Image tag to build and push.
+        description: Primary image tag to build and push.
         required: true
         type: string
+      additional_tags:
+        description: Space-separated additional tags to apply to the manifest.
+        required: false
+        type: string
+        default: ""
 
 permissions:
   actions: write
@@ -131,8 +141,12 @@ jobs:
 
       - name: Create manifest
         run: |
+          TAGS="-t ${{ inputs.image_repo }}:${{ inputs.image_tag }}"
+          for tag in ${{ inputs.additional_tags }}; do
+            TAGS="${TAGS} -t ${{ inputs.image_repo }}:${tag}"
+          done
           docker buildx imagetools create \
-            -t ${{ inputs.image_repo }}:${{ inputs.image_tag }} \
+            ${TAGS} \
             ${{ inputs.image_repo }}@${{ needs.build-amd64.outputs.digest }} \
             ${{ inputs.image_repo }}@${{ needs.build-arm64.outputs.digest }}
 

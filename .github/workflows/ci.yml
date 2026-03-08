@@ -31,10 +31,9 @@ jobs:
     permissions:
       contents: read
     outputs:
-      repo_owner: ${{ steps.meta.outputs.repo_owner }}
       image_repo: ${{ steps.meta.outputs.image_repo }}
-      build_tag: ${{ steps.meta.outputs.build_tag }}
       image_tag: ${{ steps.meta.outputs.image_tag }}
+      additional_tags: ${{ steps.meta.outputs.additional_tags }}
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -44,16 +43,17 @@ jobs:
         run: |
           REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           SHORT_SHA=$(git rev-parse --short HEAD)
-          BUILD_TAG="ci-${SHORT_SHA}"
+          # Tags created on main push: <sha>-main, main
+          # Tags created on PR: PR-<number>
           IMAGE_TAG="${SHORT_SHA}-main"
+          ADDITIONAL_TAGS="main"
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BUILD_TAG="PR-${{ github.event.pull_request.number }}"
-            IMAGE_TAG="${BUILD_TAG}"
+            IMAGE_TAG="PR-${{ github.event.pull_request.number }}"
+            ADDITIONAL_TAGS=""
           fi
-          echo "repo_owner=${REPO_OWNER}" >> "$GITHUB_OUTPUT"
           echo "image_repo=ghcr.io/${REPO_OWNER}/pocket-id-operator" >> "$GITHUB_OUTPUT"
-          echo "build_tag=${BUILD_TAG}" >> "$GITHUB_OUTPUT"
           echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "additional_tags=${ADDITIONAL_TAGS}" >> "$GITHUB_OUTPUT"
 
   generate:
     name: Generate
@@ -93,7 +93,8 @@ jobs:
     uses: ./.github/workflows/build-push-image.yml
     with:
       image_repo: ${{ needs.meta.outputs.image_repo }}
-      image_tag: ${{ needs.meta.outputs.build_tag }}
+      image_tag: ${{ needs.meta.outputs.image_tag }}
+      additional_tags: ${{ needs.meta.outputs.additional_tags }}
     secrets: inherit
 
   e2e:
@@ -108,7 +109,7 @@ jobs:
     uses: ./.github/workflows/test-e2e.yml
     with:
       image_repo: ${{ needs.meta.outputs.image_repo }}
-      image_tag: ${{ needs.meta.outputs.build_tag }}
+      image_tag: ${{ needs.meta.outputs.image_tag }}
     secrets: inherit
 
   e2e-latest-release:
@@ -136,11 +137,11 @@ jobs:
     uses: ./.github/workflows/test-chart.yml
     with:
       image_repo: ${{ needs.meta.outputs.image_repo }}
-      image_tag: ${{ needs.meta.outputs.build_tag }}
+      image_tag: ${{ needs.meta.outputs.image_tag }}
     secrets: inherit
 
-  publish:
-    name: Publish
+  publish-chart:
+    name: Publish Chart
     needs:
       - meta
       - generate
@@ -155,10 +156,9 @@ jobs:
       contents: read
       id-token: write
       packages: write
-    uses: ./.github/workflows/publish.yml
+    uses: ./.github/workflows/push-chart.yml
     with:
-      image_repo: ${{ needs.meta.outputs.image_repo }}
-      build_tag: ${{ needs.meta.outputs.build_tag }}
-      image_tag: ${{ needs.meta.outputs.image_tag }}
-      repo_owner: ${{ needs.meta.outputs.repo_owner }}
+      chart_version: "0.0.0"
+      app_version: ${{ needs.meta.outputs.image_tag }}
+      additional_tags: ${{ needs.meta.outputs.additional_tags != '' && format('{0} {1}', needs.meta.outputs.image_tag, needs.meta.outputs.additional_tags) || needs.meta.outputs.image_tag }}
     secrets: inherit
