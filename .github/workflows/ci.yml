@@ -111,6 +111,19 @@ jobs:
       image_tag: ${{ needs.meta.outputs.build_tag }}
     secrets: inherit
 
+  e2e-latest-release:
+    name: E2E Tests (Latest Release)
+    needs: [generate]
+    if: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'pocket-id-upgrade') }}
+    permissions:
+      actions: write
+      contents: read
+      packages: read
+    uses: ./.github/workflows/test-e2e.yml
+    with:
+      latest_release: true
+    secrets: inherit
+
   test-chart:
     name: Test Chart
     needs:

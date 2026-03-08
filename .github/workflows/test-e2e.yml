@@ -11,6 +11,11 @@ on:
         description: Image tag to preload for e2e tests.
         required: false
         type: string
+      latest_release:
+        description: Run e2e tests against the latest release instead of current code.
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       image_repo:
@@ -21,6 +26,11 @@ on:
         description: Image tag to preload for e2e tests.
         required: false
         type: string
+      latest_release:
+        description: Run e2e tests against the latest release instead of current code.
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   actions: write
@@ -38,6 +48,8 @@ env:
   KUSTOMIZE_VERSION: v5.7.1
   # renovate: datasource=github-releases depName=onsi/ginkgo
   GINKGO_VERSION: v2.28.1
+  # renovate: datasource=docker depName=ghcr.io/pocket-id/pocket-id versioning=docker
+  POCKET_ID_IMAGE: ghcr.io/pocket-id/pocket-id:v2.4.0-distroless@sha256:e3e0fa59d06f6651448766e279077929694a644865759264f941a700f67d13eb
 
 jobs:
   test-e2e:
@@ -46,6 +58,19 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Resolve latest release
+        if: inputs.latest_release
+        id: release
+        uses: ./.github/actions/latest-release
+        with:
+          token: ${{ github.token }}
+
+      - name: Checkout latest release tag
+        if: inputs.latest_release
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ steps.release.outputs.tag }}
 
       - name: Setup Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
@@ -68,19 +93,25 @@ jobs:
           install_only: true
 
       - name: Download image artifact
-        if: inputs.image_tag != ''
+        if: inputs.image_tag != '' && !inputs.latest_release
         uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
         with:
           name: operator-image-${{ inputs.image_tag }}
           path: /tmp
 
       - name: Load image
-        if: inputs.image_tag != ''
+        if: inputs.image_tag != '' && !inputs.latest_release
         run: docker load -i /tmp/operator-image-${{ inputs.image_tag }}.tar
+
+      - name: Pull release image
+        if: inputs.latest_release
+        run: docker pull ${{ steps.release.outputs.image }}
 
       - name: Run e2e tests
         run: |
-          if [ -n "${{ inputs.image_tag }}" ]; then
+          if [ "${{ inputs.latest_release }}" = "true" ]; then
+            make test-e2e-only IMG=${{ steps.release.outputs.image }}
+          elif [ -n "${{ inputs.image_tag }}" ]; then
             make test-e2e-only IMG=${{ inputs.image_repo }}:${{ inputs.image_tag }}
           else
             make test-e2e-only

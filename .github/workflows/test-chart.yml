@@ -46,15 +46,9 @@ jobs:
 
       - name: Resolve latest release
         id: release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          TAG=$(gh release view --repo ${{ github.repository }} --json tagName -q .tagName)
-          REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "image=ghcr.io/${REPO_OWNER}/pocket-id-operator:${TAG}" >> "$GITHUB_OUTPUT"
-          echo "chart_version=${TAG#v}" >> "$GITHUB_OUTPUT"
-          echo "chart=oci://ghcr.io/${REPO_OWNER}/charts/pocket-id-operator" >> "$GITHUB_OUTPUT"
+        uses: ./.github/actions/latest-release
+        with:
+          token: ${{ github.token }}
 
       - name: Lint Helm chart with instance
         run: helm lint dist/chart --values .github/helm-test-values.yaml
