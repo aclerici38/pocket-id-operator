@@ -66,6 +66,7 @@ jobs:
     name: Tests
     needs: [generate]
     permissions:
+      actions: write
       contents: read
     uses: ./.github/workflows/test.yml
     secrets: inherit
@@ -74,6 +75,7 @@ jobs:
     name: Lint
     needs: [generate]
     permissions:
+      actions: write
       contents: read
     uses: ./.github/workflows/lint.yml
     secrets: inherit
