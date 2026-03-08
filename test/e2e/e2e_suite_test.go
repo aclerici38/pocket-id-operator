@@ -104,6 +104,11 @@ var _ = SynchronizedAfterSuite(func() {
 	// This runs on all processes
 }, func() {
 	// This runs only on process 1
+	if os.Getenv("SKIP_CLEANUP") != "" {
+		By("skipping cleanup because SKIP_CLEANUP is set")
+		return
+	}
+
 	By("cleaning up test namespace resources")
 	removeFinalizers(userNS)
 	removeFinalizers(instanceNS)

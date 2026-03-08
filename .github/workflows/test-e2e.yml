@@ -108,6 +108,8 @@ jobs:
         run: docker pull ${{ steps.release.outputs.image }}
 
       - name: Run e2e tests
+        env:
+          SKIP_CLEANUP: "true"
         run: |
           if [ "${{ inputs.latest_release }}" = "true" ]; then
             make test-e2e-only IMG=${{ steps.release.outputs.image }}

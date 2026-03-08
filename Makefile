@@ -114,7 +114,6 @@ test-e2e: setup-test-e2e manifests generate fmt vet test-e2e-only ## Run the e2e
 .PHONY: test-e2e-only
 test-e2e-only: setup-test-e2e ginkgo ## Run e2e tests without generating manifests. Use E2E_FOCUS_FILE to run a specific e2e file.
 	$(if $(filter file,$(origin IMG)),,IMG=$(IMG) )KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) "$(GINKGO)" -tags=e2e -v -procs=8 $(if $(strip $(E2E_FOCUS_FILE)),--focus-file='$(E2E_FOCUS_FILE)',) ./test/e2e/
-	$(MAKE) cleanup-test-e2e
 
 .PHONY: cleanup-test-e2e
 cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
