@@ -140,15 +140,12 @@ jobs:
       image_tag: ${{ needs.meta.outputs.image_tag }}
     secrets: inherit
 
-  publish-chart:
-    name: Publish Chart
+  push-chart:
+    name: Push Chart
     needs:
       - meta
-      - generate
-      - e2e
       - test
       - lint
-      - build
       - test-chart
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     permissions:
