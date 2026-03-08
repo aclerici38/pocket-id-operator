@@ -3,8 +3,12 @@ name: Publish
 on:
   workflow_call:
     inputs:
-      image:
-        description: Source image reference to retag for release.
+      image_repo:
+        description: Image repository (e.g., ghcr.io/owner/pocket-id-operator).
+        required: true
+        type: string
+      build_tag:
+        description: Source image tag to retag from.
         required: true
         type: string
       image_tag:
@@ -17,8 +21,12 @@ on:
         type: string
   workflow_dispatch:
     inputs:
-      image:
-        description: Source image reference to retag for release.
+      image_repo:
+        description: Image repository (e.g., ghcr.io/owner/pocket-id-operator).
+        required: true
+        type: string
+      build_tag:
+        description: Source image tag to retag from.
         required: true
         type: string
       image_tag:
@@ -54,15 +62,15 @@ jobs:
       - name: Tag image
         run: |
           docker buildx imagetools create \
-            -t ghcr.io/${{ inputs.repo_owner }}/pocket-id-operator:${{ inputs.image_tag }} \
-            ${{ inputs.image }}
+            -t ${{ inputs.image_repo }}:${{ inputs.image_tag }} \
+            ${{ inputs.image_repo }}:${{ inputs.build_tag }}
 
       - name: Tag :main rolling image
         if: ${{ endsWith(inputs.image_tag, '-main') }}
         run: |
           docker buildx imagetools create \
-            -t ghcr.io/${{ inputs.repo_owner }}/pocket-id-operator:main \
-            ${{ inputs.image }}
+            -t ${{ inputs.image_repo }}:main \
+            ${{ inputs.image_repo }}:${{ inputs.build_tag }}
 
   publish-chart:
     name: Publish Helm chart

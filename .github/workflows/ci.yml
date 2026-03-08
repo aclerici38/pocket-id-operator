@@ -23,16 +23,17 @@ permissions:
   contents: write
   id-token: write
   packages: write
-  security-events: write
 
 jobs:
   meta:
     name: Metadata
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       repo_owner: ${{ steps.meta.outputs.repo_owner }}
-      ci_tag: ${{ steps.meta.outputs.ci_tag }}
-      build_image: ${{ steps.meta.outputs.build_image }}
+      image_repo: ${{ steps.meta.outputs.image_repo }}
+      build_tag: ${{ steps.meta.outputs.build_tag }}
       image_tag: ${{ steps.meta.outputs.image_tag }}
     steps:
       - name: Checkout code
@@ -43,34 +44,37 @@ jobs:
         run: |
           REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           SHORT_SHA=$(git rev-parse --short HEAD)
-          CI_TAG="ci-${SHORT_SHA}"
-          BUILD_TAG="${CI_TAG}"
+          BUILD_TAG="ci-${SHORT_SHA}"
           IMAGE_TAG="${SHORT_SHA}-main"
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             BUILD_TAG="PR-${{ github.event.pull_request.number }}"
             IMAGE_TAG="${BUILD_TAG}"
           fi
-          BUILD_IMAGE="ghcr.io/${REPO_OWNER}/pocket-id-operator:${BUILD_TAG}"
           echo "repo_owner=${REPO_OWNER}" >> "$GITHUB_OUTPUT"
-          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
-          echo "ci_tag=${CI_TAG}" >> "$GITHUB_OUTPUT"
-          echo "build_image=${BUILD_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "image_repo=ghcr.io/${REPO_OWNER}/pocket-id-operator" >> "$GITHUB_OUTPUT"
+          echo "build_tag=${BUILD_TAG}" >> "$GITHUB_OUTPUT"
           echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
 
   generate:
     name: Generate
+    permissions:
+      contents: write
     uses: ./.github/workflows/regenerate-manifests.yml
     secrets: inherit
 
   test:
     name: Tests
     needs: [generate]
+    permissions:
+      contents: read
     uses: ./.github/workflows/test.yml
     secrets: inherit
 
   lint:
     name: Lint
     needs: [generate]
+    permissions:
+      contents: read
     uses: ./.github/workflows/lint.yml
     secrets: inherit
 
@@ -78,9 +82,16 @@ jobs:
     name: Build Image
     needs: [meta, generate]
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    permissions:
+      actions: write
+      attestations: write
+      contents: write
+      id-token: write
+      packages: write
     uses: ./.github/workflows/build-push-image.yml
     with:
-      image: ${{ needs.meta.outputs.build_image }}
+      image_repo: ${{ needs.meta.outputs.image_repo }}
+      image_tag: ${{ needs.meta.outputs.build_tag }}
     secrets: inherit
 
   e2e:
@@ -88,9 +99,14 @@ jobs:
     needs:
       - meta
       - build
+    permissions:
+      actions: write
+      contents: read
+      packages: read
     uses: ./.github/workflows/test-e2e.yml
     with:
-      image: ${{ needs.meta.outputs.build_image }}
+      image_repo: ${{ needs.meta.outputs.image_repo }}
+      image_tag: ${{ needs.meta.outputs.build_tag }}
     secrets: inherit
 
   test-chart:
@@ -98,9 +114,14 @@ jobs:
     needs:
       - meta
       - build
+    permissions:
+      actions: write
+      contents: read
+      packages: read
     uses: ./.github/workflows/test-chart.yml
     with:
-      image: ${{ needs.meta.outputs.build_image }}
+      image_repo: ${{ needs.meta.outputs.image_repo }}
+      image_tag: ${{ needs.meta.outputs.build_tag }}
     secrets: inherit
 
   publish:
@@ -114,9 +135,15 @@ jobs:
       - build
       - test-chart
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    permissions:
+      actions: write
+      contents: read
+      id-token: write
+      packages: write
     uses: ./.github/workflows/publish.yml
     with:
-      image: ${{ needs.meta.outputs.build_image }}
+      image_repo: ${{ needs.meta.outputs.image_repo }}
+      build_tag: ${{ needs.meta.outputs.build_tag }}
       image_tag: ${{ needs.meta.outputs.image_tag }}
       repo_owner: ${{ needs.meta.outputs.repo_owner }}
     secrets: inherit

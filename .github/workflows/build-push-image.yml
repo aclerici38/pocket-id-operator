@@ -3,14 +3,22 @@ name: Build Image
 on:
   workflow_call:
     inputs:
-      image:
-        description: Full image reference to build and push.
+      image_repo:
+        description: Image repository (e.g., ghcr.io/owner/pocket-id-operator).
+        required: true
+        type: string
+      image_tag:
+        description: Image tag to build and push.
         required: true
         type: string
   workflow_dispatch:
     inputs:
-      image:
-        description: Full image reference to build and push.
+      image_repo:
+        description: Image repository (e.g., ghcr.io/owner/pocket-id-operator).
+        required: true
+        type: string
+      image_tag:
+        description: Image tag to build and push.
         required: true
         type: string
 
@@ -35,18 +43,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
-      - name: Log in to GitHub Container Registry
+      - name: Log in to GHCR
         uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract image repo
-        id: repo
-        run: |
-          IMAGE_REPO="${{ inputs.image }}"
-          echo "name=${IMAGE_REPO%%:*}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push by digest
         uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
@@ -54,7 +56,7 @@ jobs:
         with:
           context: .
           platforms: linux/amd64
-          outputs: type=image,name=${{ steps.repo.outputs.name }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=${{ inputs.image_repo }},push-by-digest=true,name-canonical=true,push=true
           cache-from: |
             type=gha,scope=build-amd64
             type=gha,scope=build-amd64-main
@@ -65,23 +67,17 @@ jobs:
         with:
           context: .
           load: true
-          tags: ${{ inputs.image }}
+          tags: ${{ inputs.image_repo }}:${{ inputs.image_tag }}
           cache-from: type=gha,scope=build-amd64
 
-      - name: Extract image tag
-        id: tag
-        run: |
-          IMAGE_TAG="${{ inputs.image }}"
-          echo "name=${IMAGE_TAG##*:}" >> "$GITHUB_OUTPUT"
-
       - name: Save image as artifact
-        run: docker save ${{ inputs.image }} -o /tmp/operator-image-${{ steps.tag.outputs.name }}.tar
+        run: docker save ${{ inputs.image_repo }}:${{ inputs.image_tag }} -o /tmp/operator-image-${{ inputs.image_tag }}.tar
 
       - name: Upload image artifact
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: operator-image-${{ steps.tag.outputs.name }}
-          path: /tmp/operator-image-${{ steps.tag.outputs.name }}.tar
+          name: operator-image-${{ inputs.image_tag }}
+          path: /tmp/operator-image-${{ inputs.image_tag }}.tar
           retention-days: 1
 
   build-arm64:
@@ -103,19 +99,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract image repo
-        id: repo
-        run: |
-          IMAGE_REPO="${{ inputs.image }}"
-          echo "name=${IMAGE_REPO%%:*}" >> "$GITHUB_OUTPUT"
-
       - name: Build and push by digest
         uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
         id: build
         with:
           context: .
           platforms: linux/arm64
-          outputs: type=image,name=${{ steps.repo.outputs.name }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=${{ inputs.image_repo }},push-by-digest=true,name-canonical=true,push=true
           cache-from: |
             type=gha,scope=build-arm64
             type=gha,scope=build-arm64-main
@@ -142,17 +132,15 @@ jobs:
 
       - name: Create manifest
         run: |
-          IMAGE_REPO="${{ inputs.image }}"
-          IMAGE_REPO="${IMAGE_REPO%%:*}"
           docker buildx imagetools create \
-            -t ${{ inputs.image }} \
-            ${IMAGE_REPO}@${{ needs.build-amd64.outputs.digest }} \
-            ${IMAGE_REPO}@${{ needs.build-arm64.outputs.digest }}
+            -t ${{ inputs.image_repo }}:${{ inputs.image_tag }} \
+            ${{ inputs.image_repo }}@${{ needs.build-amd64.outputs.digest }} \
+            ${{ inputs.image_repo }}@${{ needs.build-arm64.outputs.digest }}
 
       - name: Inspect manifest digest
         id: inspect
         run: |
-          DIGEST=$(docker buildx imagetools inspect ${{ inputs.image }} --format '{{printf "%s" .Manifest.Digest}}')
+          DIGEST=$(docker buildx imagetools inspect ${{ inputs.image_repo }}:${{ inputs.image_tag }} --format '{{printf "%s" .Manifest.Digest}}')
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
   attest:
@@ -168,23 +156,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract image repo
-        id: repo
-        run: |
-          IMAGE="${{ inputs.image }}"
-          echo "name=${IMAGE%%:*}" >> "$GITHUB_OUTPUT"
-
       - name: Upload Dependency Snapshot
         uses: anchore/sbom-action@17ae1740179002c89186b61233e0f892c3118b11 # v0.23.0
         with:
           dependency-snapshot: true
-          image: ${{ steps.repo.outputs.name }}@${{ needs.manifest.outputs.digest }}
+          image: ${{ inputs.image_repo }}@${{ needs.manifest.outputs.digest }}
 
       - name: Attest build provenance
         uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
           push-to-registry: true
-          subject-name: ${{ steps.repo.outputs.name }}
+          subject-name: ${{ inputs.image_repo }}
           subject-digest: ${{ needs.manifest.outputs.digest }}
 
       - name: Verify attestation
@@ -193,4 +175,4 @@ jobs:
         run: |
           gh attestation verify \
             --repo ${{ github.repository }} \
-            oci://${{ steps.repo.outputs.name }}@${{ needs.manifest.outputs.digest }}
+            oci://${{ inputs.image_repo }}@${{ needs.manifest.outputs.digest }}

@@ -3,14 +3,22 @@ name: Test Chart
 on:
   workflow_call:
     inputs:
-      image:
-        description: Operator image to use for chart installation test.
+      image_repo:
+        description: Image repository (e.g., ghcr.io/owner/pocket-id-operator).
+        required: true
+        type: string
+      image_tag:
+        description: Image tag to use for chart installation test.
         required: true
         type: string
   workflow_dispatch:
     inputs:
-      image:
-        description: Operator image to use for chart installation test.
+      image_repo:
+        description: Image repository (e.g., ghcr.io/owner/pocket-id-operator).
+        required: true
+        type: string
+      image_tag:
+        description: Image tag to use for chart installation test.
         required: true
         type: string
 
@@ -34,13 +42,6 @@ jobs:
       - name: Setup Helm
         uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
 
-      - name: Extract image parts
-        id: image
-        run: |
-          IMAGE="${{ inputs.image }}"
-          echo "repository=${IMAGE%:*}" >> "$GITHUB_OUTPUT"
-          echo "tag=${IMAGE##*:}" >> "$GITHUB_OUTPUT"
-
       - name: Resolve latest release
         id: release
         env:
@@ -55,7 +56,7 @@ jobs:
 
       - name: Lint Helm chart with instance
         run: helm lint dist/chart --values .github/helm-test-values.yaml
-        
+
       - name: Lint Helm chart without instance
         run: helm lint dist/chart --set instance.enabled=false
 
@@ -64,7 +65,7 @@ jobs:
           mkdir -p dist/chart-packages
           helm package dist/chart \
             --version "0.0.0" \
-            --app-version "${{ steps.image.outputs.tag }}" \
+            --app-version "${{ inputs.image_tag }}" \
             --destination dist/chart-packages
 
       - name: Cache kind
@@ -93,7 +94,7 @@ jobs:
             --create-namespace \
             --namespace pocket-id-operator-system \
             --values .github/helm-test-values.yaml \
-            --set operator.image.repository=${{ steps.image.outputs.repository }} \
+            --set operator.image.repository=${{ inputs.image_repo }} \
             --set operator.image.tag=${{ steps.release.outputs.tag }} \
             --wait \
             --timeout 2m
@@ -110,8 +111,8 @@ jobs:
             --namespace pocket-id-operator-system \
             --create-namespace \
             --values .github/helm-test-values.yaml \
-            --set operator.image.repository=${{ steps.image.outputs.repository }} \
-            --set operator.image.tag=${{ steps.image.outputs.tag }} \
+            --set operator.image.repository=${{ inputs.image_repo }} \
+            --set operator.image.tag=${{ inputs.image_tag }} \
             --wait \
             --timeout 2m
 
