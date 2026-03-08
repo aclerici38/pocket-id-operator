@@ -110,11 +110,6 @@ jobs:
       - name: Create kind cluster
         run: make setup-test-e2e
 
-      - name: Pre-load Pocket-ID image into kind
-        run: |
-          docker pull ${{ env.POCKET_ID_IMAGE }}
-          kind load docker-image ${{ env.POCKET_ID_IMAGE }} --name pocket-id-operator-test-e2e
-
       - name: Run e2e tests
         env:
           SKIP_CLEANUP: "true"
