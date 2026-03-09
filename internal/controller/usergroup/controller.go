@@ -74,7 +74,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	log.Info("Reconciling PocketIDUserGroup", "name", userGroup.Name)
+	log.V(1).Info("Reconciling PocketIDUserGroup", "name", userGroup.Name)
 
 	if !userGroup.DeletionTimestamp.IsZero() {
 		return r.ReconcileDelete(ctx, userGroup)
@@ -320,8 +320,10 @@ func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketid
 	usersChanged := !pocketid.SortedEqual(finalMembers, current.UserIDs)
 
 	if !nameChanged && !claimsChanged && !usersChanged {
-		log.V(2).Info("User group state is in sync, skipping update")
+		log.V(1).Info("User group state is in sync, skipping update")
 	} else {
+		log.Info("Updating user group", "name", userGroup.Name)
+
 		if nameChanged {
 			if _, err := apiClient.UpdateUserGroup(ctx, userGroup.Status.GroupID, desired.Name, desired.FriendlyName); err != nil {
 				return fmt.Errorf("update user group: %w", err)

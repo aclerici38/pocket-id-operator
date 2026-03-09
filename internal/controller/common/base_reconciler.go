@@ -234,11 +234,11 @@ type CreateOrAdoptConfig[T any] struct {
 func CreateOrAdopt[T any](ctx context.Context, config CreateOrAdoptConfig[T]) (*CreateOrAdoptResult[T], error) {
 	log := logf.FromContext(ctx)
 
-	log.Info(fmt.Sprintf("Creating %s in Pocket-ID", config.ResourceKind), "id", config.ResourceID)
+	log.Info("Creating resource in Pocket-ID", "kind", config.ResourceKind, "id", config.ResourceID)
 	resource, err := config.Create()
 	if err != nil {
 		if pocketid.IsAlreadyExistsError(err) {
-			log.Info(fmt.Sprintf("%s already exists in Pocket-ID, attempting to adopt", config.ResourceKind), "id", config.ResourceID)
+			log.Info("Resource already exists in Pocket-ID, attempting to adopt", "kind", config.ResourceKind, "id", config.ResourceID)
 			existing, findErr := config.FindExisting()
 			if findErr != nil {
 				return nil, fmt.Errorf("find existing %s after create conflict: %w", config.ResourceKind, findErr)
@@ -246,7 +246,7 @@ func CreateOrAdopt[T any](ctx context.Context, config CreateOrAdoptConfig[T]) (*
 			if config.IsNil(existing) {
 				return nil, fmt.Errorf("create %s failed with conflict but could not find existing: %w", config.ResourceKind, err)
 			}
-			log.Info(fmt.Sprintf("Adopting existing %s from Pocket-ID", config.ResourceKind), "id", config.ResourceID)
+			log.Info("Adopting existing resource from Pocket-ID", "kind", config.ResourceKind, "id", config.ResourceID)
 			return &CreateOrAdoptResult[T]{Resource: existing, IsNewlyCreated: false}, nil
 		}
 		return nil, fmt.Errorf("create %s: %w", config.ResourceKind, err)

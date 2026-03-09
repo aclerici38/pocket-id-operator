@@ -4136,6 +4136,7 @@ spec:
         - --metrics-bind-address=:8080
         - --leader-elect
         - --health-probe-bind-address=:8081
+        - --zap-log-level=info
         command:
         - /manager
         image: ghcr.io/aclerici38/pocket-id-operator:v0.4.4@sha256:9a2d2b14beabc4c95c7d5e30e9f9ad9fb13aee82e0f6853fb5afd6dce4930b47
