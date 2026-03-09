@@ -124,13 +124,14 @@ type PocketIDUserGroupStatus struct {
 	// +optional
 	LdapID string `json:"ldapID,omitempty"`
 
-	// UserCount is the number of users in the group
+	// TotalUserCount is the total number of users in the group including externally managed
 	// +optional
-	UserCount int `json:"userCount,omitempty"`
+	TotalUserCount int `json:"totalUserCount,omitempty"`
 
-	// UserIDs are the Pocket-ID user IDs of users in this group
+	// ManagedUserIDs are the Pocket-ID user IDs that the operator is actively managing.
+	// Users not in this list are considered externally managed and won't be removed.
 	// +optional
-	UserIDs []string `json:"userIDs,omitempty"`
+	ManagedUserIDs []string `json:"managedUserIDs,omitempty"`
 
 	// CustomClaims are the resolved custom claims on the group
 	// +optional

@@ -263,8 +263,44 @@ func (r *Reconciler) buildUserGroupInput(ctx context.Context, userGroup *pocketi
 	}, nil
 }
 
+// computeMergedMembers computes the final membership list by merging the operator's
+// desired managed users users that are externally managed through pocket-id. Users that were
+// previously managed but are no longer in the desired set are removed.
+func computeMergedMembers(desiredManaged, previouslyManaged, currentMembers []string) []string {
+	// toRemove: previously managed but no longer desired
+	toRemove := make(map[string]struct{})
+	desiredSet := make(map[string]struct{}, len(desiredManaged))
+	for _, id := range desiredManaged {
+		desiredSet[id] = struct{}{}
+	}
+	for _, id := range previouslyManaged {
+		if _, ok := desiredSet[id]; !ok {
+			toRemove[id] = struct{}{}
+		}
+	}
+
+	// Start with current members, remove the ones we need to drop, add desired
+	resultSet := make(map[string]struct{}, len(currentMembers)+len(desiredManaged))
+	for _, id := range currentMembers {
+		if _, ok := toRemove[id]; !ok {
+			resultSet[id] = struct{}{}
+		}
+	}
+	for _, id := range desiredManaged {
+		resultSet[id] = struct{}{}
+	}
+
+	result := make([]string, 0, len(resultSet))
+	for id := range resultSet {
+		result = append(result, id)
+	}
+	sort.Strings(result)
+	return result
+}
+
 // pushUserGroupState compares the desired state from the CR spec against the current
 // state fetched from Pocket ID and only pushes updates for fields that differ.
+// Only operator-managed users are added/removed and externally-added users are preserved.
 func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, apiClient *pocketid.Client, current *pocketid.UserGroup) error {
 	log := logf.FromContext(ctx)
 
@@ -276,7 +312,14 @@ func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketid
 	currentInput := current.ToInput()
 	nameChanged := desired.Name != currentInput.Name || desired.FriendlyName != currentInput.FriendlyName
 	claimsChanged := !pocketid.CustomClaimsEqual(desired.CustomClaims, currentInput.CustomClaims)
-	usersChanged := !pocketid.SortedEqual(desired.UserIDs, currentInput.UserIDs)
+
+	// Preserve externally-added users, only manage CR-declared users
+	previouslyManaged := userGroup.Status.ManagedUserIDs
+	finalMembers := computeMergedMembers(desired.UserIDs, previouslyManaged, current.UserIDs)
+	sortedCurrent := make([]string, len(current.UserIDs))
+	copy(sortedCurrent, current.UserIDs)
+	sort.Strings(sortedCurrent)
+	usersChanged := !pocketid.SortedEqual(finalMembers, sortedCurrent)
 
 	if !nameChanged && !claimsChanged && !usersChanged {
 		log.V(2).Info("User group state is in sync, skipping update")
@@ -298,16 +341,25 @@ func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketid
 		}
 
 		if usersChanged {
-			userIDs := desired.UserIDs
-			if userIDs == nil {
-				userIDs = []string{}
-			}
-			if err := apiClient.UpdateUserGroupUsers(ctx, userGroup.Status.GroupID, userIDs); err != nil {
+			if err := apiClient.UpdateUserGroupUsers(ctx, userGroup.Status.GroupID, finalMembers); err != nil {
 				return err
 			}
 		}
 
 		metrics.ResourceOperations.WithLabelValues("PocketIDUserGroup", "updated").Inc()
+	}
+
+	// Persist the operator-managed set to status after successful reconciliation
+	if !pocketid.SortedEqual(desired.UserIDs, userGroup.Status.ManagedUserIDs) {
+		managedIDs := desired.UserIDs
+		if managedIDs == nil {
+			managedIDs = []string{}
+		}
+		base := userGroup.DeepCopy()
+		userGroup.Status.ManagedUserIDs = managedIDs
+		if err := r.Status().Patch(ctx, userGroup, client.MergeFrom(base)); err != nil {
+			return fmt.Errorf("update managed user IDs status: %w", err)
+		}
 	}
 
 	// Always validate that referenced OIDC clients exist and are ready, even when
@@ -415,8 +467,7 @@ func (r *Reconciler) updateUserGroupStatus(ctx context.Context, userGroup *pocke
 	userGroup.Status.FriendlyName = current.FriendlyName
 	userGroup.Status.CreatedAt = current.CreatedAt
 	userGroup.Status.LdapID = current.LdapID
-	userGroup.Status.UserCount = current.UserCount
-	userGroup.Status.UserIDs = current.UserIDs
+	userGroup.Status.TotalUserCount = current.UserCount
 	userGroup.Status.CustomClaims = toCustomClaims(current.CustomClaims)
 	userGroup.Status.AllowedOIDCClientIDs = current.AllowedOIDCClientIDs
 	if err := r.Status().Patch(ctx, userGroup, client.MergeFrom(base)); err != nil {

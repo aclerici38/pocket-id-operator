@@ -182,10 +182,13 @@ func TestPushUserGroupState_SkipsWhenInSync(t *testing.T) {
 				UserIDs: []string{"uid-1"},
 			},
 		},
-		Status: pocketidinternalv1alpha1.PocketIDUserGroupStatus{GroupID: "gid-sync"},
+		Status: pocketidinternalv1alpha1.PocketIDUserGroupStatus{
+			GroupID:        "gid-sync",
+			ManagedUserIDs: []string{"uid-1"},
+		},
 	}
 
-	// current matches desired exactly
+	// current matches desired exactly (only managed user present)
 	current := &pocketid.UserGroup{
 		ID:           "gid-sync",
 		Name:         "sync-group",
@@ -323,9 +326,9 @@ func TestPushUserGroupState_ClearsClaimsWithEmptySlice(t *testing.T) {
 	}
 }
 
-func TestPushUserGroupState_ClearsUsersWithEmptySlice(t *testing.T) {
-	// When desired users are nil (no spec.users) but current has users,
-	// the update must send an empty slice (not nil) to clear them.
+func TestPushUserGroupState_RemovesManagedUsersWhenSpecCleared(t *testing.T) {
+	// When spec.users is nil but status.managedUserIDs has previously managed users,
+	// those managed users should be removed while externally-added users are preserved.
 	ctx := context.Background()
 	scheme := runtime.NewScheme()
 	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
@@ -336,15 +339,18 @@ func TestPushUserGroupState_ClearsUsersWithEmptySlice(t *testing.T) {
 			Name: "clear-users-group",
 			// No spec.users → desired userIDs = nil
 		},
-		Status: pocketidinternalv1alpha1.PocketIDUserGroupStatus{GroupID: "gid-clear-users"},
+		Status: pocketidinternalv1alpha1.PocketIDUserGroupStatus{
+			GroupID:        "gid-clear-users",
+			ManagedUserIDs: []string{"managed-user"},
+		},
 	}
 
-	// current has users → usersChanged = true
+	// current has both a managed user and an external user
 	current := &pocketid.UserGroup{
 		ID:           "gid-clear-users",
 		Name:         "clear-users-group",
 		FriendlyName: "clear-users-group",
-		UserIDs:      []string{"existing-user"},
+		UserIDs:      []string{"managed-user", "external-user"},
 	}
 
 	r := newUserGroupPushReconciler(scheme, ug)
@@ -373,14 +379,255 @@ func TestPushUserGroupState_ClearsUsersWithEmptySlice(t *testing.T) {
 	if receivedBody == nil {
 		t.Fatal("expected UpdateUserGroupUsers to be called")
 	}
-	// The "userIds" field should be an empty array, not absent/null.
+	// Should contain only the external user; the managed user should be removed.
 	userIds, ok := receivedBody["userIds"]
 	if !ok {
-		t.Error("expected userIds field in request body")
-	} else {
-		ids, ok := userIds.([]any)
-		if !ok || len(ids) != 0 {
-			t.Errorf("expected empty userIds array, got %v", userIds)
+		t.Fatal("expected userIds field in request body")
+	}
+	ids, ok := userIds.([]any)
+	if !ok {
+		t.Fatalf("expected userIds to be an array, got %T", userIds)
+	}
+	if len(ids) != 1 || ids[0] != "external-user" {
+		t.Errorf("expected [external-user], got %v", ids)
+	}
+}
+
+func TestPushUserGroupState_FirstReconcileIsAdditive(t *testing.T) {
+	// On first reconcile (no status.managedUserIDs), desired users are added
+	// without removing any existing external users.
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	ug := &pocketidinternalv1alpha1.PocketIDUserGroup{
+		ObjectMeta: metav1.ObjectMeta{Name: "first-reconcile-group", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDUserGroupSpec{
+			Name: "first-reconcile-group",
+			Users: &pocketidinternalv1alpha1.UserGroupUsers{
+				UserIDs: []string{"new-managed"},
+			},
+		},
+		Status: pocketidinternalv1alpha1.PocketIDUserGroupStatus{
+			GroupID: "gid-first",
+			// No ManagedUserIDs — first reconcile
+		},
+	}
+
+	// Group already has an external user from before adoption
+	current := &pocketid.UserGroup{
+		ID:           "gid-first",
+		Name:         "first-reconcile-group",
+		FriendlyName: "first-reconcile-group",
+		UserIDs:      []string{"existing-external"},
+	}
+
+	r := newUserGroupPushReconciler(scheme, ug)
+
+	var receivedBody map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		switch {
+		case req.Method == http.MethodPut && req.URL.Path == "/api/user-groups/gid-first/users":
+			_ = json.NewDecoder(req.Body).Decode(&receivedBody)
+			okUserGroupResponse(w, "gid-first", "first-reconcile-group")
+		default:
+			http.NotFound(w, req)
+		}
+	}))
+	defer ts.Close()
+	apiClient, _ := pocketid.NewClient(ts.URL, "")
+
+	if err := r.pushUserGroupState(ctx, ug, apiClient, current); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if receivedBody == nil {
+		t.Fatal("expected UpdateUserGroupUsers to be called")
+	}
+	userIds := receivedBody["userIds"].([]any)
+	if len(userIds) != 2 {
+		t.Fatalf("expected 2 users, got %v", userIds)
+	}
+	// Both external and new managed user should be present (sorted)
+	expected := []string{"existing-external", "new-managed"}
+	for i, id := range userIds {
+		if id != expected[i] {
+			t.Errorf("expected %q at index %d, got %q", expected[i], i, id)
+		}
+	}
+}
+
+func TestPushUserGroupState_PreservesExternalUsers(t *testing.T) {
+	// When CR users haven't changed but an external user was added via UI,
+	// the external user should be preserved (no API call needed if managed set matches).
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	ug := &pocketidinternalv1alpha1.PocketIDUserGroup{
+		ObjectMeta: metav1.ObjectMeta{Name: "preserve-group", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDUserGroupSpec{
+			Name: "preserve-group",
+			Users: &pocketidinternalv1alpha1.UserGroupUsers{
+				UserIDs: []string{"managed-1"},
+			},
+		},
+		Status: pocketidinternalv1alpha1.PocketIDUserGroupStatus{
+			GroupID:        "gid-preserve",
+			ManagedUserIDs: []string{"managed-1"},
+		},
+	}
+
+	// Pocket-ID has the managed user + an external user added via UI
+	current := &pocketid.UserGroup{
+		ID:           "gid-preserve",
+		Name:         "preserve-group",
+		FriendlyName: "preserve-group",
+		UserIDs:      []string{"managed-1", "external-dave"},
+	}
+
+	r := newUserGroupPushReconciler(scheme, ug)
+
+	// Server that fails on any call — no API update should happen
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("unexpected API call — external users should be preserved without update")
+		http.Error(w, "unexpected", http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+	apiClient, _ := pocketid.NewClient(ts.URL, "")
+
+	if err := r.pushUserGroupState(ctx, ug, apiClient, current); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPushUserGroupState_RemovesOnlyUnmanagedFromCR(t *testing.T) {
+	// When a user is removed from the CR, only that user is removed from the group.
+	// External users and remaining managed users are preserved.
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	ug := &pocketidinternalv1alpha1.PocketIDUserGroup{
+		ObjectMeta: metav1.ObjectMeta{Name: "remove-one-group", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDUserGroupSpec{
+			Name: "remove-one-group",
+			Users: &pocketidinternalv1alpha1.UserGroupUsers{
+				UserIDs: []string{"bob"}, // Alice removed from CR
+			},
+		},
+		Status: pocketidinternalv1alpha1.PocketIDUserGroupStatus{
+			GroupID:        "gid-remove-one",
+			ManagedUserIDs: []string{"alice", "bob"}, // Previously managed both
+		},
+	}
+
+	// Pocket-ID has alice, bob, and external dave
+	current := &pocketid.UserGroup{
+		ID:           "gid-remove-one",
+		Name:         "remove-one-group",
+		FriendlyName: "remove-one-group",
+		UserIDs:      []string{"alice", "bob", "dave"},
+	}
+
+	r := newUserGroupPushReconciler(scheme, ug)
+
+	var receivedBody map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		switch {
+		case req.Method == http.MethodPut && req.URL.Path == "/api/user-groups/gid-remove-one/users":
+			_ = json.NewDecoder(req.Body).Decode(&receivedBody)
+			okUserGroupResponse(w, "gid-remove-one", "remove-one-group")
+		default:
+			http.NotFound(w, req)
+		}
+	}))
+	defer ts.Close()
+	apiClient, _ := pocketid.NewClient(ts.URL, "")
+
+	if err := r.pushUserGroupState(ctx, ug, apiClient, current); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if receivedBody == nil {
+		t.Fatal("expected UpdateUserGroupUsers to be called")
+	}
+	userIds := receivedBody["userIds"].([]any)
+	// Should have bob and dave (alice removed), sorted
+	expected := []string{"bob", "dave"}
+	if len(userIds) != len(expected) {
+		t.Fatalf("expected %d users, got %v", len(expected), userIds)
+	}
+	for i, id := range userIds {
+		if id != expected[i] {
+			t.Errorf("expected %q at index %d, got %q", expected[i], i, id)
+		}
+	}
+}
+
+// --- computeMergedMembers unit tests ---
+
+func TestComputeMergedMembers_AdoptionPreservesExisting(t *testing.T) {
+	// First reconcile: previouslyManaged is empty, existing users preserved
+	result := computeMergedMembers(
+		[]string{"alice", "bob"},    // desired
+		nil,                         // previously managed (first reconcile)
+		[]string{"dave", "charlie"}, // current in Pocket-ID
+	)
+	expected := []string{"alice", "bob", "charlie", "dave"}
+	if len(result) != len(expected) {
+		t.Fatalf("expected %v, got %v", expected, result)
+	}
+	for i := range expected {
+		if result[i] != expected[i] {
+			t.Errorf("index %d: expected %q, got %q", i, expected[i], result[i])
+		}
+	}
+}
+
+func TestComputeMergedMembers_RemovesOnlyDroppedManaged(t *testing.T) {
+	result := computeMergedMembers(
+		[]string{"bob"},                  // desired (alice removed)
+		[]string{"alice", "bob"},         // previously managed
+		[]string{"alice", "bob", "dave"}, // current
+	)
+	expected := []string{"bob", "dave"}
+	if len(result) != len(expected) {
+		t.Fatalf("expected %v, got %v", expected, result)
+	}
+	for i := range expected {
+		if result[i] != expected[i] {
+			t.Errorf("index %d: expected %q, got %q", i, expected[i], result[i])
+		}
+	}
+}
+
+func TestComputeMergedMembers_ClearsAllManaged(t *testing.T) {
+	result := computeMergedMembers(
+		nil,                              // desired (spec.users cleared)
+		[]string{"alice", "bob"},         // previously managed
+		[]string{"alice", "bob", "dave"}, // current
+	)
+	expected := []string{"dave"}
+	if len(result) != len(expected) {
+		t.Fatalf("expected %v, got %v", expected, result)
+	}
+	if result[0] != "dave" {
+		t.Errorf("expected %q, got %q", "dave", result[0])
+	}
+}
+
+func TestComputeMergedMembers_NoChangeWhenInSync(t *testing.T) {
+	result := computeMergedMembers(
+		[]string{"alice", "bob"},         // desired
+		[]string{"alice", "bob"},         // previously managed (same)
+		[]string{"alice", "bob", "dave"}, // current (includes external dave)
+	)
+	expected := []string{"alice", "bob", "dave"}
+	if len(result) != len(expected) {
+		t.Fatalf("expected %v, got %v", expected, result)
+	}
+	for i := range expected {
+		if result[i] != expected[i] {
+			t.Errorf("index %d: expected %q, got %q", i, expected[i], result[i])
 		}
 	}
 }

@@ -3420,17 +3420,20 @@ spec:
                 description: LdapID is the LDAP identifier if the group is managed
                   via LDAP
                 type: string
-              name:
-                description: Name is the resolved group name from Pocket-ID
-                type: string
-              userCount:
-                description: UserCount is the number of users in the group
-                type: integer
-              userIDs:
-                description: UserIDs are the Pocket-ID user IDs of users in this group
+              managedUserIDs:
+                description: |-
+                  ManagedUserIDs are the Pocket-ID user IDs that the operator is actively managing.
+                  Users not in this list are considered externally managed and won't be removed.
                 items:
                   type: string
                 type: array
+              name:
+                description: Name is the resolved group name from Pocket-ID
+                type: string
+              totalUserCount:
+                description: TotalUserCount is the total number of users in the group
+                  (including externally managed)
+                type: integer
             type: object
         type: object
     served: true
