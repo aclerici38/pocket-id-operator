@@ -281,7 +281,7 @@
           "type": "string"
         },
         "totalUserCount": {
-          "description": "TotalUserCount is the total number of users in the group (including externally managed)",
+          "description": "TotalUserCount is the total number of users in the group including externally managed",
           "type": "integer"
         }
       },

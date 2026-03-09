@@ -283,7 +283,7 @@ spec:
                 type: string
               totalUserCount:
                 description: TotalUserCount is the total number of users in the group
-                  (including externally managed)
+                  including externally managed
                 type: integer
             type: object
         type: object
