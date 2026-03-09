@@ -88,10 +88,10 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 		})
 	})
 
-	Context("User removal from group clears status.userIDs", func() {
+	Context("User removal from group clears status.managedUserIDs", func() {
 		const groupName = "sync-remove-users-group"
 
-		It("should clear userIDs in status when all users are removed from spec", func() {
+		It("should clear managedUserIDs in status when all users are removed from spec", func() {
 			By("creating a user group with a member")
 			createUserGroupAndWaitReady(UserGroupOptions{
 				Name:      groupName,
@@ -99,11 +99,11 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 				UserRefs:  []ResourceRef{{Name: syncTestUser}},
 			})
 
-			By("verifying the user appears in status.userIDs")
+			By("verifying the user appears in status.managedUserIDs")
 			userID := waitForStatusFieldNotEmpty("pocketiduser", syncTestUser, userNS, ".status.userID")
 			Eventually(func(g Gomega) {
 				ids := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.userIDs[*]}")
+					"-o", "jsonpath={.status.managedUserIDs[*]}")
 				g.Expect(ids).To(ContainSubstring(userID))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
@@ -114,10 +114,10 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 				// UserRefs intentionally absent — all users removed
 			})
 
-			By("verifying status.userIDs becomes empty")
+			By("verifying status.managedUserIDs becomes empty")
 			Eventually(func(g Gomega) {
 				ids := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.userIDs}")
+					"-o", "jsonpath={.status.managedUserIDs}")
 				g.Expect(ids).To(BeEmpty())
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
@@ -214,7 +214,7 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 			By("verifying initial user and claim are present")
 			Eventually(func(g Gomega) {
 				ids := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.userIDs[*]}")
+					"-o", "jsonpath={.status.managedUserIDs[*]}")
 				g.Expect(ids).To(ContainSubstring(userID))
 				val := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
 					"-o", "jsonpath={.status.customClaims[?(@.key=='tier')].value}")
@@ -240,7 +240,7 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 			By("verifying users and claims are still present")
 			Eventually(func(g Gomega) {
 				ids := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.userIDs[*]}")
+					"-o", "jsonpath={.status.managedUserIDs[*]}")
 				g.Expect(ids).To(ContainSubstring(userID))
 				val := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
 					"-o", "jsonpath={.status.customClaims[?(@.key=='tier')].value}")

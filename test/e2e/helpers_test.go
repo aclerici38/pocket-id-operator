@@ -716,3 +716,86 @@ func getPodLogs(name, namespace string) string {
 func formatInstanceURL() string {
 	return fmt.Sprintf("http://%s.%s.svc.cluster.local:1411", instanceName, instanceNS)
 }
+
+// addUserToGroupInPocketID adds a user to a group directly via the Pocket-ID API,
+// bypassing the operator. This simulates a user being added through the UI.
+// It GETs the current users, appends the new one, and PUTs the full list.
+func addUserToGroupInPocketID(podName, namespace, groupID, userID string) {
+	staticSecretName := instanceName + "-static-api-key"
+
+	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
+		"-o", "jsonpath={.data.token}")
+	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
+
+	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
+# GET current group to find existing user IDs
+BODY=$(curl -s -H "X-API-KEY: $API_KEY" %s/api/user-groups/%s)
+# Extract user IDs: find the "users" array, then collect all "id" fields within it.
+# Use awk to extract just the users array portion, then grep for IDs.
+USERS_JSON=$(echo "$BODY" | awk -F'"users":' '{print $2}' | awk '{
+  depth=0; out=""; started=0
+  for(i=1;i<=length($0);i++){
+    c=substr($0,i,1)
+    if(c=="[" && !started){started=1; depth=1; out=out c; continue}
+    if(started){
+      out=out c
+      if(c=="[") depth++
+      if(c=="]") depth--
+      if(depth==0){print out; exit}
+    }
+  }
+}')
+EXISTING_IDS=$(echo "$USERS_JSON" | grep -o '"id":"[^"]*"' | sed 's/"id":"//;s/"//' | tr '\n' ',' | sed 's/,$//')
+# Build new list with the additional user
+if [ -z "$EXISTING_IDS" ]; then
+  USER_IDS='["%s"]'
+else
+  USER_IDS=$(echo "[$(echo "$EXISTING_IDS" | sed 's/\([^,]*\)/"\1"/g'),\"%s\"]")
+fi
+# PUT the updated user list
+HTTP_CODE=$(curl -s -o /dev/null -w '%%{http_code}' -X PUT \
+  -H "X-API-KEY: $API_KEY" -H "Content-Type: application/json" \
+  -d "{\"userIds\": $USER_IDS}" \
+  %s/api/user-groups/%s/users)
+if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "204" ]; then
+  echo "Failed to add user to group: HTTP $HTTP_CODE" >&2
+  exit 1
+fi
+echo "User added to group successfully"`,
+		apiKeyBase64, formatInstanceURL(), groupID, userID, userID, formatInstanceURL(), groupID)
+
+	applyYAML(createCurlPodYAML(podName, namespace, script))
+	waitForPodSucceeded(podName, namespace)
+}
+
+// getGroupMembersFromPocketID returns the space-separated user IDs of a group
+// by querying the Pocket-ID API directly.
+func getGroupMembersFromPocketID(podName, namespace, groupID string) string {
+	staticSecretName := instanceName + "-static-api-key"
+
+	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
+		"-o", "jsonpath={.data.token}")
+	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
+
+	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
+BODY=$(curl -s -H "X-API-KEY: $API_KEY" %s/api/user-groups/%s)
+# Extract user IDs from the users array using bracket-matching awk
+USERS_JSON=$(echo "$BODY" | awk -F'"users":' '{print $2}' | awk '{
+  depth=0; out=""; started=0
+  for(i=1;i<=length($0);i++){
+    c=substr($0,i,1)
+    if(c=="[" && !started){started=1; depth=1; out=out c; continue}
+    if(started){
+      out=out c
+      if(c=="[") depth++
+      if(c=="]") depth--
+      if(depth==0){print out; exit}
+    }
+  }
+}')
+echo "$USERS_JSON" | grep -o '"id":"[^"]*"' | sed 's/"id":"//;s/"//' | tr '\n' ' ' | sed 's/ $//'`,
+		apiKeyBase64, formatInstanceURL(), groupID)
+
+	applyYAML(createCurlPodYAML(podName, namespace, script))
+	return getPodLogs(podName, namespace)
+}

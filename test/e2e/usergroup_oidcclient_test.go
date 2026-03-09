@@ -500,7 +500,7 @@ var _ = Describe("UserGroup with Usernames and UserIds", Ordered, func() {
 			By("verifying the group has the correct user")
 			Eventually(func(g Gomega) {
 				userIDs := kubectlGet("pocketidusergroup", usernameGroupName, "-n", userNS,
-					"-o", "jsonpath={.status.userIDs[*]}")
+					"-o", "jsonpath={.status.managedUserIDs[*]}")
 				g.Expect(userIDs).To(ContainSubstring(userID))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 		})
@@ -553,7 +553,7 @@ var _ = Describe("UserGroup with Usernames and UserIds", Ordered, func() {
 			By("verifying the group has the correct user")
 			Eventually(func(g Gomega) {
 				userIDs := kubectlGet("pocketidusergroup", userIdGroupName, "-n", userNS,
-					"-o", "jsonpath={.status.userIDs[*]}")
+					"-o", "jsonpath={.status.managedUserIDs[*]}")
 				g.Expect(userIDs).To(ContainSubstring(userID))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 		})
@@ -613,7 +613,7 @@ var _ = Describe("UserGroup with Usernames and UserIds", Ordered, func() {
 			By("verifying the group has all 3 users")
 			Eventually(func(g Gomega) {
 				userIDs := kubectlGet("pocketidusergroup", mixedGroupName, "-n", userNS,
-					"-o", "jsonpath={.status.userIDs[*]}")
+					"-o", "jsonpath={.status.managedUserIDs[*]}")
 				g.Expect(userIDs).To(ContainSubstring(userRefsUserID))
 				g.Expect(userIDs).To(ContainSubstring(usernameUserID))
 				g.Expect(userIDs).To(ContainSubstring(mixedUserIdUserID))
@@ -642,7 +642,7 @@ var _ = Describe("UserGroup with Usernames and UserIds", Ordered, func() {
 			By("verifying the group has only 1 user (deduplicated)")
 			Eventually(func(g Gomega) {
 				userIDs := kubectlGet("pocketidusergroup", dedupeGroupName, "-n", userNS,
-					"-o", "jsonpath={.status.userIDs[*]}")
+					"-o", "jsonpath={.status.managedUserIDs[*]}")
 				// Should contain the user ID exactly once (no duplicates)
 				g.Expect(userIDs).To(Equal(usernameUserID))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
@@ -685,7 +685,7 @@ var _ = Describe("UserGroup with Usernames and UserIds", Ordered, func() {
 			By("verifying the group has the correct user")
 			Eventually(func(g Gomega) {
 				userIDs := kubectlGet("pocketidusergroup", recoveryUsernameGroupName, "-n", userNS,
-					"-o", "jsonpath={.status.userIDs[*]}")
+					"-o", "jsonpath={.status.managedUserIDs[*]}")
 				g.Expect(userIDs).To(ContainSubstring(userID))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 		})
