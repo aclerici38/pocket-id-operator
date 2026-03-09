@@ -316,10 +316,8 @@ func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketid
 	// Preserve externally-added users, only manage CR-declared users
 	previouslyManaged := userGroup.Status.ManagedUserIDs
 	finalMembers := computeMergedMembers(desired.UserIDs, previouslyManaged, current.UserIDs)
-	sortedCurrent := make([]string, len(current.UserIDs))
-	copy(sortedCurrent, current.UserIDs)
-	sort.Strings(sortedCurrent)
-	usersChanged := !pocketid.SortedEqual(finalMembers, sortedCurrent)
+	sort.Strings(current.UserIDs)
+	usersChanged := !pocketid.SortedEqual(finalMembers, current.UserIDs)
 
 	if !nameChanged && !claimsChanged && !usersChanged {
 		log.V(2).Info("User group state is in sync, skipping update")
