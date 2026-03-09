@@ -16,6 +16,7 @@ filter_unconventional = true
 split_commits = false
 
 commit_parsers = [
+  { message = "\\(deps\\)", group = "Dependencies" },
   { message = "^feat", group = "Features" },
   { message = "^fix", group = "Bug Fixes" },
   { message = "^refactor", group = "Refactor" },
