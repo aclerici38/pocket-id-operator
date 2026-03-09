@@ -3,6 +3,28 @@
 A `PocketIDOIDCClient` manages an OIDC client in Pocket-ID and can create a Secret
 containing client credentials and metadata.
 
+## Client Secret
+
+Pocket-ID does not expose the client-secret after it's created so the operator must regenerate it on 
+creation/adoption of an OIDC Client in order to store it in a Kubernetes Secret. This can lead to 
+inconsistent behavior as there is no way for the operator to know whether or not the client-secret 
+it created is up to date with the state of Pocket-ID. 
+
+## Regenerating Client Secrets
+
+To regenerate a client-secret set the annotation `pocketid.internal/regenerate-client-secret` to "true". The operator will remove
+it after processing.
+
+```
+kubectl annotate oidcclient OIDCCLIENTNAME pocketid.internal/regenerate-client-secret='true'
+```
+
+```yaml
+metadata:
+  annotations:
+    pocketid.internal/regenerate-client-secret: "true"
+```
+
 ## Minimal Public Client
 
 ```yaml
@@ -106,16 +128,5 @@ spec:
 - `status.scimProviderID`: populated after the SCIM service provider is created in Pocket ID.
 
 When `spec.scim` is removed the operator deletes the SCIM service provider from Pocket ID.
-
-## Regenerating Client Secrets
-
-Set the annotation below to force a client secret regeneration. The operator removes
-it after processing.
-
-```yaml
-metadata:
-  annotations:
-    pocketid.internal/regenerate-client-secret: "true"
-```
 
 *Note:* For all options and an up-to-date spec `kubectl explain PocketIDOIDCClient` 
