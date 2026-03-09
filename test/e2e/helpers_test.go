@@ -730,8 +730,22 @@ func addUserToGroupInPocketID(podName, namespace, groupID, userID string) {
 	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
 # GET current group to find existing user IDs
 BODY=$(curl -s -H "X-API-KEY: $API_KEY" %s/api/user-groups/%s)
-# Extract user IDs from the users array - each user object has an "id" field
-EXISTING_IDS=$(echo "$BODY" | sed 's/.*"users":\[//' | sed 's/\].*//' | grep -o '"id":"[^"]*"' | sed 's/"id":"//;s/"//' | tr '\n' ',' | sed 's/,$//')
+# Extract user IDs: find the "users" array, then collect all "id" fields within it.
+# Use awk to extract just the users array portion, then grep for IDs.
+USERS_JSON=$(echo "$BODY" | awk -F'"users":' '{print $2}' | awk '{
+  depth=0; out=""; started=0
+  for(i=1;i<=length($0);i++){
+    c=substr($0,i,1)
+    if(c=="[" && !started){started=1; depth=1; out=out c; continue}
+    if(started){
+      out=out c
+      if(c=="[") depth++
+      if(c=="]") depth--
+      if(depth==0){print out; exit}
+    }
+  }
+}')
+EXISTING_IDS=$(echo "$USERS_JSON" | grep -o '"id":"[^"]*"' | sed 's/"id":"//;s/"//' | tr '\n' ',' | sed 's/,$//')
 # Build new list with the additional user
 if [ -z "$EXISTING_IDS" ]; then
   USER_IDS='["%s"]'
@@ -765,8 +779,21 @@ func getGroupMembersFromPocketID(podName, namespace, groupID string) string {
 
 	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
 BODY=$(curl -s -H "X-API-KEY: $API_KEY" %s/api/user-groups/%s)
-# Extract user IDs from the users array
-echo "$BODY" | sed 's/.*"users":\[//' | sed 's/\].*//' | grep -o '"id":"[^"]*"' | sed 's/"id":"//;s/"//' | tr '\n' ' ' | sed 's/ $//'`,
+# Extract user IDs from the users array using bracket-matching awk
+USERS_JSON=$(echo "$BODY" | awk -F'"users":' '{print $2}' | awk '{
+  depth=0; out=""; started=0
+  for(i=1;i<=length($0);i++){
+    c=substr($0,i,1)
+    if(c=="[" && !started){started=1; depth=1; out=out c; continue}
+    if(started){
+      out=out c
+      if(c=="[") depth++
+      if(c=="]") depth--
+      if(depth==0){print out; exit}
+    }
+  }
+}')
+echo "$USERS_JSON" | grep -o '"id":"[^"]*"' | sed 's/"id":"//;s/"//' | tr '\n' ' ' | sed 's/ $//'`,
 		apiKeyBase64, formatInstanceURL(), groupID)
 
 	applyYAML(createCurlPodYAML(podName, namespace, script))
