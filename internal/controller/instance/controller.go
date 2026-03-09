@@ -102,7 +102,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	log.Info("Reconciling PocketIDInstance", "name", instance.Name)
+	log.V(1).Info("Reconciling PocketIDInstance", "name", instance.Name)
 
 	// Ensure static API key secret exists
 	if err := r.ensureStaticAPIKeySecret(ctx, instance); err != nil {
@@ -131,7 +131,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	// Fetch and store the deployed PocketID version; also updates InstanceInfo gauge.
 	if err := r.reconcileVersion(ctx, instance); err != nil {
-		log.Info("WARNING: could not fetch PocketID version from API. Endpoint added in v2.3.0", "error", err)
+		log.Error(err, "Could not fetch PocketID version from API (endpoint added in v2.3.0)")
 		// Still record info gauge with whatever version is currently known (may be empty).
 		deploymentType := instance.Spec.DeploymentType
 		if deploymentType == "" {

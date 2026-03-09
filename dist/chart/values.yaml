@@ -10,7 +10,8 @@ operator:
     tag: "" # Defaults to Chart.appVersion
     pullPolicy: IfNotPresent
 
-  args: []
+  args:
+    - --zap-log-level=info
   env: []
 
   podSecurityContext:

@@ -36,6 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"go.uber.org/zap/zapcore"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -83,6 +84,7 @@ func main() {
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	opts := zap.Options{
 		Development: true,
+		Level:       zapcore.Level(0), // info by default; use --zap-log-level=debug for V(1)
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()

@@ -78,7 +78,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	log.Info("Reconciling PocketIDOIDCClient", "name", oidcClient.Name)
+	log.V(1).Info("Reconciling PocketIDOIDCClient", "name", oidcClient.Name)
 
 	if !oidcClient.DeletionTimestamp.IsZero() {
 		return r.ReconcileDelete(ctx, oidcClient)
@@ -324,7 +324,7 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 	shouldPushCredentials := hasCredentials || firstReconcile
 
 	if !clientChanged && !shouldPushCredentials && !groupsChanged {
-		log.V(2).Info("OIDC client state is in sync, skipping update")
+		log.V(1).Info("OIDC client state is in sync, skipping update")
 		return nil
 	}
 
@@ -558,7 +558,7 @@ func (r *Reconciler) ReconcileSCIM(ctx context.Context, oidcClient *pocketidinte
 	// when one is configured. Otherwise only update if the endpoint changed.
 	hasToken := token != ""
 	if !hasToken && current.Endpoint == input.Endpoint {
-		log.V(2).Info("SCIM service provider is in sync, skipping update")
+		log.V(1).Info("SCIM service provider is in sync, skipping update")
 		return nil
 	}
 

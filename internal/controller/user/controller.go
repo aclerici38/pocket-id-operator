@@ -84,7 +84,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	log.Info("Reconciling PocketIDUser", "name", user.Name)
+	log.V(1).Info("Reconciling PocketIDUser", "name", user.Name)
 
 	if !user.DeletionTimestamp.IsZero() {
 		return r.ReconcileDelete(ctx, user)
@@ -494,7 +494,7 @@ func (r *Reconciler) pushUserState(ctx context.Context, user *pocketidinternalv1
 	desired.EmailVerified = current.EmailVerified
 
 	if desired == current.ToInput() {
-		log.V(2).Info("User state is in sync, skipping update")
+		log.V(1).Info("User state is in sync, skipping update")
 		return nil
 	}
 
