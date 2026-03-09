@@ -322,6 +322,8 @@ func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketid
 	if !nameChanged && !claimsChanged && !usersChanged {
 		log.V(1).Info("User group state is in sync, skipping update")
 	} else {
+		log.Info("Updating user group", "name", userGroup.Name)
+
 		if nameChanged {
 			if _, err := apiClient.UpdateUserGroup(ctx, userGroup.Status.GroupID, desired.Name, desired.FriendlyName); err != nil {
 				return fmt.Errorf("update user group: %w", err)

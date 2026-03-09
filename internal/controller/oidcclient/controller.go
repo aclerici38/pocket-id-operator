@@ -328,6 +328,8 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 		return nil
 	}
 
+	log.Info("Updating OIDC client", "name", oidcClient.Name)
+
 	// Always push when credentials are present since they
 	// are write-only and cannot be compared against the fetched state.
 	if clientChanged || shouldPushCredentials {

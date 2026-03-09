@@ -498,6 +498,8 @@ func (r *Reconciler) pushUserState(ctx context.Context, user *pocketidinternalv1
 		return nil
 	}
 
+	log.Info("Updating user", "name", user.Name)
+
 	if _, err := apiClient.UpdateUser(ctx, user.Status.UserID, desired); err != nil {
 		return fmt.Errorf("update user: %w", err)
 	}
