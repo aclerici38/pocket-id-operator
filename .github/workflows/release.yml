@@ -99,15 +99,39 @@ jobs:
             -t ${{ needs.validate.outputs.image_repo }}:${{ needs.validate.outputs.version }} \
             ${{ needs.validate.outputs.image_repo }}:main
 
+  generate-changelog:
+    name: Generate Artifact Hub changelog
+    needs:
+      - validate
+      - tag
+    runs-on: ubuntu-latest
+    outputs:
+      changelog: ${{ steps.changelog.outputs.content }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.validate.outputs.version }}
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: changelog
+        uses: orhun/git-cliff-action@c93ef52f3d0ddcdcc9bd5447d98d458a11cd4f72 # v4.7.1
+        with:
+          config: cliff-artifacthub.toml
+          args: --latest --strip header
+
   publish-chart:
     name: Publish Helm chart
     needs:
       - validate
       - tag
+      - generate-changelog
     uses: ./.github/workflows/push-chart.yml
     with:
       chart_version: ${{ needs.validate.outputs.helm_version }}
       app_version: ${{ needs.validate.outputs.version }}
+      changelog: ${{ needs.generate-changelog.outputs.changelog }}
     secrets: inherit
 
   create-release:

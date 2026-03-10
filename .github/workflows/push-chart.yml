@@ -16,6 +16,11 @@ on:
         required: false
         type: string
         default: ""
+      changelog:
+        description: Artifact Hub changelog annotation.
+        required: false
+        type: string
+        default: ""
   workflow_dispatch:
     inputs:
       chart_version:
@@ -28,6 +33,11 @@ on:
         type: string
       additional_tags:
         description: Space-separated additional tags to apply to the chart.
+        required: false
+        type: string
+        default: ""
+      changelog:
+        description: Artifact Hub changelog annotation.
         required: false
         type: string
         default: ""
@@ -64,6 +74,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Inject changelog annotation
+        if: inputs.changelog != ''
+        env:
+          CHANGELOG: ${{ inputs.changelog }}
+        run: |
+          yq -i '.annotations."artifacthub.io/changes" = strenv(CHANGELOG)' dist/chart/Chart.yaml
+
       - name: Package chart
         run: |
           mkdir -p dist/chart-packages
@@ -92,6 +109,14 @@ jobs:
               ${{ steps.meta.outputs.chart_ref }}:${{ inputs.chart_version }} \
               "${tag}"
           done
+
+      - name: Push Artifact Hub metadata
+        # https://artifacthub.io/docs/topics/repositories/helm-charts/#oci-support
+        run: |
+          oras push \
+            ${{ steps.meta.outputs.chart_ref }}:artifacthub.io \
+            --config /dev/null:application/vnd.cncf.artifacthub.config.v1+yaml \
+            dist/chart/artifacthub-repo.yaml:application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0

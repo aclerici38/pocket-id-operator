@@ -18,3 +18,34 @@ keywords:
   - oauth2
 annotations:
   category: Infrastructure
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/operatorCapabilities: Seamless Upgrades
+  artifacthub.io/links: |
+    - name: Source
+      url: https://github.com/aclerici38/pocket-id-operator
+    - name: Pocket ID
+      url: https://pocket-id.org/
+  artifacthub.io/crds: |
+    - kind: PocketIDInstance
+      version: v1alpha1
+      name: pocketidinstances.pocketid.internal
+      displayName: PocketID Instance
+      description: Deploys and manages a Pocket ID instance
+    - kind: PocketIDUser
+      version: v1alpha1
+      name: pocketidusers.pocketid.internal
+      displayName: PocketID User
+      description: Manages a user in a Pocket ID instance
+    - kind: PocketIDUserGroup
+      version: v1alpha1
+      name: pocketidusergroups.pocketid.internal
+      displayName: PocketID User Group
+      description: Manages a user group in a Pocket ID instance
+    - kind: PocketIDOIDCClient
+      version: v1alpha1
+      name: pocketidoidcclients.pocketid.internal
+      displayName: PocketID OIDC Client
+      description: Manages an OIDC client in a Pocket ID instance
+  artifacthub.io/signKey: |
+    fingerprint: ""
+    url: https://github.com/aclerici38/pocket-id-operator
