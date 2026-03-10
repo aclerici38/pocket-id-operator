@@ -83,7 +83,6 @@ jobs:
   build:
     name: Build Image
     needs: [meta, generate]
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     permissions:
       actions: write
       attestations: write
@@ -95,6 +94,7 @@ jobs:
       image_repo: ${{ needs.meta.outputs.image_repo }}
       image_tag: ${{ needs.meta.outputs.image_tag }}
       additional_tags: ${{ needs.meta.outputs.additional_tags }}
+      push: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     secrets: inherit
 
   e2e:

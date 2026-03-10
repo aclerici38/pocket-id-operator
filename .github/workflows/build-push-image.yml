@@ -16,6 +16,11 @@ on:
         required: false
         type: string
         default: ""
+      push:
+        description: Push image to registry and create multi-arch manifest.
+        required: false
+        type: boolean
+        default: true
   workflow_dispatch:
     inputs:
       image_repo:
@@ -31,6 +36,11 @@ on:
         required: false
         type: string
         default: ""
+      push:
+        description: Push image to registry and create multi-arch manifest.
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   actions: write
@@ -53,6 +63,7 @@ jobs:
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
       - name: Log in to GHCR
+        if: inputs.push
         uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
         with:
           registry: ghcr.io
@@ -60,6 +71,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push by digest
+        if: inputs.push
         uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
         id: build
         with:
@@ -102,6 +114,7 @@ jobs:
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
       - name: Log in to GitHub Container Registry
+        if: inputs.push
         uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
         with:
           registry: ghcr.io
@@ -114,7 +127,7 @@ jobs:
         with:
           context: .
           platforms: linux/arm64
-          outputs: type=image,name=${{ inputs.image_repo }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=${{ inputs.image_repo }},push-by-digest=true,name-canonical=true,push=${{ inputs.push }}
           cache-from: |
             type=gha,scope=build-arm64
             type=gha,scope=build-arm64-main
@@ -122,6 +135,7 @@ jobs:
 
   manifest:
     name: Create multi-arch manifest
+    if: inputs.push
     runs-on: ubuntu-latest
     needs:
       - build-amd64
@@ -158,6 +172,7 @@ jobs:
 
   attest:
     name: Attest image
+    if: inputs.push
     runs-on: ubuntu-latest
     needs:
       - manifest
