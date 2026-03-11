@@ -1,0 +1,53 @@
+name: Re-sign Chart
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Chart version to re-sign (e.g. 0.4.5)
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  packages: write
+
+jobs:
+  resign:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set metadata
+        id: meta
+        run: |
+          REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "chart_ref=ghcr.io/${REPO_OWNER}/charts/pocket-id-operator" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get chart digest
+        id: digest
+        run: |
+          DIGEST=$(docker buildx imagetools inspect \
+            ${{ steps.meta.outputs.chart_ref }}:${{ inputs.version }} \
+            --format '{{json .Manifest}}' | jq -r '.digest')
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
+
+      - name: Sign chart
+        run: |
+          cosign sign --yes \
+            ${{ steps.meta.outputs.chart_ref }}@${{ steps.digest.outputs.digest }}
+
+      - name: Verify chart signature
+        run: |
+          cosign verify \
+            --certificate-identity-regexp "https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            ${{ steps.meta.outputs.chart_ref }}@${{ steps.digest.outputs.digest }}
