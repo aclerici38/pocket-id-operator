@@ -119,7 +119,7 @@ jobs:
             dist/chart/artifacthub-repo.yaml:application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
 
       - name: Sign chart
         run: |
