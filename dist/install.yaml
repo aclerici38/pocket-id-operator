@@ -1028,7 +1028,7 @@ spec:
                   Defaults to true
                 type: boolean
               image:
-                default: ghcr.io/pocket-id/pocket-id:v2.4.0-distroless@sha256:e3e0fa59d06f6651448766e279077929694a644865759264f941a700f67d13eb
+                default: ghcr.io/pocket-id/pocket-id:v2.5.0-distroless@sha256:deadc3c4dd6655a7d7f959200db1c74e394942dc061e6f3732b709983a08aab7
                 description: Container image to run. Defaults to the latest distroless
                   version at time of operator release
                 type: string
