@@ -824,11 +824,13 @@ func (r *Reconciler) GetSecretName(oidcClient *pocketidinternalv1alpha1.PocketID
 func (r *Reconciler) GetSecretLabels(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) map[string]string {
 	secretLabels := common.ManagedByLabels(nil)
 
-	if oidcClient.Spec.Secret.AdditionalLabels != nil {
-		for k, v := range oidcClient.Spec.Secret.AdditionalLabels {
-			_, exists := secretLabels[k]
-			if !exists {
-				secretLabels[k] = v
+	if oidcClient.Spec.Secret != nil {
+		if oidcClient.Spec.Secret.AdditionalLabels != nil {
+			for k, v := range oidcClient.Spec.Secret.AdditionalLabels {
+				_, exists := secretLabels[k]
+				if !exists {
+					secretLabels[k] = v
+				}
 			}
 		}
 	}
