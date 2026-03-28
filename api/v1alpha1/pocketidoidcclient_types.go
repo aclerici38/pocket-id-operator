@@ -83,6 +83,11 @@ type OIDCClientSecretSpec struct {
 	// Keys allows customization of the secret keys for each credential field.
 	// +optional
 	Keys *OIDCClientSecretKeys `json:"keys,omitempty"`
+
+	// AdditionalLabels allows setting custom labels on the secret created by the PocketIDOIDCClient
+	// custom resource
+	// +optional
+	AdditionalLabels map[string]string `json:"additionalLabels,omitempty"`
 }
 
 // OIDCClientSecretKeys defines customizable keys for secret data fields.

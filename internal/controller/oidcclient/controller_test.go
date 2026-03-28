@@ -222,6 +222,41 @@ func TestGetSecretKeys_Custom(t *testing.T) {
 	}
 }
 
+func TestGetSecretAdditionalLabels(t *testing.T) {
+	reconciler := &Reconciler{}
+
+	testLabels := map[string]string{"label-1": "value1", "label-2": "value2"}
+
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "my-client",
+		},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			Secret: &pocketidinternalv1alpha1.OIDCClientSecretSpec{
+				AdditionalLabels: testLabels,
+			},
+		},
+	}
+
+	labels := reconciler.GetSecretLabels(oidcClient)
+
+	if _, exists := labels["label-1"]; !exists {
+		t.Errorf("expected label %q to exist", "label-1")
+	} else {
+		if labels["label-1"] != "value1" {
+			t.Errorf("expected label %q to have value %q", "label-1", "value1")
+		}
+	}
+
+	if _, exists := labels["label-2"]; !exists {
+		t.Errorf("expected label %q to exist", "label-2")
+	} else {
+		if labels["label-2"] != "value2" {
+			t.Errorf("expected label %q to have value %q", "label-2", "value2")
+		}
+	}
+}
+
 func TestGetSecretKeys_PartialCustom(t *testing.T) {
 	reconciler := &Reconciler{}
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{

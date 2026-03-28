@@ -785,12 +785,14 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 		secretData[keys.EndSessionURL] = []byte(baseURL + "/api/oidc/end-session")
 	}
 
+	secretLabels := r.GetSecretLabels(oidcClient)
+
 	// Create or update the secret
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
 			Namespace: oidcClient.Namespace,
-			Labels:    common.ManagedByLabels(nil),
+			Labels:    secretLabels,
 		},
 	}
 
@@ -817,6 +819,22 @@ func (r *Reconciler) GetSecretName(oidcClient *pocketidinternalv1alpha1.PocketID
 		return oidcClient.Spec.Secret.Name
 	}
 	return oidcClient.Name + "-oidc-credentials"
+}
+
+func (r *Reconciler) GetSecretLabels(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) map[string]string {
+	secretLabels := common.ManagedByLabels(nil)
+
+	if oidcClient.Spec.Secret != nil {
+		if oidcClient.Spec.Secret.AdditionalLabels != nil {
+			for k, v := range oidcClient.Spec.Secret.AdditionalLabels {
+				_, exists := secretLabels[k]
+				if !exists {
+					secretLabels[k] = v
+				}
+			}
+		}
+	}
+	return secretLabels
 }
 
 func (r *Reconciler) GetSecretKeys(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) pocketidinternalv1alpha1.OIDCClientSecretKeys {

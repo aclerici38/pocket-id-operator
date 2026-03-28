@@ -61,6 +61,8 @@ spec:
       namespace: pocket-id
   secret:
     name: internal-dashboard-oidc
+    additionalLabels:
+      label1: value1
     keys:
       clientID: client_id
       clientSecret: client_secret
