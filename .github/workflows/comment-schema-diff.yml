@@ -1,0 +1,45 @@
+name: Comment Schema Diff
+
+on:
+  workflow_run:
+    workflows: [Regenerate Manifests]
+    types: [completed]
+
+permissions:
+  actions: read
+  pull-requests: write
+
+jobs:
+  comment:
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download schema diff
+        id: download
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: schema-diff
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+        continue-on-error: true
+
+      - name: Read PR number
+        if: steps.download.outcome == 'success'
+        id: pr
+        run: echo "number=$(cat pr-number.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Comment schema diff on PR
+        if: steps.download.outcome == 'success'
+        uses: marocchino/sticky-pull-request-comment@70d2764d1a7d5d9560b100cbea0077fc8f633987 # v3.0.2
+        with:
+          header: schema-diff
+          path: schema-diff.md
+          number: ${{ steps.pr.outputs.number }}
+
+      - name: Remove outdated comment
+        if: steps.download.outcome == 'failure'
+        uses: marocchino/sticky-pull-request-comment@70d2764d1a7d5d9560b100cbea0077fc8f633987 # v3.0.2
+        with:
+          header: schema-diff
+          delete: true
+          number: ${{ github.event.workflow_run.pull_requests[0].number }}
