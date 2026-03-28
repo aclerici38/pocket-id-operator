@@ -99,9 +99,11 @@ jobs:
           name: operator-image-${{ inputs.image_tag }}
           path: /tmp
 
-      - name: Load image
+      - name: Load and retag image
         if: inputs.image_tag != '' && !inputs.latest_release
-        run: docker load -i /tmp/operator-image-${{ inputs.image_tag }}.tar
+        run: |
+          docker load -i /tmp/operator-image-${{ inputs.image_tag }}.tar
+          docker tag ${{ inputs.image_repo }}:${{ inputs.image_tag }} pocket-id-operator:local-test
 
       - name: Pull release image
         if: inputs.latest_release
@@ -117,7 +119,7 @@ jobs:
           if [ "${{ inputs.latest_release }}" = "true" ]; then
             make test-e2e-only IMG=${{ steps.release.outputs.image }}
           elif [ -n "${{ inputs.image_tag }}" ]; then
-            make test-e2e-only IMG=${{ inputs.image_repo }}:${{ inputs.image_tag }}
+            make test-e2e-only IMG=pocket-id-operator:local-test
           else
             make test-e2e-only
           fi
