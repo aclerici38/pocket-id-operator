@@ -200,6 +200,13 @@
         "secret": {
           "description": "Secret defines how OIDC client credentials should be stored in a Kubernetes Secret.",
           "properties": {
+            "additionalLabels": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "AdditionalLabels allows setting custom labels on the secret created by the PocketIDOIDCClient\ncustom resource",
+              "type": "object"
+            },
             "enabled": {
               "default": true,
               "description": "Enabled controls whether to create a secret with OIDC client credentials.\nIf false, no secret will be created. Defaults to true",
