@@ -82,7 +82,7 @@ jobs:
           kubectl_version: ${{ env.KUBECTL_VERSION }}
 
       - name: Load image into kind
-        run: kind load docker-image pocket-id-operator:local-test
+        run: kind load docker-image pocket-id-operator:local-test --name chart-testing
 
       - name: Install released chart
         id: install-released
