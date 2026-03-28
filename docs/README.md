@@ -6,6 +6,8 @@ See the other docs in this folder for more detailed documentation on the configu
 
 JSON schemas are provided for all CRDs, the Helm chart values, and a FluxCD HelmRelease with the values. Use them with `yaml-language-server` for autocompletion and validation.
 
+if you like the schemas approach here and would like to keep more of your CRD schemas versioned with the apps, check out [k8s-versioned-schemas](https://github.com/aclerici38/k8s-versioned-schemas)!
+
 Add to the top of any YAML file:
 ```yaml
 # yaml-language-server: $schema=<schema-url>
@@ -43,6 +45,16 @@ https://raw.githubusercontent.com/aclerici38/pocket-id-operator/<version>/dist/s
 ```
 
 Note: the Helm values schema is at `dist/chart/values.schema.json` instead of `dist/schemas/`.
+
+**From my k8s-versioned-schemas project (latest):**
+```
+https://k8s-versioned-schemas.pages.dev/pocket-id-operator/latest/pocketidinstance_v1alpha1.json
+```
+
+**From my k8s-versioned-schemas project (tagged):**
+```
+https://k8s-versioned-schemas.pages.dev/pocket-id-operator/0.4.5/pocketidinstance_v1alpha1.json
+```
 
 # Migrating from an existing setup
 This operator will only try to manage the resources present in k8s, not the Pocket-ID instance as a whole. In addition each resource created will adopt any existing resource in pocket-id if there's a match. This allows users, user groups, oidc clients to be migrated to custom resources gradually (or not at all) with no data loss.
