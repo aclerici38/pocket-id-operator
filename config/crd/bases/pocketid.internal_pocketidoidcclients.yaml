@@ -214,6 +214,13 @@ spec:
                 description: Secret defines how OIDC client credentials should be
                   stored in a Kubernetes Secret.
                 properties:
+                  additionalLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      AdditionalLabels allows setting custom labels on the secret created by the PocketIDOIDCClient
+                      custom resource
+                    type: object
                   enabled:
                     default: true
                     description: |-
