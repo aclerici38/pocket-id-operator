@@ -1,8 +1,26 @@
 name: Regenerate Manifests
 
 on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".gitignore"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".gitignore"
   workflow_call:
   workflow_dispatch:
+
+concurrency:
+  group: regenerate-manifests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -76,9 +94,48 @@ jobs:
 
       - name: Check for uncommitted changes
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        id: check-diff
         run: |
           if [ -n "$(git status --porcelain)" ]; then
+            echo "has_diff=true" >> "$GITHUB_OUTPUT"
             echo "::error::Generated files are out of date. Please run 'make manifests generate fmt build-installer generate-schemas' and commit the changes."
-            git diff
-            exit 1
           fi
+
+      - name: Generate diff artifact
+        if: steps.check-diff.outputs.has_diff == 'true'
+        run: |
+          echo "${{ github.event.pull_request.number }}" > /tmp/pr-number.txt
+          cat > /tmp/schema-diff.md << 'HEADER'
+          ## Generated files are out of date
+
+          The following files need to be regenerated. Please run:
+          ```sh
+          make manifests generate fmt build-installer generate-schemas
+          ```
+          and commit the changes.
+
+          <details>
+          <summary>Diff</summary>
+
+          ```diff
+          HEADER
+          git diff >> /tmp/schema-diff.md
+          cat >> /tmp/schema-diff.md << 'FOOTER'
+          ```
+
+          </details>
+          FOOTER
+
+      - name: Upload diff artifact
+        if: steps.check-diff.outputs.has_diff == 'true'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: schema-diff
+          path: |
+            /tmp/pr-number.txt
+            /tmp/schema-diff.md
+          retention-days: 1
+
+      - name: Fail if diff exists
+        if: steps.check-diff.outputs.has_diff == 'true'
+        run: exit 1
