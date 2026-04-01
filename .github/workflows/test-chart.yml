@@ -70,10 +70,8 @@ jobs:
           name: operator-image-${{ inputs.image_tag }}
           path: /tmp
 
-      - name: Load and retag image
-        run: |
-          docker load -i /tmp/operator-image-${{ inputs.image_tag }}.tar
-          docker tag ${{ inputs.image_repo }}:${{ inputs.image_tag }} pocket-id-operator:local-test
+      - name: Load image
+        run: docker load -i /tmp/operator-image-${{ inputs.image_tag }}.tar
 
       - name: Create kind cluster
         uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
@@ -82,7 +80,7 @@ jobs:
           kubectl_version: ${{ env.KUBECTL_VERSION }}
 
       - name: Load image into kind
-        run: kind load docker-image pocket-id-operator:local-test --name chart-testing
+        run: kind load docker-image ${{ inputs.image_repo }}:${{ inputs.image_tag }} --name chart-testing
 
       - name: Install released chart
         id: install-released
@@ -110,8 +108,8 @@ jobs:
             --namespace pocket-id-operator-system \
             --create-namespace \
             --values .github/helm-test-values.yaml \
-            --set operator.image.repository=pocket-id-operator \
-            --set operator.image.tag=local-test \
+            --set operator.image.repository=${{ inputs.image_repo }} \
+            --set operator.image.tag=${{ inputs.image_tag }} \
             --wait \
             --timeout 2m
 
