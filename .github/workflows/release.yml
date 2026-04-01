@@ -113,6 +113,7 @@ jobs:
         with:
           ref: ${{ needs.validate.outputs.version }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Generate changelog
         id: changelog
@@ -148,6 +149,7 @@ jobs:
         with:
           ref: ${{ needs.validate.outputs.version }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Generate changelog
         uses: orhun/git-cliff-action@c93ef52f3d0ddcdcc9bd5447d98d458a11cd4f72 # v4.7.1
