@@ -41,18 +41,24 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Set metadata
         id: meta
+        env:
+          REPO_OWNER: ${{ github.repository_owner }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          REPO_OWNER=$(echo "${REPO_OWNER}" | tr '[:upper:]' '[:lower:]')
           SHORT_SHA=$(git rev-parse --short HEAD)
           # Tags created on main push: <sha>-main, main
           # Tags created on PR: PR-<number>
           IMAGE_TAG="${SHORT_SHA}-main"
           ADDITIONAL_TAGS="main"
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            IMAGE_TAG="PR-${{ github.event.pull_request.number }}"
+          if [ "${EVENT_NAME}" = "pull_request" ]; then
+            IMAGE_TAG="PR-${PR_NUMBER}"
             ADDITIONAL_TAGS=""
           fi
           echo "image_repo=ghcr.io/${REPO_OWNER}/pocket-id-operator" >> "$GITHUB_OUTPUT"

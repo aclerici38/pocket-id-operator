@@ -58,6 +58,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Resolve latest release
         if: inputs.latest_release
@@ -71,6 +73,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ steps.release.outputs.tag }}
+          persist-credentials: false
 
       - name: Setup Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
@@ -101,13 +104,18 @@ jobs:
 
       - name: Load and retag image
         if: inputs.image_tag != '' && !inputs.latest_release
+        env:
+          IMAGE_REPO: ${{ inputs.image_repo }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
-          docker load -i /tmp/operator-image-${{ inputs.image_tag }}.tar
-          docker tag ${{ inputs.image_repo }}:${{ inputs.image_tag }} pocket-id-operator:local-test
+          docker load -i "/tmp/operator-image-${IMAGE_TAG}.tar"
+          docker tag "${IMAGE_REPO}:${IMAGE_TAG}" pocket-id-operator:local-test
 
       - name: Pull release image
         if: inputs.latest_release
-        run: docker pull ${{ steps.release.outputs.image }}
+        env:
+          RELEASE_IMAGE: ${{ steps.release.outputs.image }}
+        run: docker pull "${RELEASE_IMAGE}"
 
       - name: Create kind cluster
         run: make setup-test-e2e
@@ -115,10 +123,13 @@ jobs:
       - name: Run e2e tests
         env:
           SKIP_CLEANUP: "true"
+          LATEST_RELEASE: ${{ inputs.latest_release }}
+          RELEASE_IMAGE: ${{ steps.release.outputs.image }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
-          if [ "${{ inputs.latest_release }}" = "true" ]; then
-            make test-e2e-only IMG=${{ steps.release.outputs.image }}
-          elif [ -n "${{ inputs.image_tag }}" ]; then
+          if [ "${LATEST_RELEASE}" = "true" ]; then
+            make test-e2e-only IMG="${RELEASE_IMAGE}"
+          elif [ -n "${IMAGE_TAG}" ]; then
             make test-e2e-only IMG=pocket-id-operator:local-test
           else
             make test-e2e-only

@@ -18,8 +18,10 @@ jobs:
     steps:
       - name: Set metadata
         id: meta
+        env:
+          REPO_OWNER: ${{ github.repository_owner }}
         run: |
-          REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          REPO_OWNER=$(echo "${REPO_OWNER}" | tr '[:upper:]' '[:lower:]')
           echo "chart_ref=ghcr.io/${REPO_OWNER}/charts/pocket-id-operator" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
@@ -31,9 +33,12 @@ jobs:
 
       - name: Get chart digest
         id: digest
+        env:
+          CHART_REF: ${{ steps.meta.outputs.chart_ref }}
+          VERSION: ${{ inputs.version }}
         run: |
           DIGEST=$(docker buildx imagetools inspect \
-            ${{ steps.meta.outputs.chart_ref }}:${{ inputs.version }} \
+            "${CHART_REF}:${VERSION}" \
             --format '{{json .Manifest}}' | jq -r '.digest')
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
@@ -41,13 +46,20 @@ jobs:
         uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
 
       - name: Sign chart
+        env:
+          CHART_REF: ${{ steps.meta.outputs.chart_ref }}
+          CHART_DIGEST: ${{ steps.digest.outputs.digest }}
         run: |
           cosign sign --yes \
-            ${{ steps.meta.outputs.chart_ref }}@${{ steps.digest.outputs.digest }}
+            "${CHART_REF}@${CHART_DIGEST}"
 
       - name: Verify chart signature
+        env:
+          REPOSITORY: ${{ github.repository }}
+          CHART_REF: ${{ steps.meta.outputs.chart_ref }}
+          CHART_DIGEST: ${{ steps.digest.outputs.digest }}
         run: |
           cosign verify \
-            --certificate-identity-regexp "https://github.com/${{ github.repository }}/" \
+            --certificate-identity-regexp "https://github.com/${REPOSITORY}/" \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-            ${{ steps.meta.outputs.chart_ref }}@${{ steps.digest.outputs.digest }}
+            "${CHART_REF}@${CHART_DIGEST}"

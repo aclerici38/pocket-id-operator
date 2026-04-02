@@ -8,13 +8,6 @@ on:
         required: true
         type: string
 
-permissions:
-  actions: write
-  attestations: write
-  contents: write
-  id-token: write
-  packages: write
-
 env:
   # renovate: datasource=github-releases depName=kubernetes-sigs/controller-tools
   CONTROLLER_TOOLS_VERSION: v0.20.1
@@ -24,6 +17,7 @@ env:
 jobs:
   validate:
     name: Validate version
+    permissions: {}
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.validate.outputs.version }}
@@ -32,9 +26,10 @@ jobs:
     steps:
       - name: Validate version format
         id: validate
+        env:
+          VERSION: ${{ inputs.version }}
+          REPO_OWNER: ${{ github.repository_owner }}
         run: |
-          VERSION="${{ inputs.version }}"
-
           # Ensure version starts with 'v'
           if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9] ]]; then
             echo "::error::Version must be in format v0.0.0"
@@ -42,7 +37,7 @@ jobs:
           fi
 
           HELM_VERSION="${VERSION#v}"
-          REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          REPO_OWNER=$(echo "${REPO_OWNER}" | tr '[:upper:]' '[:lower:]')
 
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "helm_version=${HELM_VERSION}" >> "$GITHUB_OUTPUT"
@@ -50,6 +45,8 @@ jobs:
 
   tag:
     name: Create Git tag
+    permissions:
+      contents: write
     needs: validate
     runs-on: ubuntu-latest
     steps:
@@ -65,19 +62,25 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Check if tag exists
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
         run: |
-          if git rev-parse "${{ needs.validate.outputs.version }}" >/dev/null 2>&1; then
-            echo "::error::Tag ${{ needs.validate.outputs.version }} already exists"
+          if git rev-parse "${VERSION}" >/dev/null 2>&1; then
+            echo "::error::Tag ${VERSION} already exists"
             exit 1
           fi
 
       - name: Create and push tag
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
         run: |
-          git tag -a "${{ needs.validate.outputs.version }}" -m "Release ${{ needs.validate.outputs.version }}"
-          git push origin "${{ needs.validate.outputs.version }}"
+          git tag -a "${VERSION}" -m "Release ${VERSION}"
+          git push origin "${VERSION}"
 
   retag-image:
     name: Retag Docker image
+    permissions:
+      packages: write
     needs:
       - validate
       - tag
@@ -94,13 +97,18 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Retag :main image as release version
+        env:
+          IMAGE_REPO: ${{ needs.validate.outputs.image_repo }}
+          VERSION: ${{ needs.validate.outputs.version }}
         run: |
           docker buildx imagetools create \
-            -t ${{ needs.validate.outputs.image_repo }}:${{ needs.validate.outputs.version }} \
-            ${{ needs.validate.outputs.image_repo }}:main
+            -t "${IMAGE_REPO}:${VERSION}" \
+            "${IMAGE_REPO}:main"
 
   generate-changelog:
     name: Generate Artifact Hub changelog
+    permissions:
+      contents: read
     needs:
       - validate
       - tag
@@ -113,6 +121,7 @@ jobs:
         with:
           ref: ${{ needs.validate.outputs.version }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Generate changelog
         id: changelog
@@ -123,6 +132,11 @@ jobs:
 
   publish-chart:
     name: Publish Helm chart
+    permissions:
+      actions: write
+      contents: read
+      id-token: write
+      packages: write
     needs:
       - validate
       - tag
@@ -136,6 +150,8 @@ jobs:
 
   create-release:
     name: Create GitHub Release
+    permissions:
+      contents: write
     needs:
       - validate
       - tag
@@ -148,6 +164,7 @@ jobs:
         with:
           ref: ${{ needs.validate.outputs.version }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Generate changelog
         uses: orhun/git-cliff-action@c93ef52f3d0ddcdcc9bd5447d98d458a11cd4f72 # v4.7.1
@@ -161,25 +178,23 @@ jobs:
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           go-version-file: go.mod
-          cache: true
-
-      - name: Cache tool binaries
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
-        with:
-          path: bin
-          key: tools-${{ runner.os }}-go-${{ hashFiles('go.mod') }}-kustomize-${{ env.KUSTOMIZE_VERSION }}-controller-gen-${{ env.CONTROLLER_TOOLS_VERSION }}
+          cache: false
 
       - name: Generate install manifest
+        env:
+          IMAGE_REPO: ${{ needs.validate.outputs.image_repo }}
+          VERSION: ${{ needs.validate.outputs.version }}
         run: |
-          make build-installer IMG=${{ needs.validate.outputs.image_repo }}:${{ needs.validate.outputs.version }}
+          make build-installer IMG="${IMAGE_REPO}:${VERSION}"
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
-        with:
-          tag_name: ${{ needs.validate.outputs.version }}
-          name: ${{ needs.validate.outputs.version }}
-          body_path: /tmp/changelog.md
-          files: |
-            dist/install.yaml
-            dist/schemas/*.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          gh release create "${VERSION}" \
+            --title "${VERSION}" \
+            --notes-file /tmp/changelog.md \
+            dist/install.yaml \
+            dist/schemas/*.json \
             dist/chart/values.schema.json
