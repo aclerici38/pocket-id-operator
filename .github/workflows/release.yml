@@ -129,6 +129,8 @@ jobs:
         with:
           config: cliff-artifacthub.toml
           args: --latest --strip header
+        env:
+          OUTPUT: /tmp/artifacthub-changelog.yml
 
   publish-chart:
     name: Publish Helm chart
