@@ -59,11 +59,13 @@ jobs:
         run: helm lint dist/chart --set instance.enabled=false
 
       - name: Package chart
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
           mkdir -p dist/chart-packages
           helm package dist/chart \
             --version "0.0.0" \
-            --app-version "${{ inputs.image_tag }}" \
+            --app-version "${IMAGE_TAG}" \
             --destination dist/chart-packages
 
       - name: Download image artifact
@@ -73,7 +75,9 @@ jobs:
           path: /tmp
 
       - name: Load image
-        run: docker load -i /tmp/operator-image-${{ inputs.image_tag }}.tar
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: docker load -i "/tmp/operator-image-${IMAGE_TAG}.tar"
 
       - name: Create kind cluster
         uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
@@ -82,19 +86,27 @@ jobs:
           kubectl_version: ${{ env.KUBECTL_VERSION }}
 
       - name: Load image into kind
-        run: kind load docker-image ${{ inputs.image_repo }}:${{ inputs.image_tag }} --name chart-testing
+        env:
+          IMAGE_REPO: ${{ inputs.image_repo }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: kind load docker-image "${IMAGE_REPO}:${IMAGE_TAG}" --name chart-testing
 
       - name: Install released chart
         id: install-released
         continue-on-error: true
+        env:
+          CHART: ${{ steps.release.outputs.chart }}
+          CHART_VERSION: ${{ steps.release.outputs.chart_version }}
+          IMAGE_REPO: ${{ inputs.image_repo }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: |
-          helm install test-release ${{ steps.release.outputs.chart }} \
-            --version ${{ steps.release.outputs.chart_version }} \
+          helm install test-release "${CHART}" \
+            --version "${CHART_VERSION}" \
             --create-namespace \
             --namespace pocket-id-operator-system \
             --values .github/helm-test-values.yaml \
-            --set operator.image.repository=${{ inputs.image_repo }} \
-            --set operator.image.tag=${{ steps.release.outputs.tag }} \
+            --set "operator.image.repository=${IMAGE_REPO}" \
+            --set "operator.image.tag=${RELEASE_TAG}" \
             --wait \
             --timeout 2m
 
@@ -105,13 +117,16 @@ jobs:
           helm uninstall test-release --namespace pocket-id-operator-system --ignore-not-found || true
 
       - name: Upgrade to current chart
+        env:
+          IMAGE_REPO: ${{ inputs.image_repo }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
           helm upgrade --install test-release dist/chart-packages/*.tgz \
             --namespace pocket-id-operator-system \
             --create-namespace \
             --values .github/helm-test-values.yaml \
-            --set operator.image.repository=${{ inputs.image_repo }} \
-            --set operator.image.tag=${{ inputs.image_tag }} \
+            --set "operator.image.repository=${IMAGE_REPO}" \
+            --set "operator.image.tag=${IMAGE_TAG}" \
             --wait \
             --timeout 2m
 

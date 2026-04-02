@@ -28,9 +28,11 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
+        REPOSITORY: ${{ github.repository }}
+        REPO_OWNER: ${{ github.repository_owner }}
       run: |
-        TAG=$(gh release view --repo ${{ github.repository }} --json tagName -q .tagName)
-        REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+        TAG=$(gh release view --repo "${REPOSITORY}" --json tagName -q .tagName)
+        REPO_OWNER=$(echo "${REPO_OWNER}" | tr '[:upper:]' '[:lower:]')
         echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
         echo "image=ghcr.io/${REPO_OWNER}/pocket-id-operator:${TAG}" >> "$GITHUB_OUTPUT"
         echo "chart_version=${TAG#v}" >> "$GITHUB_OUTPUT"

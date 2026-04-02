@@ -82,9 +82,11 @@ jobs:
 
       - name: Commit changes
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
         run: |
-          git config user.name "${{ steps.app-token.outputs.app-slug }}[bot]"
-          git config user.email "200541989+${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com"
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "200541989+${APP_SLUG}[bot]@users.noreply.github.com"
           if [ -n "$(git status --porcelain)" ]; then
             git add -A
             git commit -m "chore: regenerate manifests"
@@ -104,8 +106,10 @@ jobs:
 
       - name: Generate diff artifact
         if: steps.check-diff.outputs.has_diff == 'true'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          echo "${{ github.event.pull_request.number }}" > /tmp/pr-number.txt
+          echo "${PR_NUMBER}" > /tmp/pr-number.txt
           cat > /tmp/schema-diff.md << 'HEADER'
           ## Generated files are out of date
 
