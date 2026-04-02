@@ -150,7 +150,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
-	if err := r.pushUserState(ctx, user, apiClient, pUser); err != nil {
+	updated, err := r.pushUserState(ctx, user, apiClient, pUser)
+	if err != nil {
 		log.Error(err, "Failed to push user state")
 		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
@@ -174,6 +175,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	_ = r.SetReadyCondition(ctx, user, metav1.ConditionTrue, "Reconciled", "User and API keys are in sync")
+
+	if updated {
+		return ctrl.Result{Requeue: true}, nil
+	}
 
 	if cleanupResult.RequeueAfter > 0 {
 		return common.ApplyResync(cleanupResult), nil
@@ -481,12 +486,12 @@ func (r *Reconciler) createOrAdoptUser(ctx context.Context, user *pocketidintern
 
 // pushUserState compares the desired state from the CR spec against the current
 // state fetched from Pocket ID and only pushes an update if they differ.
-func (r *Reconciler) pushUserState(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client, current *pocketid.User) error {
+func (r *Reconciler) pushUserState(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client, current *pocketid.User) (bool, error) {
 	log := logf.FromContext(ctx)
 
 	desired, err := r.buildUserInput(ctx, user)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	// EmailVerified is managed by Pocket-ID.
@@ -495,17 +500,17 @@ func (r *Reconciler) pushUserState(ctx context.Context, user *pocketidinternalv1
 
 	if desired == current.ToInput() {
 		log.V(1).Info("User state is in sync, skipping update")
-		return nil
+		return false, nil
 	}
 
 	log.Info("Updating user", "name", user.Name)
 
 	if _, err := apiClient.UpdateUser(ctx, user.Status.UserID, desired); err != nil {
-		return fmt.Errorf("update user: %w", err)
+		return false, fmt.Errorf("update user: %w", err)
 	}
 
 	metrics.ResourceOperations.WithLabelValues("PocketIDUser", "updated").Inc()
-	return nil
+	return true, nil
 }
 
 // setUserID persists only the user ID to status.

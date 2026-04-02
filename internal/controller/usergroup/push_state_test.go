@@ -207,7 +207,7 @@ func TestPushUserGroupState_SkipsWhenInSync(t *testing.T) {
 	defer ts.Close()
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
-	if err := r.pushUserGroupState(ctx, ug, apiClient, current); err != nil {
+	if _, err := r.pushUserGroupState(ctx, ug, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -256,7 +256,7 @@ func TestPushUserGroupState_UpdatesOnlyNameWhenNameChanged(t *testing.T) {
 	defer ts.Close()
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
-	if err := r.pushUserGroupState(ctx, ug, apiClient, current); err != nil {
+	if _, err := r.pushUserGroupState(ctx, ug, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !nameUpdateCalled {
@@ -314,7 +314,7 @@ func TestPushUserGroupState_ClearsClaimsWithEmptySlice(t *testing.T) {
 	defer ts.Close()
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
-	if err := r.pushUserGroupState(ctx, ug, apiClient, current); err != nil {
+	if _, err := r.pushUserGroupState(ctx, ug, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	// The body should be an empty JSON array [], not null/missing.
@@ -373,7 +373,7 @@ func TestPushUserGroupState_RemovesManagedUsersWhenSpecCleared(t *testing.T) {
 	defer ts.Close()
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
-	if err := r.pushUserGroupState(ctx, ug, apiClient, current); err != nil {
+	if _, err := r.pushUserGroupState(ctx, ug, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if receivedBody == nil {
@@ -437,7 +437,7 @@ func TestPushUserGroupState_FirstReconcileIsAdditive(t *testing.T) {
 	defer ts.Close()
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
-	if err := r.pushUserGroupState(ctx, ug, apiClient, current); err != nil {
+	if _, err := r.pushUserGroupState(ctx, ug, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if receivedBody == nil {
@@ -495,7 +495,7 @@ func TestPushUserGroupState_PreservesExternalUsers(t *testing.T) {
 	defer ts.Close()
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
-	if err := r.pushUserGroupState(ctx, ug, apiClient, current); err != nil {
+	if _, err := r.pushUserGroupState(ctx, ug, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -544,7 +544,7 @@ func TestPushUserGroupState_RemovesOnlyUnmanagedFromCR(t *testing.T) {
 	defer ts.Close()
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
-	if err := r.pushUserGroupState(ctx, ug, apiClient, current); err != nil {
+	if _, err := r.pushUserGroupState(ctx, ug, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if receivedBody == nil {

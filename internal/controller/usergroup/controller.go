@@ -140,13 +140,18 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
-	if err := r.pushUserGroupState(ctx, userGroup, apiClient, current); err != nil {
+	updated, err := r.pushUserGroupState(ctx, userGroup, apiClient, current)
+	if err != nil {
 		log.Error(err, "Failed to push user group state")
 		_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
 	_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionTrue, "Reconciled", "User group is in sync")
+
+	if updated {
+		return ctrl.Result{Requeue: true}, nil
+	}
 
 	return common.ApplyResync(ctrl.Result{}), nil
 }
@@ -301,12 +306,12 @@ func computeMergedMembers(desiredManaged, previouslyManaged, currentMembers []st
 // pushUserGroupState compares the desired state from the CR spec against the current
 // state fetched from Pocket ID and only pushes updates for fields that differ.
 // Only operator-managed users are added/removed and externally-added users are preserved.
-func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, apiClient *pocketid.Client, current *pocketid.UserGroup) error {
+func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, apiClient *pocketid.Client, current *pocketid.UserGroup) (bool, error) {
 	log := logf.FromContext(ctx)
 
 	desired, err := r.buildUserGroupInput(ctx, userGroup, apiClient)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	currentInput := current.ToInput()
@@ -319,6 +324,7 @@ func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketid
 	sort.Strings(current.UserIDs)
 	usersChanged := !pocketid.SortedEqual(finalMembers, current.UserIDs)
 
+	updated := false
 	if !nameChanged && !claimsChanged && !usersChanged {
 		log.V(1).Info("User group state is in sync, skipping update")
 	} else {
@@ -326,7 +332,7 @@ func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketid
 
 		if nameChanged {
 			if _, err := apiClient.UpdateUserGroup(ctx, userGroup.Status.GroupID, desired.Name, desired.FriendlyName); err != nil {
-				return fmt.Errorf("update user group: %w", err)
+				return false, fmt.Errorf("update user group: %w", err)
 			}
 		}
 
@@ -336,17 +342,18 @@ func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketid
 				claims = []pocketid.CustomClaim{}
 			}
 			if _, err := apiClient.UpdateUserGroupCustomClaims(ctx, userGroup.Status.GroupID, claims); err != nil {
-				return err
+				return false, err
 			}
 		}
 
 		if usersChanged {
 			if err := apiClient.UpdateUserGroupUsers(ctx, userGroup.Status.GroupID, finalMembers); err != nil {
-				return err
+				return false, err
 			}
 		}
 
 		metrics.ResourceOperations.WithLabelValues("PocketIDUserGroup", "updated").Inc()
+		updated = true
 	}
 
 	// Persist the operator-managed set to status after successful reconciliation
@@ -358,7 +365,7 @@ func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketid
 		base := userGroup.DeepCopy()
 		userGroup.Status.ManagedUserIDs = managedIDs
 		if err := r.Status().Patch(ctx, userGroup, client.MergeFrom(base)); err != nil {
-			return fmt.Errorf("update managed user IDs status: %w", err)
+			return false, fmt.Errorf("update managed user IDs status: %w", err)
 		}
 	}
 
@@ -368,11 +375,11 @@ func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketid
 	// DB deadlocks.
 	if len(userGroup.Spec.AllowedOIDCClients) > 0 {
 		if _, err := helpers.ResolveOIDCClientReferences(ctx, r.Client, userGroup.Spec.AllowedOIDCClients, userGroup.Namespace); err != nil {
-			return fmt.Errorf("resolve allowed OIDC client references: %w", err)
+			return false, fmt.Errorf("resolve allowed OIDC client references: %w", err)
 		}
 	}
 
-	return nil
+	return updated, nil
 }
 
 // setGroupID persists only the group ID to status.
