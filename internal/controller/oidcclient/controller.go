@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -54,6 +55,10 @@ type Reconciler struct {
 	common.BaseReconciler
 	APIReader client.Reader
 	Scheme    *runtime.Scheme
+
+	// skipUpdate gates the update phase of reconciliation
+	// and just fetches the state
+	skipUpdate map[types.NamespacedName]bool
 }
 
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidoidcclients,verbs=get;list;watch;create;update;patch;delete
@@ -144,6 +149,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
+	// Skip the push if this reconcile was triggered for post-update status refresh
+	key := client.ObjectKeyFromObject(oidcClient)
+	if r.skipUpdate[key] {
+		delete(r.skipUpdate, key)
+		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionTrue, "Reconciled", "OIDC client is in sync")
+		return common.ApplyResync(ctrl.Result{}), nil
+	}
+
 	updated, err := r.pushOIDCClientState(ctx, oidcClient, apiClient, current)
 	if err != nil {
 		log.Error(err, "Failed to push OIDC client state")
@@ -173,7 +186,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionTrue, "Reconciled", "OIDC client is in sync")
 
 	if updated {
-		return ctrl.Result{RequeueAfter: 500 * time.Millisecond}, nil
+		return ctrl.Result{RequeueAfter: 100 * time.Millisecond}, nil
 	}
 
 	return common.ApplyResync(ctrl.Result{}), nil
@@ -354,6 +367,12 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 	}
 
 	metrics.ResourceOperations.WithLabelValues("PocketIDOIDCClient", "updated").Inc()
+
+	if r.skipUpdate == nil {
+		r.skipUpdate = make(map[types.NamespacedName]bool)
+	}
+	r.skipUpdate[client.ObjectKeyFromObject(oidcClient)] = true
+
 	return true, nil
 }
 
