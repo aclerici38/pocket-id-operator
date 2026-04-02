@@ -81,7 +81,7 @@ func TestPushUserState_SkipsWhenInSync(t *testing.T) {
 	defer ts.Close()
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
-	if err := r.pushUserState(ctx, user, apiClient, current); err != nil {
+	if _, err := r.pushUserState(ctx, user, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -127,7 +127,7 @@ func TestPushUserState_UpdatesWhenFieldChanged(t *testing.T) {
 	defer ts.Close()
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
-	if err := r.pushUserState(ctx, user, apiClient, current); err != nil {
+	if _, err := r.pushUserState(ctx, user, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !updateCalled {
@@ -177,7 +177,7 @@ func TestPushUserState_PreservesEmailVerified(t *testing.T) {
 		defer ts.Close()
 		apiClient, _ := pocketid.NewClient(ts.URL, "")
 
-		if err := r.pushUserState(ctx, userCR, apiClient, &current); err != nil {
+		if _, err := r.pushUserState(ctx, userCR, apiClient, &current); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -217,7 +217,7 @@ func TestPushUserState_PreservesEmailVerified(t *testing.T) {
 		defer ts.Close()
 		apiClient, _ := pocketid.NewClient(ts.URL, "")
 
-		if err := r.pushUserState(ctx, userCR, apiClient, &current); err != nil {
+		if _, err := r.pushUserState(ctx, userCR, apiClient, &current); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if sentVerified == nil {
@@ -364,7 +364,7 @@ func TestPushUserState_UpdatesForEachField(t *testing.T) {
 			defer ts.Close()
 			apiClient, _ := pocketid.NewClient(ts.URL, "")
 
-			if err := r.pushUserState(ctx, userCR, apiClient, &current); err != nil {
+			if _, err := r.pushUserState(ctx, userCR, apiClient, &current); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			if !updateCalled {
@@ -414,7 +414,7 @@ func TestPushUserState_SkipsWhenAllFieldsMatch(t *testing.T) {
 	defer ts.Close()
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
-	if err := r.pushUserState(ctx, user, apiClient, current); err != nil {
+	if _, err := r.pushUserState(ctx, user, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

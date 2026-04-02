@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -63,6 +64,10 @@ type Reconciler struct {
 	// to avoid cache delays when secrets are created externally.
 	APIReader client.Reader
 	Scheme    *runtime.Scheme
+
+	// skipUpdate gates the update phase of reconciliation
+	// and just fetches the state
+	skipUpdate map[types.NamespacedName]bool
 }
 
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidusers,verbs=get;list;watch;create;update;patch;delete
@@ -150,7 +155,16 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
-	if err := r.pushUserState(ctx, user, apiClient, pUser); err != nil {
+	// Skip the push if this reconcile was triggered for post-update status refresh
+	key := client.ObjectKeyFromObject(user)
+	if r.skipUpdate[key] {
+		delete(r.skipUpdate, key)
+		_ = r.SetReadyCondition(ctx, user, metav1.ConditionTrue, "Reconciled", "User and API keys are in sync")
+		return common.ApplyResync(ctrl.Result{}), nil
+	}
+
+	updated, err := r.pushUserState(ctx, user, apiClient, pUser)
+	if err != nil {
 		log.Error(err, "Failed to push user state")
 		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
@@ -174,6 +188,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	_ = r.SetReadyCondition(ctx, user, metav1.ConditionTrue, "Reconciled", "User and API keys are in sync")
+
+	if updated {
+		return ctrl.Result{RequeueAfter: 100 * time.Millisecond}, nil
+	}
 
 	if cleanupResult.RequeueAfter > 0 {
 		return common.ApplyResync(cleanupResult), nil
@@ -481,12 +499,12 @@ func (r *Reconciler) createOrAdoptUser(ctx context.Context, user *pocketidintern
 
 // pushUserState compares the desired state from the CR spec against the current
 // state fetched from Pocket ID and only pushes an update if they differ.
-func (r *Reconciler) pushUserState(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client, current *pocketid.User) error {
+func (r *Reconciler) pushUserState(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client, current *pocketid.User) (bool, error) {
 	log := logf.FromContext(ctx)
 
 	desired, err := r.buildUserInput(ctx, user)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	// EmailVerified is managed by Pocket-ID.
@@ -495,17 +513,23 @@ func (r *Reconciler) pushUserState(ctx context.Context, user *pocketidinternalv1
 
 	if desired == current.ToInput() {
 		log.V(1).Info("User state is in sync, skipping update")
-		return nil
+		return false, nil
 	}
 
 	log.Info("Updating user", "name", user.Name)
 
 	if _, err := apiClient.UpdateUser(ctx, user.Status.UserID, desired); err != nil {
-		return fmt.Errorf("update user: %w", err)
+		return false, fmt.Errorf("update user: %w", err)
 	}
 
 	metrics.ResourceOperations.WithLabelValues("PocketIDUser", "updated").Inc()
-	return nil
+
+	if r.skipUpdate == nil {
+		r.skipUpdate = make(map[types.NamespacedName]bool)
+	}
+	r.skipUpdate[client.ObjectKeyFromObject(user)] = true
+
+	return true, nil
 }
 
 // setUserID persists only the user ID to status.

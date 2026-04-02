@@ -197,7 +197,7 @@ func TestPushOIDCClientState_SkipsWhenInSync(t *testing.T) {
 	defer ts.Close()
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
-	if err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
+	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -238,7 +238,7 @@ func TestPushOIDCClientState_UpdatesWhenFieldsChange(t *testing.T) {
 	defer ts.Close()
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
-	if err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
+	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !updateCalled {
@@ -285,7 +285,7 @@ func TestPushOIDCClientState_AlwaysPushesWhenCredentialsPresent(t *testing.T) {
 	defer ts.Close()
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
-	if err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
+	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !updateCalled {
@@ -330,7 +330,7 @@ func TestPushOIDCClientState_FirstReconcileClearsCredentials(t *testing.T) {
 	defer ts.Close()
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
-	if err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
+	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !updateCalled {
@@ -381,7 +381,7 @@ func TestPushOIDCClientState_UpdatesGroupsWhenChanged(t *testing.T) {
 	defer ts.Close()
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
-	if err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
+	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !groupsUpdateCalled {
@@ -437,7 +437,7 @@ func TestPushOIDCClientState_IsGroupRestrictedReflectsAggregation(t *testing.T) 
 	defer ts.Close()
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
-	if err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
+	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !groupsUpdateSent {

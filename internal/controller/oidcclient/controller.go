@@ -21,11 +21,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -53,6 +55,10 @@ type Reconciler struct {
 	common.BaseReconciler
 	APIReader client.Reader
 	Scheme    *runtime.Scheme
+
+	// skipUpdate gates the update phase of reconciliation
+	// and just fetches the state
+	skipUpdate map[types.NamespacedName]bool
 }
 
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidoidcclients,verbs=get;list;watch;create;update;patch;delete
@@ -143,7 +149,16 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
-	if err := r.pushOIDCClientState(ctx, oidcClient, apiClient, current); err != nil {
+	// Skip the push if this reconcile was triggered for post-update status refresh
+	key := client.ObjectKeyFromObject(oidcClient)
+	if r.skipUpdate[key] {
+		delete(r.skipUpdate, key)
+		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionTrue, "Reconciled", "OIDC client is in sync")
+		return common.ApplyResync(ctrl.Result{}), nil
+	}
+
+	updated, err := r.pushOIDCClientState(ctx, oidcClient, apiClient, current)
+	if err != nil {
 		log.Error(err, "Failed to push OIDC client state")
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
@@ -169,6 +184,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionTrue, "Reconciled", "OIDC client is in sync")
+
+	if updated {
+		return ctrl.Result{RequeueAfter: 100 * time.Millisecond}, nil
+	}
 
 	return common.ApplyResync(ctrl.Result{}), nil
 }
@@ -298,13 +317,13 @@ func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *po
 
 // pushOIDCClientState compares the desired state from the CR spec against the current
 // state fetched from Pocket ID and only pushes updates if they differ.
-func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client, current *pocketid.OIDCClient) error {
+func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client, current *pocketid.OIDCClient) (bool, error) {
 	log := logf.FromContext(ctx)
 
 	// Aggregate allowed groups before building input so IsGroupRestricted is correct
 	groupIDs, err := r.aggregateAllowedUserGroupIDs(ctx, oidcClient)
 	if err != nil {
-		return fmt.Errorf("aggregate allowed user groups: %w", err)
+		return false, fmt.Errorf("aggregate allowed user groups: %w", err)
 	}
 	metrics.OIDCClientAllowedGroupCount.WithLabelValues(oidcClient.Namespace, oidcClient.Name).Set(float64(len(groupIDs)))
 
@@ -325,7 +344,7 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 
 	if !clientChanged && !shouldPushCredentials && !groupsChanged {
 		log.V(1).Info("OIDC client state is in sync, skipping update")
-		return nil
+		return false, nil
 	}
 
 	log.Info("Updating OIDC client", "name", oidcClient.Name)
@@ -334,7 +353,7 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 	// are write-only and cannot be compared against the fetched state.
 	if clientChanged || shouldPushCredentials {
 		if _, err := apiClient.UpdateOIDCClient(ctx, oidcClient.Status.ClientID, desired); err != nil {
-			return fmt.Errorf("update OIDC client: %w", err)
+			return false, fmt.Errorf("update OIDC client: %w", err)
 		}
 	}
 
@@ -343,12 +362,18 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 			groupIDs = []string{}
 		}
 		if err := apiClient.UpdateOIDCClientAllowedGroups(ctx, oidcClient.Status.ClientID, groupIDs); err != nil {
-			return err
+			return false, err
 		}
 	}
 
 	metrics.ResourceOperations.WithLabelValues("PocketIDOIDCClient", "updated").Inc()
-	return nil
+
+	if r.skipUpdate == nil {
+		r.skipUpdate = make(map[types.NamespacedName]bool)
+	}
+	r.skipUpdate[client.ObjectKeyFromObject(oidcClient)] = true
+
+	return true, nil
 }
 
 // aggregateAllowedUserGroupIDs returns the union of:
