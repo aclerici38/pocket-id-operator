@@ -87,7 +87,7 @@ spec:
 
         # -- Controller reconciliation errors sustained over 10 minutes
         - alert: PocketIDReconcileErrors
-          expr: rate(controller_runtime_reconcile_total{result="error"}[5m]) > 0
+          expr: rate(controller_runtime_reconcile_total{result="error",job=~".*pocket-id-operator.*"}[5m]) > 0
           for: 10m
           labels:
             severity: warning
@@ -100,7 +100,7 @@ spec:
 
         # -- Work queue depth growing, indicating the operator is falling behind
         - alert: PocketIDWorkQueueBackup
-          expr: workqueue_depth > 10
+          expr: workqueue_depth{job=~".*pocket-id-operator.*"} > 10
           for: 10m
           labels:
             severity: warning
