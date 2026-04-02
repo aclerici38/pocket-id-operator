@@ -2,10 +2,21 @@
 header = ""
 body = """
 {% for group, commits in commits | group_by(attribute="group") %}
+{% if group == "Dependencies" %}
+<details>
+<summary>{{ group }}</summary>
+
+{% for commit in commits %}
+- {% if commit.breaking %}**breaking** {% endif %}{% if commit.scope %}**{{ commit.scope }}**: {% endif %}{{ commit.message }} ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/aclerici38/pocket-id-operator/commit/{{ commit.id }}))
+{%- endfor %}
+
+</details>
+{% else %}
 ### {{ group }}
 {% for commit in commits %}
 - {% if commit.breaking %}**breaking** {% endif %}{% if commit.scope %}**{{ commit.scope }}**: {% endif %}{{ commit.message }} ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/aclerici38/pocket-id-operator/commit/{{ commit.id }}))
 {%- endfor %}
+{% endif %}
 {% endfor %}
 """
 trim = true
