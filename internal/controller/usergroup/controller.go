@@ -150,7 +150,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionTrue, "Reconciled", "User group is in sync")
 
 	if updated {
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{RequeueAfter: 500 * time.Millisecond}, nil
 	}
 
 	return common.ApplyResync(ctrl.Result{}), nil
