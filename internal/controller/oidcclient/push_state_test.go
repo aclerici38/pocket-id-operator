@@ -230,12 +230,24 @@ func TestResolveLogoURLs_AutoGenerateFalse(t *testing.T) {
 	}
 }
 
-func TestResolveLogoURLs_NilLogoSpec(t *testing.T) {
-	r := &Reconciler{}
+func TestResolveLogoURLs_NilLogoSpecEnvFalse(t *testing.T) {
+	r := &Reconciler{DefaultAutoGenerateLogos: false}
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
 	logoURL, darkLogoURL := r.resolveLogoURLs(oidcClient, "my-app")
 	if logoURL != "" || darkLogoURL != "" {
-		t.Errorf("expected empty URLs when logo spec is nil, got %q %q", logoURL, darkLogoURL)
+		t.Errorf("expected empty URLs when logo spec is nil and env is false, got %q %q", logoURL, darkLogoURL)
+	}
+}
+
+func TestResolveLogoURLs_NilLogoSpecEnvTrue(t *testing.T) {
+	r := &Reconciler{DefaultAutoGenerateLogos: true}
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
+	logoURL, darkLogoURL := r.resolveLogoURLs(oidcClient, "my-app")
+	if logoURL != "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/my-app.svg" {
+		t.Errorf("expected hardcoded default when logo spec is nil and env is true, got %q", logoURL)
+	}
+	if darkLogoURL != "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/my-app-dark.svg" {
+		t.Errorf("expected hardcoded dark default when logo spec is nil and env is true, got %q", darkLogoURL)
 	}
 }
 

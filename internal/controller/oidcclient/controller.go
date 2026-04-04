@@ -523,23 +523,26 @@ func (r *Reconciler) resolveLogoURLs(oidcClient *pocketidinternalv1alpha1.Pocket
 	if logo != nil && logo.AutoGenerate != nil {
 		autoGenerate = *logo.AutoGenerate
 	}
-	if logo == nil || !autoGenerate {
+	if !autoGenerate {
 		return "", ""
 	}
 
 	logoName := name
-	if logo.NameOverride != "" {
+	if logo != nil && logo.NameOverride != "" {
 		logoName = logo.NameOverride
 	}
 
-	logoTemplate := logo.LogoURL
+	var logoTemplate, darkLogoTemplate string
+	if logo != nil {
+		logoTemplate = logo.LogoURL
+		darkLogoTemplate = logo.DarkLogoURL
+	}
 	if logoTemplate == "" {
 		logoTemplate = r.DefaultLogoTemplate
 	}
 	if logoTemplate == "" {
 		logoTemplate = defaultLogoTemplate
 	}
-	darkLogoTemplate := logo.DarkLogoURL
 	if darkLogoTemplate == "" {
 		darkLogoTemplate = r.DefaultDarkLogoTemplate
 	}
