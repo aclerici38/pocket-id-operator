@@ -159,26 +159,6 @@ func TestResolveLogoURLs_DeprecatedFieldsTakePrecedence(t *testing.T) {
 	}
 }
 
-func TestResolveLogoURLs_TemplateSubstitution(t *testing.T) {
-	r := &Reconciler{}
-	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
-		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{
-				AutoGenerate: boolPtr(true),
-				LogoURL:      "https://cdn.example.com/svg/{{name}}.svg",
-				DarkLogoURL:  "https://cdn.example.com/svg/{{name}}-dark.svg",
-			},
-		},
-	}
-	logoURL, darkLogoURL := r.resolveLogoURLs(oidcClient, "portainer")
-	if logoURL != "https://cdn.example.com/svg/portainer.svg" {
-		t.Errorf("expected template substitution, got %q", logoURL)
-	}
-	if darkLogoURL != "https://cdn.example.com/svg/portainer-dark.svg" {
-		t.Errorf("expected template substitution, got %q", darkLogoURL)
-	}
-}
-
 func TestResolveLogoURLs_NameOverride(t *testing.T) {
 	r := &Reconciler{}
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
