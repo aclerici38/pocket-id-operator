@@ -572,7 +572,7 @@ func (r *Reconciler) resolveLogoURLs(ctx context.Context, oidcClient *pocketidin
 		} else if checkReachable(resolved) {
 			logoURL = resolved
 		} else {
-			log.Info("Logo URL is not reachable, skipping", "url", resolved)
+			log.V(1).Info("Logo URL is not reachable, skipping", "url", resolved)
 		}
 	}
 	if darkLogoTemplate != "" {
@@ -582,7 +582,7 @@ func (r *Reconciler) resolveLogoURLs(ctx context.Context, oidcClient *pocketidin
 		} else if checkReachable(resolved) {
 			darkLogoURL = resolved
 		} else {
-			log.Info("Dark logo URL is not reachable, skipping", "url", resolved)
+			log.V(1).Info("Dark logo URL is not reachable, skipping", "url", resolved)
 		}
 	}
 
