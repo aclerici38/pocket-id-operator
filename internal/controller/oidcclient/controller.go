@@ -484,9 +484,7 @@ func (r *Reconciler) OidcClientInput(ctx context.Context, oidcClient *pocketidin
 		credentials = &pocketid.OIDCClientCredentials{FederatedIdentities: identities}
 	}
 
-	logoURL, darkLogoURL := r.resolveLogoURLs(ctx, oidcClient, oidcClient.Name)
-	hasLogo := logoURL != ""
-	hasDarkLogo := darkLogoURL != ""
+	logoURL, logoReachable, darkLogoURL, darkLogoReachable := r.resolveLogoURLs(ctx, oidcClient, oidcClient.Name)
 
 	// When callback URLs are not in the spec, preserve the server-side values.
 	// This prevents overwriting pocket-id's TOFU auto-detected URLs.
@@ -507,8 +505,8 @@ func (r *Reconciler) OidcClientInput(ctx context.Context, oidcClient *pocketidin
 		LaunchURL:                oidcClient.Spec.LaunchURL,
 		LogoURL:                  logoURL,
 		DarkLogoURL:              darkLogoURL,
-		HasLogo:                  hasLogo,
-		HasDarkLogo:              hasDarkLogo,
+		HasLogo:                  logoReachable,
+		HasDarkLogo:              darkLogoReachable,
 		IsPublic:                 oidcClient.Spec.IsPublic,
 		IsGroupRestricted:        len(oidcClient.Spec.AllowedUserGroups) > 0,
 		PKCEEnabled:              oidcClient.Spec.PKCEEnabled,
@@ -520,20 +518,19 @@ func (r *Reconciler) OidcClientInput(ctx context.Context, oidcClient *pocketidin
 // resolveLogoURLs determines the final logo URLs for the OIDC client.
 // The name used for {{name}} substitution is metadata.name, overridable via logo.nameOverride.
 // Precedence: deprecated spec.logoUrl/darkLogoUrl > logo struct template resolution > empty.
-// HEAD checks are skipped when the resolved URL matches the status URL and was already added.
-func (r *Reconciler) resolveLogoURLs(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, name string) (logoURL, darkLogoURL string) {
+// Always returns the resolved URL. Reachability is checked only when the URL changed or was
+// previously unreachable; otherwise the cached reachability from status is reused.
+func (r *Reconciler) resolveLogoURLs(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, name string) (logoURL string, logoReachable bool, darkLogoURL string, darkLogoReachable bool) {
 	// Deprecated fields take precedence for backwards compatibility
 	if oidcClient.Spec.LogoURL != "" || oidcClient.Spec.DarkLogoURL != "" {
-		return oidcClient.Spec.LogoURL, oidcClient.Spec.DarkLogoURL
+		return oidcClient.Spec.LogoURL, true, oidcClient.Spec.DarkLogoURL, true
 	}
 
 	logo := oidcClient.Spec.Logo
+
 	autoGenerate := r.DefaultAutoGenerateLogos
 	if logo != nil && logo.AutoGenerate != nil {
 		autoGenerate = *logo.AutoGenerate
-	}
-	if !autoGenerate {
-		return "", ""
 	}
 
 	logoName := name
@@ -541,22 +538,27 @@ func (r *Reconciler) resolveLogoURLs(ctx context.Context, oidcClient *pocketidin
 		logoName = logo.NameOverride
 	}
 
+	// Explicit per-client templates are always used regardless of autoGenerate.
+	// autoGenerate only controls whether default templates fill in when no
+	// explicit URL is set, independently for light and dark logos.
 	var logoTemplate, darkLogoTemplate string
 	if logo != nil {
 		logoTemplate = logo.LogoURL
 		darkLogoTemplate = logo.DarkLogoURL
 	}
-	if logoTemplate == "" {
-		logoTemplate = r.DefaultLogoTemplate
+	if logoTemplate == "" && autoGenerate {
+		if r.DefaultLogoTemplate != "" {
+			logoTemplate = r.DefaultLogoTemplate
+		} else {
+			logoTemplate = defaultLogoTemplate
+		}
 	}
-	if logoTemplate == "" {
-		logoTemplate = defaultLogoTemplate
-	}
-	if darkLogoTemplate == "" {
-		darkLogoTemplate = r.DefaultDarkLogoTemplate
-	}
-	if darkLogoTemplate == "" {
-		darkLogoTemplate = defaultDarkLogoTemplate
+	if darkLogoTemplate == "" && autoGenerate {
+		if r.DefaultDarkLogoTemplate != "" {
+			darkLogoTemplate = r.DefaultDarkLogoTemplate
+		} else {
+			darkLogoTemplate = defaultDarkLogoTemplate
+		}
 	}
 
 	log := logf.FromContext(ctx)
@@ -568,27 +570,27 @@ func (r *Reconciler) resolveLogoURLs(ctx context.Context, oidcClient *pocketidin
 	status := oidcClient.Status
 
 	if logoTemplate != "" {
-		resolved := strings.ReplaceAll(logoTemplate, "{{name}}", logoName)
-		if resolved == status.LogoURL && status.LogoAdded {
-			logoURL = resolved
-		} else if checkReachable(resolved) {
-			logoURL = resolved
+		logoURL = strings.ReplaceAll(logoTemplate, "{{name}}", logoName)
+		if status.LogoReachable && logoURL == status.LogoURL {
+			logoReachable = true
+		} else if checkReachable(logoURL) {
+			logoReachable = true
 		} else {
-			log.V(1).Info("Logo URL is not reachable, skipping", "url", resolved)
+			log.V(1).Info("Logo URL is not reachable", "url", logoURL)
 		}
 	}
 	if darkLogoTemplate != "" {
-		resolved := strings.ReplaceAll(darkLogoTemplate, "{{name}}", logoName)
-		if resolved == status.DarkLogoURL && status.DarkLogoAdded {
-			darkLogoURL = resolved
-		} else if checkReachable(resolved) {
-			darkLogoURL = resolved
+		darkLogoURL = strings.ReplaceAll(darkLogoTemplate, "{{name}}", logoName)
+		if status.DarkLogoReachable && darkLogoURL == status.DarkLogoURL {
+			darkLogoReachable = true
+		} else if checkReachable(darkLogoURL) {
+			darkLogoReachable = true
 		} else {
-			log.V(1).Info("Dark logo URL is not reachable, skipping", "url", resolved)
+			log.V(1).Info("Dark logo URL is not reachable", "url", darkLogoURL)
 		}
 	}
 
-	return logoURL, darkLogoURL
+	return logoURL, logoReachable, darkLogoURL, darkLogoReachable
 }
 
 // isURLReachable performs a HEAD request to check if a URL is reachable (2xx status).
@@ -715,17 +717,17 @@ func (r *Reconciler) clearSCIMProviderID(ctx context.Context, oidcClient *pocket
 	})
 }
 
-// updateLogoStatusIfChanged persists the resolved logo URLs and their added state to the CR status
-func (r *Reconciler) updateLogoStatusIfChanged(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, logoURL string, logoAdded bool, darkLogoURL string, darkLogoAdded bool) error {
+// updateLogoStatusIfChanged persists the resolved logo URLs and their reachability state to the CR status
+func (r *Reconciler) updateLogoStatusIfChanged(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, logoURL string, logoReachable bool, darkLogoURL string, darkLogoReachable bool) error {
 	s := oidcClient.Status
-	if s.LogoURL == logoURL && s.LogoAdded == logoAdded && s.DarkLogoURL == darkLogoURL && s.DarkLogoAdded == darkLogoAdded {
+	if s.LogoURL == logoURL && s.LogoReachable == logoReachable && s.DarkLogoURL == darkLogoURL && s.DarkLogoReachable == darkLogoReachable {
 		return nil
 	}
 	base := oidcClient.DeepCopy()
 	oidcClient.Status.LogoURL = logoURL
-	oidcClient.Status.LogoAdded = logoAdded
+	oidcClient.Status.LogoReachable = logoReachable
 	oidcClient.Status.DarkLogoURL = darkLogoURL
-	oidcClient.Status.DarkLogoAdded = darkLogoAdded
+	oidcClient.Status.DarkLogoReachable = darkLogoReachable
 	return r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
 }
 

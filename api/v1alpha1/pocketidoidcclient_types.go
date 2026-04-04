@@ -316,17 +316,17 @@ type PocketIDOIDCClientStatus struct {
 	// +optional
 	LogoURL string `json:"logoUrl,omitempty"`
 
-	// LogoAdded indicates whether the light logo URL was successfully added to Pocket-ID.
+	// LogoReachable indicates whether the light logo URL was reachable when last checked.
 	// +optional
-	LogoAdded bool `json:"logoAdded,omitempty"`
+	LogoReachable bool `json:"logoReachable,omitempty"`
 
 	// DarkLogoURL is the last resolved dark logo URL that was applied to Pocket-ID.
 	// +optional
 	DarkLogoURL string `json:"darkLogoUrl,omitempty"`
 
-	// DarkLogoAdded indicates whether the dark logo URL was successfully added to Pocket-ID.
+	// DarkLogoReachable indicates whether the dark logo URL was reachable when last checked.
 	// +optional
-	DarkLogoAdded bool `json:"darkLogoAdded,omitempty"`
+	DarkLogoReachable bool `json:"darkLogoReachable,omitempty"`
 
 	// SCIMProviderID is the pocket-id ID of the SCIM service provider for this client, if configured.
 	// +optional

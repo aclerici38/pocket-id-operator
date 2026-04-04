@@ -422,17 +422,17 @@ spec:
               createdAt:
                 description: CreatedAt is the creation timestamp from Pocket-ID
                 type: string
-              darkLogoAdded:
-                description: DarkLogoAdded indicates whether the dark logo URL was
-                  successfully added to Pocket-ID.
+              darkLogoReachable:
+                description: DarkLogoReachable indicates whether the dark logo URL
+                  was reachable when last checked.
                 type: boolean
               darkLogoUrl:
                 description: DarkLogoURL is the last resolved dark logo URL that was
                   applied to Pocket-ID.
                 type: string
-              logoAdded:
-                description: LogoAdded indicates whether the light logo URL was successfully
-                  added to Pocket-ID.
+              logoReachable:
+                description: LogoReachable indicates whether the light logo URL was
+                  reachable when last checked.
                 type: boolean
               logoUrl:
                 description: LogoURL is the last resolved light logo URL that was

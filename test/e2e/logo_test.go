@@ -45,9 +45,9 @@ var _ = Describe("Logo Auto-Generation", Ordered, func() {
 				"-o", "jsonpath={.status.logoUrl}")
 			Expect(logoURL).To(ContainSubstring("grafana"))
 
-			logoAdded := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-				"-o", "jsonpath={.status.logoAdded}")
-			Expect(logoAdded).To(Equal("true"))
+			logoReachable := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
+				"-o", "jsonpath={.status.logoReachable}")
+			Expect(logoReachable).To(Equal("true"))
 		})
 
 		AfterAll(func() {

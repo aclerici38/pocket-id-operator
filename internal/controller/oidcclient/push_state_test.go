@@ -147,12 +147,18 @@ func TestResolveLogoURLs_DeprecatedFieldsTakePrecedence(t *testing.T) {
 			Logo:        &pocketidinternalv1alpha1.OIDCClientLogoSpec{AutoGenerate: boolPtr(true)},
 		},
 	}
-	logoURL, darkLogoURL := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
+	logoURL, logoReachable, darkLogoURL, darkLogoReachable := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
 	if logoURL != "https://explicit.example.com/logo.png" {
 		t.Errorf("expected deprecated logoUrl to win, got %q", logoURL)
 	}
+	if !logoReachable {
+		t.Error("expected logoReachable to be true for deprecated field")
+	}
 	if darkLogoURL != "https://explicit.example.com/logo-dark.png" {
 		t.Errorf("expected deprecated darkLogoUrl to win, got %q", darkLogoURL)
+	}
+	if !darkLogoReachable {
+		t.Error("expected darkLogoReachable to be true for deprecated field")
 	}
 
 	// Verify deprecated fields flow through OidcClientInput end-to-end
@@ -182,7 +188,7 @@ func TestResolveLogoURLs_NameOverride(t *testing.T) {
 			},
 		},
 	}
-	logoURL, _ := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
+	logoURL, _, _, _ := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
 	if logoURL != "https://cdn.example.com/custom-icon.svg" {
 		t.Errorf("expected nameOverride to be used, got %q", logoURL)
 	}
@@ -201,7 +207,7 @@ func TestResolveLogoURLs_EnvVarFallback(t *testing.T) {
 			},
 		},
 	}
-	logoURL, darkLogoURL := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
+	logoURL, _, darkLogoURL, _ := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
 	if logoURL != "https://cdn.example.com/grafana.svg" {
 		t.Errorf("expected env var fallback, got %q", logoURL)
 	}
@@ -219,7 +225,7 @@ func TestResolveLogoURLs_HardcodedDefaults(t *testing.T) {
 			},
 		},
 	}
-	logoURL, darkLogoURL := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
+	logoURL, _, darkLogoURL, _ := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
 	if logoURL != grafanaLogoURL {
 		t.Errorf("expected hardcoded default logo template, got %q", logoURL)
 	}
@@ -237,25 +243,56 @@ func TestResolveLogoURLs_AutoGenerateFalse(t *testing.T) {
 			},
 		},
 	}
-	logoURL, darkLogoURL := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
+	logoURL, logoReachable, darkLogoURL, darkLogoReachable := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
 	if logoURL != "" || darkLogoURL != "" {
 		t.Errorf("expected empty URLs when autoGenerate=false, got %q %q", logoURL, darkLogoURL)
+	}
+	if logoReachable || darkLogoReachable {
+		t.Error("expected reachable to be false when autoGenerate=false")
+	}
+}
+
+func TestResolveLogoURLs_ExplicitURLIgnoresAutoGenerateFalse(t *testing.T) {
+	r := &Reconciler{IsLogoReachable: alwaysReachable}
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{
+				AutoGenerate: boolPtr(false),
+				LogoURL:      "https://cdn.example.com/{{name}}.svg",
+			},
+		},
+	}
+	logoURL, logoReachable, darkLogoURL, darkLogoReachable := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
+	if logoURL != "https://cdn.example.com/my-app.svg" {
+		t.Errorf("expected explicit logoUrl to be used despite autoGenerate=false, got %q", logoURL)
+	}
+	if !logoReachable {
+		t.Error("expected logoReachable to be true")
+	}
+	if darkLogoURL != "" {
+		t.Errorf("expected dark logo to be empty when not set and autoGenerate=false, got %q", darkLogoURL)
+	}
+	if darkLogoReachable {
+		t.Error("expected darkLogoReachable to be false")
 	}
 }
 
 func TestResolveLogoURLs_NilLogoSpecEnvFalse(t *testing.T) {
 	r := &Reconciler{DefaultAutoGenerateLogos: false}
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
-	logoURL, darkLogoURL := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
+	logoURL, logoReachable, darkLogoURL, darkLogoReachable := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
 	if logoURL != "" || darkLogoURL != "" {
 		t.Errorf("expected empty URLs when logo spec is nil and env is false, got %q %q", logoURL, darkLogoURL)
+	}
+	if logoReachable || darkLogoReachable {
+		t.Error("expected reachable to be false when env is false")
 	}
 }
 
 func TestResolveLogoURLs_NilLogoSpecEnvTrue(t *testing.T) {
 	r := &Reconciler{DefaultAutoGenerateLogos: true, IsLogoReachable: alwaysReachable}
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
-	logoURL, darkLogoURL := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
+	logoURL, _, darkLogoURL, _ := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
 	if logoURL != "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/my-app.svg" {
 		t.Errorf("expected hardcoded default when logo spec is nil and env is true, got %q", logoURL)
 	}
@@ -271,7 +308,7 @@ func TestResolveLogoURLs_AutoGenerateNilDefaultsToEnvTrue(t *testing.T) {
 			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{},
 		},
 	}
-	logoURL, _ := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
+	logoURL, _, _, _ := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
 	if logoURL != "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/my-app.svg" {
 		t.Errorf("expected nil autoGenerate to follow env default true, got %q", logoURL)
 	}
@@ -284,9 +321,12 @@ func TestResolveLogoURLs_AutoGenerateNilDefaultsToEnvFalse(t *testing.T) {
 			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{},
 		},
 	}
-	logoURL, darkLogoURL := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
+	logoURL, logoReachable, darkLogoURL, darkLogoReachable := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
 	if logoURL != "" || darkLogoURL != "" {
 		t.Errorf("expected empty URLs when env default is false, got %q %q", logoURL, darkLogoURL)
+	}
+	if logoReachable || darkLogoReachable {
+		t.Error("expected reachable to be false when env default is false")
 	}
 }
 
@@ -299,13 +339,16 @@ func TestResolveLogoURLs_ExplicitTrueOverridesEnvFalse(t *testing.T) {
 			},
 		},
 	}
-	logoURL, _ := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
+	logoURL, logoReachable, _, _ := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
 	if logoURL == "" {
 		t.Error("expected explicit autoGenerate=true to override env default false")
 	}
+	if !logoReachable {
+		t.Error("expected logoReachable to be true")
+	}
 }
 
-func TestResolveLogoURLs_UnreachableLogosSkipped(t *testing.T) {
+func TestResolveLogoURLs_UnreachableLogosStillReturnURL(t *testing.T) {
 	r := &Reconciler{DefaultAutoGenerateLogos: true, IsLogoReachable: neverReachable}
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
@@ -314,13 +357,16 @@ func TestResolveLogoURLs_UnreachableLogosSkipped(t *testing.T) {
 			},
 		},
 	}
-	logoURL, darkLogoURL := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
-	if logoURL != "" || darkLogoURL != "" {
-		t.Errorf("expected empty URLs when logos are unreachable, got %q %q", logoURL, darkLogoURL)
+	logoURL, logoReachable, darkLogoURL, darkLogoReachable := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
+	if logoURL == "" || darkLogoURL == "" {
+		t.Errorf("expected URLs to still be returned when unreachable, got %q %q", logoURL, darkLogoURL)
+	}
+	if logoReachable || darkLogoReachable {
+		t.Error("expected reachable to be false when logos are unreachable")
 	}
 }
 
-func TestResolveLogoURLs_OnlyReachableLogoIncluded(t *testing.T) {
+func TestResolveLogoURLs_OnlyLightReachable(t *testing.T) {
 	r := &Reconciler{DefaultAutoGenerateLogos: true, IsLogoReachable: onlyLightReachable}
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
@@ -329,12 +375,18 @@ func TestResolveLogoURLs_OnlyReachableLogoIncluded(t *testing.T) {
 			},
 		},
 	}
-	logoURL, darkLogoURL := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
+	logoURL, logoReachable, darkLogoURL, darkLogoReachable := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
 	if logoURL != grafanaLogoURL {
-		t.Errorf("expected light logo to be included, got %q", logoURL)
+		t.Errorf("expected light logo URL, got %q", logoURL)
 	}
-	if darkLogoURL != "" {
-		t.Errorf("expected dark logo to be skipped when unreachable, got %q", darkLogoURL)
+	if !logoReachable {
+		t.Error("expected light logo to be reachable")
+	}
+	if darkLogoURL != grafanaDarkLogoURL {
+		t.Errorf("expected dark logo URL to still be returned, got %q", darkLogoURL)
+	}
+	if darkLogoReachable {
+		t.Error("expected dark logo to be unreachable")
 	}
 }
 
@@ -348,13 +400,13 @@ func TestResolveLogoURLs_PerClientTemplateOverridesEnvVar(t *testing.T) {
 			},
 		},
 	}
-	logoURL, _ := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
+	logoURL, _, _, _ := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
 	if logoURL != "https://custom.example.com/my-app.png" {
 		t.Errorf("expected per-client template to override env var, got %q", logoURL)
 	}
 }
 
-func TestResolveLogoURLs_SkipsHEADWhenStatusMatchesAndAdded(t *testing.T) {
+func TestResolveLogoURLs_SkipsHEADWhenStatusMatchesAndReachable(t *testing.T) {
 	headCalled := false
 	r := &Reconciler{
 		DefaultAutoGenerateLogos: true,
@@ -367,21 +419,27 @@ func TestResolveLogoURLs_SkipsHEADWhenStatusMatchesAndAdded(t *testing.T) {
 	expectedDark := grafanaDarkLogoURL
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
 		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
-			LogoURL:       expectedLogo,
-			LogoAdded:     true,
-			DarkLogoURL:   expectedDark,
-			DarkLogoAdded: true,
+			LogoURL:           expectedLogo,
+			LogoReachable:     true,
+			DarkLogoURL:       expectedDark,
+			DarkLogoReachable: true,
 		},
 	}
-	logoURL, darkLogoURL := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
+	logoURL, logoReachable, darkLogoURL, darkLogoReachable := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
 	if headCalled {
-		t.Error("expected HEAD check to be skipped when status matches and logo was added")
+		t.Error("expected HEAD check to be skipped when status matches and logo was reachable")
 	}
 	if logoURL != expectedLogo {
 		t.Errorf("expected %q, got %q", expectedLogo, logoURL)
 	}
+	if !logoReachable {
+		t.Error("expected logoReachable to be true")
+	}
 	if darkLogoURL != expectedDark {
 		t.Errorf("expected %q, got %q", expectedDark, darkLogoURL)
+	}
+	if !darkLogoReachable {
+		t.Error("expected darkLogoReachable to be true")
 	}
 }
 
@@ -396,20 +454,23 @@ func TestResolveLogoURLs_RunsHEADWhenURLChanges(t *testing.T) {
 	}
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
 		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
-			LogoURL:   "https://old-cdn.example.com/grafana.svg",
-			LogoAdded: true,
+			LogoURL:       "https://old-cdn.example.com/grafana.svg",
+			LogoReachable: true,
 		},
 	}
-	logoURL, _ := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
+	logoURL, logoReachable, _, _ := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
 	if !headCalled {
 		t.Error("expected HEAD check when resolved URL differs from status URL")
 	}
 	if logoURL != grafanaLogoURL {
 		t.Errorf("unexpected logo URL: %q", logoURL)
 	}
+	if !logoReachable {
+		t.Error("expected logoReachable to be true")
+	}
 }
 
-func TestResolveLogoURLs_RunsHEADWhenNotAdded(t *testing.T) {
+func TestResolveLogoURLs_RunsHEADWhenNotReachable(t *testing.T) {
 	headCalled := false
 	r := &Reconciler{
 		DefaultAutoGenerateLogos: true,
@@ -421,16 +482,19 @@ func TestResolveLogoURLs_RunsHEADWhenNotAdded(t *testing.T) {
 	expectedLogo := grafanaLogoURL
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
 		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
-			LogoURL:   expectedLogo,
-			LogoAdded: false,
+			LogoURL:       expectedLogo,
+			LogoReachable: false,
 		},
 	}
-	logoURL, _ := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
+	logoURL, logoReachable, _, _ := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
 	if !headCalled {
-		t.Error("expected HEAD check when logo URL matches but was not added")
+		t.Error("expected HEAD check when logo URL matches but was not reachable")
 	}
 	if logoURL != expectedLogo {
 		t.Errorf("expected %q, got %q", expectedLogo, logoURL)
+	}
+	if !logoReachable {
+		t.Error("expected logoReachable to be true after successful HEAD check")
 	}
 }
 
