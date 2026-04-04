@@ -177,13 +177,13 @@ type OIDCClientLogoSpec struct {
 
 	// LogoURL is the URL template for the light logo.
 	// Use {{name}} as a placeholder for the logo name.
-	// Defaults to the DEFAULT_LOGO_TEMPLATE env var on the operator.
+	// Defaults to the DEFAULT_LOGO_URL env var on the operator.
 	// +optional
 	LogoURL string `json:"logoUrl,omitempty"`
 
 	// DarkLogoURL is the URL template for the dark logo.
 	// Use {{name}} as a placeholder for the logo name.
-	// Defaults to the DEFAULT_DARK_LOGO_TEMPLATE env var on the operator.
+	// Defaults to the DEFAULT_DARK_LOGO_URL env var on the operator.
 	// +optional
 	DarkLogoURL string `json:"darkLogoUrl,omitempty"`
 }

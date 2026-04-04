@@ -60,9 +60,9 @@ type Reconciler struct {
 	APIReader client.Reader
 	Scheme    *runtime.Scheme
 
-	// DefaultLogoTemplate is the default URL template for light logos (from DEFAULT_LOGO_TEMPLATE env var).
+	// DefaultLogoTemplate is the default URL template for light logos (from DEFAULT_LOGO_URL env var).
 	DefaultLogoTemplate string
-	// DefaultDarkLogoTemplate is the default URL template for dark logos (from DEFAULT_DARK_LOGO_TEMPLATE env var).
+	// DefaultDarkLogoTemplate is the default URL template for dark logos (from DEFAULT_DARK_LOGO_URL env var).
 	DefaultDarkLogoTemplate string
 
 	// skipUpdate gates the update phase of reconciliation

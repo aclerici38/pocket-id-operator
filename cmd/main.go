@@ -195,8 +195,8 @@ func main() {
 		BaseReconciler:          common.BaseReconciler{Client: mgr.GetClient(), APIReader: mgr.GetAPIReader()},
 		APIReader:               mgr.GetAPIReader(),
 		Scheme:                  mgr.GetScheme(),
-		DefaultLogoTemplate:     os.Getenv("DEFAULT_LOGO_TEMPLATE"),
-		DefaultDarkLogoTemplate: os.Getenv("DEFAULT_DARK_LOGO_TEMPLATE"),
+		DefaultLogoTemplate:     os.Getenv("DEFAULT_LOGO_URL"),
+		DefaultDarkLogoTemplate: os.Getenv("DEFAULT_DARK_LOGO_URL"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PocketIDOIDCClient")
 		os.Exit(1)
