@@ -581,12 +581,12 @@ func (r *Reconciler) resolveLogoURLs(ctx context.Context, oidcClient *pocketidin
 
 // isURLReachable performs a HEAD request to check if a URL is reachable (2xx status).
 func isURLReachable(url string) bool {
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Head(url)
+	httpClient := &http.Client{Timeout: 5 * time.Second}
+	resp, err := httpClient.Head(url)
 	if err != nil {
 		return false
 	}
-	resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return resp.StatusCode >= 200 && resp.StatusCode < 300
 }
 
