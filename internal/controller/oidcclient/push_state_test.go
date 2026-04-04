@@ -92,7 +92,7 @@ func TestOidcClientInput_CallbackURLFallbackFromCurrent(t *testing.T) {
 		LogoutCallbackURLs: []string{"https://current.example.com/logout"},
 	}
 
-	input := reconciler.OidcClientInput(context.Background(), oidcClient, current)
+	input := reconciler.OidcClientInput(oidcClient, current, "", "")
 
 	if len(input.CallbackURLs) != 1 || input.CallbackURLs[0] != "https://current.example.com/cb" {
 		t.Errorf("expected fallback to current callback URLs, got %v", input.CallbackURLs)
@@ -117,7 +117,7 @@ func TestOidcClientInput_SpecCallbackURLsTakePrecedenceOverCurrent(t *testing.T)
 		LogoutCallbackURLs: []string{"https://current.example.com/logout"},
 	}
 
-	input := reconciler.OidcClientInput(context.Background(), oidcClient, current)
+	input := reconciler.OidcClientInput(oidcClient, current, "", "")
 
 	if len(input.CallbackURLs) != 1 || input.CallbackURLs[0] != "https://spec.example.com/cb" {
 		t.Errorf("expected spec callback URLs to take precedence, got %v", input.CallbackURLs)
@@ -161,13 +161,13 @@ func TestResolveLogoURLs_DeprecatedFieldsTakePrecedence(t *testing.T) {
 		t.Error("expected darkLogoReachable to be true for deprecated field")
 	}
 
-	// Verify deprecated fields flow through OidcClientInput end-to-end
-	input := r.OidcClientInput(context.Background(), oidcClient, nil)
+	// Verify OidcClientInput correctly passes through reachable logo URLs
+	input := r.OidcClientInput(oidcClient, nil, logoURL, darkLogoURL)
 	if input.LogoURL != "https://explicit.example.com/logo.png" {
-		t.Errorf("expected deprecated logoUrl in OidcClientInput, got %q", input.LogoURL)
+		t.Errorf("expected logoUrl in OidcClientInput, got %q", input.LogoURL)
 	}
 	if input.DarkLogoURL != "https://explicit.example.com/logo-dark.png" {
-		t.Errorf("expected deprecated darkLogoUrl in OidcClientInput, got %q", input.DarkLogoURL)
+		t.Errorf("expected darkLogoUrl in OidcClientInput, got %q", input.DarkLogoURL)
 	}
 	if !input.HasLogo {
 		t.Error("expected HasLogo to be true")

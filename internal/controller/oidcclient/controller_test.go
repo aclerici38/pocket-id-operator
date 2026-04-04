@@ -47,7 +47,7 @@ func TestOidcClientInput(t *testing.T) {
 		},
 	}
 
-	input := reconciler.OidcClientInput(context.Background(), oidc, nil)
+	input := reconciler.OidcClientInput(oidc, nil, "https://example.com/logo.png", "https://example.com/logo-dark.png")
 	if input.Name != "fallback-name" {
 		t.Errorf("expected Name %q, got %q", "fallback-name", input.Name)
 	}
@@ -106,7 +106,7 @@ func TestOidcClientInput_UsesSpecNameWhenSet(t *testing.T) {
 			Name: "display-name",
 		},
 	}
-	input := reconciler.OidcClientInput(context.Background(), oidcClient, nil)
+	input := reconciler.OidcClientInput(oidcClient, nil, "", "")
 	if input.Name != "display-name" {
 		t.Errorf("expected spec.name %q in OIDCClientInput.Name, got %q", "display-name", input.Name)
 	}
