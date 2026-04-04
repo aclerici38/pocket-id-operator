@@ -17,6 +17,11 @@ import (
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
+const (
+	grafanaLogoURL     = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/grafana.svg"
+	grafanaDarkLogoURL = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/grafana-dark.svg"
+)
+
 // pocketIDOIDCClientAPIResponse is the JSON shape returned by Pocket-ID OIDC client
 // endpoints, used in httptest servers within this package's tests.
 type pocketIDOIDCClientAPIResponse struct {
@@ -215,10 +220,10 @@ func TestResolveLogoURLs_HardcodedDefaults(t *testing.T) {
 		},
 	}
 	logoURL, darkLogoURL := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
-	if logoURL != "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/grafana.svg" {
+	if logoURL != grafanaLogoURL {
 		t.Errorf("expected hardcoded default logo template, got %q", logoURL)
 	}
-	if darkLogoURL != "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/grafana-dark.svg" {
+	if darkLogoURL != grafanaDarkLogoURL {
 		t.Errorf("expected hardcoded default dark logo template, got %q", darkLogoURL)
 	}
 }
@@ -325,7 +330,7 @@ func TestResolveLogoURLs_OnlyReachableLogoIncluded(t *testing.T) {
 		},
 	}
 	logoURL, darkLogoURL := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
-	if logoURL != "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/grafana.svg" {
+	if logoURL != grafanaLogoURL {
 		t.Errorf("expected light logo to be included, got %q", logoURL)
 	}
 	if darkLogoURL != "" {
@@ -346,6 +351,86 @@ func TestResolveLogoURLs_PerClientTemplateOverridesEnvVar(t *testing.T) {
 	logoURL, _ := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
 	if logoURL != "https://custom.example.com/my-app.png" {
 		t.Errorf("expected per-client template to override env var, got %q", logoURL)
+	}
+}
+
+func TestResolveLogoURLs_SkipsHEADWhenStatusMatchesAndAdded(t *testing.T) {
+	headCalled := false
+	r := &Reconciler{
+		DefaultAutoGenerateLogos: true,
+		IsLogoReachable: func(string) bool {
+			headCalled = true
+			return true
+		},
+	}
+	expectedLogo := grafanaLogoURL
+	expectedDark := grafanaDarkLogoURL
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
+			LogoURL:       expectedLogo,
+			LogoAdded:     true,
+			DarkLogoURL:   expectedDark,
+			DarkLogoAdded: true,
+		},
+	}
+	logoURL, darkLogoURL := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
+	if headCalled {
+		t.Error("expected HEAD check to be skipped when status matches and logo was added")
+	}
+	if logoURL != expectedLogo {
+		t.Errorf("expected %q, got %q", expectedLogo, logoURL)
+	}
+	if darkLogoURL != expectedDark {
+		t.Errorf("expected %q, got %q", expectedDark, darkLogoURL)
+	}
+}
+
+func TestResolveLogoURLs_RunsHEADWhenURLChanges(t *testing.T) {
+	headCalled := false
+	r := &Reconciler{
+		DefaultAutoGenerateLogos: true,
+		IsLogoReachable: func(string) bool {
+			headCalled = true
+			return true
+		},
+	}
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
+			LogoURL:   "https://old-cdn.example.com/grafana.svg",
+			LogoAdded: true,
+		},
+	}
+	logoURL, _ := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
+	if !headCalled {
+		t.Error("expected HEAD check when resolved URL differs from status URL")
+	}
+	if logoURL != grafanaLogoURL {
+		t.Errorf("unexpected logo URL: %q", logoURL)
+	}
+}
+
+func TestResolveLogoURLs_RunsHEADWhenNotAdded(t *testing.T) {
+	headCalled := false
+	r := &Reconciler{
+		DefaultAutoGenerateLogos: true,
+		IsLogoReachable: func(string) bool {
+			headCalled = true
+			return true
+		},
+	}
+	expectedLogo := grafanaLogoURL
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
+			LogoURL:   expectedLogo,
+			LogoAdded: false,
+		},
+	}
+	logoURL, _ := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
+	if !headCalled {
+		t.Error("expected HEAD check when logo URL matches but was not added")
+	}
+	if logoURL != expectedLogo {
+		t.Errorf("expected %q, got %q", expectedLogo, logoURL)
 	}
 }
 
