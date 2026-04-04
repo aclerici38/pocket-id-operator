@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -47,6 +48,9 @@ import (
 const (
 	oidcClientFinalizer          = "pocketid.internal/oidc-client-finalizer"
 	UserGroupOIDCClientFinalizer = "pocketid.internal/user-group-oidc-client-finalizer"
+
+	defaultLogoTemplate     = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/{{name}}.svg"
+	defaultDarkLogoTemplate = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/{{name}}-dark.svg"
 )
 
 // Reconciler reconciles a PocketIDOIDCClient object
@@ -55,6 +59,11 @@ type Reconciler struct {
 	common.BaseReconciler
 	APIReader client.Reader
 	Scheme    *runtime.Scheme
+
+	// DefaultLogoTemplate is the default URL template for light logos (from DEFAULT_LOGO_TEMPLATE env var).
+	DefaultLogoTemplate string
+	// DefaultDarkLogoTemplate is the default URL template for dark logos (from DEFAULT_DARK_LOGO_TEMPLATE env var).
+	DefaultDarkLogoTemplate string
 
 	// skipUpdate gates the update phase of reconciliation
 	// and just fetches the state
@@ -465,8 +474,9 @@ func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.Pocket
 		credentials = &pocketid.OIDCClientCredentials{FederatedIdentities: identities}
 	}
 
-	hasLogo := oidcClient.Spec.LogoURL != ""
-	hasDarkLogo := oidcClient.Spec.DarkLogoURL != ""
+	logoURL, darkLogoURL := r.resolveLogoURLs(oidcClient, name)
+	hasLogo := logoURL != ""
+	hasDarkLogo := darkLogoURL != ""
 
 	// When callback URLs are not in the spec, preserve the server-side values.
 	// This prevents overwriting pocket-id's TOFU auto-detected URLs.
@@ -485,8 +495,8 @@ func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.Pocket
 		CallbackURLs:             callbackURLs,
 		LogoutCallbackURLs:       logoutCallbackURLs,
 		LaunchURL:                oidcClient.Spec.LaunchURL,
-		LogoURL:                  oidcClient.Spec.LogoURL,
-		DarkLogoURL:              oidcClient.Spec.DarkLogoURL,
+		LogoURL:                  logoURL,
+		DarkLogoURL:              darkLogoURL,
 		HasLogo:                  hasLogo,
 		HasDarkLogo:              hasDarkLogo,
 		IsPublic:                 oidcClient.Spec.IsPublic,
@@ -495,6 +505,49 @@ func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.Pocket
 		RequiresReauthentication: oidcClient.Spec.RequiresReauthentication,
 		Credentials:              credentials,
 	}
+}
+
+// resolveLogoURLs determines the final logo URLs for the OIDC client.
+// Precedence: deprecated spec.logoUrl/darkLogoUrl > logo struct template resolution > empty.
+func (r *Reconciler) resolveLogoURLs(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, name string) (logoURL, darkLogoURL string) {
+	// Deprecated fields take precedence for backwards compatibility
+	if oidcClient.Spec.LogoURL != "" || oidcClient.Spec.DarkLogoURL != "" {
+		return oidcClient.Spec.LogoURL, oidcClient.Spec.DarkLogoURL
+	}
+
+	logo := oidcClient.Spec.Logo
+	if logo == nil || (logo.AutoGenerate != nil && !*logo.AutoGenerate) {
+		return "", ""
+	}
+
+	logoName := name
+	if logo.NameOverride != "" {
+		logoName = logo.NameOverride
+	}
+
+	logoTemplate := logo.LogoURL
+	if logoTemplate == "" {
+		logoTemplate = r.DefaultLogoTemplate
+	}
+	if logoTemplate == "" {
+		logoTemplate = defaultLogoTemplate
+	}
+	darkLogoTemplate := logo.DarkLogoURL
+	if darkLogoTemplate == "" {
+		darkLogoTemplate = r.DefaultDarkLogoTemplate
+	}
+	if darkLogoTemplate == "" {
+		darkLogoTemplate = defaultDarkLogoTemplate
+	}
+
+	if logoTemplate != "" {
+		logoURL = strings.ReplaceAll(logoTemplate, "{{name}}", logoName)
+	}
+	if darkLogoTemplate != "" {
+		darkLogoURL = strings.ReplaceAll(darkLogoTemplate, "{{name}}", logoName)
+	}
+
+	return logoURL, darkLogoURL
 }
 
 // clearClientStatus clears the ClientID from status, triggering recreation on next reconcile.

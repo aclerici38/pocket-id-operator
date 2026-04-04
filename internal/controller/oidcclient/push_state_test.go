@@ -121,6 +121,173 @@ func TestOidcClientInput_SpecCallbackURLsTakePrecedenceOverCurrent(t *testing.T)
 	}
 }
 
+// --- Logo URL resolution tests ---
+
+func boolPtr(b bool) *bool { return &b }
+
+func TestResolveLogoURLs_DeprecatedFieldsTakePrecedence(t *testing.T) {
+	r := &Reconciler{DefaultLogoTemplate: "https://cdn.example.com/{{name}}.svg"}
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-app", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			LogoURL:     "https://explicit.example.com/logo.png",
+			DarkLogoURL: "https://explicit.example.com/logo-dark.png",
+			Logo:        &pocketidinternalv1alpha1.OIDCClientLogoSpec{AutoGenerate: boolPtr(true)},
+		},
+	}
+	logoURL, darkLogoURL := r.resolveLogoURLs(oidcClient, "my-app")
+	if logoURL != "https://explicit.example.com/logo.png" {
+		t.Errorf("expected deprecated logoUrl to win, got %q", logoURL)
+	}
+	if darkLogoURL != "https://explicit.example.com/logo-dark.png" {
+		t.Errorf("expected deprecated darkLogoUrl to win, got %q", darkLogoURL)
+	}
+
+	// Verify deprecated fields flow through OidcClientInput end-to-end
+	input := r.OidcClientInput(oidcClient, nil)
+	if input.LogoURL != "https://explicit.example.com/logo.png" {
+		t.Errorf("expected deprecated logoUrl in OidcClientInput, got %q", input.LogoURL)
+	}
+	if input.DarkLogoURL != "https://explicit.example.com/logo-dark.png" {
+		t.Errorf("expected deprecated darkLogoUrl in OidcClientInput, got %q", input.DarkLogoURL)
+	}
+	if !input.HasLogo {
+		t.Error("expected HasLogo to be true")
+	}
+	if !input.HasDarkLogo {
+		t.Error("expected HasDarkLogo to be true")
+	}
+}
+
+func TestResolveLogoURLs_TemplateSubstitution(t *testing.T) {
+	r := &Reconciler{}
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{
+				AutoGenerate: boolPtr(true),
+				LogoURL:      "https://cdn.example.com/svg/{{name}}.svg",
+				DarkLogoURL:  "https://cdn.example.com/svg/{{name}}-dark.svg",
+			},
+		},
+	}
+	logoURL, darkLogoURL := r.resolveLogoURLs(oidcClient, "portainer")
+	if logoURL != "https://cdn.example.com/svg/portainer.svg" {
+		t.Errorf("expected template substitution, got %q", logoURL)
+	}
+	if darkLogoURL != "https://cdn.example.com/svg/portainer-dark.svg" {
+		t.Errorf("expected template substitution, got %q", darkLogoURL)
+	}
+}
+
+func TestResolveLogoURLs_NameOverride(t *testing.T) {
+	r := &Reconciler{}
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{
+				AutoGenerate: boolPtr(true),
+				NameOverride: "custom-icon",
+				LogoURL:      "https://cdn.example.com/{{name}}.svg",
+			},
+		},
+	}
+	logoURL, _ := r.resolveLogoURLs(oidcClient, "my-app")
+	if logoURL != "https://cdn.example.com/custom-icon.svg" {
+		t.Errorf("expected nameOverride to be used, got %q", logoURL)
+	}
+}
+
+func TestResolveLogoURLs_EnvVarFallback(t *testing.T) {
+	r := &Reconciler{
+		DefaultLogoTemplate:     "https://cdn.example.com/{{name}}.svg",
+		DefaultDarkLogoTemplate: "https://cdn.example.com/{{name}}-dark.svg",
+	}
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{
+				AutoGenerate: boolPtr(true),
+			},
+		},
+	}
+	logoURL, darkLogoURL := r.resolveLogoURLs(oidcClient, "grafana")
+	if logoURL != "https://cdn.example.com/grafana.svg" {
+		t.Errorf("expected env var fallback, got %q", logoURL)
+	}
+	if darkLogoURL != "https://cdn.example.com/grafana-dark.svg" {
+		t.Errorf("expected env var fallback, got %q", darkLogoURL)
+	}
+}
+
+func TestResolveLogoURLs_HardcodedDefaults(t *testing.T) {
+	r := &Reconciler{}
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{
+				AutoGenerate: boolPtr(true),
+			},
+		},
+	}
+	logoURL, darkLogoURL := r.resolveLogoURLs(oidcClient, "grafana")
+	if logoURL != "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/grafana.svg" {
+		t.Errorf("expected hardcoded default logo template, got %q", logoURL)
+	}
+	if darkLogoURL != "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/grafana-dark.svg" {
+		t.Errorf("expected hardcoded default dark logo template, got %q", darkLogoURL)
+	}
+}
+
+func TestResolveLogoURLs_AutoGenerateFalse(t *testing.T) {
+	r := &Reconciler{}
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{
+				AutoGenerate: boolPtr(false),
+			},
+		},
+	}
+	logoURL, darkLogoURL := r.resolveLogoURLs(oidcClient, "my-app")
+	if logoURL != "" || darkLogoURL != "" {
+		t.Errorf("expected empty URLs when autoGenerate=false, got %q %q", logoURL, darkLogoURL)
+	}
+}
+
+func TestResolveLogoURLs_NilLogoSpec(t *testing.T) {
+	r := &Reconciler{}
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
+	logoURL, darkLogoURL := r.resolveLogoURLs(oidcClient, "my-app")
+	if logoURL != "" || darkLogoURL != "" {
+		t.Errorf("expected empty URLs when logo spec is nil, got %q %q", logoURL, darkLogoURL)
+	}
+}
+
+func TestResolveLogoURLs_AutoGenerateNilDefaultsTrue(t *testing.T) {
+	r := &Reconciler{}
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{},
+		},
+	}
+	logoURL, _ := r.resolveLogoURLs(oidcClient, "my-app")
+	if logoURL != "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/my-app.svg" {
+		t.Errorf("expected nil autoGenerate to default to true with hardcoded template, got %q", logoURL)
+	}
+}
+
+func TestResolveLogoURLs_PerClientTemplateOverridesEnvVar(t *testing.T) {
+	r := &Reconciler{DefaultLogoTemplate: "https://default.example.com/{{name}}.svg"}
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{
+				AutoGenerate: boolPtr(true),
+				LogoURL:      "https://custom.example.com/{{name}}.png",
+			},
+		},
+	}
+	logoURL, _ := r.resolveLogoURLs(oidcClient, "my-app")
+	if logoURL != "https://custom.example.com/my-app.png" {
+		t.Errorf("expected per-client template to override env var, got %q", logoURL)
+	}
+}
+
 // --- aggregateAllowedUserGroupIDs sort order ---
 
 func TestAggregateAllowedUserGroupIDs_OutputIsSorted(t *testing.T) {

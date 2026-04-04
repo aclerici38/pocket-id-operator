@@ -48,7 +48,7 @@
           "type": "string"
         },
         "darkLogoUrl": {
-          "description": "Dark logo URL for the client",
+          "description": "Dark logo URL for the client\nDeprecated: Use spec.logo.darkLogoUrl instead.",
           "type": "string"
         },
         "federatedIdentities": {
@@ -134,8 +134,32 @@
           "description": "Launch URL for the client",
           "type": "string"
         },
+        "logo": {
+          "description": "Logo configures logo URLs for the OIDC client with template support.",
+          "properties": {
+            "autoGenerate": {
+              "default": true,
+              "description": "AutoGenerate controls whether to auto-generate logo URLs from templates\nwhen logoUrl/darkLogoUrl are not explicitly set in this struct.\nDefaults to true",
+              "type": "boolean"
+            },
+            "darkLogoUrl": {
+              "description": "DarkLogoURL is the URL template for the dark logo.\nUse {{name}} as a placeholder for the logo name.\nDefaults to the DEFAULT_DARK_LOGO_TEMPLATE env var on the operator.",
+              "type": "string"
+            },
+            "logoUrl": {
+              "description": "LogoURL is the URL template for the light logo.\nUse {{name}} as a placeholder for the logo name.\nDefaults to the DEFAULT_LOGO_TEMPLATE env var on the operator.",
+              "type": "string"
+            },
+            "nameOverride": {
+              "description": "NameOverride overrides the logo name used in template substitution.\nDefaults to the OIDC client's resolved name (spec.name or metadata.name).",
+              "type": "string"
+            }
+          },
+          "type": "object",
+          "additionalProperties": false
+        },
         "logoUrl": {
-          "description": "Logo URL for the client",
+          "description": "Logo URL for the client\nDeprecated: Use spec.logo.logoUrl instead.",
           "type": "string"
         },
         "logoutCallbackUrls": {
