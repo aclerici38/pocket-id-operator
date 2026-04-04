@@ -150,7 +150,7 @@
               "type": "string"
             },
             "nameOverride": {
-              "description": "NameOverride overrides the logo name used in template substitution.\nDefaults to the OIDC client's resolved name (spec.name or metadata.name).",
+              "description": "NameOverride overrides the logo name used in template substitution.\nDefaults to metadata.name.",
               "type": "string"
             }
           },

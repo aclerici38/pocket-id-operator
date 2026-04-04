@@ -476,7 +476,7 @@ func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.Pocket
 		credentials = &pocketid.OIDCClientCredentials{FederatedIdentities: identities}
 	}
 
-	logoURL, darkLogoURL := r.resolveLogoURLs(oidcClient, name)
+	logoURL, darkLogoURL := r.resolveLogoURLs(oidcClient, oidcClient.Name)
 	hasLogo := logoURL != ""
 	hasDarkLogo := darkLogoURL != ""
 
@@ -510,6 +510,7 @@ func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.Pocket
 }
 
 // resolveLogoURLs determines the final logo URLs for the OIDC client.
+// The name used for {{name}} substitution is metadata.name, overridable via logo.nameOverride.
 // Precedence: deprecated spec.logoUrl/darkLogoUrl > logo struct template resolution > empty.
 func (r *Reconciler) resolveLogoURLs(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, name string) (logoURL, darkLogoURL string) {
 	// Deprecated fields take precedence for backwards compatibility

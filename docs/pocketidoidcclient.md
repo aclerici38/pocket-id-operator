@@ -96,8 +96,7 @@ https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/<name>.svg
 https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/<name>-dark.svg
 ```
 
-The `{{name}}` placeholder in templates is replaced with the client's resolved name
-(`spec.name`, or `metadata.name` if `spec.name` is not set).
+The `{{name}}` placeholder in templates is replaced with the resource's `metadata.name`.
 
 ### Enabling / Disabling
 
@@ -123,7 +122,7 @@ The `spec.logo` struct supports the following fields:
 | Field            | Description                                                                 |
 |------------------|-----------------------------------------------------------------------------|
 | `autoGenerate`   | Override the global `AUTOGENERATE_LOGOS` default for this client.            |
-| `nameOverride`   | Override the name used in `{{name}}` substitution.                          |
+| `nameOverride`   | Override the name used in `{{name}}` substitution. Defaults to `metadata.name`. |
 | `logoUrl`        | URL template for the light logo. Defaults to `DEFAULT_LOGO_URL` env var, then the hardcoded dashboard-icons template. |
 | `darkLogoUrl`    | URL template for the dark logo. Defaults to `DEFAULT_DARK_LOGO_URL` env var, then the hardcoded dashboard-icons template. |
 

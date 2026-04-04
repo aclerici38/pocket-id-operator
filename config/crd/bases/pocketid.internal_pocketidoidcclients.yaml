@@ -177,7 +177,7 @@ spec:
                   nameOverride:
                     description: |-
                       NameOverride overrides the logo name used in template substitution.
-                      Defaults to the OIDC client's resolved name (spec.name or metadata.name).
+                      Defaults to metadata.name.
                     type: string
                 type: object
               logoUrl:

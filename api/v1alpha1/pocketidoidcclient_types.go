@@ -161,7 +161,7 @@ type OIDCClientSecretKeys struct {
 
 // OIDCClientLogoSpec configures logo URLs for the OIDC client.
 // Logo URLs support template substitution with {{name}} replaced by the
-// resolved logo name (nameOverride, or the client's spec.name / metadata.name).
+// resolved logo name (nameOverride, or metadata.name).
 type OIDCClientLogoSpec struct {
 	// AutoGenerate controls whether to auto-generate logo URLs from templates
 	// when logoUrl/darkLogoUrl are not explicitly set in this struct.
@@ -170,7 +170,7 @@ type OIDCClientLogoSpec struct {
 	AutoGenerate *bool `json:"autoGenerate,omitempty"`
 
 	// NameOverride overrides the logo name used in template substitution.
-	// Defaults to the OIDC client's resolved name (spec.name or metadata.name).
+	// Defaults to metadata.name.
 	// +optional
 	NameOverride string `json:"nameOverride,omitempty"`
 
