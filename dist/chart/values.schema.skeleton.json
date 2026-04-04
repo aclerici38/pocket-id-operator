@@ -175,6 +175,19 @@
         "resources": {
           "type": "object",
           "description": "Resource requests and limits for the operator container"
+        },
+        "autoGenerateLogos": {
+          "type": "boolean",
+          "description": "Auto-generate logo URLs for OIDC clients from templates. Set to false to make it opt-in per client.",
+          "default": true
+        },
+        "defaultLogoUrl": {
+          "type": "string",
+          "description": "Default URL template for light logos. Use {{name}} as placeholder. Defaults to the dashboard-icons CDN."
+        },
+        "defaultDarkLogoUrl": {
+          "type": "string",
+          "description": "Default URL template for dark logos. Use {{name}} as placeholder. Defaults to the dashboard-icons CDN."
         }
       }
     },

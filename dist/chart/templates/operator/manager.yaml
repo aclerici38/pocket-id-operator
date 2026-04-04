@@ -48,6 +48,20 @@ spec:
                     {{- range .Values.operator.args }}
                     - {{ . }}
                     {{- end }}
+                  env:
+                    - name: AUTOGENERATE_LOGOS
+                      value: {{ .Values.operator.autoGenerateLogos | quote }}
+                    {{- if .Values.operator.defaultLogoUrl }}
+                    - name: DEFAULT_LOGO_URL
+                      value: {{ .Values.operator.defaultLogoUrl | quote }}
+                    {{- end }}
+                    {{- if .Values.operator.defaultDarkLogoUrl }}
+                    - name: DEFAULT_DARK_LOGO_URL
+                      value: {{ .Values.operator.defaultDarkLogoUrl | quote }}
+                    {{- end }}
+                    {{- range .Values.operator.env }}
+                    - {{- toYaml . | nindent 22 }}
+                    {{- end }}
                   command:
                     - /manager
                   image: "{{ .Values.operator.image.repository }}:{{ .Values.operator.image.tag | default .Chart.AppVersion }}"
