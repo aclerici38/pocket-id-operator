@@ -356,6 +356,11 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 	}
 	shouldPushCredentials := hasCredentials || firstReconcile
 
+	// Update logo status whenever there's a diff from the status
+	if err := r.updateLogoStatusIfChanged(ctx, oidcClient, desired.LogoURL, desired.HasLogo, desired.DarkLogoURL, desired.HasDarkLogo); err != nil {
+		return false, fmt.Errorf("update logo status: %w", err)
+	}
+
 	if !clientChanged && !shouldPushCredentials && !groupsChanged {
 		log.V(1).Info("OIDC client state is in sync, skipping update")
 		return false, nil
@@ -368,9 +373,6 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 	if clientChanged || shouldPushCredentials {
 		if _, err := apiClient.UpdateOIDCClient(ctx, oidcClient.Status.ClientID, desired); err != nil {
 			return false, fmt.Errorf("update OIDC client: %w", err)
-		}
-		if err := r.updateLogoStatus(ctx, oidcClient, desired.LogoURL, desired.HasLogo, desired.DarkLogoURL, desired.HasDarkLogo); err != nil {
-			return false, fmt.Errorf("update logo status: %w", err)
 		}
 	}
 
@@ -713,8 +715,12 @@ func (r *Reconciler) clearSCIMProviderID(ctx context.Context, oidcClient *pocket
 	})
 }
 
-// updateLogoStatus persists the resolved logo URLs and their added state to the CR status.
-func (r *Reconciler) updateLogoStatus(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, logoURL string, logoAdded bool, darkLogoURL string, darkLogoAdded bool) error {
+// updateLogoStatusIfChanged persists the resolved logo URLs and their added state to the CR status
+func (r *Reconciler) updateLogoStatusIfChanged(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, logoURL string, logoAdded bool, darkLogoURL string, darkLogoAdded bool) error {
+	s := oidcClient.Status
+	if s.LogoURL == logoURL && s.LogoAdded == logoAdded && s.DarkLogoURL == darkLogoURL && s.DarkLogoAdded == darkLogoAdded {
+		return nil
+	}
 	base := oidcClient.DeepCopy()
 	oidcClient.Status.LogoURL = logoURL
 	oidcClient.Status.LogoAdded = logoAdded
