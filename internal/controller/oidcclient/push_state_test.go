@@ -259,8 +259,8 @@ func TestResolveLogoURLs_NilLogoSpec(t *testing.T) {
 	}
 }
 
-func TestResolveLogoURLs_AutoGenerateNilDefaultsTrue(t *testing.T) {
-	r := &Reconciler{}
+func TestResolveLogoURLs_AutoGenerateNilDefaultsToEnvTrue(t *testing.T) {
+	r := &Reconciler{DefaultAutoGenerateLogos: true}
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{},
@@ -268,7 +268,35 @@ func TestResolveLogoURLs_AutoGenerateNilDefaultsTrue(t *testing.T) {
 	}
 	logoURL, _ := r.resolveLogoURLs(oidcClient, "my-app")
 	if logoURL != "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/my-app.svg" {
-		t.Errorf("expected nil autoGenerate to default to true with hardcoded template, got %q", logoURL)
+		t.Errorf("expected nil autoGenerate to follow env default true, got %q", logoURL)
+	}
+}
+
+func TestResolveLogoURLs_AutoGenerateNilDefaultsToEnvFalse(t *testing.T) {
+	r := &Reconciler{DefaultAutoGenerateLogos: false}
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{},
+		},
+	}
+	logoURL, darkLogoURL := r.resolveLogoURLs(oidcClient, "my-app")
+	if logoURL != "" || darkLogoURL != "" {
+		t.Errorf("expected empty URLs when env default is false, got %q %q", logoURL, darkLogoURL)
+	}
+}
+
+func TestResolveLogoURLs_ExplicitTrueOverridesEnvFalse(t *testing.T) {
+	r := &Reconciler{DefaultAutoGenerateLogos: false}
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{
+				AutoGenerate: boolPtr(true),
+			},
+		},
+	}
+	logoURL, _ := r.resolveLogoURLs(oidcClient, "my-app")
+	if logoURL == "" {
+		t.Error("expected explicit autoGenerate=true to override env default false")
 	}
 }
 

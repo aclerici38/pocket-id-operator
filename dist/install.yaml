@@ -2902,11 +2902,10 @@ spec:
                   support.
                 properties:
                   autoGenerate:
-                    default: true
                     description: |-
                       AutoGenerate controls whether to auto-generate logo URLs from templates
                       when logoUrl/darkLogoUrl are not explicitly set in this struct.
-                      Defaults to true
+                      If not set, defaults to the AUTOGENERATE_LOGOS env var on the operator (which defaults to true).
                     type: boolean
                   darkLogoUrl:
                     description: |-

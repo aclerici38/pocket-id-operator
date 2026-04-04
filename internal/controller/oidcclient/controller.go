@@ -60,6 +60,8 @@ type Reconciler struct {
 	APIReader client.Reader
 	Scheme    *runtime.Scheme
 
+	// DefaultAutoGenerateLogos is the default for logo.autoGenerate when not set per-client (from AUTOGENERATE_LOGOS env var).
+	DefaultAutoGenerateLogos bool
 	// DefaultLogoTemplate is the default URL template for light logos (from DEFAULT_LOGO_URL env var).
 	DefaultLogoTemplate string
 	// DefaultDarkLogoTemplate is the default URL template for dark logos (from DEFAULT_DARK_LOGO_URL env var).
@@ -516,7 +518,11 @@ func (r *Reconciler) resolveLogoURLs(oidcClient *pocketidinternalv1alpha1.Pocket
 	}
 
 	logo := oidcClient.Spec.Logo
-	if logo == nil || (logo.AutoGenerate != nil && !*logo.AutoGenerate) {
+	autoGenerate := r.DefaultAutoGenerateLogos
+	if logo != nil && logo.AutoGenerate != nil {
+		autoGenerate = *logo.AutoGenerate
+	}
+	if logo == nil || !autoGenerate {
 		return "", ""
 	}
 
