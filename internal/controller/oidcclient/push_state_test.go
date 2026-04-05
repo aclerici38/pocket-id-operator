@@ -420,9 +420,9 @@ func TestResolveLogoURLs_SkipsHEADWhenStatusMatchesAndReachable(t *testing.T) {
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
 		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
 			LogoURL:           expectedLogo,
-			LogoReachable:     true,
+			LogoReachable:     boolPtr(true),
 			DarkLogoURL:       expectedDark,
-			DarkLogoReachable: true,
+			DarkLogoReachable: boolPtr(true),
 		},
 	}
 	logoURL, logoReachable, darkLogoURL, darkLogoReachable := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
@@ -455,7 +455,7 @@ func TestResolveLogoURLs_RunsHEADWhenURLChanges(t *testing.T) {
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
 		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
 			LogoURL:       "https://old-cdn.example.com/grafana.svg",
-			LogoReachable: true,
+			LogoReachable: boolPtr(true),
 		},
 	}
 	logoURL, logoReachable, _, _ := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
@@ -483,7 +483,7 @@ func TestResolveLogoURLs_RunsHEADWhenNotReachable(t *testing.T) {
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
 		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
 			LogoURL:       expectedLogo,
-			LogoReachable: false,
+			LogoReachable: boolPtr(false),
 		},
 	}
 	logoURL, logoReachable, _, _ := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
@@ -495,6 +495,53 @@ func TestResolveLogoURLs_RunsHEADWhenNotReachable(t *testing.T) {
 	}
 	if !logoReachable {
 		t.Error("expected logoReachable to be true after successful HEAD check")
+	}
+}
+
+func TestUpdateLogoStatus_SetsReachableFalseExplicitly(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-client", Namespace: testNamespace},
+	}
+
+	fc := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(oidcClient).
+		WithStatusSubresource(oidcClient).
+		Build()
+	r := &Reconciler{Client: fc, Scheme: scheme}
+	r.EnsureClient(fc)
+
+	ctx := context.Background()
+
+	// Simulate: light logo reachable, dark logo not reachable
+	err := r.updateLogoStatus(ctx, oidcClient, "https://example.com/logo.svg", true, "https://example.com/logo-dark.svg", false)
+	if err != nil {
+		t.Fatalf("updateLogoStatus failed: %v", err)
+	}
+
+	// Re-fetch from the fake API server
+	fetched := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
+	if err := fc.Get(ctx, client.ObjectKeyFromObject(oidcClient), fetched); err != nil {
+		t.Fatalf("get failed: %v", err)
+	}
+
+	if fetched.Status.LogoURL != "https://example.com/logo.svg" {
+		t.Errorf("expected logoUrl to be set, got %q", fetched.Status.LogoURL)
+	}
+	if fetched.Status.LogoReachable == nil || *fetched.Status.LogoReachable != true {
+		t.Error("expected logoReachable to be explicitly true")
+	}
+	if fetched.Status.DarkLogoURL != "https://example.com/logo-dark.svg" {
+		t.Errorf("expected darkLogoUrl to be set, got %q", fetched.Status.DarkLogoURL)
+	}
+	if fetched.Status.DarkLogoReachable == nil {
+		t.Fatal("expected darkLogoReachable to be explicitly set, got nil")
+	}
+	if *fetched.Status.DarkLogoReachable != false {
+		t.Error("expected darkLogoReachable to be false")
 	}
 }
 

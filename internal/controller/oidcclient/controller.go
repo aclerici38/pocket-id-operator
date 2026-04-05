@@ -595,7 +595,7 @@ func (r *Reconciler) resolveLogoURLs(ctx context.Context, oidcClient *pocketidin
 
 	if logoTemplate != "" {
 		logoURL = strings.ReplaceAll(logoTemplate, "{{name}}", logoName)
-		if status.LogoReachable && logoURL == status.LogoURL {
+		if status.LogoReachable != nil && *status.LogoReachable && logoURL == status.LogoURL {
 			logoReachable = true
 		} else if checkReachable(logoURL) {
 			logoReachable = true
@@ -605,7 +605,7 @@ func (r *Reconciler) resolveLogoURLs(ctx context.Context, oidcClient *pocketidin
 	}
 	if darkLogoTemplate != "" {
 		darkLogoURL = strings.ReplaceAll(darkLogoTemplate, "{{name}}", logoName)
-		if status.DarkLogoReachable && darkLogoURL == status.DarkLogoURL {
+		if status.DarkLogoReachable != nil && *status.DarkLogoReachable && darkLogoURL == status.DarkLogoURL {
 			darkLogoReachable = true
 		} else if checkReachable(darkLogoURL) {
 			darkLogoReachable = true
@@ -745,9 +745,9 @@ func (r *Reconciler) clearSCIMProviderID(ctx context.Context, oidcClient *pocket
 func (r *Reconciler) updateLogoStatus(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, logoURL string, logoReachable bool, darkLogoURL string, darkLogoReachable bool) error {
 	base := oidcClient.DeepCopy()
 	oidcClient.Status.LogoURL = logoURL
-	oidcClient.Status.LogoReachable = logoReachable
+	oidcClient.Status.LogoReachable = &logoReachable
 	oidcClient.Status.DarkLogoURL = darkLogoURL
-	oidcClient.Status.DarkLogoReachable = darkLogoReachable
+	oidcClient.Status.DarkLogoReachable = &darkLogoReachable
 	return r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
 }
 
