@@ -92,11 +92,11 @@ The operator can automatically set logo URLs for OIDC clients using a configurab
 By default it uses the [dashboard-icons](https://github.com/homarr-labs/dashboard-icons) CDN:
 
 ```
-https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/<name>.svg
-https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/<name>-dark.svg
+https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/{{name}}.svg
+https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/{{name}}-dark.svg
 ```
 
-The `{{name}}` placeholder in templates is replaced with the resource's `metadata.name`.
+The `{{name}}` placeholder in templates is replaced with the resource's `metadata.name` or `spec.logo.nameOverride`.
 
 ### Enabling / Disabling
 
@@ -115,6 +115,13 @@ env:
     value: "false"
 ```
 
+Or through the chart
+
+```yaml
+operator:
+  autoGenerateLogos: false
+```
+
 ### Configuration
 
 The `spec.logo` struct supports the following fields:
@@ -123,19 +130,18 @@ The `spec.logo` struct supports the following fields:
 |------------------|-----------------------------------------------------------------------------|
 | `autoGenerate`   | Override the global `AUTOGENERATE_LOGOS` default for this client.            |
 | `nameOverride`   | Override the name used in `{{name}}` substitution. Defaults to `metadata.name`. |
-| `logoUrl`        | URL template for the light logo. Defaults to `DEFAULT_LOGO_URL` env var, then the hardcoded dashboard-icons template. |
-| `darkLogoUrl`    | URL template for the dark logo. Defaults to `DEFAULT_DARK_LOGO_URL` env var, then the hardcoded dashboard-icons template. |
+| `logoUrl`        | URL for the light logo. Defaults to `DEFAULT_LOGO_URL` env var. |
+| `darkLogoUrl`    | URL for the dark logo. Defaults to `DEFAULT_DARK_LOGO_URL` env var. |
 
 ### Precedence
 
 Logo URLs are resolved in the following order:
 
-1. **Deprecated `spec.logoUrl` / `spec.darkLogoUrl`** — if set, these are used as-is. If using these, please migrate to `spec.logo.logoUrl` and `spec.logo.darkLogoUrl`.
-2. **`spec.logo` struct** — if `autoGenerate` is enabled, templates are resolved with `{{name}}` substitution.
-3. **No logo** — if `autoGenerate` is disabled and no deprecated fields are set.
+1. **Deprecated `spec.logoUrl` / `spec.darkLogoUrl`**: if set, these are used as-is. If using these, please migrate to `spec.logo.logoUrl` and `spec.logo.darkLogoUrl`. You can still set a full URL without templating in these fields. 
+2. **`spec.logo` struct**
+3. **No logo**: if `autoGenerate` is disabled and `spec.logo.logoUrl`/`spec.logo.darkLogoUrl` are empty
 
-Within the `spec.logo` struct, templates are resolved in this order:
-per-client `logoUrl`/`darkLogoUrl` > `DEFAULT_LOGO_URL`/`DEFAULT_DARK_LOGO_URL` env vars > hardcoded dashboard-icons defaults.
+Within the `spec.logo` struct, any entries in `spec.logo.logoUrl` or `spec.logo.darkLogoUrl` take precedence over the defaults set by env variables
 
 ### Operator Environment Variables
 

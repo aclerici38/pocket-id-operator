@@ -165,7 +165,7 @@ type OIDCClientSecretKeys struct {
 type OIDCClientLogoSpec struct {
 	// AutoGenerate controls whether to auto-generate logo URLs from templates
 	// when logoUrl/darkLogoUrl are not explicitly set in this struct.
-	// If not set, defaults to the AUTOGENERATE_LOGOS env var on the operator (which defaults to true).
+	// If not set, defaults to the AUTOGENERATE_LOGOS env var on the operator, which defaults to true.
 	// +optional
 	AutoGenerate *bool `json:"autoGenerate,omitempty"`
 
