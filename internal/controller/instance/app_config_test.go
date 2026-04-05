@@ -3,9 +3,11 @@ package instance
 import (
 	"testing"
 
+	"k8s.io/utils/ptr"
+
+	"github.com/aclerici38/pocket-id-go-client/v2/models"
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
-	"github.com/aclerici38/pocket-id-go-client/v2/models"
 )
 
 func TestHasAppConfigFields(t *testing.T) {
@@ -40,13 +42,17 @@ func TestHasAppConfigFields(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "UserManagement set",
-			modify:   func(i *pocketidinternalv1alpha1.PocketIDInstance) { i.Spec.UserManagement = &pocketidinternalv1alpha1.UserManagementConfig{} },
+			name: "UserManagement set",
+			modify: func(i *pocketidinternalv1alpha1.PocketIDInstance) {
+				i.Spec.UserManagement = &pocketidinternalv1alpha1.UserManagementConfig{}
+			},
 			expected: true,
 		},
 		{
-			name:     "EmailNotifications set",
-			modify:   func(i *pocketidinternalv1alpha1.PocketIDInstance) { i.Spec.EmailNotifications = &pocketidinternalv1alpha1.EmailNotificationsConfig{} },
+			name: "EmailNotifications set",
+			modify: func(i *pocketidinternalv1alpha1.PocketIDInstance) {
+				i.Spec.EmailNotifications = &pocketidinternalv1alpha1.EmailNotificationsConfig{}
+			},
 			expected: true,
 		},
 	}
@@ -64,17 +70,17 @@ func TestHasAppConfigFields(t *testing.T) {
 
 func TestAppConfigNeedsUpdate_NoChange(t *testing.T) {
 	current := pocketid.AppConfig{
-		"appName":        "Pocket ID",
+		"appName":         "Pocket ID",
 		"sessionDuration": "60",
-		"smtpHost":       "smtp.example.com",
-		"ldapEnabled":    "false",
+		"smtpHost":        "smtp.example.com",
+		"ldapEnabled":     "false",
 	}
 
 	dto := &models.GithubComPocketIDPocketIDBackendInternalDtoAppConfigUpdateDto{
-		AppName:         strPtr("Pocket ID"),
-		SessionDuration: strPtr("60"),
+		AppName:         ptr.To("Pocket ID"),
+		SessionDuration: ptr.To("60"),
 		SMTPHost:        "smtp.example.com",
-		LdapEnabled:     strPtr("false"),
+		LdapEnabled:     ptr.To("false"),
 	}
 
 	if appConfigNeedsUpdate(current, dto) {
@@ -84,13 +90,13 @@ func TestAppConfigNeedsUpdate_NoChange(t *testing.T) {
 
 func TestAppConfigNeedsUpdate_Changed(t *testing.T) {
 	current := pocketid.AppConfig{
-		"appName":        "Pocket ID",
+		"appName":         "Pocket ID",
 		"sessionDuration": "60",
 	}
 
 	dto := &models.GithubComPocketIDPocketIDBackendInternalDtoAppConfigUpdateDto{
-		AppName:         strPtr("My SSO"),
-		SessionDuration: strPtr("60"),
+		AppName:         ptr.To("My SSO"),
+		SessionDuration: ptr.To("60"),
 	}
 
 	if !appConfigNeedsUpdate(current, dto) {
@@ -118,7 +124,7 @@ func TestAppConfigNeedsUpdate_LDAPChanged(t *testing.T) {
 	}
 
 	dto := &models.GithubComPocketIDPocketIDBackendInternalDtoAppConfigUpdateDto{
-		LdapEnabled: strPtr("true"),
+		LdapEnabled: ptr.To("true"),
 	}
 
 	if !appConfigNeedsUpdate(current, dto) {

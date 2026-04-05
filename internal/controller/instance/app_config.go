@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"strings"
 
+	"k8s.io/utils/ptr"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
+	"github.com/aclerici38/pocket-id-go-client/v2/models"
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/helpers"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
-	"github.com/aclerici38/pocket-id-go-client/v2/models"
 )
 
 // hasAppConfigFields returns true if any spec section that should be managed
@@ -71,49 +72,49 @@ func (r *Reconciler) buildDesiredAppConfig(
 ) (*models.GithubComPocketIDPocketIDBackendInternalDtoAppConfigUpdateDto, error) {
 	// Start with current values for all required fields
 	dto := &models.GithubComPocketIDPocketIDBackendInternalDtoAppConfigUpdateDto{
-		AppName:                                   strPtr(current["appName"]),
-		SessionDuration:                           strPtr(current["sessionDuration"]),
-		HomePageURL:                               strPtr(current["homePageUrl"]),
-		DisableAnimations:                         strPtr(current["disableAnimations"]),
-		AccentColor:                               current["accentColor"],
-		AllowOwnAccountEdit:                       strPtr(current["allowOwnAccountEdit"]),
-		AllowUserSignups:                          strPtr(current["allowUserSignups"]),
-		EmailsVerified:                            strPtr(current["emailsVerified"]),
-		SignupDefaultCustomClaims:                 current["signupDefaultCustomClaims"],
-		SignupDefaultUserGroupIDs:                 current["signupDefaultUserGroupIDs"],
-		SMTPHost:                                  current["smtpHost"],
-		SMTPPort:                                  current["smtpPort"],
-		SMTPFrom:                                  current["smtpFrom"],
-		SMTPUser:                                  current["smtpUser"],
-		SMTPPassword:                              current["smtpPassword"],
-		SMTPTLS:                                   strPtr(current["smtpTls"]),
-		SMTPSkipCertVerify:                        current["smtpSkipCertVerify"],
-		EmailLoginNotificationEnabled:             strPtr(current["emailLoginNotificationEnabled"]),
-		EmailOneTimeAccessAsAdminEnabled:          strPtr(current["emailOneTimeAccessAsAdminEnabled"]),
-		EmailAPIKeyExpirationEnabled:              strPtr(current["emailApiKeyExpirationEnabled"]),
-		EmailOneTimeAccessAsUnauthenticatedEnabled: strPtr(current["emailOneTimeAccessAsUnauthenticatedEnabled"]),
-		EmailVerificationEnabled:                  strPtr(current["emailVerificationEnabled"]),
-		LdapEnabled:                               strPtr(current["ldapEnabled"]),
-		LdapURL:                                   current["ldapUrl"],
-		LdapBindDn:                                current["ldapBindDn"],
-		LdapBindPassword:                          current["ldapBindPassword"],
-		LdapBase:                                  current["ldapBase"],
-		LdapSkipCertVerify:                        current["ldapSkipCertVerify"],
-		LdapSoftDeleteUsers:                       current["ldapSoftDeleteUsers"],
-		LdapAdminGroupName:                        current["ldapAdminGroupName"],
-		LdapUserSearchFilter:                      current["ldapUserSearchFilter"],
-		LdapUserGroupSearchFilter:                 current["ldapUserGroupSearchFilter"],
-		LdapAttributeUserUniqueIdentifier:         current["ldapAttributeUserUniqueIdentifier"],
+		AppName:                          ptr.To(current["appName"]),
+		SessionDuration:                  ptr.To(current["sessionDuration"]),
+		HomePageURL:                      ptr.To(current["homePageUrl"]),
+		DisableAnimations:                ptr.To(current["disableAnimations"]),
+		AccentColor:                      current["accentColor"],
+		AllowOwnAccountEdit:              ptr.To(current["allowOwnAccountEdit"]),
+		AllowUserSignups:                 ptr.To(current["allowUserSignups"]),
+		EmailsVerified:                   ptr.To(current["emailsVerified"]),
+		SignupDefaultCustomClaims:        current["signupDefaultCustomClaims"],
+		SignupDefaultUserGroupIDs:        current["signupDefaultUserGroupIDs"],
+		SMTPHost:                         current["smtpHost"],
+		SMTPPort:                         current["smtpPort"],
+		SMTPFrom:                         current["smtpFrom"],
+		SMTPUser:                         current["smtpUser"],
+		SMTPPassword:                     current["smtpPassword"],
+		SMTPTLS:                          ptr.To(current["smtpTls"]),
+		SMTPSkipCertVerify:               current["smtpSkipCertVerify"],
+		EmailLoginNotificationEnabled:    ptr.To(current["emailLoginNotificationEnabled"]),
+		EmailOneTimeAccessAsAdminEnabled: ptr.To(current["emailOneTimeAccessAsAdminEnabled"]),
+		EmailAPIKeyExpirationEnabled:     ptr.To(current["emailApiKeyExpirationEnabled"]),
+		EmailOneTimeAccessAsUnauthenticatedEnabled: ptr.To(current["emailOneTimeAccessAsUnauthenticatedEnabled"]),
+		EmailVerificationEnabled:                   ptr.To(current["emailVerificationEnabled"]),
+		LdapEnabled:                                ptr.To(current["ldapEnabled"]),
+		LdapURL:                                    current["ldapUrl"],
+		LdapBindDn:                                 current["ldapBindDn"],
+		LdapBindPassword:                           current["ldapBindPassword"],
+		LdapBase:                                   current["ldapBase"],
+		LdapSkipCertVerify:                         current["ldapSkipCertVerify"],
+		LdapSoftDeleteUsers:                        current["ldapSoftDeleteUsers"],
+		LdapAdminGroupName:                         current["ldapAdminGroupName"],
+		LdapUserSearchFilter:                       current["ldapUserSearchFilter"],
+		LdapUserGroupSearchFilter:                  current["ldapUserGroupSearchFilter"],
+		LdapAttributeUserUniqueIdentifier:          current["ldapAttributeUserUniqueIdentifier"],
 		LdapAttributeUserUsername:                  current["ldapAttributeUserUsername"],
-		LdapAttributeUserEmail:                    current["ldapAttributeUserEmail"],
-		LdapAttributeUserFirstName:                current["ldapAttributeUserFirstName"],
-		LdapAttributeUserLastName:                 current["ldapAttributeUserLastName"],
-		LdapAttributeUserDisplayName:              current["ldapAttributeUserDisplayName"],
-		LdapAttributeUserProfilePicture:           current["ldapAttributeUserProfilePicture"],
-		LdapAttributeGroupMember:                  current["ldapAttributeGroupMember"],
-		LdapAttributeGroupUniqueIdentifier:        current["ldapAttributeGroupUniqueIdentifier"],
-		LdapAttributeGroupName:                    current["ldapAttributeGroupName"],
-		RequireUserEmail:                           strPtr(current["requireUserEmail"]),
+		LdapAttributeUserEmail:                     current["ldapAttributeUserEmail"],
+		LdapAttributeUserFirstName:                 current["ldapAttributeUserFirstName"],
+		LdapAttributeUserLastName:                  current["ldapAttributeUserLastName"],
+		LdapAttributeUserDisplayName:               current["ldapAttributeUserDisplayName"],
+		LdapAttributeUserProfilePicture:            current["ldapAttributeUserProfilePicture"],
+		LdapAttributeGroupMember:                   current["ldapAttributeGroupMember"],
+		LdapAttributeGroupUniqueIdentifier:         current["ldapAttributeGroupUniqueIdentifier"],
+		LdapAttributeGroupName:                     current["ldapAttributeGroupName"],
+		RequireUserEmail:                           ptr.To(current["requireUserEmail"]),
 	}
 
 	// Overlay CRD-managed fields
@@ -146,7 +147,7 @@ func (r *Reconciler) applyUIConfig(instance *pocketidinternalv1alpha1.PocketIDIn
 		dto.HomePageURL = &ui.HomePageURL
 	}
 	if ui.DisableAnimations != nil {
-		dto.DisableAnimations = strPtr(fmt.Sprintf("%t", *ui.DisableAnimations))
+		dto.DisableAnimations = ptr.To(fmt.Sprintf("%t", *ui.DisableAnimations))
 	}
 	if ui.AccentColor != "" {
 		dto.AccentColor = ui.AccentColor
@@ -159,13 +160,13 @@ func (r *Reconciler) applyUserManagementConfig(instance *pocketidinternalv1alpha
 	}
 	um := instance.Spec.UserManagement
 	if um.RequireUserEmail != nil {
-		dto.RequireUserEmail = strPtr(fmt.Sprintf("%t", *um.RequireUserEmail))
+		dto.RequireUserEmail = ptr.To(fmt.Sprintf("%t", *um.RequireUserEmail))
 	}
 	if um.EmailsVerified != nil {
-		dto.EmailsVerified = strPtr(fmt.Sprintf("%t", *um.EmailsVerified))
+		dto.EmailsVerified = ptr.To(fmt.Sprintf("%t", *um.EmailsVerified))
 	}
 	if um.AllowOwnAccountEdit != nil {
-		dto.AllowOwnAccountEdit = strPtr(fmt.Sprintf("%t", *um.AllowOwnAccountEdit))
+		dto.AllowOwnAccountEdit = ptr.To(fmt.Sprintf("%t", *um.AllowOwnAccountEdit))
 	}
 	if um.AllowUserSignups != "" {
 		dto.AllowUserSignups = &um.AllowUserSignups
@@ -211,19 +212,19 @@ func (r *Reconciler) applyEmailNotificationsConfig(instance *pocketidinternalv1a
 	}
 	en := instance.Spec.EmailNotifications
 	if en.LoginNotification != nil {
-		dto.EmailLoginNotificationEnabled = strPtr(fmt.Sprintf("%t", *en.LoginNotification))
+		dto.EmailLoginNotificationEnabled = ptr.To(fmt.Sprintf("%t", *en.LoginNotification))
 	}
 	if en.OneTimeAccessAsAdmin != nil {
-		dto.EmailOneTimeAccessAsAdminEnabled = strPtr(fmt.Sprintf("%t", *en.OneTimeAccessAsAdmin))
+		dto.EmailOneTimeAccessAsAdminEnabled = ptr.To(fmt.Sprintf("%t", *en.OneTimeAccessAsAdmin))
 	}
 	if en.APIKeyExpiration != nil {
-		dto.EmailAPIKeyExpirationEnabled = strPtr(fmt.Sprintf("%t", *en.APIKeyExpiration))
+		dto.EmailAPIKeyExpirationEnabled = ptr.To(fmt.Sprintf("%t", *en.APIKeyExpiration))
 	}
 	if en.OneTimeAccessAsUnauthenticated != nil {
-		dto.EmailOneTimeAccessAsUnauthenticatedEnabled = strPtr(fmt.Sprintf("%t", *en.OneTimeAccessAsUnauthenticated))
+		dto.EmailOneTimeAccessAsUnauthenticatedEnabled = ptr.To(fmt.Sprintf("%t", *en.OneTimeAccessAsUnauthenticated))
 	}
 	if en.Verification != nil {
-		dto.EmailVerificationEnabled = strPtr(fmt.Sprintf("%t", *en.Verification))
+		dto.EmailVerificationEnabled = ptr.To(fmt.Sprintf("%t", *en.Verification))
 	}
 }
 
@@ -232,7 +233,7 @@ func (r *Reconciler) applyLDAPConfig(ctx context.Context, instance *pocketidinte
 		return nil
 	}
 	ldap := instance.Spec.LDAP
-	dto.LdapEnabled = strPtr("true")
+	dto.LdapEnabled = ptr.To("true")
 	dto.LdapURL = ldap.URL
 	dto.LdapBindDn = ldap.BindDN
 	dto.LdapBase = ldap.Base
@@ -298,61 +299,70 @@ func (r *Reconciler) applyLDAPConfig(ctx context.Context, instance *pocketidinte
 // appConfigNeedsUpdate compares the current config against the desired DTO to
 // determine if an update call is needed. It checks only the fields we manage.
 func appConfigNeedsUpdate(current pocketid.AppConfig, desired *models.GithubComPocketIDPocketIDBackendInternalDtoAppConfigUpdateDto) bool {
-	check := func(key string, desiredVal *string) bool {
-		if desiredVal == nil {
-			return false
+	ptrFields := []struct {
+		key string
+		val *string
+	}{
+		{"appName", desired.AppName},
+		{"sessionDuration", desired.SessionDuration},
+		{"homePageUrl", desired.HomePageURL},
+		{"disableAnimations", desired.DisableAnimations},
+		{"allowOwnAccountEdit", desired.AllowOwnAccountEdit},
+		{"allowUserSignups", desired.AllowUserSignups},
+		{"emailsVerified", desired.EmailsVerified},
+		{"smtpTls", desired.SMTPTLS},
+		{"emailLoginNotificationEnabled", desired.EmailLoginNotificationEnabled},
+		{"emailOneTimeAccessAsAdminEnabled", desired.EmailOneTimeAccessAsAdminEnabled},
+		{"emailApiKeyExpirationEnabled", desired.EmailAPIKeyExpirationEnabled},
+		{"emailOneTimeAccessAsUnauthenticatedEnabled", desired.EmailOneTimeAccessAsUnauthenticatedEnabled},
+		{"emailVerificationEnabled", desired.EmailVerificationEnabled},
+		{"ldapEnabled", desired.LdapEnabled},
+		{"requireUserEmail", desired.RequireUserEmail},
+	}
+	for _, f := range ptrFields {
+		if f.val != nil && current[f.key] != *f.val {
+			return true
 		}
-		return current[key] != *desiredVal
-	}
-	checkStr := func(key, desiredVal string) bool {
-		return current[key] != desiredVal
 	}
 
-	return check("appName", desired.AppName) ||
-		check("sessionDuration", desired.SessionDuration) ||
-		check("homePageUrl", desired.HomePageURL) ||
-		check("disableAnimations", desired.DisableAnimations) ||
-		checkStr("accentColor", desired.AccentColor) ||
-		check("allowOwnAccountEdit", desired.AllowOwnAccountEdit) ||
-		check("allowUserSignups", desired.AllowUserSignups) ||
-		check("emailsVerified", desired.EmailsVerified) ||
-		checkStr("signupDefaultCustomClaims", desired.SignupDefaultCustomClaims) ||
-		checkStr("signupDefaultUserGroupIDs", desired.SignupDefaultUserGroupIDs) ||
-		checkStr("smtpHost", desired.SMTPHost) ||
-		checkStr("smtpPort", desired.SMTPPort) ||
-		checkStr("smtpFrom", desired.SMTPFrom) ||
-		checkStr("smtpUser", desired.SMTPUser) ||
-		checkStr("smtpPassword", desired.SMTPPassword) ||
-		check("smtpTls", desired.SMTPTLS) ||
-		checkStr("smtpSkipCertVerify", desired.SMTPSkipCertVerify) ||
-		check("emailLoginNotificationEnabled", desired.EmailLoginNotificationEnabled) ||
-		check("emailOneTimeAccessAsAdminEnabled", desired.EmailOneTimeAccessAsAdminEnabled) ||
-		check("emailApiKeyExpirationEnabled", desired.EmailAPIKeyExpirationEnabled) ||
-		check("emailOneTimeAccessAsUnauthenticatedEnabled", desired.EmailOneTimeAccessAsUnauthenticatedEnabled) ||
-		check("emailVerificationEnabled", desired.EmailVerificationEnabled) ||
-		check("ldapEnabled", desired.LdapEnabled) ||
-		checkStr("ldapUrl", desired.LdapURL) ||
-		checkStr("ldapBindDn", desired.LdapBindDn) ||
-		checkStr("ldapBindPassword", desired.LdapBindPassword) ||
-		checkStr("ldapBase", desired.LdapBase) ||
-		checkStr("ldapSkipCertVerify", desired.LdapSkipCertVerify) ||
-		checkStr("ldapSoftDeleteUsers", desired.LdapSoftDeleteUsers) ||
-		checkStr("ldapAdminGroupName", desired.LdapAdminGroupName) ||
-		checkStr("ldapUserSearchFilter", desired.LdapUserSearchFilter) ||
-		checkStr("ldapUserGroupSearchFilter", desired.LdapUserGroupSearchFilter) ||
-		checkStr("ldapAttributeUserUniqueIdentifier", desired.LdapAttributeUserUniqueIdentifier) ||
-		checkStr("ldapAttributeUserUsername", desired.LdapAttributeUserUsername) ||
-		checkStr("ldapAttributeUserEmail", desired.LdapAttributeUserEmail) ||
-		checkStr("ldapAttributeUserFirstName", desired.LdapAttributeUserFirstName) ||
-		checkStr("ldapAttributeUserLastName", desired.LdapAttributeUserLastName) ||
-		checkStr("ldapAttributeUserDisplayName", desired.LdapAttributeUserDisplayName) ||
-		checkStr("ldapAttributeUserProfilePicture", desired.LdapAttributeUserProfilePicture) ||
-		checkStr("ldapAttributeGroupMember", desired.LdapAttributeGroupMember) ||
-		checkStr("ldapAttributeGroupUniqueIdentifier", desired.LdapAttributeGroupUniqueIdentifier) ||
-		checkStr("ldapAttributeGroupName", desired.LdapAttributeGroupName) ||
-		check("requireUserEmail", desired.RequireUserEmail)
-}
+	strFields := []struct {
+		key string
+		val string
+	}{
+		{"accentColor", desired.AccentColor},
+		{"signupDefaultCustomClaims", desired.SignupDefaultCustomClaims},
+		{"signupDefaultUserGroupIDs", desired.SignupDefaultUserGroupIDs},
+		{"smtpHost", desired.SMTPHost},
+		{"smtpPort", desired.SMTPPort},
+		{"smtpFrom", desired.SMTPFrom},
+		{"smtpUser", desired.SMTPUser},
+		{"smtpPassword", desired.SMTPPassword},
+		{"smtpSkipCertVerify", desired.SMTPSkipCertVerify},
+		{"ldapUrl", desired.LdapURL},
+		{"ldapBindDn", desired.LdapBindDn},
+		{"ldapBindPassword", desired.LdapBindPassword},
+		{"ldapBase", desired.LdapBase},
+		{"ldapSkipCertVerify", desired.LdapSkipCertVerify},
+		{"ldapSoftDeleteUsers", desired.LdapSoftDeleteUsers},
+		{"ldapAdminGroupName", desired.LdapAdminGroupName},
+		{"ldapUserSearchFilter", desired.LdapUserSearchFilter},
+		{"ldapUserGroupSearchFilter", desired.LdapUserGroupSearchFilter},
+		{"ldapAttributeUserUniqueIdentifier", desired.LdapAttributeUserUniqueIdentifier},
+		{"ldapAttributeUserUsername", desired.LdapAttributeUserUsername},
+		{"ldapAttributeUserEmail", desired.LdapAttributeUserEmail},
+		{"ldapAttributeUserFirstName", desired.LdapAttributeUserFirstName},
+		{"ldapAttributeUserLastName", desired.LdapAttributeUserLastName},
+		{"ldapAttributeUserDisplayName", desired.LdapAttributeUserDisplayName},
+		{"ldapAttributeUserProfilePicture", desired.LdapAttributeUserProfilePicture},
+		{"ldapAttributeGroupMember", desired.LdapAttributeGroupMember},
+		{"ldapAttributeGroupUniqueIdentifier", desired.LdapAttributeGroupUniqueIdentifier},
+		{"ldapAttributeGroupName", desired.LdapAttributeGroupName},
+	}
+	for _, f := range strFields {
+		if current[f.key] != f.val {
+			return true
+		}
+	}
 
-func strPtr(s string) *string {
-	return &s
+	return false
 }
