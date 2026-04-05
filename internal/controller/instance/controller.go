@@ -129,6 +129,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
+	// Reconcile application configuration via the API (UI, SMTP, LDAP, etc.)
+	// Only runs when the instance is ready (API available).
+	if isInstanceReady(instance) {
+		if err := r.reconcileAppConfig(ctx, instance); err != nil {
+			log.Error(err, "Could not reconcile application configuration via API")
+		}
+	}
+
 	// Fetch and store the deployed PocketID version; also updates InstanceInfo gauge.
 	if err := r.reconcileVersion(ctx, instance); err != nil {
 		log.Error(err, "Could not fetch PocketID version from API (endpoint added in v2.3.0)")
@@ -141,6 +149,16 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	return common.ApplyResync(ctrl.Result{}), nil
+}
+
+// isInstanceReady returns true if the instance has a Ready=True condition.
+func isInstanceReady(instance *pocketidinternalv1alpha1.PocketIDInstance) bool {
+	for _, c := range instance.Status.Conditions {
+		if c.Type == readyConditionType {
+			return c.Status == metav1.ConditionTrue
+		}
+	}
+	return false
 }
 
 // Helpers

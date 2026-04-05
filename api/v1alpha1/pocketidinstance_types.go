@@ -101,38 +101,32 @@ type SMTPConfig struct {
 	TLS string `json:"tls,omitempty"`
 
 	// Skip certificate verification (for self-signed certs)
-	// +kubebuilder:default=false
 	// +optional
-	SkipCertVerify bool `json:"skipCertVerify,omitempty"`
+	SkipCertVerify *bool `json:"skipCertVerify,omitempty"`
 }
 
 // EmailNotificationsConfig controls which email notifications Pocket-ID sends.
 // Only relevant when SMTP is configured.
 type EmailNotificationsConfig struct {
 	// Notify users of logins from new devices
-	// +kubebuilder:default=false
 	// +optional
-	LoginNotification bool `json:"loginNotification,omitempty"`
+	LoginNotification *bool `json:"loginNotification,omitempty"`
 
 	// Allow admins to send one-time login access codes
-	// +kubebuilder:default=false
 	// +optional
-	OneTimeAccessAsAdmin bool `json:"oneTimeAccessAsAdmin,omitempty"`
+	OneTimeAccessAsAdmin *bool `json:"oneTimeAccessAsAdmin,omitempty"`
 
 	// Notify users of expiring API keys
-	// +kubebuilder:default=false
 	// +optional
-	APIKeyExpiration bool `json:"apiKeyExpiration,omitempty"`
+	APIKeyExpiration *bool `json:"apiKeyExpiration,omitempty"`
 
 	// Allow email-based login bypass for unauthenticated users (reduced security)
-	// +kubebuilder:default=false
 	// +optional
-	OneTimeAccessAsUnauthenticated bool `json:"oneTimeAccessAsUnauthenticated,omitempty"`
+	OneTimeAccessAsUnauthenticated *bool `json:"oneTimeAccessAsUnauthenticated,omitempty"`
 
 	// Send verification emails on signup or email change
-	// +kubebuilder:default=false
 	// +optional
-	Verification bool `json:"verification,omitempty"`
+	Verification *bool `json:"verification,omitempty"`
 }
 
 // LDAPAttributeMappingConfig maps LDAP attributes to Pocket-ID user/group fields.
@@ -156,6 +150,10 @@ type LDAPAttributeMappingConfig struct {
 	// LDAP attribute for last name
 	// +optional
 	UserLastName string `json:"userLastName,omitempty"`
+
+	// LDAP attribute for display name
+	// +optional
+	UserDisplayName string `json:"userDisplayName,omitempty"`
 
 	// LDAP attribute for profile picture
 	// +optional
@@ -194,14 +192,12 @@ type LDAPConfig struct {
 	Base string `json:"base"`
 
 	// Skip LDAP certificate verification
-	// +kubebuilder:default=false
 	// +optional
-	SkipCertVerify bool `json:"skipCertVerify,omitempty"`
+	SkipCertVerify *bool `json:"skipCertVerify,omitempty"`
 
 	// Disable removed LDAP users instead of deleting them
-	// +kubebuilder:default=false
 	// +optional
-	SoftDeleteUsers bool `json:"softDeleteUsers,omitempty"`
+	SoftDeleteUsers *bool `json:"softDeleteUsers,omitempty"`
 
 	// LDAP group name that grants admin privileges
 	// +optional
@@ -240,7 +236,6 @@ type TracingConfig struct {
 }
 
 // UIConfig configures Pocket-ID UI settings.
-// The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured.
 type UIConfig struct {
 	// Application display name
 	// +optional
@@ -255,9 +250,8 @@ type UIConfig struct {
 	HomePageURL string `json:"homePageUrl,omitempty"`
 
 	// Turn off UI animations
-	// +kubebuilder:default=false
 	// +optional
-	DisableAnimations bool `json:"disableAnimations,omitempty"`
+	DisableAnimations *bool `json:"disableAnimations,omitempty"`
 
 	// Custom CSS color value for UI accent theme
 	// +optional
@@ -266,10 +260,13 @@ type UIConfig struct {
 
 // UserManagementConfig configures user registration and account settings.
 type UserManagementConfig struct {
-	// Auto-verify emails on signup or change
-	// +kubebuilder:default=false
+	// Require an email address when creating users
 	// +optional
-	EmailsVerified bool `json:"emailsVerified,omitempty"`
+	RequireUserEmail *bool `json:"requireUserEmail,omitempty"`
+
+	// Auto-verify emails on signup or change
+	// +optional
+	EmailsVerified *bool `json:"emailsVerified,omitempty"`
 
 	// Allow users to edit their own account details
 	// +optional
@@ -499,7 +496,6 @@ type PocketIDInstanceSpec struct {
 	Tracing *TracingConfig `json:"tracing,omitempty"`
 
 	// UI configuration
-	// The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured
 	// +optional
 	UI *UIConfig `json:"ui,omitempty"`
 

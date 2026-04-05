@@ -2,7 +2,6 @@ package instance
 
 import (
 	"fmt"
-	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -17,13 +16,8 @@ func buildEnvVars(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.
 	env = append(env, buildMetricsEnv(instance)...)
 	env = append(env, buildFileBackendEnv(instance)...)
 	env = append(env, buildS3Env(instance)...)
-	env = append(env, buildSMTPEnv(instance)...)
-	env = append(env, buildEmailNotificationsEnv(instance)...)
-	env = append(env, buildLDAPEnv(instance)...)
 	env = append(env, buildLoggingEnv(instance)...)
 	env = append(env, buildTracingEnv(instance)...)
-	env = append(env, buildUIEnv(instance)...)
-	env = append(env, buildUserManagementEnv(instance)...)
 	env = append(env, buildGeoIPEnv(instance)...)
 	env = append(env, buildStandaloneEnv(instance)...)
 
@@ -48,9 +42,6 @@ func buildCoreEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.
 	}
 
 	env = append(env, corev1.EnvVar{Name: "DISABLE_RATE_LIMITING", Value: "true"})
-	if needsUIConfigDisabled(instance) {
-		env = append(env, corev1.EnvVar{Name: "UI_CONFIG_DISABLED", Value: "true"})
-	}
 
 	// Static API key for operator authentication
 	staticAPIKeySecret := common.StaticAPIKeySecretName(instance.Name)
@@ -67,17 +58,6 @@ func buildCoreEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.
 	})
 
 	return env
-}
-
-// needsUIConfigDisabled returns true if any spec section that maps to a
-// Pocket-ID UI-config override variable is configured. UI_CONFIG_DISABLED must
-// be set for those env vars to take effect.
-func needsUIConfigDisabled(instance *pocketidinternalv1alpha1.PocketIDInstance) bool {
-	return instance.Spec.UI != nil ||
-		instance.Spec.UserManagement != nil ||
-		instance.Spec.SMTP != nil ||
-		instance.Spec.EmailNotifications != nil ||
-		instance.Spec.LDAP != nil
 }
 
 func buildMetricsEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.EnvVar {
@@ -133,121 +113,6 @@ func buildS3Env(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.En
 	return env
 }
 
-func buildSMTPEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.EnvVar {
-	if instance.Spec.SMTP == nil {
-		return nil
-	}
-	smtp := instance.Spec.SMTP
-	env := []corev1.EnvVar{
-		{Name: "SMTP_ENABLED", Value: "true"},
-		{Name: "SMTP_HOST", Value: smtp.Host},
-		{Name: "SMTP_PORT", Value: fmt.Sprintf("%d", smtp.Port)},
-		{Name: "SMTP_FROM", Value: smtp.From},
-	}
-	if smtp.User != "" {
-		env = append(env, corev1.EnvVar{Name: "SMTP_USER", Value: smtp.User})
-	}
-	if smtp.Password != nil {
-		env = append(env, sensitiveValueToEnvVar("SMTP_PASSWORD", smtp.Password))
-	}
-	if smtp.TLS != "" {
-		env = append(env, corev1.EnvVar{Name: "SMTP_TLS", Value: smtp.TLS})
-	}
-	if smtp.SkipCertVerify {
-		env = append(env, corev1.EnvVar{Name: "SMTP_SKIP_CERT_VERIFY", Value: "true"})
-	}
-	return env
-}
-
-func buildEmailNotificationsEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.EnvVar {
-	if instance.Spec.EmailNotifications == nil {
-		return nil
-	}
-	en := instance.Spec.EmailNotifications
-	var env []corev1.EnvVar
-	if en.LoginNotification {
-		env = append(env, corev1.EnvVar{Name: "EMAIL_LOGIN_NOTIFICATION_ENABLED", Value: "true"})
-	}
-	if en.OneTimeAccessAsAdmin {
-		env = append(env, corev1.EnvVar{Name: "EMAIL_ONE_TIME_ACCESS_AS_ADMIN_ENABLED", Value: "true"})
-	}
-	if en.APIKeyExpiration {
-		env = append(env, corev1.EnvVar{Name: "EMAIL_API_KEY_EXPIRATION_ENABLED", Value: "true"})
-	}
-	if en.OneTimeAccessAsUnauthenticated {
-		env = append(env, corev1.EnvVar{Name: "EMAIL_ONE_TIME_ACCESS_AS_UNAUTHENTICATED_ENABLED", Value: "true"})
-	}
-	if en.Verification {
-		env = append(env, corev1.EnvVar{Name: "EMAIL_VERIFICATION_ENABLED", Value: "true"})
-	}
-	return env
-}
-
-func buildLDAPEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.EnvVar {
-	if instance.Spec.LDAP == nil {
-		return nil
-	}
-	ldap := instance.Spec.LDAP
-	env := []corev1.EnvVar{
-		{Name: "LDAP_ENABLED", Value: "true"},
-		{Name: "LDAP_URL", Value: ldap.URL},
-		{Name: "LDAP_BIND_DN", Value: ldap.BindDN},
-		sensitiveValueToEnvVar("LDAP_BIND_PASSWORD", &ldap.BindPassword),
-		{Name: "LDAP_BASE", Value: ldap.Base},
-	}
-	if ldap.SkipCertVerify {
-		env = append(env, corev1.EnvVar{Name: "LDAP_SKIP_CERT_VERIFY", Value: "true"})
-	}
-	if ldap.SoftDeleteUsers {
-		env = append(env, corev1.EnvVar{Name: "LDAP_SOFT_DELETE_USERS", Value: "true"})
-	}
-	if ldap.AdminGroupName != "" {
-		env = append(env, corev1.EnvVar{Name: "LDAP_ADMIN_GROUP_NAME", Value: ldap.AdminGroupName})
-	}
-	if ldap.UserSearchFilter != "" {
-		env = append(env, corev1.EnvVar{Name: "LDAP_USER_SEARCH_FILTER", Value: ldap.UserSearchFilter})
-	}
-	if ldap.UserGroupSearchFilter != "" {
-		env = append(env, corev1.EnvVar{Name: "LDAP_USER_GROUP_SEARCH_FILTER", Value: ldap.UserGroupSearchFilter})
-	}
-	if ldap.AttributeMapping != nil {
-		env = append(env, buildLDAPAttributeMappingEnv(ldap.AttributeMapping)...)
-	}
-	return env
-}
-
-func buildLDAPAttributeMappingEnv(am *pocketidinternalv1alpha1.LDAPAttributeMappingConfig) []corev1.EnvVar {
-	var env []corev1.EnvVar
-	if am.UserUniqueIdentifier != "" {
-		env = append(env, corev1.EnvVar{Name: "LDAP_ATTRIBUTE_USER_UNIQUE_IDENTIFIER", Value: am.UserUniqueIdentifier})
-	}
-	if am.UserUsername != "" {
-		env = append(env, corev1.EnvVar{Name: "LDAP_ATTRIBUTE_USER_USERNAME", Value: am.UserUsername})
-	}
-	if am.UserEmail != "" {
-		env = append(env, corev1.EnvVar{Name: "LDAP_ATTRIBUTE_USER_EMAIL", Value: am.UserEmail})
-	}
-	if am.UserFirstName != "" {
-		env = append(env, corev1.EnvVar{Name: "LDAP_ATTRIBUTE_USER_FIRST_NAME", Value: am.UserFirstName})
-	}
-	if am.UserLastName != "" {
-		env = append(env, corev1.EnvVar{Name: "LDAP_ATTRIBUTE_USER_LAST_NAME", Value: am.UserLastName})
-	}
-	if am.UserProfilePicture != "" {
-		env = append(env, corev1.EnvVar{Name: "LDAP_ATTRIBUTE_USER_PROFILE_PICTURE", Value: am.UserProfilePicture})
-	}
-	if am.GroupMember != "" {
-		env = append(env, corev1.EnvVar{Name: "LDAP_ATTRIBUTE_GROUP_MEMBER", Value: am.GroupMember})
-	}
-	if am.GroupUniqueIdentifier != "" {
-		env = append(env, corev1.EnvVar{Name: "LDAP_ATTRIBUTE_GROUP_UNIQUE_IDENTIFIER", Value: am.GroupUniqueIdentifier})
-	}
-	if am.GroupName != "" {
-		env = append(env, corev1.EnvVar{Name: "LDAP_ATTRIBUTE_GROUP_NAME", Value: am.GroupName})
-	}
-	return env
-}
-
 func buildLoggingEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.EnvVar {
 	if instance.Spec.Logging == nil {
 		return nil
@@ -269,54 +134,6 @@ func buildTracingEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []core
 	return []corev1.EnvVar{
 		{Name: "TRACING_ENABLED", Value: "true"},
 	}
-}
-
-func buildUIEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.EnvVar {
-	if instance.Spec.UI == nil {
-		return nil
-	}
-	ui := instance.Spec.UI
-	var env []corev1.EnvVar
-	if ui.AppName != "" {
-		env = append(env, corev1.EnvVar{Name: "APP_NAME", Value: ui.AppName})
-	}
-	if ui.SessionDuration != nil {
-		env = append(env, corev1.EnvVar{Name: "SESSION_DURATION", Value: fmt.Sprintf("%d", *ui.SessionDuration)})
-	}
-	if ui.HomePageURL != "" {
-		env = append(env, corev1.EnvVar{Name: "HOME_PAGE_URL", Value: ui.HomePageURL})
-	}
-	if ui.DisableAnimations {
-		env = append(env, corev1.EnvVar{Name: "DISABLE_ANIMATIONS", Value: "true"})
-	}
-	if ui.AccentColor != "" {
-		env = append(env, corev1.EnvVar{Name: "ACCENT_COLOR", Value: ui.AccentColor})
-	}
-	return env
-}
-
-func buildUserManagementEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.EnvVar {
-	if instance.Spec.UserManagement == nil {
-		return nil
-	}
-	um := instance.Spec.UserManagement
-	var env []corev1.EnvVar
-	if um.EmailsVerified {
-		env = append(env, corev1.EnvVar{Name: "EMAILS_VERIFIED", Value: "true"})
-	}
-	if um.AllowOwnAccountEdit != nil {
-		env = append(env, corev1.EnvVar{Name: "ALLOW_OWN_ACCOUNT_EDIT", Value: fmt.Sprintf("%t", *um.AllowOwnAccountEdit)})
-	}
-	if um.AllowUserSignups != "" {
-		env = append(env, corev1.EnvVar{Name: "ALLOW_USER_SIGNUPS", Value: um.AllowUserSignups})
-	}
-	if um.SignupDefaultCustomClaims != "" {
-		env = append(env, corev1.EnvVar{Name: "SIGNUP_DEFAULT_CUSTOM_CLAIMS", Value: um.SignupDefaultCustomClaims})
-	}
-	if len(um.SignupDefaultUserGroupIDs) > 0 {
-		env = append(env, corev1.EnvVar{Name: "SIGNUP_DEFAULT_USER_GROUP_IDS", Value: strings.Join(um.SignupDefaultUserGroupIDs, ",")})
-	}
-	return env
 }
 
 func buildGeoIPEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.EnvVar {

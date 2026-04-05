@@ -14,6 +14,7 @@ import (
 
 	apiclient "github.com/aclerici38/pocket-id-go-client/v2/client"
 	"github.com/aclerici38/pocket-id-go-client/v2/client/api_keys"
+	appconfig "github.com/aclerici38/pocket-id-go-client/v2/client/application_configuration"
 	custom_claims "github.com/aclerici38/pocket-id-go-client/v2/client/custom_claims"
 	oidc "github.com/aclerici38/pocket-id-go-client/v2/client/o_id_c"
 	scim "github.com/aclerici38/pocket-id-go-client/v2/client/s_c_i_m"
@@ -304,6 +305,50 @@ func (c *Client) GetCurrentVersion(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("currentVersion key missing from response")
 	}
 	return v, nil
+}
+
+// --- Application Configuration Operations ---
+
+// AppConfig represents the full application configuration as a key/value map.
+type AppConfig map[string]string
+
+// GetAppConfig returns all application configuration variables.
+func (c *Client) GetAppConfig(ctx context.Context) (AppConfig, error) {
+	params := appconfig.NewGetApplicationConfigurationAllParamsWithContext(ctx)
+	start := time.Now()
+	resp, err := c.raw.ApplicationConfiguration.GetApplicationConfigurationAll(params)
+	recordCall("get_app_config", err, time.Since(start))
+	if err != nil {
+		return nil, fmt.Errorf("get app config failed: %w", err)
+	}
+
+	config := make(AppConfig, len(resp.Payload))
+	for _, v := range resp.Payload {
+		if v != nil {
+			config[v.Key] = v.Value
+		}
+	}
+	return config, nil
+}
+
+// UpdateAppConfig updates the application configuration.
+func (c *Client) UpdateAppConfig(ctx context.Context, dto *models.GithubComPocketIDPocketIDBackendInternalDtoAppConfigUpdateDto) (AppConfig, error) {
+	params := appconfig.NewPutAPIApplicationConfigurationParamsWithContext(ctx).
+		WithBody(dto)
+	start := time.Now()
+	resp, err := c.raw.ApplicationConfiguration.PutAPIApplicationConfiguration(params)
+	recordCall("update_app_config", err, time.Since(start))
+	if err != nil {
+		return nil, fmt.Errorf("update app config failed: %w", err)
+	}
+
+	config := make(AppConfig, len(resp.Payload))
+	for _, v := range resp.Payload {
+		if v != nil {
+			config[v.Key] = v.Value
+		}
+	}
+	return config, nil
 }
 
 // --- User Operations ---
