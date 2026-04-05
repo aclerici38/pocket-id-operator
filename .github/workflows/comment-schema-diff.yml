@@ -30,7 +30,7 @@ jobs:
 
       - name: Comment schema diff on PR
         if: steps.download.outcome == 'success'
-        uses: marocchino/sticky-pull-request-comment@70d2764d1a7d5d9560b100cbea0077fc8f633987 # v3.0.2
+        uses: marocchino/sticky-pull-request-comment@d4d6b0936434b21bc8345ad45a440c5f7d2c40ff # v3.0.3
         with:
           header: schema-diff
           path: schema-diff.md
@@ -38,7 +38,7 @@ jobs:
 
       - name: Remove outdated comment
         if: steps.download.outcome == 'failure'
-        uses: marocchino/sticky-pull-request-comment@70d2764d1a7d5d9560b100cbea0077fc8f633987 # v3.0.2
+        uses: marocchino/sticky-pull-request-comment@d4d6b0936434b21bc8345ad45a440c5f7d2c40ff # v3.0.3
         with:
           header: schema-diff
           delete: true
