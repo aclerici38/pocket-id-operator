@@ -92,8 +92,8 @@ The operator can automatically set logo URLs for OIDC clients using a configurab
 By default it uses the [dashboard-icons](https://github.com/homarr-labs/dashboard-icons) CDN:
 
 ```
-https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/{{name}}.svg
-https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/{{name}}-dark.svg
+https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}.png
+https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}-dark.png
 ```
 
 The `{{name}}` placeholder in templates is replaced with the resource's `metadata.name` or `spec.logo.nameOverride`.
@@ -148,8 +148,8 @@ Within the `spec.logo` struct, any entries in `spec.logo.logoUrl` or `spec.logo.
 | Variable                  | Default | Description                                        |
 |---------------------------|---------|----------------------------------------------------|
 | `AUTOGENERATE_LOGOS`      | `true`  | Global default for `spec.logo.autoGenerate`.       |
-| `DEFAULT_LOGO_URL`        | *(dashboard-icons SVG)* | Default URL template for light logos. |
-| `DEFAULT_DARK_LOGO_URL`   | *(dashboard-icons SVG)* | Default URL template for dark logos.  |
+| `DEFAULT_LOGO_URL`        | *(dashboard-icons PNG)* | Default URL template for light logos. |
+| `DEFAULT_DARK_LOGO_URL`   | *(dashboard-icons PNG)* | Default URL template for dark logos.  |
 
 ### Examples
 
@@ -164,7 +164,7 @@ spec:
   logo: {}
 ```
 
-This resolves to `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/grafana.svg`.
+This resolves to `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/grafana.png`.
 
 Override the icon name when it doesn't match the client name:
 

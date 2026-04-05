@@ -512,9 +512,9 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 			base := resource.DeepCopy()
 			logoTrue := true
 			darkFalse := false
-			resource.Status.LogoURL = "https://example.com/logo.svg"
+			resource.Status.LogoURL = "https://example.com/logo.png"
 			resource.Status.LogoReachable = &logoTrue
-			resource.Status.DarkLogoURL = "https://example.com/logo-dark.svg"
+			resource.Status.DarkLogoURL = "https://example.com/logo-dark.png"
 			resource.Status.DarkLogoReachable = &darkFalse
 			Expect(k8sClient.Status().Patch(ctx, resource, client.MergeFrom(base))).To(Succeed())
 
@@ -522,11 +522,11 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 			fetched := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: clientName, Namespace: namespace}, fetched)).To(Succeed())
 
-			Expect(fetched.Status.LogoURL).To(Equal("https://example.com/logo.svg"))
+			Expect(fetched.Status.LogoURL).To(Equal("https://example.com/logo.png"))
 			Expect(fetched.Status.LogoReachable).NotTo(BeNil())
 			Expect(*fetched.Status.LogoReachable).To(BeTrue())
 
-			Expect(fetched.Status.DarkLogoURL).To(Equal("https://example.com/logo-dark.svg"))
+			Expect(fetched.Status.DarkLogoURL).To(Equal("https://example.com/logo-dark.png"))
 			Expect(fetched.Status.DarkLogoReachable).NotTo(BeNil(), "darkLogoReachable should be explicitly set, not nil")
 			Expect(*fetched.Status.DarkLogoReachable).To(BeFalse())
 		})

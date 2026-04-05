@@ -50,8 +50,8 @@ const (
 	oidcClientFinalizer          = "pocketid.internal/oidc-client-finalizer"
 	UserGroupOIDCClientFinalizer = "pocketid.internal/user-group-oidc-client-finalizer"
 
-	defaultLogoTemplate     = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/{{name}}.svg"
-	defaultDarkLogoTemplate = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/{{name}}-dark.svg"
+	defaultLogoTemplate     = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}.png"
+	defaultDarkLogoTemplate = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}-dark.png"
 )
 
 // Reconciler reconciles a PocketIDOIDCClient object
