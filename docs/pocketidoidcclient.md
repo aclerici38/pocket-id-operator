@@ -86,6 +86,112 @@ spec:
       jwks: "https://www.googleapis.com/oauth2/v3/certs"
 ```
 
+## Logo Auto-Generation
+
+The operator can automatically set logo URLs for OIDC clients using a configurable URL template.
+By default it uses the [dashboard-icons](https://github.com/homarr-labs/dashboard-icons) CDN:
+
+```
+https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}.png
+https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}-dark.png
+```
+
+The `{{name}}` placeholder in templates is replaced with the resource's `metadata.name` or `spec.logo.nameOverride`.
+
+### Enabling / Disabling
+
+Logo auto-generation is controlled at two levels:
+
+1. **Global default** via the `AUTOGENERATE_LOGOS` env var on the operator. Defaults to `true`.
+   Set to `false` to make logo auto-generation opt-in per client.
+2. **Per-client override** via `spec.logo.autoGenerate`. When set, this takes precedence over
+   the global default.
+
+To disable auto-generation globally:
+
+```yaml
+env:
+  - name: AUTOGENERATE_LOGOS
+    value: "false"
+```
+
+Or through the chart
+
+```yaml
+operator:
+  autoGenerateLogos: false
+```
+
+### Configuration
+
+The `spec.logo` struct supports the following fields:
+
+| Field            | Description                                                                 |
+|------------------|-----------------------------------------------------------------------------|
+| `autoGenerate`   | Override the global `AUTOGENERATE_LOGOS` default for this client.            |
+| `nameOverride`   | Override the name used in `{{name}}` substitution. Defaults to `metadata.name`. |
+| `logoUrl`        | URL for the light logo. Defaults to `DEFAULT_LOGO_URL` env var. |
+| `darkLogoUrl`    | URL for the dark logo. Defaults to `DEFAULT_DARK_LOGO_URL` env var. |
+
+### Precedence
+
+Logo URLs are resolved in the following order:
+
+1. **Deprecated `spec.logoUrl` / `spec.darkLogoUrl`**: if set, these are used as-is. If using these, please migrate to `spec.logo.logoUrl` and `spec.logo.darkLogoUrl`. You can still set a full URL without templating in these fields. 
+2. **`spec.logo` struct**
+3. **No logo**: if `autoGenerate` is disabled and `spec.logo.logoUrl`/`spec.logo.darkLogoUrl` are empty
+
+Within the `spec.logo` struct, any entries in `spec.logo.logoUrl` or `spec.logo.darkLogoUrl` take precedence over the defaults set by env variables
+
+### Operator Environment Variables
+
+| Variable                  | Default | Description                                        |
+|---------------------------|---------|----------------------------------------------------|
+| `AUTOGENERATE_LOGOS`      | `true`  | Global default for `spec.logo.autoGenerate`.       |
+| `DEFAULT_LOGO_URL`        | *(dashboard-icons PNG)* | Default URL template for light logos. |
+| `DEFAULT_DARK_LOGO_URL`   | *(dashboard-icons PNG)* | Default URL template for dark logos.  |
+
+### Examples
+
+Use the default dashboard-icons logos (no extra configuration needed):
+
+```yaml
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDOIDCClient
+metadata:
+  name: grafana
+spec:
+  logo: {}
+```
+
+This resolves to `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/grafana.png`.
+
+Override the icon name when it doesn't match the client name:
+
+```yaml
+spec:
+  name: Portainer CE
+  logo:
+    nameOverride: portainer
+```
+
+Use a custom template for one client:
+
+```yaml
+spec:
+  logo:
+    logoUrl: "https://my-cdn.example.com/icons/{{name}}.png"
+    darkLogoUrl: "https://my-cdn.example.com/icons/{{name}}-dark.png"
+```
+
+Disable auto-generation for a specific client when the global default is enabled:
+
+```yaml
+spec:
+  logo:
+    autoGenerate: false
+```
+
 ## Generated Secret
 
 - `spec.secret.name`: defaults to `<client>-oidc-credentials`.

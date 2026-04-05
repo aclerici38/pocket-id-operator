@@ -159,6 +159,34 @@ type OIDCClientSecretKeys struct {
 	EndSessionURL string `json:"endSessionUrl,omitempty"`
 }
 
+// OIDCClientLogoSpec configures logo URLs for the OIDC client.
+// Logo URLs support template substitution with {{name}} replaced by the
+// resolved logo name (nameOverride, or metadata.name).
+type OIDCClientLogoSpec struct {
+	// AutoGenerate controls whether to auto-generate logo URLs from templates
+	// when logoUrl/darkLogoUrl are not explicitly set in this struct.
+	// If not set, defaults to the AUTOGENERATE_LOGOS env var on the operator, which defaults to true.
+	// +optional
+	AutoGenerate *bool `json:"autoGenerate,omitempty"`
+
+	// NameOverride overrides the logo name used in template substitution.
+	// Defaults to metadata.name.
+	// +optional
+	NameOverride string `json:"nameOverride,omitempty"`
+
+	// LogoURL is the URL template for the light logo.
+	// Use {{name}} as a placeholder for the logo name.
+	// Defaults to the DEFAULT_LOGO_URL env var on the operator.
+	// +optional
+	LogoURL string `json:"logoUrl,omitempty"`
+
+	// DarkLogoURL is the URL template for the dark logo.
+	// Use {{name}} as a placeholder for the logo name.
+	// Defaults to the DEFAULT_DARK_LOGO_URL env var on the operator.
+	// +optional
+	DarkLogoURL string `json:"darkLogoUrl,omitempty"`
+}
+
 // SCIMSpec configures SCIM provisioning for the OIDC client.
 // Pocket ID will push user/group changes to the given endpoint.
 type SCIMSpec struct {
@@ -206,12 +234,18 @@ type PocketIDOIDCClientSpec struct {
 	LaunchURL string `json:"launchUrl,omitempty"`
 
 	// Logo URL for the client
+	// Deprecated: Use spec.logo.logoUrl instead.
 	// +optional
 	LogoURL string `json:"logoUrl,omitempty"`
 
 	// Dark logo URL for the client
+	// Deprecated: Use spec.logo.darkLogoUrl instead.
 	// +optional
 	DarkLogoURL string `json:"darkLogoUrl,omitempty"`
+
+	// Logo configures logo URLs for the OIDC client with template support.
+	// +optional
+	Logo *OIDCClientLogoSpec `json:"logo,omitempty"`
 
 	// Indicates if the client is public (no client secret)
 	// +kubebuilder:default=false
@@ -277,6 +311,22 @@ type PocketIDOIDCClientStatus struct {
 	// AllowedUserGroupIDs are the resolved group IDs assigned to the client
 	// +optional
 	AllowedUserGroupIDs []string `json:"allowedUserGroupIDs,omitempty"`
+
+	// LogoURL is the last resolved light logo URL that was applied to Pocket-ID.
+	// +optional
+	LogoURL string `json:"logoUrl,omitempty"`
+
+	// LogoReachable indicates whether the light logo URL was reachable when last checked.
+	// +optional
+	LogoReachable *bool `json:"logoReachable,omitempty"`
+
+	// DarkLogoURL is the last resolved dark logo URL that was applied to Pocket-ID.
+	// +optional
+	DarkLogoURL string `json:"darkLogoUrl,omitempty"`
+
+	// DarkLogoReachable indicates whether the dark logo URL was reachable when last checked.
+	// +optional
+	DarkLogoReachable *bool `json:"darkLogoReachable,omitempty"`
 
 	// SCIMProviderID is the pocket-id ID of the SCIM service provider for this client, if configured.
 	// +optional

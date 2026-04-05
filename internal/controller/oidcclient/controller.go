@@ -20,7 +20,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -47,6 +49,9 @@ import (
 const (
 	oidcClientFinalizer          = "pocketid.internal/oidc-client-finalizer"
 	UserGroupOIDCClientFinalizer = "pocketid.internal/user-group-oidc-client-finalizer"
+
+	defaultLogoTemplate     = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}.png"
+	defaultDarkLogoTemplate = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}-dark.png"
 )
 
 // Reconciler reconciles a PocketIDOIDCClient object
@@ -55,6 +60,15 @@ type Reconciler struct {
 	common.BaseReconciler
 	APIReader client.Reader
 	Scheme    *runtime.Scheme
+
+	// DefaultAutoGenerateLogos is the default for logo.autoGenerate when not set per-client (from AUTOGENERATE_LOGOS env var).
+	DefaultAutoGenerateLogos bool
+	// IsLogoReachable checks if a logo URL is reachable. Defaults to isURLReachable.
+	IsLogoReachable func(string) bool
+	// DefaultLogoTemplate is the default URL template for light logos (from DEFAULT_LOGO_URL env var).
+	DefaultLogoTemplate string
+	// DefaultDarkLogoTemplate is the default URL template for dark logos (from DEFAULT_DARK_LOGO_URL env var).
+	DefaultDarkLogoTemplate string
 
 	// skipUpdate gates the update phase of reconciliation
 	// and just fetches the state
@@ -248,7 +262,13 @@ func (r *Reconciler) FindExistingOIDCClient(ctx context.Context, apiClient Pocke
 // so the next reconcile loop can GET the canonical state.
 func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client) (bool, error) {
 	log := logf.FromContext(ctx)
-	input := r.OidcClientInput(oidcClient, nil)
+
+	logoURL, darkLogoURL, err := r.resolveAndUpdateLogoStatus(ctx, oidcClient)
+	if err != nil {
+		return false, fmt.Errorf("resolve logos: %w", err)
+	}
+
+	input := r.OidcClientInput(oidcClient, nil, logoURL, darkLogoURL)
 
 	// Aggregate all allowed groups
 	groupIDs, err := r.aggregateAllowedUserGroupIDs(ctx, oidcClient)
@@ -327,7 +347,13 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 	}
 	metrics.OIDCClientAllowedGroupCount.WithLabelValues(oidcClient.Namespace, oidcClient.Name).Set(float64(len(groupIDs)))
 
-	desired := r.OidcClientInput(oidcClient, current)
+	// Resolve logos, update CR status, and get reachable URLs for the API payload
+	logoURL, darkLogoURL, err := r.resolveAndUpdateLogoStatus(ctx, oidcClient)
+	if err != nil {
+		return false, fmt.Errorf("resolve logos: %w", err)
+	}
+
+	desired := r.OidcClientInput(oidcClient, current, logoURL, darkLogoURL)
 	desired.IsGroupRestricted = len(groupIDs) > 0
 
 	currentInput := current.ToInput()
@@ -441,8 +467,9 @@ func oidcClientName(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) str
 }
 
 // OidcClientInput builds an OIDCClientInput from the CR spec.
-// When current is provided, it is used as the fallback for callback URLs not set in the spec
-func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, current *pocketid.OIDCClient) pocketid.OIDCClientInput {
+// logoURL/darkLogoURL should only contain reachable URLs to send to Pocket-ID.
+// When current is provided, it is used as the fallback for callback URLs not set in the spec.
+func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, current *pocketid.OIDCClient, logoURL, darkLogoURL string) pocketid.OIDCClientInput {
 	name := oidcClientName(oidcClient)
 
 	// Only set client ID if in spec
@@ -465,9 +492,6 @@ func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.Pocket
 		credentials = &pocketid.OIDCClientCredentials{FederatedIdentities: identities}
 	}
 
-	hasLogo := oidcClient.Spec.LogoURL != ""
-	hasDarkLogo := oidcClient.Spec.DarkLogoURL != ""
-
 	// When callback URLs are not in the spec, preserve the server-side values.
 	// This prevents overwriting pocket-id's TOFU auto-detected URLs.
 	callbackURLs := oidcClient.Spec.CallbackURLs
@@ -485,16 +509,123 @@ func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.Pocket
 		CallbackURLs:             callbackURLs,
 		LogoutCallbackURLs:       logoutCallbackURLs,
 		LaunchURL:                oidcClient.Spec.LaunchURL,
-		LogoURL:                  oidcClient.Spec.LogoURL,
-		DarkLogoURL:              oidcClient.Spec.DarkLogoURL,
-		HasLogo:                  hasLogo,
-		HasDarkLogo:              hasDarkLogo,
+		LogoURL:                  logoURL,
+		DarkLogoURL:              darkLogoURL,
+		HasLogo:                  logoURL != "",
+		HasDarkLogo:              darkLogoURL != "",
 		IsPublic:                 oidcClient.Spec.IsPublic,
 		IsGroupRestricted:        len(oidcClient.Spec.AllowedUserGroups) > 0,
 		PKCEEnabled:              oidcClient.Spec.PKCEEnabled,
 		RequiresReauthentication: oidcClient.Spec.RequiresReauthentication,
 		Credentials:              credentials,
 	}
+}
+
+// resolveAndUpdateLogoStatus resolves logo URLs, checks reachability, updates the CR status,
+// and returns the reachable URLs to include in the Pocket-ID API payload.
+func (r *Reconciler) resolveAndUpdateLogoStatus(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) (logoURL, darkLogoURL string, err error) {
+	resolvedLogo, logoReachable, resolvedDark, darkReachable := r.resolveLogoURLs(ctx, oidcClient, oidcClient.Name)
+
+	if err := r.updateLogoStatus(ctx, oidcClient, resolvedLogo, logoReachable, resolvedDark, darkReachable); err != nil {
+		return "", "", err
+	}
+
+	if logoReachable {
+		logoURL = resolvedLogo
+	}
+	if darkReachable {
+		darkLogoURL = resolvedDark
+	}
+	return logoURL, darkLogoURL, nil
+}
+
+// resolveLogoURLs determines the final logo URLs for the OIDC client.
+// The name used for {{name}} substitution is metadata.name, overridable via logo.nameOverride.
+// Precedence: deprecated spec.logoUrl/darkLogoUrl > logo struct template resolution > empty.
+// Always returns the resolved URL. Reachability is checked only when the URL changed or was
+// previously unreachable; otherwise the cached reachability from status is reused.
+func (r *Reconciler) resolveLogoURLs(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, name string) (logoURL string, logoReachable bool, darkLogoURL string, darkLogoReachable bool) {
+	// Deprecated fields take precedence for backwards compatibility
+	if oidcClient.Spec.LogoURL != "" || oidcClient.Spec.DarkLogoURL != "" {
+		return oidcClient.Spec.LogoURL, oidcClient.Spec.LogoURL != "", oidcClient.Spec.DarkLogoURL, oidcClient.Spec.DarkLogoURL != ""
+	}
+
+	logo := oidcClient.Spec.Logo
+
+	autoGenerate := r.DefaultAutoGenerateLogos
+	if logo != nil && logo.AutoGenerate != nil {
+		autoGenerate = *logo.AutoGenerate
+	}
+
+	logoName := name
+	if logo != nil && logo.NameOverride != "" {
+		logoName = logo.NameOverride
+	}
+
+	// Explicit per-client templates are always used regardless of autoGenerate.
+	// autoGenerate only controls whether default templates fill in when no
+	// explicit URL is set, independently for light and dark logos.
+	var logoTemplate, darkLogoTemplate string
+	if logo != nil {
+		logoTemplate = logo.LogoURL
+		darkLogoTemplate = logo.DarkLogoURL
+	}
+	if logoTemplate == "" && autoGenerate {
+		if r.DefaultLogoTemplate != "" {
+			logoTemplate = r.DefaultLogoTemplate
+		} else {
+			logoTemplate = defaultLogoTemplate
+		}
+	}
+	if darkLogoTemplate == "" && autoGenerate {
+		if r.DefaultDarkLogoTemplate != "" {
+			darkLogoTemplate = r.DefaultDarkLogoTemplate
+		} else {
+			darkLogoTemplate = defaultDarkLogoTemplate
+		}
+	}
+
+	log := logf.FromContext(ctx)
+	checkReachable := r.IsLogoReachable
+	if checkReachable == nil {
+		checkReachable = isURLReachable
+	}
+
+	status := oidcClient.Status
+
+	if logoTemplate != "" {
+		logoURL = strings.ReplaceAll(logoTemplate, "{{name}}", logoName)
+		if status.LogoReachable != nil && *status.LogoReachable && logoURL == status.LogoURL {
+			logoReachable = true
+		} else if checkReachable(logoURL) {
+			logoReachable = true
+		} else {
+			log.V(1).Info("Logo URL is not reachable", "url", logoURL)
+		}
+	}
+	if darkLogoTemplate != "" {
+		darkLogoURL = strings.ReplaceAll(darkLogoTemplate, "{{name}}", logoName)
+		if status.DarkLogoReachable != nil && *status.DarkLogoReachable && darkLogoURL == status.DarkLogoURL {
+			darkLogoReachable = true
+		} else if checkReachable(darkLogoURL) {
+			darkLogoReachable = true
+		} else {
+			log.V(1).Info("Dark logo URL is not reachable", "url", darkLogoURL)
+		}
+	}
+
+	return logoURL, logoReachable, darkLogoURL, darkLogoReachable
+}
+
+// isURLReachable performs a HEAD request to check if a URL is reachable (2xx status).
+func isURLReachable(url string) bool {
+	httpClient := &http.Client{Timeout: 5 * time.Second}
+	resp, err := httpClient.Head(url)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = resp.Body.Close() }()
+	return resp.StatusCode >= 200 && resp.StatusCode < 300
 }
 
 // clearClientStatus clears the ClientID from status, triggering recreation on next reconcile.
@@ -608,6 +739,16 @@ func (r *Reconciler) clearSCIMProviderID(ctx context.Context, oidcClient *pocket
 	return r.ClearStatusField(ctx, oidcClient, func() {
 		oidcClient.Status.SCIMProviderID = ""
 	})
+}
+
+// updateLogoStatus persists the resolved logo URLs and their reachability state to the CR status.
+func (r *Reconciler) updateLogoStatus(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, logoURL string, logoReachable bool, darkLogoURL string, darkLogoReachable bool) error {
+	base := oidcClient.DeepCopy()
+	oidcClient.Status.LogoURL = logoURL
+	oidcClient.Status.LogoReachable = &logoReachable
+	oidcClient.Status.DarkLogoURL = darkLogoURL
+	oidcClient.Status.DarkLogoReachable = &darkLogoReachable
+	return r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
 }
 
 // UpdateOIDCClientStatus updates the OIDCClient status with values returned from pocket-id

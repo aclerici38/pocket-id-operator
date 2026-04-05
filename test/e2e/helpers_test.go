@@ -313,8 +313,17 @@ type OIDCClientOptions struct {
 	LogoutCallbackURLs []string
 	IsPublic           bool
 	AllowedUserGroups  []string
+	Logo               *OIDCLogoConfig
 	Secret             *OIDCSecretConfig
 	SCIM               *SCIMConfig
+}
+
+// OIDCLogoConfig configures the logo spec for an OIDCClient.
+type OIDCLogoConfig struct {
+	AutoGenerate *bool
+	NameOverride string
+	LogoURL      string
+	DarkLogoURL  string
 }
 
 // SCIMConfig configures the SCIM spec for an OIDCClient.
@@ -389,6 +398,22 @@ func buildOIDCClientYAML(opts OIDCClientOptions) string {
 		spec.WriteString("  allowedUserGroups:\n")
 		for _, group := range opts.AllowedUserGroups {
 			spec.WriteString(fmt.Sprintf("  - name: %s\n", group))
+		}
+	}
+
+	if opts.Logo != nil {
+		spec.WriteString("  logo:\n")
+		if opts.Logo.AutoGenerate != nil {
+			spec.WriteString(fmt.Sprintf("    autoGenerate: %t\n", *opts.Logo.AutoGenerate))
+		}
+		if opts.Logo.NameOverride != "" {
+			spec.WriteString(fmt.Sprintf("    nameOverride: %s\n", opts.Logo.NameOverride))
+		}
+		if opts.Logo.LogoURL != "" {
+			spec.WriteString(fmt.Sprintf("    logoUrl: %s\n", opts.Logo.LogoURL))
+		}
+		if opts.Logo.DarkLogoURL != "" {
+			spec.WriteString(fmt.Sprintf("    darkLogoUrl: %s\n", opts.Logo.DarkLogoURL))
 		}
 	}
 

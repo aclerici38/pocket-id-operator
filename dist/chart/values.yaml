@@ -14,6 +14,14 @@ operator:
     - --zap-log-level=info
   env: []
 
+  # Auto-generate logo URLs for OIDC clients from templates (set to false to make it opt-in per client)
+  autoGenerateLogos: true
+  # Default URL template for light logos ({{name}} is replaced with the client name)
+  # Defaults to the dashboard-icons CDN if not set
+  # defaultLogoUrl: "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}.png"
+  # Default URL template for dark logos
+  # defaultDarkLogoUrl: "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}-dark.png"
+
   podSecurityContext:
     runAsNonRoot: true
     seccompProfile:

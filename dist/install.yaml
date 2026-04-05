@@ -2818,7 +2818,9 @@ spec:
                 minLength: 2
                 type: string
               darkLogoUrl:
-                description: Dark logo URL for the client
+                description: |-
+                  Dark logo URL for the client
+                  Deprecated: Use spec.logo.darkLogoUrl instead.
                 type: string
               federatedIdentities:
                 description: FederatedIdentities configures JWT assertion identities
@@ -2895,8 +2897,38 @@ spec:
               launchUrl:
                 description: Launch URL for the client
                 type: string
+              logo:
+                description: Logo configures logo URLs for the OIDC client with template
+                  support.
+                properties:
+                  autoGenerate:
+                    description: |-
+                      AutoGenerate controls whether to auto-generate logo URLs from templates
+                      when logoUrl/darkLogoUrl are not explicitly set in this struct.
+                      If not set, defaults to the AUTOGENERATE_LOGOS env var on the operator, which defaults to true.
+                    type: boolean
+                  darkLogoUrl:
+                    description: |-
+                      DarkLogoURL is the URL template for the dark logo.
+                      Use {{name}} as a placeholder for the logo name.
+                      Defaults to the DEFAULT_DARK_LOGO_URL env var on the operator.
+                    type: string
+                  logoUrl:
+                    description: |-
+                      LogoURL is the URL template for the light logo.
+                      Use {{name}} as a placeholder for the logo name.
+                      Defaults to the DEFAULT_LOGO_URL env var on the operator.
+                    type: string
+                  nameOverride:
+                    description: |-
+                      NameOverride overrides the logo name used in template substitution.
+                      Defaults to metadata.name.
+                    type: string
+                type: object
               logoUrl:
-                description: Logo URL for the client
+                description: |-
+                  Logo URL for the client
+                  Deprecated: Use spec.logo.logoUrl instead.
                 type: string
               logoutCallbackUrls:
                 description: Logout callback URLs for the client
@@ -3134,6 +3166,22 @@ spec:
                 x-kubernetes-list-type: map
               createdAt:
                 description: CreatedAt is the creation timestamp from Pocket-ID
+                type: string
+              darkLogoReachable:
+                description: DarkLogoReachable indicates whether the dark logo URL
+                  was reachable when last checked.
+                type: boolean
+              darkLogoUrl:
+                description: DarkLogoURL is the last resolved dark logo URL that was
+                  applied to Pocket-ID.
+                type: string
+              logoReachable:
+                description: LogoReachable indicates whether the light logo URL was
+                  reachable when last checked.
+                type: boolean
+              logoUrl:
+                description: LogoURL is the last resolved light logo URL that was
+                  applied to Pocket-ID.
                 type: string
               logoutCallbackUrls:
                 description: LogoutCallbackURLs are the current logout callback URLs
