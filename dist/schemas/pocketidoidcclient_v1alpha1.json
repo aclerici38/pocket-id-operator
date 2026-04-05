@@ -138,7 +138,7 @@
           "description": "Logo configures logo URLs for the OIDC client with template support.",
           "properties": {
             "autoGenerate": {
-              "description": "AutoGenerate controls whether to auto-generate logo URLs from templates\nwhen logoUrl/darkLogoUrl are not explicitly set in this struct.\nIf not set, defaults to the AUTOGENERATE_LOGOS env var on the operator (which defaults to true).",
+              "description": "AutoGenerate controls whether to auto-generate logo URLs from templates\nwhen logoUrl/darkLogoUrl are not explicitly set in this struct.\nIf not set, defaults to the AUTOGENERATE_LOGOS env var on the operator, which defaults to true.",
               "type": "boolean"
             },
             "darkLogoUrl": {
