@@ -526,7 +526,7 @@ func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.Pocket
 func (r *Reconciler) resolveAndUpdateLogoStatus(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) (logoURL, darkLogoURL string, err error) {
 	resolvedLogo, logoReachable, resolvedDark, darkReachable := r.resolveLogoURLs(ctx, oidcClient, oidcClient.Name)
 
-	if err := r.updateLogoStatusIfChanged(ctx, oidcClient, resolvedLogo, logoReachable, resolvedDark, darkReachable); err != nil {
+	if err := r.updateLogoStatus(ctx, oidcClient, resolvedLogo, logoReachable, resolvedDark, darkReachable); err != nil {
 		return "", "", err
 	}
 
@@ -741,12 +741,8 @@ func (r *Reconciler) clearSCIMProviderID(ctx context.Context, oidcClient *pocket
 	})
 }
 
-// updateLogoStatusIfChanged persists the resolved logo URLs and their reachability state to the CR status
-func (r *Reconciler) updateLogoStatusIfChanged(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, logoURL string, logoReachable bool, darkLogoURL string, darkLogoReachable bool) error {
-	s := oidcClient.Status
-	if s.LogoURL == logoURL && s.LogoReachable == logoReachable && s.DarkLogoURL == darkLogoURL && s.DarkLogoReachable == darkLogoReachable {
-		return nil
-	}
+// updateLogoStatus persists the resolved logo URLs and their reachability state to the CR status.
+func (r *Reconciler) updateLogoStatus(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, logoURL string, logoReachable bool, darkLogoURL string, darkLogoReachable bool) error {
 	base := oidcClient.DeepCopy()
 	oidcClient.Status.LogoURL = logoURL
 	oidcClient.Status.LogoReachable = logoReachable
