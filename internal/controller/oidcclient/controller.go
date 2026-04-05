@@ -547,7 +547,7 @@ func (r *Reconciler) resolveAndUpdateLogoStatus(ctx context.Context, oidcClient 
 func (r *Reconciler) resolveLogoURLs(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, name string) (logoURL string, logoReachable bool, darkLogoURL string, darkLogoReachable bool) {
 	// Deprecated fields take precedence for backwards compatibility
 	if oidcClient.Spec.LogoURL != "" || oidcClient.Spec.DarkLogoURL != "" {
-		return oidcClient.Spec.LogoURL, true, oidcClient.Spec.DarkLogoURL, true
+		return oidcClient.Spec.LogoURL, oidcClient.Spec.LogoURL != "", oidcClient.Spec.DarkLogoURL, oidcClient.Spec.DarkLogoURL != ""
 	}
 
 	logo := oidcClient.Spec.Logo
