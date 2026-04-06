@@ -36,7 +36,7 @@ type InstanceOptions struct {
 	ExistingClaim      string
 }
 
-const defaultPocketIDImage = "ghcr.io/pocket-id/pocket-id:v2.3.0-distroless@sha256:85a7485108325e34679b0fbca0baeb8418401f6d6cf59944d50f3ec013aafd09"
+const defaultPocketIDImage = "ghcr.io/pocket-id/pocket-id:v2.5.0-distroless@sha256:deadc3c4dd6655a7d7f959200db1c74e394942dc061e6f3732b709983a08aab7"
 
 func pocketIDImage() string {
 	if img := os.Getenv("POCKET_ID_IMAGE"); img != "" {
