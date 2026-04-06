@@ -20,7 +20,7 @@ func getAppConfigValue(podName, namespace, key string) string {
 	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
 
 	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-BODY=$(curl -s -H "X-API-KEY: $API_KEY" %s/api/application-configuration)
+BODY=$(curl -s -H "X-API-KEY: $API_KEY" %s/application-configuration/all)
 echo "$BODY" | sed 's/},{/}\n{/g' | grep '"key":"%s"' | sed 's/.*"value":"//;s/".*//'`,
 		apiKeyBase64, formatInstanceURL(), key)
 
