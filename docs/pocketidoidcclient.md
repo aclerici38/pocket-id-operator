@@ -192,6 +192,19 @@ spec:
     autoGenerate: false
 ```
 
+The final URLs and status of the logos are displayed under `status` in the `PocketIDOIDCClient` resource
+
+```yaml
+status:
+  darkLogoReachable: false
+  darkLogoUrl: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/immich-dark.png
+  logoReachable: true
+  logoUrl: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/immich.png
+```
+
+Logs for the logos are set to `debug` by default to prevent spamming the console with unavailable logos.
+To view the logs add the `--zap-log-level=debug` arg on the operator container.
+
 ## Generated Secret
 
 - `spec.secret.name`: defaults to `<client>-oidc-credentials`.
