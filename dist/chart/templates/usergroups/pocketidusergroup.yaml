@@ -6,10 +6,10 @@ metadata:
   name: {{ .name }}
   namespace: {{ $.Release.Namespace }}
   labels:
+    helm.sh/chart: {{ include "chart.chart" $ }}
     app.kubernetes.io/name: pocket-id-usergroup
     app.kubernetes.io/instance: {{ .name }}
     app.kubernetes.io/managed-by: {{ $.Release.Service }}
-    helm.sh/chart: {{ include "chart.name" $ }}
     {{- with .labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}

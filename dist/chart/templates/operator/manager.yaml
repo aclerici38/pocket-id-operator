@@ -2,8 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
     labels:
-        app.kubernetes.io/managed-by: {{ .Release.Service }}
-        app.kubernetes.io/name: pocket-id-operator
+        {{- include "chart.labels" . | nindent 8 }}
         control-plane: controller-manager
     name: pocket-id-operator
     namespace: {{ .Release.Namespace }}

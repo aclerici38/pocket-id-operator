@@ -2,7 +2,6 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
     labels:
-        app.kubernetes.io/managed-by: {{ .Release.Service }}
-        app.kubernetes.io/name: pocket-id-operator
+        {{- include "chart.labels" . | nindent 8 }}
     name: pocket-id-operator
     namespace: {{ .Release.Namespace }}
