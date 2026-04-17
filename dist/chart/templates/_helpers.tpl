@@ -58,7 +58,7 @@ Includes app version, chart version, app name, instance, and managed-by labels.
 */}}
 {{- define "chart.labels" -}}
 {{- if .Chart.AppVersion -}}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | replace "+" "_" | quote }}
 {{- end }}
 {{- if .Chart.Version }}
 helm.sh/chart: {{ .Chart.Version | quote }}
