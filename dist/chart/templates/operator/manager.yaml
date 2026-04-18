@@ -1,103 +1,100 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-    labels:
-        {{- include "chart.labels" . | nindent 8 }}
-        control-plane: controller-manager
-    name: pocket-id-operator
-    namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    control-plane: controller-manager
+  name: pocket-id-operator
+  namespace: {{ .Release.Namespace }}
 spec:
-    replicas: 1
-    selector:
-        matchLabels:
-            app.kubernetes.io/name: pocket-id-operator
-            control-plane: controller-manager
-    template:
-        metadata:
-            annotations:
-                kubectl.kubernetes.io/default-container: operator
-            labels:
-                app.kubernetes.io/name: pocket-id-operator
-                control-plane: controller-manager
-        spec:
-            affinity:
-                nodeAffinity:
-                    requiredDuringSchedulingIgnoredDuringExecution:
-                        nodeSelectorTerms:
-                            - matchExpressions:
-                                - key: kubernetes.io/arch
-                                  operator: In
-                                  values:
-                                    - amd64
-                                    - arm64
-                                - key: kubernetes.io/os
-                                  operator: In
-                                  values:
-                                    - linux
-            containers:
-                - args:
-                    {{- if and .Values.metrics .Values.metrics.enabled }}
-                    - --metrics-bind-address=:{{ .Values.metrics.port }}
-                    {{- else }}
-                    # Bind to :0 to disable the controller-runtime managed metrics server
-                    - --metrics-bind-address=0
-                    {{- end }}
-                    - --health-probe-bind-address=:8081
-                    - --leader-elect
-                    {{- range .Values.operator.args }}
-                    - {{ . }}
-                    {{- end }}
-                  env:
-                    - name: AUTOGENERATE_LOGOS
-                      value: {{ .Values.operator.autoGenerateLogos | quote }}
-                    {{- if .Values.operator.defaultLogoUrl }}
-                    - name: DEFAULT_LOGO_URL
-                      value: {{ .Values.operator.defaultLogoUrl | quote }}
-                    {{- end }}
-                    {{- if .Values.operator.defaultDarkLogoUrl }}
-                    - name: DEFAULT_DARK_LOGO_URL
-                      value: {{ .Values.operator.defaultDarkLogoUrl | quote }}
-                    {{- end }}
-                    {{- range .Values.operator.env }}
-                    - {{- toYaml . | nindent 22 }}
-                    {{- end }}
-                  command:
-                    - /manager
-                  image: "{{ .Values.operator.image.repository }}:{{ .Values.operator.image.tag | default .Chart.AppVersion }}"
-                  imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
-                  livenessProbe:
-                    httpGet:
-                        path: /healthz
-                        port: 8081
-                    initialDelaySeconds: 15
-                    periodSeconds: 20
-                  name: operator
-                  ports: []
-                  readinessProbe:
-                    httpGet:
-                        path: /readyz
-                        port: 8081
-                    initialDelaySeconds: 5
-                    periodSeconds: 10
-                  resources:
-                    {{- if .Values.operator.resources }}
-                    {{- toYaml .Values.operator.resources | nindent 20 }}
-                    {{- else }}
-                    {}
-                    {{- end }}
-                  securityContext:
-                    {{- if .Values.operator.securityContext }}
-                    {{- toYaml .Values.operator.securityContext | nindent 20 }}
-                    {{- else }}
-                    {}
-                    {{- end }}
-                  volumeMounts: []
-            securityContext:
-              {{- if .Values.operator.podSecurityContext }}
-              {{- toYaml .Values.operator.podSecurityContext | nindent 14 }}
-              {{- else }}
-              {}
-              {{- end }}
-            serviceAccountName: pocket-id-operator
-            terminationGracePeriodSeconds: 10
-            volumes: []
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pocket-id-operator
+      control-plane: controller-manager
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: operator
+      labels:
+        app.kubernetes.io/name: pocket-id-operator
+        control-plane: controller-manager
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/arch
+                    operator: In
+                    values:
+                      - amd64
+                      - arm64
+                  - key: kubernetes.io/os
+                    operator: In
+                    values:
+                      - linux
+      containers:
+        - args:
+            {{- if and .Values.metrics .Values.metrics.enabled }}
+            - --metrics-bind-address=:{{ .Values.metrics.port }}
+            {{- else }}
+            # Bind to :0 to disable the controller-runtime managed metrics server
+            - --metrics-bind-address=0
+            {{- end }}
+            - --health-probe-bind-address=:8081
+            - --leader-elect
+            {{- range .Values.operator.args }}
+            - {{ . }}
+            {{- end }}
+          env:
+            - name: AUTOGENERATE_LOGOS
+              value: {{ .Values.operator.autoGenerateLogos | quote }}
+            {{- if .Values.operator.defaultLogoUrl }}
+            - name: DEFAULT_LOGO_URL
+              value: {{ .Values.operator.defaultLogoUrl | quote }}
+            {{- end }}
+            {{- if .Values.operator.defaultDarkLogoUrl }}
+            - name: DEFAULT_DARK_LOGO_URL
+              value: {{ .Values.operator.defaultDarkLogoUrl | quote }}
+            {{- end }}
+            {{- range .Values.operator.env }}
+            - {{- toYaml . | nindent 14 }}
+            {{- end }}
+          command:
+            - /manager
+          image: "{{ .Values.operator.image.repository }}:{{ .Values.operator.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          name: operator
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- if .Values.operator.resources }}
+            {{- toYaml .Values.operator.resources | nindent 12 }}
+            {{- else }}
+            {}
+            {{- end }}
+          securityContext:
+            {{- if .Values.operator.securityContext }}
+            {{- toYaml .Values.operator.securityContext | nindent 12 }}
+            {{- else }}
+            {}
+            {{- end }}
+      securityContext:
+        {{- if .Values.operator.podSecurityContext }}
+        {{- toYaml .Values.operator.podSecurityContext | nindent 8 }}
+        {{- else }}
+        {}
+        {{- end }}
+      serviceAccountName: pocket-id-operator
+      terminationGracePeriodSeconds: 10
