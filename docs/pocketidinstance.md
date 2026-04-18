@@ -176,7 +176,7 @@ spec:
 
 ## UI Configuration
 
-The operator automatically sets `UI_CONFIG_DISABLED=true` when any of the `ui`, `userManagement`, `smtp`, `emailNotifications`, or `ldap` sections are configured.
+The `ui`, `userManagement`, `smtp`, `emailNotifications`, and `ldap` sections are managed via the Pocket-ID application configuration API. Only fields explicitly set in the CRD are overwritten; unset fields preserve their values from the UI.
 
 ```yaml
 spec:
@@ -372,25 +372,20 @@ spec:
   - `DISABLE_RATE_LIMITING=true`
   - `STATIC_API_KEY` (secret reference)
 - Conditionally set from spec fields:
-  - `UI_CONFIG_DISABLED=true` (when `spec.ui`, `spec.userManagement`, `spec.smtp`, `spec.emailNotifications`, or `spec.ldap` is configured)
   - `DB_CONNECTION_STRING` (from `spec.databaseUrl`)
   - `APP_URL` (from `spec.appUrl`)
   - `INTERNAL_APP_URL` (from `spec.internalAppUrl`)
   - `FILE_BACKEND` (from `spec.fileBackend`) NOTE: `FILE_BACKEND` is set to `s3` if `spec.s3` is configured
   - `FILE_BACKEND=s3` + `S3_*` (from `spec.s3`)
-  - `SMTP_ENABLED=true` + `SMTP_*` (from `spec.smtp`)
-  - `EMAIL_*_ENABLED` (from `spec.emailNotifications`)
-  - `LDAP_ENABLED=true` + `LDAP_*` (from `spec.ldap`)
   - `LOG_LEVEL`, `LOG_JSON` (from `spec.logging`)
   - `TRACING_ENABLED=true` (from `spec.tracing`)
   - `METRICS_ENABLED=true` + `OTEL_*` (from `spec.metrics`)
-  - `APP_NAME`, `SESSION_DURATION`, `HOME_PAGE_URL`, `DISABLE_ANIMATIONS`, `ACCENT_COLOR` (from `spec.ui`)
-  - `EMAILS_VERIFIED`, `ALLOW_OWN_ACCOUNT_EDIT`, `ALLOW_USER_SIGNUPS`, `SIGNUP_DEFAULT_*` (from `spec.userManagement`)
   - `MAXMIND_LICENSE_KEY`, `GEOLITE_DB_PATH`, `GEOLITE_DB_URL` (from `spec.geoip`)
   - `TZ` (from `spec.timezone`)
   - `LOCAL_IPV6_RANGES` (from `spec.localIPv6Ranges`)
-  - `S3_DISABLE_DEFAULT_INTEGRITY_CHECKS` (from `spec.s3.disableDefaultIntegrityChecks`)
   - `AUDIT_LOG_RETENTION_DAYS`, `ANALYTICS_DISABLED`, `VERSION_CHECK_DISABLED`
   - Any additional values from `spec.env` (applied last, can override anything above)
+- Managed via the application configuration API (not env vars):
+  - `spec.ui`, `spec.smtp`, `spec.emailNotifications`, `spec.ldap`, `spec.userManagement`
 
 *Note:* For all options and an up-to-date spec `kubectl explain PocketIDInstance`

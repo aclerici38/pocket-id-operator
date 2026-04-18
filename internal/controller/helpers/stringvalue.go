@@ -47,6 +47,31 @@ func ResolveStringValue(
 	return "", nil
 }
 
+// ResolveSensitiveValue resolves a SensitiveValue to its plain text string.
+// If the value is set directly, it is returned as-is.
+// If ValueFrom is set with a SecretKeyRef, the secret is read using apiReader.
+func ResolveSensitiveValue(
+	ctx context.Context,
+	c client.Client,
+	apiReader client.Reader,
+	namespace string,
+	sv *pocketidv1alpha1.SensitiveValue,
+) (string, error) {
+	if sv == nil {
+		return "", nil
+	}
+
+	if sv.Value != "" {
+		return sv.Value, nil
+	}
+
+	if sv.ValueFrom != nil && sv.ValueFrom.SecretKeyRef != nil {
+		return ResolveSecretKeySelector(ctx, c, apiReader, namespace, sv.ValueFrom.SecretKeyRef)
+	}
+
+	return "", nil
+}
+
 // ResolveSecretKeySelector reads the value of a SecretKeySelector from a Kubernetes Secret.
 // Returns an empty string if ref is nil.
 func ResolveSecretKeySelector(ctx context.Context, c client.Client, apiReader client.Reader, namespace string, ref *corev1.SecretKeySelector) (string, error) {

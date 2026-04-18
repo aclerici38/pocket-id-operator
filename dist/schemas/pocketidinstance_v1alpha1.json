@@ -340,27 +340,22 @@
           "description": "Email notification settings\nOnly relevant when SMTP is configured",
           "properties": {
             "apiKeyExpiration": {
-              "default": false,
               "description": "Notify users of expiring API keys",
               "type": "boolean"
             },
             "loginNotification": {
-              "default": false,
               "description": "Notify users of logins from new devices",
               "type": "boolean"
             },
             "oneTimeAccessAsAdmin": {
-              "default": false,
               "description": "Allow admins to send one-time login access codes",
               "type": "boolean"
             },
             "oneTimeAccessAsUnauthenticated": {
-              "default": false,
               "description": "Allow email-based login bypass for unauthenticated users (reduced security)",
               "type": "boolean"
             },
             "verification": {
-              "default": false,
               "description": "Send verification emails on signup or email change",
               "type": "boolean"
             }
@@ -1030,6 +1025,10 @@
                   "description": "LDAP attribute for immutable group identifier",
                   "type": "string"
                 },
+                "userDisplayName": {
+                  "description": "LDAP attribute for display name",
+                  "type": "string"
+                },
                 "userEmail": {
                   "description": "LDAP attribute for email",
                   "type": "string"
@@ -1214,12 +1213,10 @@
               "additionalProperties": false
             },
             "skipCertVerify": {
-              "default": false,
               "description": "Skip LDAP certificate verification",
               "type": "boolean"
             },
             "softDeleteUsers": {
-              "default": false,
               "description": "Disable removed LDAP users instead of deleting them",
               "type": "boolean"
             },
@@ -2464,7 +2461,6 @@
               "type": "integer"
             },
             "skipCertVerify": {
-              "default": false,
               "description": "Skip certificate verification (for self-signed certs)",
               "type": "boolean"
             },
@@ -2500,7 +2496,7 @@
           "type": "object"
         },
         "ui": {
-          "description": "UI configuration\nThe operator automatically sets UI_CONFIG_DISABLED=true when this section is configured",
+          "description": "UI configuration",
           "properties": {
             "accentColor": {
               "description": "Custom CSS color value for UI accent theme",
@@ -2511,7 +2507,6 @@
               "type": "string"
             },
             "disableAnimations": {
-              "default": false,
               "description": "Turn off UI animations",
               "type": "boolean"
             },
@@ -2545,8 +2540,11 @@
               "type": "string"
             },
             "emailsVerified": {
-              "default": false,
               "description": "Auto-verify emails on signup or change",
+              "type": "boolean"
+            },
+            "requireUserEmail": {
+              "description": "Require an email address when creating users",
               "type": "boolean"
             },
             "signupDefaultCustomClaims": {
