@@ -15,5 +15,6 @@ spec:
       honorLabels: true
   selector:
     matchLabels:
+      app.kubernetes.io/name: pocket-id-operator
       control-plane: controller-manager
 {{- end }}
