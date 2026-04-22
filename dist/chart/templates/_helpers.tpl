@@ -3,15 +3,7 @@ Chart name based on project name.
 Truncated to 63 characters for Kubernetes compatibility.
 */}}
 {{- define "chart.name" -}}
-{{- if .Chart }}
-  {{- if .Chart.Name }}
-    {{- .Chart.Name | trunc 63 | trimSuffix "-" }}
-  {{- else }}
-    pocket-id-operator
-  {{- end }}
-{{- else }}
-  pocket-id-operator
-{{- end }}
+{{- .Chart.Name | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
@@ -53,18 +45,21 @@ If fullname + suffix exceeds 63 chars, truncates fullname to 45 chars.
 {{- end }}
 
 {{/*
+Create chart name and version as used by the chart label.
+*/}}
+{{- define "chart.chart" -}}
+{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
 Common labels for Helm charts.
-Includes app version, chart version, app name, instance, and managed-by labels.
 */}}
 {{- define "chart.labels" -}}
-{{- if .Chart.AppVersion -}}
+helm.sh/chart: {{ include "chart.chart" . }}
+{{ include "chart.selectorLabels" . }}
+{{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
-{{- if .Chart.Version }}
-helm.sh/chart: {{ .Chart.Version | quote }}
-{{- end }}
-app.kubernetes.io/name: {{ include "chart.name" . }}
-app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 

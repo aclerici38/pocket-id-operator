@@ -4,7 +4,7 @@ body = """
 {%- for group, commits in commits | group_by(attribute="group") %}
 {%- for commit in commits %}
 - kind: {{ group }}
-  description: "{% if commit.scope %}({{ commit.scope }}) {% endif %}{{ commit.message | replace(from='"', to='\\"') }}"
+{{ "  " }}description: "{% if commit.scope %}({{ commit.scope }}) {% endif %}{{ commit.message | replace(from='"', to='\\"') }}"
 {%- endfor %}
 {%- endfor %}
 

@@ -85,7 +85,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					DeploymentType: "Deployment",
-					Image:          "ghcr.io/pocket-id/pocket-id:v2.5.0-distroless@sha256:deadc3c4dd6655a7d7f959200db1c74e394942dc061e6f3732b709983a08aab7",
+					Image:          "ghcr.io/pocket-id/pocket-id:v2.6.2-distroless@sha256:a9adc636b5d30098307b8a1292c5887a59690cd5429aac5e87b588852f9c346d",
 					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
@@ -123,7 +123,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 			}, timeout, interval).Should(Succeed())
 
 			Expect(deployment.Spec.Template.Spec.Containers).To(HaveLen(1))
-			Expect(deployment.Spec.Template.Spec.Containers[0].Image).To(Equal("ghcr.io/pocket-id/pocket-id:v2.5.0-distroless@sha256:deadc3c4dd6655a7d7f959200db1c74e394942dc061e6f3732b709983a08aab7"))
+			Expect(deployment.Spec.Template.Spec.Containers[0].Image).To(Equal("ghcr.io/pocket-id/pocket-id:v2.6.2-distroless@sha256:a9adc636b5d30098307b8a1292c5887a59690cd5429aac5e87b588852f9c346d"))
 			Expect(deployment.Spec.Template.Spec.Containers[0].Name).To(Equal("pocket-id"))
 
 			// Verify owner reference is set
@@ -640,6 +640,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					},
 					Persistence: pocketidinternalv1alpha1.PersistenceConfig{
 						Enabled:       true,
+						Size:          resource.MustParse("1Gi"),
 						ExistingClaim: existingPVC.Name,
 					},
 				},
@@ -682,6 +683,303 @@ var _ = Describe("PocketIDInstance Controller", func() {
 			Expect(volumes).To(HaveLen(1))
 			Expect(volumes[0].VolumeSource.PersistentVolumeClaim).NotTo(BeNil())
 			Expect(volumes[0].VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(existingPVCName))
+		})
+	})
+
+	Context("When creating a PocketIDInstance with existing PVC having the default name", func() {
+		var instanceName string
+		var existingPVCName string
+
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
+		var secret *corev1.Secret
+		var existingPVC *corev1.PersistentVolumeClaim
+
+		BeforeEach(func() {
+			// Use the same name as what the operator would generate by default
+			instanceName = "test-default-pvc-name-" + time.Now().Format("150405")
+			existingPVCName = instanceName + "-data"
+
+			// Create an existing PVC
+			existingPVC = &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      existingPVCName,
+					Namespace: namespace,
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+					Resources: corev1.VolumeResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceStorage: resource.MustParse("5Gi"),
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, existingPVC)).To(Succeed())
+
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName + "-secret",
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"encryption-key": []byte("test-encryption-key-value"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+						ValueFrom: &corev1.EnvVarSource{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: secret.Name,
+								},
+								Key: "encryption-key",
+							},
+						},
+					},
+					Persistence: pocketidinternalv1alpha1.PersistenceConfig{
+						Enabled:       true,
+						Size:          resource.MustParse("1Gi"),
+						ExistingClaim: existingPVC.Name,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if instance != nil {
+				_ = k8sClient.Delete(ctx, instance)
+			}
+			if secret != nil {
+				_ = k8sClient.Delete(ctx, secret)
+			}
+			if existingPVC != nil {
+				_ = k8sClient.Delete(ctx, existingPVC)
+			}
+		})
+
+		It("Should NOT delete the existing PVC even though it has the default name", func() {
+			pvc := &corev1.PersistentVolumeClaim{}
+			Consistently(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      existingPVCName,
+					Namespace: namespace,
+				}, pvc)
+			}, time.Second*2, interval).Should(Succeed())
+		})
+	})
+
+	Context("When switching from default PVC to a different existing PVC", func() {
+		var instanceName string
+		var defaultPVCName string
+		var existingPVCName string
+
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
+		var secret *corev1.Secret
+		var existingPVC *corev1.PersistentVolumeClaim
+
+		BeforeEach(func() {
+			instanceName = "test-switch-pvc-" + time.Now().Format("150405")
+			defaultPVCName = instanceName + "-data"
+			existingPVCName = "other-pvc-" + time.Now().Format("150405")
+
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName + "-secret",
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"encryption-key": []byte("test-encryption-key-value"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			// 1. Create instance with default persistence
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+						ValueFrom: &corev1.EnvVarSource{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: secret.Name,
+								},
+								Key: "encryption-key",
+							},
+						},
+					},
+					Persistence: pocketidinternalv1alpha1.PersistenceConfig{
+						Enabled: true,
+						Size:    resource.MustParse("1Gi"),
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			// Wait for default PVC to be created
+			pvc := &corev1.PersistentVolumeClaim{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      defaultPVCName,
+					Namespace: namespace,
+				}, pvc)
+			}, timeout, interval).Should(Succeed())
+
+			// 2. Create a different PVC
+			existingPVC = &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      existingPVCName,
+					Namespace: namespace,
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+					Resources: corev1.VolumeResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceStorage: resource.MustParse("1Gi"),
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, existingPVC)).To(Succeed())
+
+			// 3. Update instance to use existingClaim
+			base := instance.DeepCopy()
+			instance.Spec.Persistence.ExistingClaim = existingPVCName
+			Expect(k8sClient.Patch(ctx, instance, client.MergeFrom(base))).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if instance != nil {
+				_ = k8sClient.Delete(ctx, instance)
+			}
+			if secret != nil {
+				_ = k8sClient.Delete(ctx, secret)
+			}
+			if existingPVC != nil {
+				_ = k8sClient.Delete(ctx, existingPVC)
+			}
+		})
+
+		It("Should delete the old default PVC", func() {
+			pvc := &corev1.PersistentVolumeClaim{}
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      defaultPVCName,
+					Namespace: namespace,
+				}, pvc)
+				if err != nil {
+					return apierrors.IsNotFound(err)
+				}
+				return !pvc.DeletionTimestamp.IsZero()
+			}, timeout, interval).Should(BeTrue(), "Default PVC should be deleted or marked for deletion when switching to a different existingClaim")
+		})
+	})
+
+	Context("When adopting a default PVC as an existing claim", func() {
+		var instanceName string
+		var defaultPVCName string
+
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
+		var secret *corev1.Secret
+
+		BeforeEach(func() {
+			instanceName = "test-adopt-pvc-" + time.Now().Format("150405")
+			defaultPVCName = instanceName + "-data"
+
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName + "-secret",
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"encryption-key": []byte("test-encryption-key-value"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			// 1. Create instance with default persistence
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+						ValueFrom: &corev1.EnvVarSource{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: secret.Name,
+								},
+								Key: "encryption-key",
+							},
+						},
+					},
+					Persistence: pocketidinternalv1alpha1.PersistenceConfig{
+						Enabled: true,
+						Size:    resource.MustParse("1Gi"),
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+
+			// Wait for default PVC to be created with ownerRef
+			pvc := &corev1.PersistentVolumeClaim{}
+			Eventually(func() int {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      defaultPVCName,
+					Namespace: namespace,
+				}, pvc)
+				if err != nil {
+					return 0
+				}
+				return len(pvc.OwnerReferences)
+			}, timeout, interval).Should(BeNumerically(">", 0))
+
+			// 2. Update instance to use same PVC as existingClaim
+			base := instance.DeepCopy()
+			instance.Spec.Persistence.ExistingClaim = defaultPVCName
+			Expect(k8sClient.Patch(ctx, instance, client.MergeFrom(base))).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if instance != nil {
+				_ = k8sClient.Delete(ctx, instance)
+			}
+			if secret != nil {
+				_ = k8sClient.Delete(ctx, secret)
+			}
+			pvc := &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      defaultPVCName,
+					Namespace: namespace,
+				},
+			}
+			_ = k8sClient.Delete(ctx, pvc)
+		})
+
+		It("Should remove ownerReference and managed-by labels from the PVC", func() {
+			pvc := &corev1.PersistentVolumeClaim{}
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      defaultPVCName,
+					Namespace: namespace,
+				}, pvc)
+				if err != nil {
+					return false
+				}
+				// Check if ownerReferences are gone and managed-by label is gone
+				return len(pvc.OwnerReferences) == 0 && pvc.Labels["managed-by"] != "pocket-id-operator"
+			}, timeout, interval).Should(BeTrue(), "OwnerReferences and managed-by labels should be removed")
 		})
 	})
 
@@ -831,6 +1129,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					},
 					Persistence: pocketidinternalv1alpha1.PersistenceConfig{
 						Enabled:       true,
+						Size:          resource.MustParse("1Gi"),
 						ExistingClaim: existingPVC.Name,
 					},
 				},
@@ -1162,7 +1461,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					Image: "ghcr.io/pocket-id/pocket-id:v2.5.0-distroless@sha256:deadc3c4dd6655a7d7f959200db1c74e394942dc061e6f3732b709983a08aab7",
+					Image: "ghcr.io/pocket-id/pocket-id:v2.6.2-distroless@sha256:a9adc636b5d30098307b8a1292c5887a59690cd5429aac5e87b588852f9c346d",
 					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
@@ -1202,7 +1501,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 				if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(instance), instance); err != nil {
 					return err
 				}
-				instance.Spec.Image = "ghcr.io/pocket-id/pocket-id:v2.5.0-distroless@sha256:deadc3c4dd6655a7d7f959200db1c74e394942dc061e6f3732b709983a08aab7"
+				instance.Spec.Image = "ghcr.io/pocket-id/pocket-id:v2.6.2-distroless@sha256:a9adc636b5d30098307b8a1292c5887a59690cd5429aac5e87b588852f9c346d"
 				return k8sClient.Update(ctx, instance)
 			}, timeout, interval).Should(Succeed())
 
@@ -1216,7 +1515,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					return ""
 				}
 				return deployment.Spec.Template.Spec.Containers[0].Image
-			}, timeout, interval).Should(Equal("ghcr.io/pocket-id/pocket-id:v2.5.0-distroless@sha256:deadc3c4dd6655a7d7f959200db1c74e394942dc061e6f3732b709983a08aab7"))
+			}, timeout, interval).Should(Equal("ghcr.io/pocket-id/pocket-id:v2.6.2-distroless@sha256:a9adc636b5d30098307b8a1292c5887a59690cd5429aac5e87b588852f9c346d"))
 		})
 
 		It("Should reject changes to deploymentType", func() {

@@ -5,6 +5,7 @@ metadata:
   name: {{ .Values.instance.name | default "pocket-id" }}
   namespace: {{ .Release.Namespace }}
   labels:
+    helm.sh/chart: {{ include "chart.chart" . }}
     app.kubernetes.io/name: pocket-id
     app.kubernetes.io/instance: {{ .Values.instance.name | default "pocket-id" }}
     app.kubernetes.io/managed-by: {{ .Release.Service }}

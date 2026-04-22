@@ -1,5 +1,5 @@
 # Image URL to use all building/pushing image targets
-IMG ?= ghcr.io/aclerici38/pocket-id-operator:v0.4.7@sha256:8aa2109888894b67e05b082c6c1ed7b6662a403eb59a8e162cfd46818d50bab0
+IMG ?= ghcr.io/aclerici38/pocket-id-operator:v0.5.2@sha256:e22de5d0b6ac270ee73cb9adc3521cad9cd15606d2bc54603cb6eff43144efc0
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -47,7 +47,9 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 	@rm -rf dist/chart/crds
 	@mkdir -p dist/chart/crds
 	@cp config/crd/bases/*.yaml dist/chart/crds/
-	@cp config/rbac/role.yaml dist/chart/templates/rbac/manager-role.yaml
+	@sed '/^metadata:$$/a\
+\  labels:\
+\    {{- include "chart.labels" . | nindent 4 }}' config/rbac/role.yaml > dist/chart/templates/rbac/manager-role.yaml
 
 .PHONY: generate-schemas
 generate-schemas: manifests ## Generate JSON schemas from CRDs for yaml-language-server support.

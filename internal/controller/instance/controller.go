@@ -55,7 +55,7 @@ import (
 const (
 	// latestTestedPocketIDVersion is the most recent pocket-id upstream version tested.
 	// renovate: datasource=docker depName=ghcr.io/pocket-id/pocket-id
-	latestTestedPocketIDVersion = "v2.5.0"
+	latestTestedPocketIDVersion = "v2.6.2"
 
 	// Environment variable mapping
 	envEncryptionKey      = "ENCRYPTION_KEY"
@@ -657,21 +657,49 @@ func isHTTPRouteCRDUnavailableError(err error) bool {
 }
 
 func (r *Reconciler) reconcileVolume(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
+	log := logf.FromContext(ctx)
+	defaultPVCName := instance.Name + "-data"
 	pvc := &corev1.PersistentVolumeClaim{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
 			Kind:       "PersistentVolumeClaim",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      instance.Name + "-data",
+			Name:      defaultPVCName,
 			Namespace: instance.Namespace,
 		},
 	}
 
-	// Delete PVC if persistence is disabled, using existing claim, or using StatefulSet
-	if !instance.Spec.Persistence.Enabled || instance.Spec.Persistence.ExistingClaim != "" || instance.Spec.DeploymentType == deploymentTypeStatefulSet {
+	// Delete PVC if persistence is disabled or using StatefulSet
+	if !instance.Spec.Persistence.Enabled || instance.Spec.DeploymentType == deploymentTypeStatefulSet {
+		log.V(1).Info("Deleting default PVC (persistence disabled or StatefulSet)", "pvc", defaultPVCName)
 		err := r.Delete(ctx, pvc)
 		return client.IgnoreNotFound(err)
+	}
+
+	// If using an existing claim, delete the default PVC ONLY if its name is different from the existing claim
+	if instance.Spec.Persistence.ExistingClaim != "" {
+		if instance.Spec.Persistence.ExistingClaim != defaultPVCName {
+			log.V(1).Info("Deleting default PVC (using different existingClaim)", "pvc", defaultPVCName, "existingClaim", instance.Spec.Persistence.ExistingClaim)
+			err := r.Delete(ctx, pvc)
+			return client.IgnoreNotFound(err)
+		}
+		// If they are the same, we need to ensure it's no longer managed by us
+		// to prevent it from being deleted when the instance is deleted (garbage collection)
+		existing := &corev1.PersistentVolumeClaim{}
+		if err := r.Get(ctx, client.ObjectKeyFromObject(pvc), existing); err == nil {
+			log.V(1).Info("Removing management labels and ownerReference from default PVC (used as existingClaim)", "pvc", defaultPVCName)
+			original := existing.DeepCopy()
+			existing.OwnerReferences = nil
+
+			// Remove managed-by label
+			delete(existing.Labels, common.ManagedByLabelKey)
+
+			if !reflect.DeepEqual(original, existing) {
+				return r.Update(ctx, existing)
+			}
+		}
+		return nil
 	}
 
 	// Ensure storageClass gets set to nil if empty
