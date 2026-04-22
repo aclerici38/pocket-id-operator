@@ -55,7 +55,7 @@ import (
 const (
 	// latestTestedPocketIDVersion is the most recent pocket-id upstream version tested.
 	// renovate: datasource=docker depName=ghcr.io/pocket-id/pocket-id
-	latestTestedPocketIDVersion = "v2.6.0"
+	latestTestedPocketIDVersion = "v2.6.2"
 
 	// Environment variable mapping
 	envEncryptionKey      = "ENCRYPTION_KEY"
