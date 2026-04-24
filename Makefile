@@ -47,9 +47,12 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 	@rm -rf dist/chart/crds
 	@mkdir -p dist/chart/crds
 	@cp config/crd/bases/*.yaml dist/chart/crds/
-	@sed '/^metadata:$$/a\
-\  labels:\
-\    {{- include "chart.labels" . | nindent 4 }}' config/rbac/role.yaml > dist/chart/templates/rbac/manager-role.yaml
+	@awk '/^metadata:$$/ { \
+	  print; \
+	  print "  labels:"; \
+	  print "    {{- include \"chart.labels\" . | nindent 4 }}"; \
+	  next \
+	} 1' config/rbac/role.yaml > dist/chart/templates/rbac/manager-role.yaml
 
 .PHONY: generate-schemas
 generate-schemas: manifests ## Generate JSON schemas from CRDs for yaml-language-server support.
