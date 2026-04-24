@@ -18,9 +18,9 @@ import (
 
 var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 	const (
-		managedUser   = "merge-managed-user"
-		managedUser2  = "merge-managed-user-2"
-		externalUser  = "merge-external-user"
+		managedUser    = "merge-managed-user"
+		managedUser2   = "merge-managed-user-2"
+		externalUser   = "merge-external-user"
 		mergeGroupName = "merge-test-group"
 	)
 

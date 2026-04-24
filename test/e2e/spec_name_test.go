@@ -43,7 +43,7 @@ var _ = Describe("OIDC Client spec.name", Ordered, func() {
 		// while metadata.name is intentionally different. The operator should adopt it
 		// by searching for spec.name rather than metadata.name.
 		const (
-			clientName  = "test-specname-adopt"
+			clientName   = "test-specname-adopt"
 			pocketIDName = "specname-adopt-display"
 		)
 
