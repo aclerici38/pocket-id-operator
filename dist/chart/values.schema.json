@@ -1710,7 +1710,7 @@
                 "additionalProperties": false
               },
               "podTemplate": {
-                "description": "Pod template to merge with the operator-built pod spec.\nThe operator builds the main \"pocket-id\" container and patches it on top,\nso operator-managed fields (image, env, probes, security context, resources)\nalways take precedence. Use this to add initContainers, sidecars, volumes,\ntolerations, affinity, nodeSelector, and other pod-level configuration.",
+                "description": "Pod template to merge with the operator-built pod spec.\nOperator-managed fields including the pocket-id container always take precedence.",
                 "properties": {
                   "metadata": {
                     "description": "Standard object's metadata.\nMore info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata",
