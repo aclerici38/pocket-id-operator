@@ -413,6 +413,11 @@ type PocketIDInstanceSpec struct {
 	// +optional
 	Env []corev1.EnvVar `json:"env,omitempty"`
 
+	// InitContainers to run before the main pocket-id container.
+	// Useful for database initialization, migrations, or other setup tasks.
+	// +optional
+	InitContainers []corev1.Container `json:"initContainers,omitempty"`
+
 	// Configures persistence for Pocket-ID
 	// Note: Pocket-ID can be run statelessly if using Postgres as a file and db backend
 	// If not enabled mounts an emptydir instead

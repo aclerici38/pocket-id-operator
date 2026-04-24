@@ -447,6 +447,13 @@ func (in *PocketIDInstanceSpec) DeepCopyInto(out *PocketIDInstanceSpec) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.InitContainers != nil {
+		in, out := &in.InitContainers, &out.InitContainers
+		*out = make([]v1.Container, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	in.Persistence.DeepCopyInto(&out.Persistence)
 	if in.PodSecurityContext != nil {
 		in, out := &in.PodSecurityContext, &out.PodSecurityContext

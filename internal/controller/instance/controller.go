@@ -251,6 +251,62 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 	}
 	podSpec.Containers = []corev1apply.ContainerApplyConfiguration{*container}
 
+	// Add user-defined init containers
+	if len(instance.Spec.InitContainers) > 0 {
+		initContainersApply := make([]corev1apply.ContainerApplyConfiguration, 0, len(instance.Spec.InitContainers))
+		for _, ic := range instance.Spec.InitContainers {
+			icCopy := ic
+			initCfg := corev1apply.Container().
+				WithName(icCopy.Name).
+				WithImage(icCopy.Image)
+			if len(icCopy.Command) > 0 {
+				initCfg.WithCommand(icCopy.Command...)
+			}
+			if len(icCopy.Args) > 0 {
+				initCfg.WithArgs(icCopy.Args...)
+			}
+			if len(icCopy.Env) > 0 {
+				initCfg.Env = envVarApplyConfigurationValues(icCopy.Env)
+			}
+			if len(icCopy.EnvFrom) > 0 {
+				envFromApply := make([]corev1apply.EnvFromSourceApplyConfiguration, 0, len(icCopy.EnvFrom))
+				for _, ef := range icCopy.EnvFrom {
+					efCfg := corev1apply.EnvFromSource()
+					if ef.Prefix != "" {
+						efCfg.WithPrefix(ef.Prefix)
+					}
+					if ef.ConfigMapRef != nil {
+						cmRef := corev1apply.ConfigMapEnvSource().WithName(ef.ConfigMapRef.Name)
+						if ef.ConfigMapRef.Optional != nil {
+							cmRef.WithOptional(*ef.ConfigMapRef.Optional)
+						}
+						efCfg.WithConfigMapRef(cmRef)
+					}
+					if ef.SecretRef != nil {
+						secRef := corev1apply.SecretEnvSource().WithName(ef.SecretRef.Name)
+						if ef.SecretRef.Optional != nil {
+							secRef.WithOptional(*ef.SecretRef.Optional)
+						}
+						efCfg.WithSecretRef(secRef)
+					}
+					envFromApply = append(envFromApply, *efCfg)
+				}
+				initCfg.EnvFrom = envFromApply
+			}
+			if len(icCopy.VolumeMounts) > 0 {
+				initCfg.VolumeMounts = volumeMountApplyConfigurationValues(icCopy.VolumeMounts)
+			}
+			if icCopy.SecurityContext != nil {
+				initCfg.WithSecurityContext(securityContextApplyConfiguration(icCopy.SecurityContext))
+			}
+			if icCopy.Resources.Requests != nil || icCopy.Resources.Limits != nil {
+				initCfg.WithResources(resourceRequirementsApplyConfiguration(icCopy.Resources))
+			}
+			initContainersApply = append(initContainersApply, *initCfg)
+		}
+		podSpec.InitContainers = initContainersApply
+	}
+
 	if len(volumes) > 0 {
 		podSpec.Volumes = volumeApplyConfigurationValues(volumes)
 	}
