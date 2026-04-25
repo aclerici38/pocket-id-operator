@@ -37,13 +37,9 @@
       "minimumGroupSize": 2
     },
     {
-      "matchPackagePatterns": ["^k8s\\.io/"],
+      "matchPackagePatterns": ["^k8s\\.io/", "^sigs\\.k8s\\.io/"],
       "matchPackageNames": ["kubernetes/kubernetes"],
       "groupName": "kubernetes"
-    },
-    {
-      "matchPackagePatterns": ["^sigs\\.k8s\\.io/"],
-      "groupName": "sigs.k8s.io"
     },
     {
       "matchPackagePatterns": ["^github\\.com/go-openapi/"],
