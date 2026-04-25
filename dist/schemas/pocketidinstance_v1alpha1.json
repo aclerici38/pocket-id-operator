@@ -1537,7 +1537,7 @@
               "type": "string"
             },
             "subPath": {
-              "description": "SubPath within the PVC to mount (passed to volumeMount.subPath)",
+              "description": "SubPath within the volume to mount (volumeMount.subPath)",
               "type": "string"
             }
           },
