@@ -238,6 +238,55 @@ spec:
       value: "https://custom.example.com/GeoLite2-City.mmdb"
 ```
 
+## Persistence
+
+The `persistence` block controls the data volume mounted into the pocket-id container.
+
+### Fields
+
+| Field | Default | Description |
+|---|---|---|
+| `enabled` | `false` | Mount a persistent volume at `path` |
+| `existingClaim` | — | Use a pre-existing PVC instead of creating one |
+| `size` | `1Gi` | Size of the operator-managed PVC (ignored when `existingClaim` is set) |
+| `storageClassName` | — | StorageClass for the operator-managed PVC |
+| `accessModes` | `[ReadWriteOnce]` | Access modes for the operator-managed PVC |
+| `path` | `/app/data` | Mount path for the data volume inside the container |
+| `subPath` | — | `subPath` within the volume to mount |
+| `extraVolumeMounts` | — | Additional volume mounts to inject into the pocket-id container |
+
+### Custom Mount Path and SubPath
+
+```yaml
+spec:
+  persistence:
+    enabled: true
+    size: 5Gi
+    path: /data                  # override the default mount path
+    subPath: pocket-id           # mount only this subdirectory of the volume
+```
+
+### Extra Volume Mounts
+
+`extraVolumeMounts` lets you mount volumes that are defined in `spec.podTemplate`
+directly into the pocket-id container. This is useful for config maps, secrets, or
+other volumes that need to be visible to the main container.
+
+```yaml
+spec:
+  podTemplate:
+    spec:
+      volumes:
+        - name: custom-config
+          configMap:
+            name: pocket-id-custom-config
+  persistence:
+    extraVolumeMounts:
+      - name: custom-config
+        mountPath: /app/custom-config
+        readOnly: true
+```
+
 ## StatefulSet With Operator-Managed PVC
 
 ```yaml
