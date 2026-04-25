@@ -2634,4 +2634,65 @@ var _ = Describe("PocketIDInstance Controller", func() {
 			Expect(deployment.Spec.Template.Labels).To(HaveKeyWithValue("app.kubernetes.io/instance", instanceName))
 		})
 	})
+
+	Context("When using podTemplate without containers", func() {
+		const instanceName = "test-podtemplate-no-containers"
+
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
+
+		BeforeEach(func() {
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+						Value: "test-encryption-key-32chars!!!!!",
+					},
+					PodTemplate: &corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Volumes: []corev1.Volume{
+								{
+									Name: "custom-config",
+									VolumeSource: corev1.VolumeSource{
+										EmptyDir: &corev1.EmptyDirVolumeSource{},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if instance != nil {
+				_ = k8sClient.Delete(ctx, instance)
+			}
+		})
+
+		It("Should accept a podTemplate with no containers and produce a valid Deployment", func() {
+			deployment := &appsv1.Deployment{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName,
+					Namespace: namespace,
+				}, deployment)
+			}, timeout, interval).Should(Succeed())
+
+			// Operator injects the pocket-id container
+			Expect(deployment.Spec.Template.Spec.Containers).To(HaveLen(1))
+			Expect(deployment.Spec.Template.Spec.Containers[0].Name).To(Equal("pocket-id"))
+
+			// User-defined volume is preserved
+			volumeNames := map[string]bool{}
+			for _, v := range deployment.Spec.Template.Spec.Volumes {
+				volumeNames[v.Name] = true
+			}
+			Expect(volumeNames).To(HaveKey("custom-config"))
+			Expect(volumeNames).To(HaveKey("data"))
+		})
+	})
 })
