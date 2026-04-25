@@ -8920,9 +8920,6 @@
                         "additionalProperties": false
                       }
                     },
-                    "required": [
-                      "containers"
-                    ],
                     "type": "object",
                     "additionalProperties": false
                   }

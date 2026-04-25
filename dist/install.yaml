@@ -10170,8 +10170,6 @@ spec:
                         - name
                         - podGroup
                         type: object
-                    required:
-                    - containers
                     type: object
                 type: object
               readinessProbe:
