@@ -22,6 +22,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"net/url"
@@ -68,6 +69,8 @@ const (
 	deploymentTypeStatefulSet = "StatefulSet"
 
 	readyConditionType = "Ready"
+
+	appName = "pocket-id"
 )
 
 // Reconciler reconciles a PocketIDInstance object
@@ -151,7 +154,12 @@ func (r *Reconciler) reconcileWorkload(ctx context.Context, instance *pocketidin
 		return fmt.Errorf("compute static API key hash: %w", err)
 	}
 
-	podTemplate := r.buildPodTemplate(instance, secretHash)
+	pt := r.buildPodTemplate(instance, secretHash)
+
+	podTemplate, err := podTemplateToApplyConfiguration(pt)
+	if err != nil {
+		return fmt.Errorf("convert pod template: %w", err)
+	}
 
 	if instance.Spec.DeploymentType == deploymentTypeStatefulSet {
 		return r.reconcileStatefulSet(ctx, instance, podTemplate)
@@ -159,45 +167,37 @@ func (r *Reconciler) reconcileWorkload(ctx context.Context, instance *pocketidin
 	return r.reconcileDeployment(ctx, instance, podTemplate)
 }
 
-func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketIDInstance, staticAPIKeyHash string) *corev1apply.PodTemplateSpecApplyConfiguration {
-	labels := common.ManagedByLabels(instance.Spec.Labels)
-	labels["app.kubernetes.io/name"] = "pocket-id"
-	labels["app.kubernetes.io/instance"] = instance.Name
-	labels["app.kubernetes.io/managed-by"] = "pocket-id-operator"
+func podTemplateToApplyConfiguration(pt corev1.PodTemplateSpec) (*corev1apply.PodTemplateSpecApplyConfiguration, error) {
+	data, err := json.Marshal(pt)
+	if err != nil {
+		return nil, err
+	}
+	var result corev1apply.PodTemplateSpecApplyConfiguration
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
 
-	annotations := make(map[string]string)
-	maps.Copy(annotations, instance.Spec.Annotations)
+func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketIDInstance, staticAPIKeyHash string) corev1.PodTemplateSpec {
+	var pt corev1.PodTemplateSpec
+	if instance.Spec.PodTemplate != nil {
+		pt = *instance.Spec.PodTemplate.DeepCopy()
+	}
 
+	// Use spec.labels/spec.annotations for single source of truth
+	pt.Labels = common.ManagedByLabels(instance.Spec.Labels)
+	pt.Labels["app.kubernetes.io/name"] = appName
+	pt.Labels["app.kubernetes.io/instance"] = instance.Name
+	pt.Labels["app.kubernetes.io/managed-by"] = "pocket-id-operator"
+
+	pt.Annotations = make(map[string]string)
+	maps.Copy(pt.Annotations, instance.Spec.Annotations)
 	if staticAPIKeyHash != "" {
-		annotations["pocketid.internal/static-api-key-hash"] = staticAPIKeyHash
+		pt.Annotations["pocketid.internal/static-api-key-hash"] = staticAPIKeyHash
 	}
 
-	env := buildEnvVars(instance)
-
-	var volumes []corev1.Volume
-	var volumeMounts []corev1.VolumeMount
-
-	if !instance.Spec.Persistence.Enabled {
-		// Use emptyDir if persistence is not enabled
-		volumes = append(volumes, corev1.Volume{
-			Name: "data",
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
-			},
-		})
-
-		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      "data",
-			MountPath: "/app/data",
-		})
-	}
-
-	container := corev1apply.Container().
-		WithName("pocket-id").
-		WithImage(instance.Spec.Image).
-		WithSecurityContext(securityContextApplyConfiguration(buildContainerSecurityContext(instance))).
-		WithResources(resourceRequirementsApplyConfiguration(buildResources(instance)))
-
+	// No patches for the pocket-id container
 	readinessProbe := instance.Spec.ReadinessProbe
 	if readinessProbe == nil {
 		readinessProbe = &corev1.Probe{
@@ -214,7 +214,6 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 			FailureThreshold:    3,
 		}
 	}
-	container.WithReadinessProbe(probeApplyConfiguration(readinessProbe))
 
 	livenessProbe := instance.Spec.LivenessProbe
 	if livenessProbe == nil {
@@ -232,33 +231,60 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 			FailureThreshold:    5,
 		}
 	}
-	container.WithLivenessProbe(probeApplyConfiguration(livenessProbe))
 
-	envApply := envVarApplyConfigurationValues(env)
-	if len(envApply) > 0 {
-		container.Env = envApply
+	container := corev1.Container{
+		Name:            appName,
+		Image:           instance.Spec.Image,
+		SecurityContext: buildContainerSecurityContext(instance),
+		Resources:       buildResources(instance),
+		Env:             buildEnvVars(instance),
+		ReadinessProbe:  readinessProbe,
+		LivenessProbe:   livenessProbe,
+		VolumeMounts: []corev1.VolumeMount{
+			{Name: "data", MountPath: "/app/data"},
+		},
+	}
+	pt.Spec.Containers = append([]corev1.Container{container}, pt.Spec.Containers...)
+
+	if !instance.Spec.Persistence.Enabled {
+		setVolume(&pt.Spec.Volumes, corev1.Volume{
+			Name: "data",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		})
+	} else if instance.Spec.DeploymentType != deploymentTypeStatefulSet || instance.Spec.Persistence.ExistingClaim != "" {
+		claimName := instance.Spec.Persistence.ExistingClaim
+		if claimName == "" {
+			claimName = instance.Name + "-data"
+		}
+		setVolume(&pt.Spec.Volumes, corev1.Volume{
+			Name: "data",
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: claimName,
+				},
+			},
+		})
 	}
 
-	mountsApply := volumeMountApplyConfigurationValues(volumeMounts)
-	if len(mountsApply) > 0 {
-		container.VolumeMounts = mountsApply
-	}
-
-	podSpec := corev1apply.PodSpec().
-		WithSecurityContext(podSecurityContextApplyConfiguration(buildPodSecurityContext(instance)))
+	// Pod-level settings
+	pt.Spec.SecurityContext = buildPodSecurityContext(instance)
 	if instance.Spec.HostUsers != nil {
-		podSpec.WithHostUsers(*instance.Spec.HostUsers)
-	}
-	podSpec.Containers = []corev1apply.ContainerApplyConfiguration{*container}
-
-	if len(volumes) > 0 {
-		podSpec.Volumes = volumeApplyConfigurationValues(volumes)
+		pt.Spec.HostUsers = instance.Spec.HostUsers
 	}
 
-	return corev1apply.PodTemplateSpec().
-		WithLabels(labels).
-		WithAnnotations(annotations).
-		WithSpec(podSpec)
+	return pt
+}
+
+func setVolume(volumes *[]corev1.Volume, vol corev1.Volume) {
+	for i := range *volumes {
+		if (*volumes)[i].Name == vol.Name {
+			(*volumes)[i] = vol
+			return
+		}
+	}
+	*volumes = append(*volumes, vol)
 }
 
 func buildResources(instance *pocketidinternalv1alpha1.PocketIDInstance) corev1.ResourceRequirements {
@@ -359,34 +385,8 @@ func buildContainerSecurityContext(instance *pocketidinternalv1alpha1.PocketIDIn
 }
 
 func (r *Reconciler) reconcileDeployment(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, podTemplate *corev1apply.PodTemplateSpecApplyConfiguration) error {
-	replicas := int32(1)
-
-	if instance.Spec.Persistence.Enabled {
-		claimName := instance.Spec.Persistence.ExistingClaim
-		if claimName == "" {
-			claimName = instance.Name + "-data"
-		}
-
-		podTemplate.Spec.Containers[0].VolumeMounts = volumeMountApplyConfigurationValues([]corev1.VolumeMount{
-			{
-				Name:      "data",
-				MountPath: "/app/data",
-			},
-		})
-		podTemplate.Spec.Volumes = volumeApplyConfigurationValues([]corev1.Volume{
-			{
-				Name: "data",
-				VolumeSource: corev1.VolumeSource{
-					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-						ClaimName: claimName,
-					},
-				},
-			},
-		})
-	}
-
 	selector := map[string]string{
-		"app.kubernetes.io/name":     "pocket-id",
+		"app.kubernetes.io/name":     appName,
 		"app.kubernetes.io/instance": instance.Name,
 	}
 
@@ -400,7 +400,7 @@ func (r *Reconciler) reconcileDeployment(ctx context.Context, instance *pocketid
 		WithAnnotations(instance.Spec.Annotations).
 		WithOwnerReferences(ownerRef).
 		WithSpec(appsv1apply.DeploymentSpec().
-			WithReplicas(replicas).
+			WithReplicas(1).
 			WithSelector(metav1apply.LabelSelector().WithMatchLabels(selector)).
 			WithStrategy(appsv1apply.DeploymentStrategy().WithType(appsv1.RecreateDeploymentStrategyType)).
 			WithTemplate(podTemplate),
@@ -410,60 +410,37 @@ func (r *Reconciler) reconcileDeployment(ctx context.Context, instance *pocketid
 }
 
 func (r *Reconciler) reconcileStatefulSet(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, podTemplate *corev1apply.PodTemplateSpecApplyConfiguration) error {
-	replicas := int32(1)
-
 	selector := map[string]string{
-		"app.kubernetes.io/name":     "pocket-id",
+		"app.kubernetes.io/name":     appName,
 		"app.kubernetes.io/instance": instance.Name,
 	}
 
 	stsSpec := appsv1apply.StatefulSetSpec().
-		WithReplicas(replicas).
+		WithReplicas(1).
 		WithServiceName(instance.Name).
 		WithSelector(metav1apply.LabelSelector().WithMatchLabels(selector)).
 		WithTemplate(podTemplate)
 
-	if instance.Spec.Persistence.Enabled {
-		stsSpec.Template.Spec.Containers[0].VolumeMounts = volumeMountApplyConfigurationValues([]corev1.VolumeMount{
-			{
-				Name:      "data",
-				MountPath: "/app/data",
-			},
-		})
-
-		if instance.Spec.Persistence.ExistingClaim != "" {
-			stsSpec.Template.Spec.Volumes = volumeApplyConfigurationValues([]corev1.Volume{
-				{
-					Name: "data",
-					VolumeSource: corev1.VolumeSource{
-						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-							ClaimName: instance.Spec.Persistence.ExistingClaim,
-						},
-					},
-				},
-			})
-		} else {
-			stsSpec.Template.Spec.Volumes = nil
-
-			var scn *string
-			if instance.Spec.Persistence.StorageClass != "" {
-				sc := instance.Spec.Persistence.StorageClass
-				scn = &sc
-			}
-
-			pvcSpec := corev1apply.PersistentVolumeClaimSpec().
-				WithAccessModes(instance.Spec.Persistence.AccessModes...).
-				WithResources(corev1apply.VolumeResourceRequirements().WithRequests(corev1.ResourceList{
-					corev1.ResourceStorage: instance.Spec.Persistence.Size,
-				}))
-			if scn != nil {
-				pvcSpec.WithStorageClassName(*scn)
-			}
-
-			stsSpec.WithVolumeClaimTemplates(corev1apply.PersistentVolumeClaim("data", instance.Namespace).
-				WithLabels(common.ManagedByLabels(instance.Spec.Labels)).
-				WithSpec(pvcSpec))
+	// VolumeClaimTemplate when using sts + no existingClaim
+	if instance.Spec.Persistence.Enabled && instance.Spec.Persistence.ExistingClaim == "" {
+		var scn *string
+		if instance.Spec.Persistence.StorageClass != "" {
+			sc := instance.Spec.Persistence.StorageClass
+			scn = &sc
 		}
+
+		pvcSpec := corev1apply.PersistentVolumeClaimSpec().
+			WithAccessModes(instance.Spec.Persistence.AccessModes...).
+			WithResources(corev1apply.VolumeResourceRequirements().WithRequests(corev1.ResourceList{
+				corev1.ResourceStorage: instance.Spec.Persistence.Size,
+			}))
+		if scn != nil {
+			pvcSpec.WithStorageClassName(*scn)
+		}
+
+		stsSpec.WithVolumeClaimTemplates(corev1apply.PersistentVolumeClaim("data", instance.Namespace).
+			WithLabels(common.ManagedByLabels(instance.Spec.Labels)).
+			WithSpec(pvcSpec))
 	}
 
 	ownerRef, err := common.ControllerOwnerReference(instance, r.Scheme)
@@ -512,7 +489,7 @@ func (r *Reconciler) reconcileService(ctx context.Context, instance *pocketidint
 		WithOwnerReferences(ownerRef).
 		WithSpec(corev1apply.ServiceSpec().
 			WithSelector(map[string]string{
-				"app.kubernetes.io/name":     "pocket-id",
+				"app.kubernetes.io/name":     appName,
 				"app.kubernetes.io/instance": instance.Name,
 			}).
 			WithPorts(ports...),
@@ -550,7 +527,7 @@ func (r *Reconciler) reconcileHTTPRoute(ctx context.Context, instance *pocketidi
 	}
 
 	labels := common.ManagedByLabels(instance.Spec.Route.Labels)
-	labels["app.kubernetes.io/name"] = "pocket-id"
+	labels["app.kubernetes.io/name"] = appName
 	labels["app.kubernetes.io/instance"] = instance.Name
 
 	parentRefs := make([]*gatewayv1apply.ParentReferenceApplyConfiguration, 0, len(instance.Spec.Route.ParentRefs))
