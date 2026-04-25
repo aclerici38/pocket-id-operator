@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestBuildPodTemplate_NoPodTemplate(t *testing.T) {
@@ -78,7 +78,7 @@ func TestBuildPodTemplate_PodSpecFieldsPassThrough(t *testing.T) {
 			Tolerations: []corev1.Toleration{
 				{Key: "node-role", Operator: corev1.TolerationOpEqual, Value: "storage", Effect: corev1.TaintEffectNoSchedule},
 			},
-			NodeSelector: map[string]string{"kubernetes.io/arch": "amd64"},
+			NodeSelector:      map[string]string{"kubernetes.io/arch": "amd64"},
 			PriorityClassName: "high-priority",
 		},
 	}
