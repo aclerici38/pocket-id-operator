@@ -305,7 +305,7 @@ type GeoIPConfig struct {
 	DBURL *SensitiveValue `json:"dbUrl,omitempty"`
 }
 
-// PersistenceConfig configures persistencefor the opcket-id container.
+// PersistenceConfig configures persistence for the pocket-id container.
 type PersistenceConfig struct {
 	// Enables mounting a persistent volume
 	// +kubebuilder:default=false
