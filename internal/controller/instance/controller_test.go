@@ -202,3 +202,111 @@ func TestBuildPodTemplate_OperatorFieldsNotOverriddenByPodTemplate(t *testing.T)
 		t.Errorf("expected 2 containers (operator's + podTemplate's pocket-id treated as sidecar), got %d", len(pt.Spec.Containers))
 	}
 }
+
+func TestBuildPodTemplate_PersistencePathDefault(t *testing.T) {
+	inst := minimalInstance()
+
+	pt := (&Reconciler{}).buildPodTemplate(inst, "")
+
+	mounts := pt.Spec.Containers[0].VolumeMounts
+	if len(mounts) != 1 {
+		t.Fatalf("expected 1 volume mount, got %d", len(mounts))
+	}
+	if mounts[0].MountPath != "/app/data" {
+		t.Errorf("default mount path: got %q, want %q", mounts[0].MountPath, "/app/data")
+	}
+}
+
+func TestBuildPodTemplate_PersistencePathCustom(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.Persistence.Path = "/data"
+
+	pt := (&Reconciler{}).buildPodTemplate(inst, "")
+
+	mounts := pt.Spec.Containers[0].VolumeMounts
+	if mounts[0].MountPath != "/data" {
+		t.Errorf("custom mount path: got %q, want %q", mounts[0].MountPath, "/data")
+	}
+}
+
+func TestBuildPodTemplate_PersistenceSubPath(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.Persistence.SubPath = "pocket-id"
+
+	pt := (&Reconciler{}).buildPodTemplate(inst, "")
+
+	mounts := pt.Spec.Containers[0].VolumeMounts
+	if mounts[0].SubPath != "pocket-id" {
+		t.Errorf("subPath: got %q, want %q", mounts[0].SubPath, "pocket-id")
+	}
+}
+
+func TestBuildPodTemplate_PersistenceSubPathEmpty(t *testing.T) {
+	inst := minimalInstance()
+
+	pt := (&Reconciler{}).buildPodTemplate(inst, "")
+
+	mounts := pt.Spec.Containers[0].VolumeMounts
+	if mounts[0].SubPath != "" {
+		t.Errorf("subPath should be empty by default, got %q", mounts[0].SubPath)
+	}
+}
+
+func TestBuildPodTemplate_ExtraVolumeMounts(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.Persistence.ExtraVolumeMounts = []corev1.VolumeMount{
+		{Name: "geoip-db", MountPath: "/geoip", ReadOnly: true},
+	}
+	inst.Spec.PodTemplate = &corev1.PodTemplateSpec{
+		Spec: corev1.PodSpec{
+			Volumes: []corev1.Volume{
+				{
+					Name: "geoip-db",
+					VolumeSource: corev1.VolumeSource{
+						ConfigMap: &corev1.ConfigMapVolumeSource{
+							LocalObjectReference: corev1.LocalObjectReference{Name: "geoip-database"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	pt := (&Reconciler{}).buildPodTemplate(inst, "")
+
+	mounts := pt.Spec.Containers[0].VolumeMounts
+	if len(mounts) != 2 {
+		t.Fatalf("expected 2 volume mounts, got %d", len(mounts))
+	}
+	if mounts[0].Name != "data" || mounts[0].MountPath != "/app/data" {
+		t.Errorf("first mount should be data at /app/data, got %s at %s", mounts[0].Name, mounts[0].MountPath)
+	}
+	if mounts[1].Name != "geoip-db" || mounts[1].MountPath != "/geoip" || !mounts[1].ReadOnly {
+		t.Errorf("second mount: got name=%s path=%s readOnly=%v", mounts[1].Name, mounts[1].MountPath, mounts[1].ReadOnly)
+	}
+}
+
+func TestBuildPodTemplate_AllPersistenceFieldsCombined(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.Persistence.Path = "/custom/data"
+	inst.Spec.Persistence.SubPath = "subdir"
+	inst.Spec.Persistence.ExtraVolumeMounts = []corev1.VolumeMount{
+		{Name: "extra", MountPath: "/extra"},
+	}
+
+	pt := (&Reconciler{}).buildPodTemplate(inst, "")
+
+	mounts := pt.Spec.Containers[0].VolumeMounts
+	if len(mounts) != 2 {
+		t.Fatalf("expected 2 volume mounts, got %d", len(mounts))
+	}
+	if mounts[0].MountPath != "/custom/data" {
+		t.Errorf("data mount path: got %q, want %q", mounts[0].MountPath, "/custom/data")
+	}
+	if mounts[0].SubPath != "subdir" {
+		t.Errorf("data mount subPath: got %q, want %q", mounts[0].SubPath, "subdir")
+	}
+	if mounts[1].Name != "extra" {
+		t.Errorf("extra mount name: got %q, want %q", mounts[1].Name, "extra")
+	}
+}

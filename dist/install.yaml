@@ -1454,6 +1454,76 @@ spec:
                   existingClaim:
                     description: Name of an existing, externally-managed PVC to mount
                     type: string
+                  extraVolumeMounts:
+                    description: |-
+                      Extra volume mounts to add to the pocket-id container.
+                      Useful for mounting volumes defined in spec.podTemplate.
+                    items:
+                      description: VolumeMount describes a mounting of a Volume within
+                        a container.
+                      properties:
+                        mountPath:
+                          description: |-
+                            Path within the container at which the volume should be mounted.  Must
+                            not contain ':'.
+                          type: string
+                        mountPropagation:
+                          description: |-
+                            mountPropagation determines how mounts are propagated from the host
+                            to container and the other way around.
+                            When not set, MountPropagationNone is used.
+                            This field is beta in 1.10.
+                            When RecursiveReadOnly is set to IfPossible or to Enabled, MountPropagation must be None or unspecified
+                            (which defaults to None).
+                          type: string
+                        name:
+                          description: This must match the Name of a Volume.
+                          type: string
+                        readOnly:
+                          description: |-
+                            Mounted read-only if true, read-write otherwise (false or unspecified).
+                            Defaults to false.
+                          type: boolean
+                        recursiveReadOnly:
+                          description: |-
+                            RecursiveReadOnly specifies whether read-only mounts should be handled
+                            recursively.
+
+                            If ReadOnly is false, this field has no meaning and must be unspecified.
+
+                            If ReadOnly is true, and this field is set to Disabled, the mount is not made
+                            recursively read-only.  If this field is set to IfPossible, the mount is made
+                            recursively read-only, if it is supported by the container runtime.  If this
+                            field is set to Enabled, the mount is made recursively read-only if it is
+                            supported by the container runtime, otherwise the pod will not be started and
+                            an error will be generated to indicate the reason.
+
+                            If this field is set to IfPossible or Enabled, MountPropagation must be set to
+                            None (or be unspecified, which defaults to None).
+
+                            If this field is not specified, it is treated as an equivalent of Disabled.
+                          type: string
+                        subPath:
+                          description: |-
+                            Path within the volume from which the container's volume should be mounted.
+                            Defaults to "" (volume's root).
+                          type: string
+                        subPathExpr:
+                          description: |-
+                            Expanded path within the volume from which the container's volume should be mounted.
+                            Behaves similarly to SubPath but environment variable references $(VAR_NAME) are expanded using the container's environment.
+                            Defaults to "" (volume's root).
+                            SubPathExpr and SubPath are mutually exclusive.
+                          type: string
+                      required:
+                      - mountPath
+                      - name
+                      type: object
+                    type: array
+                  path:
+                    default: /app/data
+                    description: Path where the data volume is mounted in the container
+                    type: string
                   size:
                     anyOf:
                     - type: integer
@@ -1464,6 +1534,9 @@ spec:
                     x-kubernetes-int-or-string: true
                   storageClass:
                     description: Name of storageClass to provision a volume from
+                    type: string
+                  subPath:
+                    description: SubPath within the PVC to mount (passed to volumeMount.subPath)
                     type: string
                 required:
                 - enabled
