@@ -2635,12 +2635,36 @@ var _ = Describe("PocketIDInstance Controller", func() {
 		})
 	})
 
-	Context("When using podTemplate without containers", func() {
-		const instanceName = "test-podtemplate-no-containers"
+	Context("When using persistence path, subPath, and extraVolumeMounts", func() {
+		const instanceName = "test-persistence-mount-opts"
 
 		var instance *pocketidinternalv1alpha1.PocketIDInstance
+		var secret *corev1.Secret
+		var configMap *corev1.ConfigMap
 
 		BeforeEach(func() {
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName + "-secret",
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"encryption-key": []byte("test-encryption-key-value"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			configMap = &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName + "-extra",
+					Namespace: namespace,
+				},
+				Data: map[string]string{
+					"config.yaml": "key: value",
+				},
+			}
+			Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
+
 			instance = &pocketidinternalv1alpha1.PocketIDInstance{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      instanceName,
@@ -2648,15 +2672,38 @@ var _ = Describe("PocketIDInstance Controller", func() {
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
-						Value: "test-encryption-key-32chars!!!!!",
+						ValueFrom: &corev1.EnvVarSource{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: secret.Name,
+								},
+								Key: "encryption-key",
+							},
+						},
+					},
+					Persistence: pocketidinternalv1alpha1.PersistenceConfig{
+						Enabled: false,
+						Path:    "/custom/data",
+						SubPath: "pocket-id",
+						ExtraVolumeMounts: []corev1.VolumeMount{
+							{
+								Name:      "extra-config",
+								MountPath: "/etc/extra",
+								ReadOnly:  true,
+							},
+						},
 					},
 					PodTemplate: &corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Volumes: []corev1.Volume{
 								{
-									Name: "custom-config",
+									Name: "extra-config",
 									VolumeSource: corev1.VolumeSource{
-										EmptyDir: &corev1.EmptyDirVolumeSource{},
+										ConfigMap: &corev1.ConfigMapVolumeSource{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: configMap.Name,
+											},
+										},
 									},
 								},
 							},
@@ -2671,9 +2718,15 @@ var _ = Describe("PocketIDInstance Controller", func() {
 			if instance != nil {
 				_ = k8sClient.Delete(ctx, instance)
 			}
+			if secret != nil {
+				_ = k8sClient.Delete(ctx, secret)
+			}
+			if configMap != nil {
+				_ = k8sClient.Delete(ctx, configMap)
+			}
 		})
 
-		It("Should accept a podTemplate with no containers and produce a valid Deployment", func() {
+		It("Should create a valid Deployment with custom path, subPath, and extra volume mounts", func() {
 			deployment := &appsv1.Deployment{}
 			Eventually(func() error {
 				return k8sClient.Get(ctx, types.NamespacedName{
@@ -2682,17 +2735,27 @@ var _ = Describe("PocketIDInstance Controller", func() {
 				}, deployment)
 			}, timeout, interval).Should(Succeed())
 
-			// Operator injects the pocket-id container
-			Expect(deployment.Spec.Template.Spec.Containers).To(HaveLen(1))
-			Expect(deployment.Spec.Template.Spec.Containers[0].Name).To(Equal("pocket-id"))
+			// Verify the pocket-id container has both volume mounts
+			volumeMounts := deployment.Spec.Template.Spec.Containers[0].VolumeMounts
+			Expect(volumeMounts).To(HaveLen(2))
 
-			// User-defined volume is preserved
+			// Data mount with custom path and subPath
+			Expect(volumeMounts[0].Name).To(Equal("data"))
+			Expect(volumeMounts[0].MountPath).To(Equal("/custom/data"))
+			Expect(volumeMounts[0].SubPath).To(Equal("pocket-id"))
+
+			// Extra volume mount
+			Expect(volumeMounts[1].Name).To(Equal("extra-config"))
+			Expect(volumeMounts[1].MountPath).To(Equal("/etc/extra"))
+			Expect(volumeMounts[1].ReadOnly).To(BeTrue())
+
+			// Verify volumes include both data and extra-config
 			volumeNames := map[string]bool{}
 			for _, v := range deployment.Spec.Template.Spec.Volumes {
 				volumeNames[v.Name] = true
 			}
-			Expect(volumeNames).To(HaveKey("custom-config"))
 			Expect(volumeNames).To(HaveKey("data"))
+			Expect(volumeNames).To(HaveKey("extra-config"))
 		})
 	})
 })

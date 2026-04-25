@@ -71,6 +71,8 @@ const (
 	readyConditionType = "Ready"
 
 	appName = "pocket-id"
+
+	defaultMountPath = "/app/data"
 )
 
 // Reconciler reconciles a PocketIDInstance object
@@ -232,6 +234,16 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 		}
 	}
 
+	mountPath := instance.Spec.Persistence.Path
+	if mountPath == "" {
+		mountPath = defaultMountPath
+	}
+	dataMount := corev1.VolumeMount{Name: "data", MountPath: mountPath}
+	if instance.Spec.Persistence.SubPath != "" {
+		dataMount.SubPath = instance.Spec.Persistence.SubPath
+	}
+	volumeMounts := append([]corev1.VolumeMount{dataMount}, instance.Spec.Persistence.ExtraVolumeMounts...)
+
 	container := corev1.Container{
 		Name:            appName,
 		Image:           instance.Spec.Image,
@@ -240,9 +252,7 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 		Env:             buildEnvVars(instance),
 		ReadinessProbe:  readinessProbe,
 		LivenessProbe:   livenessProbe,
-		VolumeMounts: []corev1.VolumeMount{
-			{Name: "data", MountPath: "/app/data"},
-		},
+		VolumeMounts:    volumeMounts,
 	}
 	pt.Spec.Containers = append([]corev1.Container{container}, pt.Spec.Containers...)
 

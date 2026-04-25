@@ -305,7 +305,7 @@ type GeoIPConfig struct {
 	DBURL *SensitiveValue `json:"dbUrl,omitempty"`
 }
 
-// Persistence config. Mounts a volume at /app/Data
+// PersistenceConfig configures persistence for the pocket-id container.
 type PersistenceConfig struct {
 	// Enables mounting a persistent volume
 	// +kubebuilder:default=false
@@ -328,6 +328,20 @@ type PersistenceConfig struct {
 	// +kubebuilder:default={"ReadWriteOnce"}
 	// +optional
 	AccessModes []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
+
+	// Path where the data volume is mounted in the container
+	// +kubebuilder:default="/app/data"
+	// +optional
+	Path string `json:"path,omitempty"`
+
+	// SubPath within the volume to mount (volumeMount.subPath)
+	// +optional
+	SubPath string `json:"subPath,omitempty"`
+
+	// Extra volume mounts to add to the pocket-id container.
+	// Useful for mounting volumes defined in spec.podTemplate.
+	// +optional
+	ExtraVolumeMounts []corev1.VolumeMount `json:"extraVolumeMounts,omitempty"`
 }
 
 // HTTPRouteConfig configures an HTTPRoute (Gateway API) for the instance
