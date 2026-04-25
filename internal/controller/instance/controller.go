@@ -69,6 +69,8 @@ const (
 	deploymentTypeStatefulSet = "StatefulSet"
 
 	readyConditionType = "Ready"
+
+	appName = "pocket-id"
 )
 
 // Reconciler reconciles a PocketIDInstance object
@@ -185,7 +187,7 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 
 	// Use spec.labels/spec.annotations for single source of truth
 	pt.Labels = common.ManagedByLabels(instance.Spec.Labels)
-	pt.Labels["app.kubernetes.io/name"] = "pocket-id"
+	pt.Labels["app.kubernetes.io/name"] = appName
 	pt.Labels["app.kubernetes.io/instance"] = instance.Name
 	pt.Labels["app.kubernetes.io/managed-by"] = "pocket-id-operator"
 
@@ -231,7 +233,7 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 	}
 
 	container := corev1.Container{
-		Name:            "pocket-id",
+		Name:            appName,
 		Image:           instance.Spec.Image,
 		SecurityContext: buildContainerSecurityContext(instance),
 		Resources:       buildResources(instance),
@@ -384,7 +386,7 @@ func buildContainerSecurityContext(instance *pocketidinternalv1alpha1.PocketIDIn
 
 func (r *Reconciler) reconcileDeployment(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, podTemplate *corev1apply.PodTemplateSpecApplyConfiguration) error {
 	selector := map[string]string{
-		"app.kubernetes.io/name":     "pocket-id",
+		"app.kubernetes.io/name":     appName,
 		"app.kubernetes.io/instance": instance.Name,
 	}
 
@@ -409,7 +411,7 @@ func (r *Reconciler) reconcileDeployment(ctx context.Context, instance *pocketid
 
 func (r *Reconciler) reconcileStatefulSet(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, podTemplate *corev1apply.PodTemplateSpecApplyConfiguration) error {
 	selector := map[string]string{
-		"app.kubernetes.io/name":     "pocket-id",
+		"app.kubernetes.io/name":     appName,
 		"app.kubernetes.io/instance": instance.Name,
 	}
 
@@ -487,7 +489,7 @@ func (r *Reconciler) reconcileService(ctx context.Context, instance *pocketidint
 		WithOwnerReferences(ownerRef).
 		WithSpec(corev1apply.ServiceSpec().
 			WithSelector(map[string]string{
-				"app.kubernetes.io/name":     "pocket-id",
+				"app.kubernetes.io/name":     appName,
 				"app.kubernetes.io/instance": instance.Name,
 			}).
 			WithPorts(ports...),
@@ -525,7 +527,7 @@ func (r *Reconciler) reconcileHTTPRoute(ctx context.Context, instance *pocketidi
 	}
 
 	labels := common.ManagedByLabels(instance.Spec.Route.Labels)
-	labels["app.kubernetes.io/name"] = "pocket-id"
+	labels["app.kubernetes.io/name"] = appName
 	labels["app.kubernetes.io/instance"] = instance.Name
 
 	parentRefs := make([]*gatewayv1apply.ParentReferenceApplyConfiguration, 0, len(instance.Spec.Route.ParentRefs))

@@ -8,20 +8,22 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const testImage = "ghcr.io/pocket-id/pocket-id:v2.6.2-distroless@sha256:a9adc636b5d30098307b8a1292c5887a59690cd5429aac5e87b588852f9c346d"
+
 func TestBuildPodTemplate_NoPodTemplate(t *testing.T) {
 	inst := minimalInstance()
-	inst.Spec.Image = "ghcr.io/pocket-id/pocket-id:v2.0.0"
+	inst.Spec.Image = testImage
 
 	pt := (&Reconciler{}).buildPodTemplate(inst, "")
 
 	if len(pt.Spec.Containers) != 1 {
 		t.Fatalf("expected 1 container, got %d", len(pt.Spec.Containers))
 	}
-	if pt.Spec.Containers[0].Name != "pocket-id" {
-		t.Errorf("container name: got %q, want %q", pt.Spec.Containers[0].Name, "pocket-id")
+	if pt.Spec.Containers[0].Name != appName {
+		t.Errorf("container name: got %q, want %q", pt.Spec.Containers[0].Name, appName)
 	}
-	if pt.Spec.Containers[0].Image != "ghcr.io/pocket-id/pocket-id:v2.0.0" {
-		t.Errorf("image: got %q, want %q", pt.Spec.Containers[0].Image, "ghcr.io/pocket-id/pocket-id:v2.0.0")
+	if pt.Spec.Containers[0].Image != testImage {
+		t.Errorf("image: got %q, want %q", pt.Spec.Containers[0].Image, testImage)
 	}
 }
 
@@ -175,7 +177,7 @@ func TestBuildPodTemplate_UserVolumesPreserved(t *testing.T) {
 
 func TestBuildPodTemplate_OperatorFieldsNotOverriddenByPodTemplate(t *testing.T) {
 	inst := minimalInstance()
-	inst.Spec.Image = "ghcr.io/pocket-id/pocket-id:v2.0.0"
+	inst.Spec.Image = testImage
 	inst.Spec.Resources = corev1.ResourceRequirements{
 		Requests: corev1.ResourceList{
 			corev1.ResourceMemory: resource.MustParse("256Mi"),
@@ -192,7 +194,7 @@ func TestBuildPodTemplate_OperatorFieldsNotOverriddenByPodTemplate(t *testing.T)
 
 	pt := (&Reconciler{}).buildPodTemplate(inst, "")
 
-	if pt.Spec.Containers[0].Image != "ghcr.io/pocket-id/pocket-id:v2.0.0" {
+	if pt.Spec.Containers[0].Image != testImage {
 		t.Errorf("operator image should win, got %q", pt.Spec.Containers[0].Image)
 	}
 	// The podTemplate "pocket-id" container becomes a sidecar since we prepend
