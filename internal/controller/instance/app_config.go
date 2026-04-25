@@ -15,6 +15,16 @@ import (
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
+// boolPtrToStringPtr converts a *bool to a *string ("true"/"false").
+// Returns nil if the input is nil.
+func boolPtrToStringPtr(b *bool) *string {
+	if b == nil {
+		return nil
+	}
+	s := fmt.Sprintf("%t", *b)
+	return &s
+}
+
 // hasAppConfigFields returns true if any spec section that should be managed
 // via the application configuration API is set.
 func hasAppConfigFields(instance *pocketidinternalv1alpha1.PocketIDInstance) bool {
@@ -146,8 +156,8 @@ func (r *Reconciler) applyUIConfig(instance *pocketidinternalv1alpha1.PocketIDIn
 	if ui.HomePageURL != "" {
 		dto.HomePageURL = &ui.HomePageURL
 	}
-	if ui.DisableAnimations != nil {
-		dto.DisableAnimations = ptr.To(fmt.Sprintf("%t", *ui.DisableAnimations))
+	if v := boolPtrToStringPtr(ui.DisableAnimations); v != nil {
+		dto.DisableAnimations = v
 	}
 	if ui.AccentColor != "" {
 		dto.AccentColor = ui.AccentColor
@@ -159,14 +169,14 @@ func (r *Reconciler) applyUserManagementConfig(instance *pocketidinternalv1alpha
 		return
 	}
 	um := instance.Spec.UserManagement
-	if um.RequireUserEmail != nil {
-		dto.RequireUserEmail = ptr.To(fmt.Sprintf("%t", *um.RequireUserEmail))
+	if v := boolPtrToStringPtr(um.RequireUserEmail); v != nil {
+		dto.RequireUserEmail = v
 	}
-	if um.EmailsVerified != nil {
-		dto.EmailsVerified = ptr.To(fmt.Sprintf("%t", *um.EmailsVerified))
+	if v := boolPtrToStringPtr(um.EmailsVerified); v != nil {
+		dto.EmailsVerified = v
 	}
-	if um.AllowOwnAccountEdit != nil {
-		dto.AllowOwnAccountEdit = ptr.To(fmt.Sprintf("%t", *um.AllowOwnAccountEdit))
+	if v := boolPtrToStringPtr(um.AllowOwnAccountEdit); v != nil {
+		dto.AllowOwnAccountEdit = v
 	}
 	if um.AllowUserSignups != "" {
 		dto.AllowUserSignups = &um.AllowUserSignups
@@ -200,8 +210,8 @@ func (r *Reconciler) applySMTPConfig(ctx context.Context, instance *pocketidinte
 	if smtp.TLS != "" {
 		dto.SMTPTLS = &smtp.TLS
 	}
-	if smtp.SkipCertVerify != nil {
-		dto.SMTPSkipCertVerify = fmt.Sprintf("%t", *smtp.SkipCertVerify)
+	if v := boolPtrToStringPtr(smtp.SkipCertVerify); v != nil {
+		dto.SMTPSkipCertVerify = *v
 	}
 	return nil
 }
@@ -211,20 +221,20 @@ func (r *Reconciler) applyEmailNotificationsConfig(instance *pocketidinternalv1a
 		return
 	}
 	en := instance.Spec.EmailNotifications
-	if en.LoginNotification != nil {
-		dto.EmailLoginNotificationEnabled = ptr.To(fmt.Sprintf("%t", *en.LoginNotification))
+	if v := boolPtrToStringPtr(en.LoginNotification); v != nil {
+		dto.EmailLoginNotificationEnabled = v
 	}
-	if en.OneTimeAccessAsAdmin != nil {
-		dto.EmailOneTimeAccessAsAdminEnabled = ptr.To(fmt.Sprintf("%t", *en.OneTimeAccessAsAdmin))
+	if v := boolPtrToStringPtr(en.OneTimeAccessAsAdmin); v != nil {
+		dto.EmailOneTimeAccessAsAdminEnabled = v
 	}
-	if en.APIKeyExpiration != nil {
-		dto.EmailAPIKeyExpirationEnabled = ptr.To(fmt.Sprintf("%t", *en.APIKeyExpiration))
+	if v := boolPtrToStringPtr(en.APIKeyExpiration); v != nil {
+		dto.EmailAPIKeyExpirationEnabled = v
 	}
-	if en.OneTimeAccessAsUnauthenticated != nil {
-		dto.EmailOneTimeAccessAsUnauthenticatedEnabled = ptr.To(fmt.Sprintf("%t", *en.OneTimeAccessAsUnauthenticated))
+	if v := boolPtrToStringPtr(en.OneTimeAccessAsUnauthenticated); v != nil {
+		dto.EmailOneTimeAccessAsUnauthenticatedEnabled = v
 	}
-	if en.Verification != nil {
-		dto.EmailVerificationEnabled = ptr.To(fmt.Sprintf("%t", *en.Verification))
+	if v := boolPtrToStringPtr(en.Verification); v != nil {
+		dto.EmailVerificationEnabled = v
 	}
 }
 
@@ -244,11 +254,11 @@ func (r *Reconciler) applyLDAPConfig(ctx context.Context, instance *pocketidinte
 	}
 	dto.LdapBindPassword = password
 
-	if ldap.SkipCertVerify != nil {
-		dto.LdapSkipCertVerify = fmt.Sprintf("%t", *ldap.SkipCertVerify)
+	if v := boolPtrToStringPtr(ldap.SkipCertVerify); v != nil {
+		dto.LdapSkipCertVerify = *v
 	}
-	if ldap.SoftDeleteUsers != nil {
-		dto.LdapSoftDeleteUsers = fmt.Sprintf("%t", *ldap.SoftDeleteUsers)
+	if v := boolPtrToStringPtr(ldap.SoftDeleteUsers); v != nil {
+		dto.LdapSoftDeleteUsers = *v
 	}
 	if ldap.AdminGroupName != "" {
 		dto.LdapAdminGroupName = ldap.AdminGroupName
