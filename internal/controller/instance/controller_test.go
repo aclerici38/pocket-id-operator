@@ -39,7 +39,7 @@ func TestBuildPodTemplate_PocketIDContainerAlwaysFirst(t *testing.T) {
 
 	pt := (&Reconciler{}).buildPodTemplate(inst, "")
 
-	if pt.Spec.Containers[0].Name != "pocket-id" {
+	if pt.Spec.Containers[0].Name != appName {
 		t.Errorf("expected pocket-id to be first container, got %q", pt.Spec.Containers[0].Name)
 	}
 	if len(pt.Spec.Containers) != 2 {
@@ -126,7 +126,7 @@ func TestBuildPodTemplate_OperatorLabelsAlwaysSet(t *testing.T) {
 
 	pt := (&Reconciler{}).buildPodTemplate(inst, "")
 
-	if pt.Labels["app.kubernetes.io/name"] != "pocket-id" {
+	if pt.Labels["app.kubernetes.io/name"] != appName {
 		t.Errorf("missing app.kubernetes.io/name label")
 	}
 	if pt.Labels["app.kubernetes.io/instance"] != inst.Name {
@@ -187,7 +187,7 @@ func TestBuildPodTemplate_OperatorFieldsNotOverriddenByPodTemplate(t *testing.T)
 		Spec: corev1.PodSpec{
 			// A "pocket-id" container here should be ignored — operator builds it fresh
 			Containers: []corev1.Container{
-				{Name: "pocket-id", Image: "attacker/malicious:latest"},
+				{Name: appName, Image: "attacker/malicious:latest"},
 			},
 		},
 	}

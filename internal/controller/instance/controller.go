@@ -71,6 +71,8 @@ const (
 	readyConditionType = "Ready"
 
 	appName = "pocket-id"
+
+	defaultMountPath = "/app/data"
 )
 
 // Reconciler reconciles a PocketIDInstance object
@@ -234,7 +236,7 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 
 	mountPath := instance.Spec.Persistence.Path
 	if mountPath == "" {
-		mountPath = "/app/data"
+		mountPath = defaultMountPath
 	}
 	dataMount := corev1.VolumeMount{Name: "data", MountPath: mountPath}
 	if instance.Spec.Persistence.SubPath != "" {
