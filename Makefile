@@ -198,12 +198,12 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 .PHONY: deploy
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && "$(KUSTOMIZE)" edit set image ghcr.io/aclerici38/pocket-id-operator=${IMG}
-	"$(KUSTOMIZE)" build config/default | "$(KUBECTL)" apply -f -
+	"$(KUSTOMIZE)" build config/default | "$(KUBECTL)" apply --server-side -f -
 
 .PHONY: deploy-e2e
 deploy-e2e: manifests kustomize ## Deploy controller with a faster resync interval for e2e tests.
 	cd config/manager && "$(KUSTOMIZE)" edit set image ghcr.io/aclerici38/pocket-id-operator=${IMG}
-	"$(KUSTOMIZE)" build config/e2e | "$(KUBECTL)" apply -f -
+	"$(KUSTOMIZE)" build config/e2e | "$(KUBECTL)" apply --server-side -f -
 
 .PHONY: undeploy
 undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
