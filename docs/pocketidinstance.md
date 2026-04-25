@@ -362,6 +362,56 @@ spec:
       app.kubernetes.io/instance: pocket-id
 ```
 
+## Pod Template
+
+`spec.podTemplate` allows editing the instance's pod spec to add custom 
+init containers, sidecars, tolerations, affinity, node selectors, extra volumes, etc.
+The instance's spec is merged on top of `spec.podTemplate`, therefore the pocket-id container
+remains managed by the operator and changes here will not affect it. The rest of the pod is freely editable.
+
+### Init container
+
+```yaml
+spec:
+  podTemplate:
+    spec:
+      initContainers:
+        - name: init-db
+          image: ghcr.io/home-operations/postgres-init
+          envFrom:
+            - secretRef:
+                name: pocket-id-db-secret
+```
+
+### Tolerations and node selector
+
+```yaml
+spec:
+  podTemplate:
+    spec:
+      tolerations:
+        - key: node-role
+          operator: Equal
+          value: storage
+          effect: NoSchedule
+      nodeSelector:
+        kubernetes.io/arch: amd64
+```
+
+### Sidecar
+
+```yaml
+spec:
+  podTemplate:
+    spec:
+      containers:
+        - name: oauth2-proxy
+          image: quay.io/oauth2-proxy/oauth2-proxy
+          args:
+            - --upstream=http://localhost:1411
+            - --http-address=0.0.0.0:4180
+```
+
 ## Generated Resources And Environment
 
 - Service name: `<instance>`, port 1411.

@@ -436,6 +436,11 @@ type PocketIDInstanceSpec struct {
 	// +optional
 	Annotations map[string]string `json:"annotations,omitempty"`
 
+	// Pod template to merge with the operator-built pod spec.
+	// Operator-managed fields including the pocket-id container always take precedence.
+	// +optional
+	PodTemplate *corev1.PodTemplateSpec `json:"podTemplate,omitempty"`
+
 	// Readiness probe configuration
 	// +optional
 	ReadinessProbe *corev1.Probe `json:"readinessProbe,omitempty"`

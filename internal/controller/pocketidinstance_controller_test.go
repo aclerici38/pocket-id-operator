@@ -2545,4 +2545,93 @@ var _ = Describe("PocketIDInstance Controller", func() {
 			})
 		})
 	})
+
+	Context("When creating a PocketIDInstance with spec.podTemplate", func() {
+		const instanceName = "test-podtemplate"
+
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
+
+		BeforeEach(func() {
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+						Value: "test-encryption-key-32chars!!!!!",
+					},
+					PodTemplate: &corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							InitContainers: []corev1.Container{
+								{
+									Name:    "init-db",
+									Image:   "busybox:latest",
+									Command: []string{"sh", "-c", "echo init"},
+								},
+							},
+							Containers: []corev1.Container{
+								{
+									Name:  "sidecar",
+									Image: "busybox:latest",
+								},
+							},
+							Tolerations: []corev1.Toleration{
+								{
+									Key:      "node-role",
+									Operator: corev1.TolerationOpEqual,
+									Value:    "storage",
+									Effect:   corev1.TaintEffectNoSchedule,
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if instance != nil {
+				_ = k8sClient.Delete(ctx, instance)
+			}
+		})
+
+		It("Should produce a Deployment accepted by the API server with initContainers and sidecars", func() {
+			deployment := &appsv1.Deployment{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName,
+					Namespace: namespace,
+				}, deployment)
+			}, timeout, interval).Should(Succeed())
+
+			// pocket-id is first, sidecar is second
+			Expect(deployment.Spec.Template.Spec.Containers).To(HaveLen(2))
+			Expect(deployment.Spec.Template.Spec.Containers[0].Name).To(Equal("pocket-id"))
+			Expect(deployment.Spec.Template.Spec.Containers[1].Name).To(Equal("sidecar"))
+
+			// initContainer present
+			Expect(deployment.Spec.Template.Spec.InitContainers).To(HaveLen(1))
+			Expect(deployment.Spec.Template.Spec.InitContainers[0].Name).To(Equal("init-db"))
+
+			// toleration present
+			Expect(deployment.Spec.Template.Spec.Tolerations).To(HaveLen(1))
+			Expect(deployment.Spec.Template.Spec.Tolerations[0].Key).To(Equal("node-role"))
+		})
+
+		It("Should not carry podTemplate labels/annotations onto the pod template", func() {
+			deployment := &appsv1.Deployment{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName,
+					Namespace: namespace,
+				}, deployment)
+			}, timeout, interval).Should(Succeed())
+
+			// Operator-managed labels must be present
+			Expect(deployment.Spec.Template.Labels).To(HaveKeyWithValue("app.kubernetes.io/name", "pocket-id"))
+			Expect(deployment.Spec.Template.Labels).To(HaveKeyWithValue("app.kubernetes.io/instance", instanceName))
+		})
+	})
 })
