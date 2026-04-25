@@ -96,6 +96,7 @@ jobs:
       image_tag: ${{ needs.meta.outputs.image_tag }}
       additional_tags: ${{ needs.meta.outputs.additional_tags }}
       push: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+      attest: ${{ github.ref == 'refs/heads/main' }}
     secrets: inherit
 
   e2e:
