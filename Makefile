@@ -248,7 +248,7 @@ ENVTEST_K8S_VERSION ?= $(shell v='$(call gomodver,k8s.io/api)'; \
 GOLANGCI_LINT_VERSION ?= v2.11.4
 
 # renovate: datasource=github-releases depName=onsi/ginkgo
-GINKGO_VERSION ?= v2.28.1
+GINKGO_VERSION ?= v2.28.2
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
