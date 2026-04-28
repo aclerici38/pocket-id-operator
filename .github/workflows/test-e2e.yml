@@ -47,7 +47,7 @@ env:
   # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize
   KUSTOMIZE_VERSION: v5.7.1
   # renovate: datasource=github-releases depName=onsi/ginkgo
-  GINKGO_VERSION: v2.28.2
+  GINKGO_VERSION: v2.28.3
   # renovate: datasource=docker depName=ghcr.io/pocket-id/pocket-id versioning=docker
   POCKET_ID_IMAGE: ghcr.io/pocket-id/pocket-id:v2.6.2-distroless@sha256:a9adc636b5d30098307b8a1292c5887a59690cd5429aac5e87b588852f9c346d
 
