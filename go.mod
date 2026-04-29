@@ -5,7 +5,7 @@ go 1.26.2
 require (
 	github.com/aclerici38/pocket-id-go-client/v2 v2.6.2
 	github.com/go-openapi/runtime v0.29.4
-	github.com/go-openapi/strfmt v0.26.1
+	github.com/go-openapi/strfmt v0.26.2
 	github.com/onsi/ginkgo/v2 v2.28.3
 	github.com/onsi/gomega v1.40.0
 	github.com/prometheus/client_golang v1.23.2
