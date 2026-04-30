@@ -368,7 +368,3 @@ type PocketIDOIDCClientList struct {
 	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []PocketIDOIDCClient `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&PocketIDOIDCClient{}, &PocketIDOIDCClientList{})
-}

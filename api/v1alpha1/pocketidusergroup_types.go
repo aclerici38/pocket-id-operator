@@ -177,7 +177,3 @@ type PocketIDUserGroupList struct {
 	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []PocketIDUserGroup `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&PocketIDUserGroup{}, &PocketIDUserGroupList{})
-}

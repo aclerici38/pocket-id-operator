@@ -605,7 +605,3 @@ type PocketIDInstanceList struct {
 	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []PocketIDInstance `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&PocketIDInstance{}, &PocketIDInstanceList{})
-}
