@@ -65,11 +65,6 @@ const (
 	envStaticAPIKey       = "STATIC_API_KEY"
 	envTrustProxy         = "TRUST_PROXY"
 
-	deploymentTypeDeployment  = "Deployment"
-	deploymentTypeStatefulSet = "StatefulSet"
-
-	readyConditionType = "Ready"
-
 	appName = "pocket-id"
 
 	defaultMountPath = "/app/data"
@@ -140,7 +135,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		// Still record info gauge with whatever version is currently known (may be empty).
 		deploymentType := instance.Spec.DeploymentType
 		if deploymentType == "" {
-			deploymentType = deploymentTypeDeployment
+			deploymentType = "Deployment"
 		}
 		metrics.RecordInstanceInfo(instance.Namespace, instance.Name, instance.Status.Version, instance.Status.Version, deploymentType, instance.Spec.AppURL)
 	}
@@ -163,7 +158,7 @@ func (r *Reconciler) reconcileWorkload(ctx context.Context, instance *pocketidin
 		return fmt.Errorf("convert pod template: %w", err)
 	}
 
-	if instance.Spec.DeploymentType == deploymentTypeStatefulSet {
+	if instance.Spec.DeploymentType == "StatefulSet" {
 		return r.reconcileStatefulSet(ctx, instance, podTemplate)
 	}
 	return r.reconcileDeployment(ctx, instance, podTemplate)
@@ -263,7 +258,7 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 				EmptyDir: &corev1.EmptyDirVolumeSource{},
 			},
 		})
-	} else if instance.Spec.DeploymentType != deploymentTypeStatefulSet || instance.Spec.Persistence.ExistingClaim != "" {
+	} else if instance.Spec.DeploymentType != "StatefulSet" || instance.Spec.Persistence.ExistingClaim != "" {
 		claimName := instance.Spec.Persistence.ExistingClaim
 		if claimName == "" {
 			claimName = instance.Name + "-data"
@@ -640,7 +635,7 @@ func (r *Reconciler) reconcileVolume(ctx context.Context, instance *pocketidinte
 	}
 
 	// Delete PVC if persistence is disabled or using StatefulSet
-	if !instance.Spec.Persistence.Enabled || instance.Spec.DeploymentType == deploymentTypeStatefulSet {
+	if !instance.Spec.Persistence.Enabled || instance.Spec.DeploymentType == "StatefulSet" {
 		log.V(1).Info("Deleting default PVC (persistence disabled or StatefulSet)", "pvc", defaultPVCName)
 		err := r.Delete(ctx, pvc)
 		return client.IgnoreNotFound(err)
@@ -751,7 +746,7 @@ func (r *Reconciler) reconcileVersion(ctx context.Context, instance *pocketidint
 
 	deploymentType := instance.Spec.DeploymentType
 	if deploymentType == "" {
-		deploymentType = deploymentTypeDeployment
+		deploymentType = "Deployment"
 	}
 
 	oldVersion := instance.Status.Version
@@ -773,12 +768,12 @@ func (r *Reconciler) updateStatus(ctx context.Context, instance *pocketidinterna
 	reason := "Progressing"
 	message := "Workload is starting up"
 
-	if instance.Spec.DeploymentType == deploymentTypeStatefulSet {
+	if instance.Spec.DeploymentType == "StatefulSet" {
 		sts := &appsv1.StatefulSet{}
 		if err := r.Get(ctx, client.ObjectKeyFromObject(instance), sts); err == nil {
 			if sts.Status.ReadyReplicas > 0 {
 				ready = metav1.ConditionTrue
-				reason = readyConditionType
+				reason = "Ready"
 				message = "StatefulSet has ready replicas"
 			}
 		}
@@ -787,14 +782,14 @@ func (r *Reconciler) updateStatus(ctx context.Context, instance *pocketidinterna
 		if err := r.Get(ctx, client.ObjectKeyFromObject(instance), deployment); err == nil {
 			if deployment.Status.AvailableReplicas > 0 {
 				ready = metav1.ConditionTrue
-				reason = readyConditionType
+				reason = "Ready"
 				message = "Deployment has available replicas"
 			}
 		}
 	}
 
 	meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{
-		Type:               readyConditionType,
+		Type:               "Ready",
 		Status:             ready,
 		Reason:             reason,
 		Message:            message,
