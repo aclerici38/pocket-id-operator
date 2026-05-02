@@ -245,7 +245,7 @@ ENVTEST_K8S_VERSION ?= $(shell v='$(call gomodver,k8s.io/api)'; \
   printf '%s\n' "$$v" | sed -E 's/^v?[0-9]+\.([0-9]+).*/1.\1/')
 
 # renovate: datasource=github-releases depName=golangci/golangci-lint
-GOLANGCI_LINT_VERSION ?= v2.12.0
+GOLANGCI_LINT_VERSION ?= v2.12.1
 
 # renovate: datasource=github-releases depName=onsi/ginkgo
 GINKGO_VERSION ?= v2.28.3
