@@ -109,7 +109,6 @@ jobs:
       chart_version: ${{ needs.validate.outputs.helm_version }}
       app_version: ${{ needs.validate.outputs.version }}
       changelog: ${{ needs.generate-changelog.outputs.changelog }}
-    secrets: inherit
 
   tag:
     name: Create Git tag
@@ -126,6 +125,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Configure git
         run: |
@@ -144,9 +144,11 @@ jobs:
       - name: Create and push tag
         env:
           VERSION: ${{ needs.validate.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
           git tag -a "${VERSION}" -m "Release ${VERSION}"
-          git push origin "${VERSION}"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "${VERSION}"
 
   create-release:
     name: Create GitHub Release
