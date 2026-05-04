@@ -104,7 +104,7 @@ jobs:
     needs:
       - validate
       - generate-changelog
-    uses: ./.github/workflows/push-chart.yml
+    uses: ./.github/workflows/push-chart.yaml
     with:
       chart_version: ${{ needs.validate.outputs.helm_version }}
       app_version: ${{ needs.validate.outputs.version }}
