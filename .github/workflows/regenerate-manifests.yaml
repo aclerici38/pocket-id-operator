@@ -50,6 +50,7 @@ jobs:
         with:
           ref: ${{ github.head_ref || github.ref }}
           token: ${{ steps.app-token.outputs.token || github.token }}
+          persist-credentials: false
 
       - name: Checkout code from fork
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
@@ -84,13 +85,16 @@ jobs:
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         env:
           APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
           git config user.name "${APP_SLUG}[bot]"
           git config user.email "200541989+${APP_SLUG}[bot]@users.noreply.github.com"
           if [ -n "$(git status --porcelain)" ]; then
             git add -A
             git commit -m "chore: regenerate manifests"
-            git push
+            git push "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "HEAD:${BRANCH}"
             echo "::error::Manifests were out of date and have been regenerated. Failing to prevent duplicate CI runs."
             exit 1
           fi

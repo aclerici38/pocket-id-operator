@@ -71,7 +71,6 @@ jobs:
       actions: write
       contents: read
     uses: ./.github/workflows/test.yaml
-    secrets: inherit
 
   lint:
     name: Lint
@@ -79,7 +78,6 @@ jobs:
       actions: write
       contents: read
     uses: ./.github/workflows/lint.yaml
-    secrets: inherit
 
   build:
     name: Build Image
@@ -97,7 +95,6 @@ jobs:
       additional_tags: ${{ needs.meta.outputs.additional_tags }}
       push: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
       attest: ${{ github.ref == 'refs/heads/main' }}
-    secrets: inherit
 
   e2e:
     name: E2E Tests
@@ -112,7 +109,6 @@ jobs:
     with:
       image_repo: ${{ needs.meta.outputs.image_repo }}
       image_tag: ${{ needs.meta.outputs.image_tag }}
-    secrets: inherit
 
   e2e-latest-release:
     name: E2E Tests (Latest Release)
@@ -124,7 +120,6 @@ jobs:
     uses: ./.github/workflows/test-e2e.yaml
     with:
       latest_release: true
-    secrets: inherit
 
   test-chart:
     name: Test Chart
@@ -139,5 +134,4 @@ jobs:
     with:
       image_repo: ${{ needs.meta.outputs.image_repo }}
       image_tag: ${{ needs.meta.outputs.image_tag }}
-    secrets: inherit
 

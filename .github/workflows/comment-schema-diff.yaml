@@ -1,7 +1,7 @@
 name: Comment Schema Diff
 
 on:
-  workflow_run:
+  workflow_run: # zizmor: ignore[dangerous-triggers] required to comment on fork PRs with elevated permissions
     workflows: [Regenerate Manifests]
     types: [completed]
 

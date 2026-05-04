@@ -15,7 +15,7 @@ on:
 
 jobs:
   zizmor:
-    uses: aclerici38/workflows/.github/workflows/zizmor.yaml@main
+    uses: aclerici38/workflows/.github/workflows/zizmor.yaml@812a0ac85f6264fef2c88842473423f72e251dca # main
     permissions:
       contents: read
       security-events: write
