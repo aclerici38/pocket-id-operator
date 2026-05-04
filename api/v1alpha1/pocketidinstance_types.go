@@ -456,6 +456,8 @@ type PocketIDInstanceSpec struct {
 	// Pod template to merge with the operator-built pod spec.
 	// Operator-managed fields including the pocket-id container always take precedence.
 	// +optional
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:pruning:PreserveUnknownFields
 	PodTemplate *corev1.PodTemplateSpec `json:"podTemplate,omitempty"`
 
 	// Readiness probe configuration

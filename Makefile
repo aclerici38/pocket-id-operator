@@ -44,8 +44,6 @@ help: ## Display this help.
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	"$(CONTROLLER_GEN)" rbac:roleName=pocket-id-operator-manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
-	@# Remove 'required: [containers]' from podTemplate.spec since the operator always injects the pocket-id container
-	@yq -i 'del(.spec.versions[].schema.openAPIV3Schema.properties.spec.properties.podTemplate.properties.spec.required)' config/crd/bases/pocketid.internal_pocketidinstances.yaml
 	@rm -rf dist/chart/crds
 	@mkdir -p dist/chart/crds
 	@cp config/crd/bases/*.yaml dist/chart/crds/
