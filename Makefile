@@ -230,7 +230,7 @@ GINKGO ?= $(LOCALBIN)/ginkgo
 KUSTOMIZE_VERSION ?= v5.7.1
 
 # renovate: datasource=github-releases depName=kubernetes-sigs/controller-tools
-CONTROLLER_TOOLS_VERSION ?= v0.20.1
+CONTROLLER_TOOLS_VERSION ?= v0.21.0
 
 #ENVTEST_VERSION is the version of controller-runtime to fetch the envtest setup script
 ENVTEST_VERSION ?= $(shell v='$(call gomodver,sigs.k8s.io/controller-runtime)'; \
