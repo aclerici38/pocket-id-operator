@@ -43,7 +43,7 @@ env:
   # renovate: datasource=github-releases depName=kubernetes/kubernetes
   KUBECTL_VERSION: v1.36.0
   # renovate: datasource=github-releases depName=kubernetes-sigs/controller-tools
-  CONTROLLER_TOOLS_VERSION: v0.20.1
+  CONTROLLER_TOOLS_VERSION: v0.21.0
   # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize
   KUSTOMIZE_VERSION: v5.7.1
   # renovate: datasource=github-releases depName=onsi/ginkgo
