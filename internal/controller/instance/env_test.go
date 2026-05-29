@@ -60,7 +60,7 @@ func minimalInstance() *pocketidinternalv1alpha1.PocketIDInstance {
 	inst := &pocketidinternalv1alpha1.PocketIDInstance{}
 	inst.Name = "test-instance"
 	inst.Namespace = "default"
-	inst.Spec.EncryptionKey = pocketidinternalv1alpha1.SensitiveValue{Value: "test-encryption-key-32chars!!!!!"}
+	inst.Spec.EncryptionKey = &pocketidinternalv1alpha1.SensitiveValue{Value: "test-encryption-key-32chars!!!!!"}
 	return inst
 }
 
