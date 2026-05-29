@@ -430,7 +430,7 @@
                 "additionalProperties": false
               },
               "encryptionKey": {
-                "description": "Encryption Key\nRequired since Pocket-ID v2\nSee the official documentation for ENCRYPTION_KEY environment variable",
+                "description": "Encryption Key\nRequired since Pocket-ID v2 when deploying an instance; omit for external instances.\nSee the official documentation for ENCRYPTION_KEY environment variable",
                 "properties": {
                   "value": {
                     "description": "Plain text value",
@@ -733,6 +733,46 @@
                   "additionalProperties": false
                 },
                 "type": "array"
+              },
+              "external": {
+                "description": "External adopts an existing Pocket-ID instead of deploying one. When set, no\nworkload/service/PVC is created and the operator manages OIDC clients, users,\nand groups on that instance via its API. Mutually exclusive with encryptionKey\nand the other deployment fields.",
+                "properties": {
+                  "apiKeySecretRef": {
+                    "description": "APIKeySecretRef references a Secret key holding a Pocket-ID API key with\npermission to manage clients, users, and groups on the instance.",
+                    "properties": {
+                      "key": {
+                        "description": "The key of the secret to select from.  Must be a valid secret key.",
+                        "type": "string"
+                      },
+                      "name": {
+                        "default": "",
+                        "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
+                        "type": "string"
+                      },
+                      "optional": {
+                        "description": "Specify whether the Secret or its key must be defined",
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "key"
+                    ],
+                    "type": "object",
+                    "x-kubernetes-map-type": "atomic",
+                    "additionalProperties": false
+                  },
+                  "url": {
+                    "description": "URL is the base URL of the existing Pocket-ID instance (e.g. https://auth.example.com).",
+                    "pattern": "^https?://",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "apiKeySecretRef",
+                  "url"
+                ],
+                "type": "object",
+                "additionalProperties": false
               },
               "fileBackend": {
                 "description": "File storage backend\nAutomatically set to \"s3\" when s3 config is present",
@@ -2687,9 +2727,6 @@
                 "type": "boolean"
               }
             },
-            "required": [
-              "encryptionKey"
-            ],
             "type": "object",
             "x-kubernetes-validations": [
               {
@@ -2702,7 +2739,11 @@
               },
               {
                 "message": "encryptionKey value must be at least 16 characters",
-                "rule": "!has(self.encryptionKey.value) || size(self.encryptionKey.value) == 0 || size(self.encryptionKey.value) >= 16"
+                "rule": "!has(self.encryptionKey) || !has(self.encryptionKey.value) || size(self.encryptionKey.value) == 0 || size(self.encryptionKey.value) >= 16"
+              },
+              {
+                "message": "set exactly one of external (adopt an existing Pocket-ID) or encryptionKey (deploy a new one)",
+                "rule": "has(self.external) != has(self.encryptionKey)"
               }
             ],
             "additionalProperties": false

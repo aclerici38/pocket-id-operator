@@ -86,7 +86,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					DeploymentType: "Deployment",
 					Image:          "ghcr.io/pocket-id/pocket-id:v2.7.0-distroless@sha256:ba71ff2988ba42d527784ccfc7530b356ec3f931e600a195de48f2962e2ce1ba",
-					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
 								LocalObjectReference: corev1.LocalObjectReference{
@@ -212,7 +212,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					DeploymentType: "Deployment",
-					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
 								LocalObjectReference: corev1.LocalObjectReference{
@@ -360,7 +360,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					DeploymentType: "StatefulSet",
-					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
 								LocalObjectReference: corev1.LocalObjectReference{
@@ -431,7 +431,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
 								LocalObjectReference: corev1.LocalObjectReference{
@@ -524,7 +524,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
 								LocalObjectReference: corev1.LocalObjectReference{
@@ -628,7 +628,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
 								LocalObjectReference: corev1.LocalObjectReference{
@@ -733,7 +733,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
 								LocalObjectReference: corev1.LocalObjectReference{
@@ -808,7 +808,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
 								LocalObjectReference: corev1.LocalObjectReference{
@@ -914,7 +914,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
 								LocalObjectReference: corev1.LocalObjectReference{
@@ -1008,7 +1008,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					DeploymentType: "StatefulSet",
-					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
 								LocalObjectReference: corev1.LocalObjectReference{
@@ -1117,7 +1117,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					DeploymentType: "StatefulSet",
-					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
 								LocalObjectReference: corev1.LocalObjectReference{
@@ -1202,7 +1202,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					DeploymentType: "StatefulSet",
-					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
 								LocalObjectReference: corev1.LocalObjectReference{
@@ -1277,7 +1277,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						Value: "my-plaintext-encryption-key",
 					},
 					DatabaseUrl: &pocketidinternalv1alpha1.SensitiveValue{
@@ -1351,7 +1351,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						Value: "plaintext-key-with-16-chars",
 					},
 					DatabaseUrl: &pocketidinternalv1alpha1.SensitiveValue{
@@ -1425,7 +1425,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						Value: "short-key",
 					},
 				},
@@ -1462,7 +1462,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					Image: "ghcr.io/pocket-id/pocket-id:v2.7.0-distroless@sha256:ba71ff2988ba42d527784ccfc7530b356ec3f931e600a195de48f2962e2ce1ba",
-					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
 								LocalObjectReference: corev1.LocalObjectReference{
@@ -1554,7 +1554,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
 								LocalObjectReference: corev1.LocalObjectReference{
@@ -1643,7 +1643,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
 								LocalObjectReference: corev1.LocalObjectReference{
@@ -1730,7 +1730,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
 								LocalObjectReference: corev1.LocalObjectReference{
@@ -1811,7 +1811,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
 								LocalObjectReference: corev1.LocalObjectReference{
@@ -1900,7 +1900,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
 								LocalObjectReference: corev1.LocalObjectReference{
@@ -1961,7 +1961,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
 								LocalObjectReference: corev1.LocalObjectReference{
@@ -2023,7 +2023,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
 								LocalObjectReference: corev1.LocalObjectReference{
@@ -2084,7 +2084,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 						Namespace: namespace,
 					},
 					Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-						EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+						EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 							ValueFrom: &corev1.EnvVarSource{
 								SecretKeyRef: &corev1.SecretKeySelector{
 									LocalObjectReference: corev1.LocalObjectReference{
@@ -2194,7 +2194,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 						Namespace: namespace,
 					},
 					Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-						EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+						EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 							ValueFrom: &corev1.EnvVarSource{
 								SecretKeyRef: &corev1.SecretKeySelector{
 									LocalObjectReference: corev1.LocalObjectReference{
@@ -2253,7 +2253,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 						Namespace: namespace,
 					},
 					Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-						EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+						EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 							ValueFrom: &corev1.EnvVarSource{
 								SecretKeyRef: &corev1.SecretKeySelector{
 									LocalObjectReference: corev1.LocalObjectReference{
@@ -2369,7 +2369,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 						Namespace: namespace,
 					},
 					Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-						EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+						EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 							ValueFrom: &corev1.EnvVarSource{
 								SecretKeyRef: &corev1.SecretKeySelector{
 									LocalObjectReference: corev1.LocalObjectReference{
@@ -2457,7 +2457,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 						Namespace: namespace,
 					},
 					Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-						EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+						EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 							ValueFrom: &corev1.EnvVarSource{
 								SecretKeyRef: &corev1.SecretKeySelector{
 									LocalObjectReference: corev1.LocalObjectReference{
@@ -2558,7 +2558,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						Value: "test-encryption-key-32chars!!!!!",
 					},
 					PodTemplate: &corev1.PodTemplateSpec{
@@ -2671,7 +2671,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					EncryptionKey: pocketidinternalv1alpha1.SensitiveValue{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
 								LocalObjectReference: corev1.LocalObjectReference{

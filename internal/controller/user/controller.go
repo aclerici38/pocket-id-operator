@@ -586,7 +586,7 @@ func (r *Reconciler) updateUserStatus(ctx context.Context, user *pocketidinterna
 func (r *Reconciler) SetOneTimeLoginStatus(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, instance *pocketidinternalv1alpha1.PocketIDInstance, token string) error {
 	base := user.DeepCopy()
 
-	baseURL := instance.Spec.AppURL
+	baseURL := instance.EffectiveAppURL()
 	if baseURL == "" {
 		baseURL = common.InternalServiceURL(instance.Name, instance.Namespace)
 	}
