@@ -49,6 +49,7 @@ import (
 const (
 	oidcClientFinalizer          = "pocketid.internal/oidc-client-finalizer"
 	UserGroupOIDCClientFinalizer = "pocketid.internal/user-group-oidc-client-finalizer"
+	lastRotatedAtAnnotation      = "pocketid.internal/last-rotated-at"
 
 	defaultLogoTemplate     = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}.png"
 	defaultDarkLogoTemplate = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}-dark.png"
@@ -908,11 +909,15 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 			// Scheduled rotation: due at the next slot boundary aligned to a
 			// hash-derived phase (or the explicit offset), so clients stagger
 			// across the interval without manual coordination.
+			// Source of truth is the secret annotation, written atomically with
+			// the secret value, so a failed status patch never skips a rotation.
 			interval := oidcClient.Spec.Rotation.Interval.Duration
 			phase := rotationPhase(oidcClient.Namespace, oidcClient.Name, interval, oidcClient.Spec.Rotation.Offset)
 			var lastRotated time.Time
-			if oidcClient.Status.LastRotatedAt != nil {
-				lastRotated = oidcClient.Status.LastRotatedAt.Time
+			if ts, ok := existingSecret.Annotations[lastRotatedAtAnnotation]; ok {
+				if t, err := time.Parse(time.RFC3339, ts); err == nil {
+					lastRotated = t
+				}
 			}
 			if rotationDue(time.Now(), lastRotated, oidcClient.CreationTimestamp.Time, interval, phase) {
 				shouldRegenerateSecret = true
@@ -982,6 +987,13 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 		secret.Data = secretData
 		secret.Type = corev1.SecretTypeOpaque
 
+		if rotatedAt != nil {
+			if secret.Annotations == nil {
+				secret.Annotations = make(map[string]string)
+			}
+			secret.Annotations[lastRotatedAtAnnotation] = rotatedAt.UTC().Format(time.RFC3339)
+		}
+
 		if err := controllerutil.SetControllerReference(oidcClient, secret, r.Scheme); err != nil {
 			return fmt.Errorf("failed to set owner reference: %w", err)
 		}
@@ -997,7 +1009,7 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 		base := oidcClient.DeepCopy()
 		oidcClient.Status.LastRotatedAt = rotatedAt
 		if err := r.Status().Patch(ctx, oidcClient, client.MergeFrom(base)); err != nil {
-			return fmt.Errorf("failed to record LastRotatedAt: %w", err)
+			logf.FromContext(ctx).Error(err, "failed to mirror LastRotatedAt to status")
 		}
 	}
 
