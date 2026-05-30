@@ -889,6 +889,7 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 
 	// Include client_secret for non-public clients
 	// Only regenerate if the secret doesn't exist yet or if explicitly requested via annotation
+	var rotatedAt *metav1.Time
 	if !oidcClient.Spec.IsPublic && oidcClient.Status.ClientID != "" {
 		existingSecret := &corev1.Secret{}
 		err := r.Get(ctx, client.ObjectKey{Name: secretName, Namespace: oidcClient.Namespace}, existingSecret)
@@ -903,6 +904,19 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 		} else if helpers.HasAnnotation(oidcClient, "pocketid.internal/regenerate-client-secret", "true") {
 			// User explicitly requested regeneration via annotation
 			shouldRegenerateSecret = true
+		} else if oidcClient.Spec.Rotation != nil {
+			// Scheduled rotation: due at the next slot boundary aligned to a
+			// hash-derived phase (or the explicit offset), so clients stagger
+			// across the interval without manual coordination.
+			interval := oidcClient.Spec.Rotation.Interval.Duration
+			phase := rotationPhase(oidcClient.Namespace, oidcClient.Name, interval, oidcClient.Spec.Rotation.Offset)
+			var lastRotated time.Time
+			if oidcClient.Status.LastRotatedAt != nil {
+				lastRotated = oidcClient.Status.LastRotatedAt.Time
+			}
+			if rotationDue(time.Now(), lastRotated, oidcClient.CreationTimestamp.Time, interval, phase) {
+				shouldRegenerateSecret = true
+			}
 		}
 
 		if shouldRegenerateSecret {
@@ -915,6 +929,8 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 				return fmt.Errorf("failed to get client secret: %w", err)
 			}
 			secretData[keys.ClientSecret] = []byte(clientSecret)
+			now := metav1.NewTime(time.Now())
+			rotatedAt = &now
 		} else {
 			// update existing secret
 			secretData[keys.ClientSecret] = existingSecret.Data[keys.ClientSecret]
@@ -975,6 +991,14 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 
 	if err != nil {
 		return fmt.Errorf("failed to create or update secret: %w", err)
+	}
+
+	if rotatedAt != nil {
+		base := oidcClient.DeepCopy()
+		oidcClient.Status.LastRotatedAt = rotatedAt
+		if err := r.Status().Patch(ctx, oidcClient, client.MergeFrom(base)); err != nil {
+			return fmt.Errorf("failed to record LastRotatedAt: %w", err)
+		}
 	}
 
 	return nil
