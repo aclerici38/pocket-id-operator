@@ -156,22 +156,22 @@ func (r *Reconciler) reconcileExternal(ctx context.Context, instance *pocketidin
 	log := logf.FromContext(ctx)
 	base := instance.DeepCopy()
 
-	ready := metav1.ConditionTrue
-	reason := "Ready"
-	message := "Adopted external Pocket-ID"
+	ready := metav1.ConditionFalse
+	reason := "Unreachable"
+	message := "external Pocket-ID not yet reachable"
 
 	apiClient, err := common.GetAPIClient(ctx, r.Client, r.APIReader, instance)
 	if err != nil {
-		ready = metav1.ConditionFalse
 		reason = "APIClientError"
 		message = err.Error()
 		log.Error(err, "external instance API client unavailable")
 	} else if version, vErr := apiClient.GetCurrentVersion(ctx); vErr != nil {
-		ready = metav1.ConditionFalse
-		reason = "Unreachable"
 		message = fmt.Sprintf("ping external Pocket-ID: %v", vErr)
 		log.Error(vErr, "could not reach external Pocket-ID")
 	} else {
+		ready = metav1.ConditionTrue
+		reason = "Ready"
+		message = "Adopted external Pocket-ID"
 		instance.Status.Version = version
 	}
 

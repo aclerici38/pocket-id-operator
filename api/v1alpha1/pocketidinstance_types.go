@@ -17,6 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"strings"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -56,9 +58,9 @@ type ExternalInstanceConfig struct {
 // the external URL for adopted instances, otherwise the deployed instance's appUrl.
 func (i *PocketIDInstance) EffectiveAppURL() string {
 	if i.Spec.External != nil && i.Spec.External.URL != "" {
-		return i.Spec.External.URL
+		return strings.TrimRight(i.Spec.External.URL, "/")
 	}
-	return i.Spec.AppURL
+	return strings.TrimRight(i.Spec.AppURL, "/")
 }
 
 // S3Config configures S3 as the file backend.
@@ -410,6 +412,7 @@ type MetricsConfig struct {
 
 // PocketIDInstanceSpec defines the desired state of PocketIDInstance
 // +kubebuilder:validation:XValidation:rule="self.deploymentType == oldSelf.deploymentType",message="deploymentType is immutable"
+// +kubebuilder:validation:XValidation:rule="has(self.external) == has(oldSelf.external)",message="external is immutable; create a new PocketIDInstance to switch modes"
 // +kubebuilder:validation:XValidation:rule="!has(self.s3) || !has(self.fileBackend) || self.fileBackend == 's3'",message="fileBackend must be 's3' (or unset) when s3 config is present"
 // +kubebuilder:validation:XValidation:rule="!has(self.encryptionKey) || !has(self.encryptionKey.value) || size(self.encryptionKey.value) == 0 || size(self.encryptionKey.value) >= 16",message="encryptionKey value must be at least 16 characters"
 // +kubebuilder:validation:XValidation:rule="has(self.external) != has(self.encryptionKey)",message="set exactly one of external (adopt an existing Pocket-ID) or encryptionKey (deploy a new one)"
