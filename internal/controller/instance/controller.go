@@ -158,7 +158,7 @@ func (r *Reconciler) reconcileExternal(ctx context.Context, instance *pocketidin
 
 	ready := metav1.ConditionFalse
 	reason := "Unreachable"
-	message := "external Pocket-ID not yet reachable"
+	var message string
 
 	apiClient, err := common.GetAPIClient(ctx, r.Client, r.APIReader, instance)
 	if err != nil {
