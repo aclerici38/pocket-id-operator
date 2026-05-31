@@ -279,29 +279,38 @@ type PocketIDOIDCClientSpec struct {
 	// +optional
 	SCIM *SCIMSpec `json:"scim,omitempty"`
 
-	// Rotation configures automatic, scheduled regeneration of the client secret.
+	// ClientSecretRotation configures automatic, scheduled regeneration of the client secret.
 	// When unset the secret is only regenerated on create/adopt, on self-heal,
 	// or when the regenerate-client-secret annotation is set.
 	// +optional
-	Rotation *SecretRotation `json:"rotation,omitempty"`
+	ClientSecretRotation *ClientSecretRotation `json:"clientSecretRotation,omitempty"`
 }
 
-// SecretRotation configures automatic, recurring regeneration of the client secret.
-// Rotations align to fixed slots of width Interval since the Unix epoch, offset
-// by Offset (or, if Offset is unset, by a deterministic per-client phase derived
-// from a hash of namespace/name). This staggers rotations across clients on the
-// same schedule without manual offset management.
-type SecretRotation struct {
-	// Interval is the rotation period (e.g. "720h" for 30 days). Must be positive.
+// RotationWindow restricts rotations to a recurring time window.
+type RotationWindow struct {
+	// Opens is a standard 5-field cron expression (e.g. "0 1 * * *" for 1am daily, UTC).
+	// +kubebuilder:validation:Required
+	Opens string `json:"opens"`
+
+	// ClosesAfter is how long the window stays open after each cron fire.
+	// +kubebuilder:validation:Required
+	ClosesAfter metav1.Duration `json:"closesAfter"`
+}
+
+// ClientSecretRotation configures automatic, scheduled regeneration of the OIDC client secret.
+type ClientSecretRotation struct {
+	// Enabled controls whether automatic rotation is active.
+	// +kubebuilder:default=false
+	Enabled bool `json:"enabled"`
+
+	// Interval is the minimum time between rotations (e.g. "720h" for 30 days). Must be positive.
 	// +kubebuilder:validation:Required
 	Interval metav1.Duration `json:"interval"`
 
-	// Offset is an explicit phase shift within the interval. Must be strictly less
-	// than Interval. When unset, a deterministic per-client offset is derived from
-	// hash(namespace/name), so multiple clients with the same Interval spread
-	// automatically across the rotation window.
+	// Window restricts rotations to a recurring maintenance window.
+	// When unset, rotations fire as soon as the interval and global min-spacing are satisfied.
 	// +optional
-	Offset *metav1.Duration `json:"offset,omitempty"`
+	Window *RotationWindow `json:"window,omitempty"`
 }
 
 // PocketIDOIDCClientStatus defines the observed state of PocketIDOIDCClient.
