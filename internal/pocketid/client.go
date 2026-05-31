@@ -292,9 +292,9 @@ func NewClient(baseURL string, apiKey string) (*Client, error) {
 
 // GetCurrentVersion returns the currently deployed version of the PocketID instance.
 func (c *Client) GetCurrentVersion(ctx context.Context) (string, error) {
-	params := pocketidversion.NewGetAPIVersionCurrentParamsWithContext(ctx)
+	params := pocketidversion.NewGetAPIVersionCurrentParams()
 	start := time.Now()
-	resp, err := c.raw.Version.GetAPIVersionCurrent(params)
+	resp, err := c.raw.Version.GetAPIVersionCurrentContext(ctx, params)
 	recordCall("get_current_version", err, time.Since(start))
 	if err != nil {
 		return "", fmt.Errorf("get current version failed: %w", err)
@@ -310,11 +310,10 @@ func (c *Client) GetCurrentVersion(ctx context.Context) (string, error) {
 
 func (c *Client) GetUser(ctx context.Context, id string) (*User, error) {
 	params := users.NewGetAPIUsersIDParams().
-		WithContext(ctx).
 		WithID(id)
 
 	start := time.Now()
-	resp, err := c.raw.Users.GetAPIUsersID(params)
+	resp, err := c.raw.Users.GetAPIUsersIDContext(ctx, params)
 	recordCall("get_user", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("get user failed: %w", err)
@@ -326,14 +325,14 @@ func (c *Client) GetUser(ctx context.Context, id string) (*User, error) {
 // ListUsers returns a list of users matching the search term.
 // If search is empty, all users are returned.
 func (c *Client) ListUsers(ctx context.Context, search string) ([]*User, error) {
-	params := users.NewGetAPIUsersParams().WithContext(ctx)
+	params := users.NewGetAPIUsersParams()
 
 	if search != "" {
 		params = params.WithSearch(&search)
 	}
 
 	start := time.Now()
-	resp, err := c.raw.Users.GetAPIUsers(params)
+	resp, err := c.raw.Users.GetAPIUsersContext(ctx, params)
 	recordCall("list_users", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("list users failed: %w", err)
@@ -377,7 +376,6 @@ func (u *User) ToInput() UserInput {
 
 func (c *Client) CreateUser(ctx context.Context, input UserInput) (*User, error) {
 	params := users.NewPostAPIUsersParams().
-		WithContext(ctx).
 		WithUser(&models.GithubComPocketIDPocketIDBackendInternalDtoUserCreateDto{
 			Username:      &input.Username,
 			FirstName:     input.FirstName,
@@ -391,7 +389,7 @@ func (c *Client) CreateUser(ctx context.Context, input UserInput) (*User, error)
 		})
 
 	start := time.Now()
-	resp, err := c.raw.Users.PostAPIUsers(params)
+	resp, err := c.raw.Users.PostAPIUsersContext(ctx, params)
 	recordCall("create_user", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("create user failed: %w", err)
@@ -403,7 +401,6 @@ func (c *Client) CreateUser(ctx context.Context, input UserInput) (*User, error)
 // UpdateUser updates an existing user.
 func (c *Client) UpdateUser(ctx context.Context, id string, input UserInput) (*User, error) {
 	params := users.NewPutAPIUsersIDParams().
-		WithContext(ctx).
 		WithID(id).
 		WithUser(&models.GithubComPocketIDPocketIDBackendInternalDtoUserCreateDto{
 			Username:      &input.Username,
@@ -418,7 +415,7 @@ func (c *Client) UpdateUser(ctx context.Context, id string, input UserInput) (*U
 		})
 
 	start := time.Now()
-	resp, err := c.raw.Users.PutAPIUsersID(params)
+	resp, err := c.raw.Users.PutAPIUsersIDContext(ctx, params)
 	recordCall("update_user", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("update user failed: %w", err)
@@ -429,11 +426,10 @@ func (c *Client) UpdateUser(ctx context.Context, id string, input UserInput) (*U
 
 func (c *Client) DeleteUser(ctx context.Context, id string) error {
 	params := users.NewDeleteAPIUsersIDParams().
-		WithContext(ctx).
 		WithID(id)
 
 	start := time.Now()
-	_, err := c.raw.Users.DeleteAPIUsersID(params)
+	_, err := c.raw.Users.DeleteAPIUsersIDContext(ctx, params)
 	recordCall("delete_user", err, time.Since(start))
 	if err != nil {
 		return fmt.Errorf("delete user failed: %w", err)
@@ -479,11 +475,10 @@ func (c *Client) CreateAPIKeyForUser(ctx context.Context, userID, name, expiresA
 // DeleteAPIKey deletes an API key by ID.
 func (c *Client) DeleteAPIKey(ctx context.Context, id string) error {
 	params := api_keys.NewDeleteAPIAPIKeysIDParams().
-		WithContext(ctx).
 		WithID(id)
 
 	start := time.Now()
-	_, err := c.raw.APIKeys.DeleteAPIAPIKeysID(params)
+	_, err := c.raw.APIKeys.DeleteAPIAPIKeysIDContext(ctx, params)
 	recordCall("delete_api_key", err, time.Since(start))
 	if err != nil {
 		return fmt.Errorf("delete API key failed: %w", err)
@@ -497,14 +492,14 @@ func (c *Client) DeleteAPIKey(ctx context.Context, id string) error {
 // ListOIDCClients returns a list of OIDC clients matching the search term.
 // If search is empty, all OIDC clients are returned.
 func (c *Client) ListOIDCClients(ctx context.Context, search string) ([]*OIDCClient, error) {
-	params := oidc.NewGetAPIOidcClientsParams().WithContext(ctx)
+	params := oidc.NewGetAPIOidcClientsParams()
 
 	if search != "" {
 		params = params.WithSearch(&search)
 	}
 
 	start := time.Now()
-	resp, err := c.raw.OIDc.GetAPIOidcClients(params)
+	resp, err := c.raw.OIDc.GetAPIOidcClientsContext(ctx, params)
 	recordCall("list_oidc_clients", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("list OIDC clients failed: %w", err)
@@ -541,11 +536,10 @@ func (c *Client) CreateOIDCClient(ctx context.Context, input OIDCClientInput) (*
 	}
 
 	params := oidc.NewPostAPIOidcClientsParams().
-		WithContext(ctx).
 		WithClient(dto)
 
 	start := time.Now()
-	resp, err := c.raw.OIDc.PostAPIOidcClients(params)
+	resp, err := c.raw.OIDc.PostAPIOidcClientsContext(ctx, params)
 	recordCall("create_oidc_client", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("create OIDC client failed: %w", err)
@@ -556,7 +550,6 @@ func (c *Client) CreateOIDCClient(ctx context.Context, input OIDCClientInput) (*
 
 func (c *Client) UpdateOIDCClient(ctx context.Context, id string, input OIDCClientInput) (*OIDCClient, error) {
 	params := oidc.NewPutAPIOidcClientsIDParams().
-		WithContext(ctx).
 		WithID(id).
 		WithClient(&models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientUpdateDto{
 			Name:                     &input.Name,
@@ -575,7 +568,7 @@ func (c *Client) UpdateOIDCClient(ctx context.Context, id string, input OIDCClie
 		})
 
 	start := time.Now()
-	resp, err := c.raw.OIDc.PutAPIOidcClientsID(params)
+	resp, err := c.raw.OIDc.PutAPIOidcClientsIDContext(ctx, params)
 	recordCall("update_oidc_client", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("update OIDC client failed: %w", err)
@@ -586,11 +579,10 @@ func (c *Client) UpdateOIDCClient(ctx context.Context, id string, input OIDCClie
 
 func (c *Client) GetOIDCClient(ctx context.Context, id string) (*OIDCClient, error) {
 	params := oidc.NewGetAPIOidcClientsIDParams().
-		WithContext(ctx).
 		WithID(id)
 
 	start := time.Now()
-	resp, err := c.raw.OIDc.GetAPIOidcClientsID(params)
+	resp, err := c.raw.OIDc.GetAPIOidcClientsIDContext(ctx, params)
 	recordCall("get_oidc_client", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("get OIDC client failed: %w", err)
@@ -601,11 +593,10 @@ func (c *Client) GetOIDCClient(ctx context.Context, id string) (*OIDCClient, err
 
 func (c *Client) DeleteOIDCClient(ctx context.Context, id string) error {
 	params := oidc.NewDeleteAPIOidcClientsIDParams().
-		WithContext(ctx).
 		WithID(id)
 
 	start := time.Now()
-	_, err := c.raw.OIDc.DeleteAPIOidcClientsID(params)
+	_, err := c.raw.OIDc.DeleteAPIOidcClientsIDContext(ctx, params)
 	recordCall("delete_oidc_client", err, time.Since(start))
 	if err != nil {
 		return fmt.Errorf("delete OIDC client failed: %w", err)
@@ -627,13 +618,12 @@ func (c *Client) UpdateOIDCClientAllowedGroups(ctx context.Context, id string, g
 			}
 		}
 		params := oidc.NewPutAPIOidcClientsIDAllowedUserGroupsParams().
-			WithContext(ctx).
 			WithID(id).
 			WithGroups(&models.GithubComPocketIDPocketIDBackendInternalDtoOidcUpdateAllowedUserGroupsDto{
 				UserGroupIds: groupIDs,
 			})
 		start := time.Now()
-		_, callErr := c.raw.OIDc.PutAPIOidcClientsIDAllowedUserGroups(params)
+		_, callErr := c.raw.OIDc.PutAPIOidcClientsIDAllowedUserGroupsContext(ctx, params)
 		recordCall("update_oidc_client_allowed_groups", callErr, time.Since(start))
 		if callErr != nil {
 			if IsServerError(callErr) {
@@ -652,11 +642,10 @@ func (c *Client) UpdateOIDCClientAllowedGroups(ctx context.Context, id string, g
 // The secret is only returned once and cannot be retrieved later without re-generating
 func (c *Client) RegenerateOIDCClientSecret(ctx context.Context, id string) (string, error) {
 	params := oidc.NewPostAPIOidcClientsIDSecretParams().
-		WithContext(ctx).
 		WithID(id)
 
 	start := time.Now()
-	resp, err := c.raw.OIDc.PostAPIOidcClientsIDSecret(params)
+	resp, err := c.raw.OIDc.PostAPIOidcClientsIDSecretContext(ctx, params)
 	recordCall("regenerate_oidc_client_secret", err, time.Since(start))
 	if err != nil {
 		return "", fmt.Errorf("regenerate OIDC client secret failed: %w", err)
@@ -682,11 +671,10 @@ func (c *Client) RegenerateOIDCClientSecret(ctx context.Context, id string) (str
 // Returns nil, nil if no SCIM service provider is configured (404).
 func (c *Client) GetOIDCClientSCIMServiceProvider(ctx context.Context, oidcClientID string) (*SCIMServiceProvider, error) {
 	params := oidc.NewGetAPIOidcClientsIDScimServiceProviderParams().
-		WithContext(ctx).
 		WithID(oidcClientID)
 
 	start := time.Now()
-	resp, err := c.raw.OIDc.GetAPIOidcClientsIDScimServiceProvider(params)
+	resp, err := c.raw.OIDc.GetAPIOidcClientsIDScimServiceProviderContext(ctx, params)
 	recordCall("get_oidc_client_scim_service_provider", err, time.Since(start))
 	if err != nil {
 		if IsNotFoundError(err) {
@@ -701,7 +689,6 @@ func (c *Client) GetOIDCClientSCIMServiceProvider(ctx context.Context, oidcClien
 // CreateSCIMServiceProvider creates a new SCIM service provider.
 func (c *Client) CreateSCIMServiceProvider(ctx context.Context, input SCIMServiceProviderInput) (*SCIMServiceProvider, error) {
 	params := scim.NewPostAPIScimServiceProviderParams().
-		WithContext(ctx).
 		WithServiceProvider(&models.GithubComPocketIDPocketIDBackendInternalDtoScimServiceProviderCreateDTO{
 			Endpoint:     &input.Endpoint,
 			OidcClientID: &input.OIDCClientID,
@@ -709,7 +696,7 @@ func (c *Client) CreateSCIMServiceProvider(ctx context.Context, input SCIMServic
 		})
 
 	start := time.Now()
-	resp, err := c.raw.Scim.PostAPIScimServiceProvider(params)
+	resp, err := c.raw.Scim.PostAPIScimServiceProviderContext(ctx, params)
 	recordCall("create_scim_service_provider", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("create SCIM service provider failed: %w", err)
@@ -721,7 +708,6 @@ func (c *Client) CreateSCIMServiceProvider(ctx context.Context, input SCIMServic
 // UpdateSCIMServiceProvider updates an existing SCIM service provider.
 func (c *Client) UpdateSCIMServiceProvider(ctx context.Context, id string, input SCIMServiceProviderInput) (*SCIMServiceProvider, error) {
 	params := scim.NewPutAPIScimServiceProviderIDParams().
-		WithContext(ctx).
 		WithID(id).
 		WithServiceProvider(&models.GithubComPocketIDPocketIDBackendInternalDtoScimServiceProviderCreateDTO{
 			Endpoint:     &input.Endpoint,
@@ -730,7 +716,7 @@ func (c *Client) UpdateSCIMServiceProvider(ctx context.Context, id string, input
 		})
 
 	start := time.Now()
-	resp, err := c.raw.Scim.PutAPIScimServiceProviderID(params)
+	resp, err := c.raw.Scim.PutAPIScimServiceProviderIDContext(ctx, params)
 	recordCall("update_scim_service_provider", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("update SCIM service provider failed: %w", err)
@@ -742,11 +728,10 @@ func (c *Client) UpdateSCIMServiceProvider(ctx context.Context, id string, input
 // DeleteSCIMServiceProvider deletes a SCIM service provider by its pocket-id ID.
 func (c *Client) DeleteSCIMServiceProvider(ctx context.Context, id string) error {
 	params := scim.NewDeleteAPIScimServiceProviderIDParams().
-		WithContext(ctx).
 		WithID(id)
 
 	start := time.Now()
-	_, err := c.raw.Scim.DeleteAPIScimServiceProviderID(params)
+	_, err := c.raw.Scim.DeleteAPIScimServiceProviderIDContext(ctx, params)
 	recordCall("delete_scim_service_provider", err, time.Since(start))
 	if err != nil {
 		return fmt.Errorf("delete SCIM service provider failed: %w", err)
@@ -760,14 +745,14 @@ func (c *Client) DeleteSCIMServiceProvider(ctx context.Context, id string) error
 // ListUserGroups returns a list of user groups matching the search term.
 // If search is empty, all user groups are returned.
 func (c *Client) ListUserGroups(ctx context.Context, search string) ([]*UserGroup, error) {
-	params := user_groups.NewGetAPIUserGroupsParams().WithContext(ctx)
+	params := user_groups.NewGetAPIUserGroupsParams()
 
 	if search != "" {
 		params = params.WithSearch(&search)
 	}
 
 	start := time.Now()
-	resp, err := c.raw.UserGroups.GetAPIUserGroups(params)
+	resp, err := c.raw.UserGroups.GetAPIUserGroupsContext(ctx, params)
 	recordCall("list_user_groups", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("list user groups failed: %w", err)
@@ -783,14 +768,13 @@ func (c *Client) ListUserGroups(ctx context.Context, search string) ([]*UserGrou
 
 func (c *Client) CreateUserGroup(ctx context.Context, name, friendlyName string) (*UserGroup, error) {
 	params := user_groups.NewPostAPIUserGroupsParams().
-		WithContext(ctx).
 		WithUserGroup(&models.GithubComPocketIDPocketIDBackendInternalDtoUserGroupCreateDto{
 			Name:         &name,
 			FriendlyName: &friendlyName,
 		})
 
 	start := time.Now()
-	resp, err := c.raw.UserGroups.PostAPIUserGroups(params)
+	resp, err := c.raw.UserGroups.PostAPIUserGroupsContext(ctx, params)
 	recordCall("create_user_group", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("create user group failed: %w", err)
@@ -801,7 +785,6 @@ func (c *Client) CreateUserGroup(ctx context.Context, name, friendlyName string)
 
 func (c *Client) UpdateUserGroup(ctx context.Context, id, name, friendlyName string) (*UserGroup, error) {
 	params := user_groups.NewPutAPIUserGroupsIDParams().
-		WithContext(ctx).
 		WithID(id).
 		WithUserGroup(&models.GithubComPocketIDPocketIDBackendInternalDtoUserGroupCreateDto{
 			Name:         &name,
@@ -809,7 +792,7 @@ func (c *Client) UpdateUserGroup(ctx context.Context, id, name, friendlyName str
 		})
 
 	start := time.Now()
-	resp, err := c.raw.UserGroups.PutAPIUserGroupsID(params)
+	resp, err := c.raw.UserGroups.PutAPIUserGroupsIDContext(ctx, params)
 	recordCall("update_user_group", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("update user group failed: %w", err)
@@ -820,11 +803,10 @@ func (c *Client) UpdateUserGroup(ctx context.Context, id, name, friendlyName str
 
 func (c *Client) GetUserGroup(ctx context.Context, id string) (*UserGroup, error) {
 	params := user_groups.NewGetAPIUserGroupsIDParams().
-		WithContext(ctx).
 		WithID(id)
 
 	start := time.Now()
-	resp, err := c.raw.UserGroups.GetAPIUserGroupsID(params)
+	resp, err := c.raw.UserGroups.GetAPIUserGroupsIDContext(ctx, params)
 	recordCall("get_user_group", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("get user group failed: %w", err)
@@ -835,11 +817,10 @@ func (c *Client) GetUserGroup(ctx context.Context, id string) (*UserGroup, error
 
 func (c *Client) DeleteUserGroup(ctx context.Context, id string) error {
 	params := user_groups.NewDeleteAPIUserGroupsIDParams().
-		WithContext(ctx).
 		WithID(id)
 
 	start := time.Now()
-	_, err := c.raw.UserGroups.DeleteAPIUserGroupsID(params)
+	_, err := c.raw.UserGroups.DeleteAPIUserGroupsIDContext(ctx, params)
 	recordCall("delete_user_group", err, time.Since(start))
 	if err != nil {
 		return fmt.Errorf("delete user group failed: %w", err)
@@ -850,14 +831,13 @@ func (c *Client) DeleteUserGroup(ctx context.Context, id string) error {
 
 func (c *Client) UpdateUserGroupUsers(ctx context.Context, id string, userIDs []string) error {
 	params := user_groups.NewPutAPIUserGroupsIDUsersParams().
-		WithContext(ctx).
 		WithID(id).
 		WithUsers(&models.GithubComPocketIDPocketIDBackendInternalDtoUserGroupUpdateUsersDto{
 			UserIds: userIDs,
 		})
 
 	start := time.Now()
-	_, err := c.raw.UserGroups.PutAPIUserGroupsIDUsers(params)
+	_, err := c.raw.UserGroups.PutAPIUserGroupsIDUsersContext(ctx, params)
 	recordCall("update_user_group_users", err, time.Since(start))
 	if err != nil {
 		return fmt.Errorf("update user group users failed: %w", err)
@@ -868,14 +848,13 @@ func (c *Client) UpdateUserGroupUsers(ctx context.Context, id string, userIDs []
 
 func (c *Client) UpdateUserGroupAllowedOIDCClients(ctx context.Context, id string, clientIDs []string) error {
 	params := oidc.NewPutAPIUserGroupsIDAllowedOidcClientsParams().
-		WithContext(ctx).
 		WithID(id).
 		WithGroups(&models.GithubComPocketIDPocketIDBackendInternalDtoUserGroupUpdateAllowedOidcClientsDto{
 			OidcClientIds: clientIDs,
 		})
 
 	start := time.Now()
-	_, err := c.raw.OIDc.PutAPIUserGroupsIDAllowedOidcClients(params)
+	_, err := c.raw.OIDc.PutAPIUserGroupsIDAllowedOidcClientsContext(ctx, params)
 	recordCall("update_user_group_allowed_oidc_clients", err, time.Since(start))
 	if err != nil {
 		return fmt.Errorf("update user group allowed OIDC clients failed: %w", err)
@@ -896,12 +875,11 @@ func (c *Client) UpdateUserGroupCustomClaims(ctx context.Context, id string, cla
 	}
 
 	params := custom_claims.NewPutAPICustomClaimsUserGroupUserGroupIDParams().
-		WithContext(ctx).
 		WithUserGroupID(id).
 		WithClaims(payload)
 
 	start := time.Now()
-	resp, err := c.raw.CustomClaims.PutAPICustomClaimsUserGroupUserGroupID(params)
+	resp, err := c.raw.CustomClaims.PutAPICustomClaimsUserGroupUserGroupIDContext(ctx, params)
 	recordCall("update_user_group_custom_claims", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("update user group custom claims failed: %w", err)
@@ -921,7 +899,6 @@ type OneTimeAccessToken struct {
 // This token can be used to log in via the browser at /lc/{token}
 func (c *Client) CreateOneTimeAccessToken(ctx context.Context, userID string, expiresInMinutes int) (*OneTimeAccessToken, error) {
 	params := users.NewPostAPIUsersIDOneTimeAccessTokenParams().
-		WithContext(ctx).
 		WithID(userID).
 		WithBody(map[string]any{
 			"userId": userID,
@@ -929,7 +906,7 @@ func (c *Client) CreateOneTimeAccessToken(ctx context.Context, userID string, ex
 		})
 
 	start := time.Now()
-	resp, err := c.raw.Users.PostAPIUsersIDOneTimeAccessToken(params)
+	resp, err := c.raw.Users.PostAPIUsersIDOneTimeAccessTokenContext(ctx, params)
 	recordCall("create_one_time_access_token", err, time.Since(start))
 	if err != nil {
 		return nil, fmt.Errorf("create one-time access token failed: %w", err)
