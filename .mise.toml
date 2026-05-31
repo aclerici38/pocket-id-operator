@@ -7,7 +7,7 @@ lockfile_platforms = ["linux-x64", "linux-arm64", "macos-arm64"]
 
 [tools]
 # Kubernetes manifest tooling
-kustomize = "5.7.1"
+kustomize = "5.8.1"
 "go:sigs.k8s.io/controller-tools/cmd/controller-gen" = "0.21.0"
 
 # Test tooling
