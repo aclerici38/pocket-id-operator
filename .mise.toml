@@ -12,7 +12,7 @@ kustomize = "5.8.1"
 
 # Test tooling
 setup-envtest = "0.24.1"
-# ginkgo stays a go: build so the CLI matches the ginkgo library version the
+# ginkgo stays a go: build so the CLI matches the ginkgo library version
 "go:github.com/onsi/ginkgo/v2/ginkgo" = "2.29.0"
 
 # Linting
@@ -23,8 +23,8 @@ kind = "0.31.0"
 kubectl = "1.36.1"
 helm = "4.2.0"
 
-# kubeconform schema script
-uv = "0.11.17"
+# CRD → JSON schema conversion
+"aqua:sholdee/crd-schema-publisher" = "2026.519.317"
 
 [env]
 # Default image for the docker/deploy tasks. Override with `IMG=… mise run …`.

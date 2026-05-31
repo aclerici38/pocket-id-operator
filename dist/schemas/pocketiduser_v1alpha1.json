@@ -3,36 +3,56 @@
   "properties": {
     "apiVersion": {
       "description": "APIVersion defines the versioned schema of this representation of an object.\nServers should convert recognized schemas to the latest internal value, and\nmay reject unrecognized values.\nMore info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "kind": {
       "description": "Kind is a string value representing the REST resource this object represents.\nServers may infer this from the endpoint the client submits requests to.\nCannot be updated.\nIn CamelCase.\nMore info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "metadata": {
-      "type": "object"
+      "type": [
+        "object",
+        "null"
+      ]
     },
     "spec": {
+      "additionalProperties": false,
       "description": "spec defines the desired state of PocketIDUser",
       "properties": {
         "admin": {
           "default": false,
           "description": "Flag whether a user is an admin or not",
-          "type": "boolean"
+          "type": [
+            "boolean",
+            "null"
+          ]
         },
         "apiKeys": {
           "description": "APIKeys is a list of API keys to create for this user",
           "items": {
+            "additionalProperties": false,
             "description": "APIKeySpec defines the desired state of an API key",
             "properties": {
               "description": {
                 "default": "Created by pocket-id-operator",
                 "description": "Description of the API key",
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "expiresAt": {
                 "description": "ExpiresAt is the expiration time in RFC3339 format (e.g., \"2030-01-01T00:00:00Z\")\nDefaults to 1 year in the future",
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "name": {
                 "description": "Name of the API key (3-50 characters)",
@@ -41,6 +61,7 @@
                 "type": "string"
               },
               "secretRef": {
+                "additionalProperties": false,
                 "description": "SecretRef references an existing Secret containing the API key token\nIf set, the operator will use this secret instead of creating a new one",
                 "properties": {
                   "key": {
@@ -50,42 +71,60 @@
                   "name": {
                     "default": "",
                     "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
-                    "type": "string"
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "optional": {
                     "description": "Specify whether the Secret or its key must be defined",
-                    "type": "boolean"
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
                   }
                 },
                 "required": [
                   "key"
                 ],
-                "type": "object",
-                "x-kubernetes-map-type": "atomic",
-                "additionalProperties": false
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "x-kubernetes-map-type": "atomic"
               }
             },
             "required": [
               "name"
             ],
-            "type": "object",
-            "additionalProperties": false
+            "type": "object"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "disabled": {
           "default": false,
           "description": "Disabled indicates whether the user account is disabled",
-          "type": "boolean"
+          "type": [
+            "boolean",
+            "null"
+          ]
         },
         "displayName": {
+          "additionalProperties": false,
           "description": "DisplayName of the user\nDefaults to \"spec.FirstName spec.LastName\"",
           "properties": {
             "value": {
               "description": "Plain text value",
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "valueFrom": {
+              "additionalProperties": false,
               "description": "Source for the value from a secret",
               "properties": {
                 "key": {
@@ -95,32 +134,47 @@
                 "name": {
                   "default": "",
                   "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "optional": {
                   "description": "Specify whether the Secret or its key must be defined",
-                  "type": "boolean"
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
                 }
               },
               "required": [
                 "key"
               ],
-              "type": "object",
-              "x-kubernetes-map-type": "atomic",
-              "additionalProperties": false
+              "type": [
+                "object",
+                "null"
+              ],
+              "x-kubernetes-map-type": "atomic"
             }
           },
-          "type": "object",
-          "additionalProperties": false
+          "type": [
+            "object",
+            "null"
+          ]
         },
         "email": {
+          "additionalProperties": false,
           "description": "Email of the user\nCan be a plain value or reference a secret\nRequired unless email is disabled in pocket-id",
           "properties": {
             "value": {
               "description": "Plain text value",
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "valueFrom": {
+              "additionalProperties": false,
               "description": "Source for the value from a secret",
               "properties": {
                 "key": {
@@ -130,32 +184,47 @@
                 "name": {
                   "default": "",
                   "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "optional": {
                   "description": "Specify whether the Secret or its key must be defined",
-                  "type": "boolean"
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
                 }
               },
               "required": [
                 "key"
               ],
-              "type": "object",
-              "x-kubernetes-map-type": "atomic",
-              "additionalProperties": false
+              "type": [
+                "object",
+                "null"
+              ],
+              "x-kubernetes-map-type": "atomic"
             }
           },
-          "type": "object",
-          "additionalProperties": false
+          "type": [
+            "object",
+            "null"
+          ]
         },
         "firstName": {
+          "additionalProperties": false,
           "description": "First name of the user\nCan be a plain value or reference a secret\nDefaults to metadata.name of the Resource",
           "properties": {
             "value": {
               "description": "Plain text value",
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "valueFrom": {
+              "additionalProperties": false,
               "description": "Source for the value from a secret",
               "properties": {
                 "key": {
@@ -165,30 +234,42 @@
                 "name": {
                   "default": "",
                   "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "optional": {
                   "description": "Specify whether the Secret or its key must be defined",
-                  "type": "boolean"
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
                 }
               },
               "required": [
                 "key"
               ],
-              "type": "object",
-              "x-kubernetes-map-type": "atomic",
-              "additionalProperties": false
+              "type": [
+                "object",
+                "null"
+              ],
+              "x-kubernetes-map-type": "atomic"
             }
           },
-          "type": "object",
-          "additionalProperties": false
+          "type": [
+            "object",
+            "null"
+          ]
         },
         "instanceSelector": {
+          "additionalProperties": false,
           "description": "InstanceSelector selects the PocketIDInstance to reconcile against.\nIf omitted, the controller expects exactly one instance in the cluster.",
           "properties": {
             "matchExpressions": {
               "description": "matchExpressions is a list of label selector requirements. The requirements are ANDed.",
               "items": {
+                "additionalProperties": false,
                 "description": "A label selector requirement is a selector that contains values, a key, and an operator that\nrelates the key and values.",
                 "properties": {
                   "key": {
@@ -204,7 +285,10 @@
                     "items": {
                       "type": "string"
                     },
-                    "type": "array",
+                    "type": [
+                      "array",
+                      "null"
+                    ],
                     "x-kubernetes-list-type": "atomic"
                   }
                 },
@@ -212,10 +296,12 @@
                   "key",
                   "operator"
                 ],
-                "type": "object",
-                "additionalProperties": false
+                "type": "object"
               },
-              "type": "array",
+              "type": [
+                "array",
+                "null"
+              ],
               "x-kubernetes-list-type": "atomic"
             },
             "matchLabels": {
@@ -223,21 +309,31 @@
                 "type": "string"
               },
               "description": "matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels\nmap is equivalent to an element of matchExpressions, whose key field is \"key\", the\noperator is \"In\", and the values array contains only \"value\". The requirements are ANDed.",
-              "type": "object"
+              "type": [
+                "object",
+                "null"
+              ]
             }
           },
-          "type": "object",
-          "x-kubernetes-map-type": "atomic",
-          "additionalProperties": false
+          "type": [
+            "object",
+            "null"
+          ],
+          "x-kubernetes-map-type": "atomic"
         },
         "lastName": {
+          "additionalProperties": false,
           "description": "Last name of the user\nCan be a plain value or reference a secret",
           "properties": {
             "value": {
               "description": "Plain text value",
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "valueFrom": {
+              "additionalProperties": false,
               "description": "Source for the value from a secret",
               "properties": {
                 "key": {
@@ -247,49 +343,73 @@
                 "name": {
                   "default": "",
                   "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "optional": {
                   "description": "Specify whether the Secret or its key must be defined",
-                  "type": "boolean"
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
                 }
               },
               "required": [
                 "key"
               ],
-              "type": "object",
-              "x-kubernetes-map-type": "atomic",
-              "additionalProperties": false
+              "type": [
+                "object",
+                "null"
+              ],
+              "x-kubernetes-map-type": "atomic"
             }
           },
-          "type": "object",
-          "additionalProperties": false
+          "type": [
+            "object",
+            "null"
+          ]
         },
         "locale": {
           "description": "Locale is the user's preferred locale (e.g., \"en\", \"de\", \"fr\")",
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "userInfoSecretRef": {
+          "additionalProperties": false,
           "description": "UserInfoSecretRef references a single Secret containing sensitive user profile fields.\nValues from the secret are evaluated last, so spec.username will override the username key in this secret\nKeys: username, firstName, lastName, email, displayName",
           "properties": {
             "name": {
               "default": "",
               "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
-          "type": "object",
-          "x-kubernetes-map-type": "atomic",
-          "additionalProperties": false
+          "type": [
+            "object",
+            "null"
+          ],
+          "x-kubernetes-map-type": "atomic"
         },
         "username": {
+          "additionalProperties": false,
           "description": "Username of the user. Defaults to the metadata.name\nCan be a plain value or reference a secret",
           "properties": {
             "value": {
               "description": "Plain text value",
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "valueFrom": {
+              "additionalProperties": false,
               "description": "Source for the value from a secret",
               "properties": {
                 "key": {
@@ -299,51 +419,77 @@
                 "name": {
                   "default": "",
                   "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "optional": {
                   "description": "Specify whether the Secret or its key must be defined",
-                  "type": "boolean"
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
                 }
               },
               "required": [
                 "key"
               ],
-              "type": "object",
-              "x-kubernetes-map-type": "atomic",
-              "additionalProperties": false
+              "type": [
+                "object",
+                "null"
+              ],
+              "x-kubernetes-map-type": "atomic"
             }
           },
-          "type": "object",
-          "additionalProperties": false
+          "type": [
+            "object",
+            "null"
+          ]
         }
       },
-      "type": "object",
-      "additionalProperties": false
+      "type": [
+        "object",
+        "null"
+      ]
     },
     "status": {
+      "additionalProperties": false,
       "description": "status defines the observed state of PocketIDUser",
       "properties": {
         "apiKeys": {
           "description": "APIKeys reflects the observed state of each API key",
           "items": {
+            "additionalProperties": false,
             "description": "APIKeyStatus reflects the observed state of an API key from Pocket-ID",
             "properties": {
               "createdAt": {
                 "description": "CreatedAt timestamp from Pocket-ID",
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "expiresAt": {
                 "description": "ExpiresAt timestamp from Pocket-ID",
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "id": {
                 "description": "ID assigned by Pocket-ID",
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "lastUsedAt": {
                 "description": "LastUsedAt timestamp from Pocket-ID",
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "name": {
                 "description": "Name of the API key (matches spec)",
@@ -351,24 +497,33 @@
               },
               "secretKey": {
                 "description": "SecretKey within the secret containing the token",
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "secretName": {
                 "description": "SecretName where the API key token is stored",
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             },
             "required": [
               "name"
             ],
-            "type": "object",
-            "additionalProperties": false
+            "type": "object"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "conditions": {
           "description": "Conditions represent the current state of the PocketIDUser resource.",
           "items": {
+            "additionalProperties": false,
             "description": "Condition contains details for one aspect of the current state of this API Resource.",
             "properties": {
               "lastTransitionTime": {
@@ -385,7 +540,10 @@
                 "description": "observedGeneration represents the .metadata.generation that the condition was set based upon.\nFor instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date\nwith respect to the current state of the instance.",
                 "format": "int64",
                 "minimum": 0,
-                "type": "integer"
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "reason": {
                 "description": "reason contains a programmatic identifier indicating the reason for the condition's last transition.\nProducers of specific condition types may define expected values and meanings for this field,\nand whether the values are considered a guaranteed API.\nThe value should be a CamelCase string.\nThis field may not be empty.",
@@ -417,10 +575,12 @@
               "status",
               "type"
             ],
-            "type": "object",
-            "additionalProperties": false
+            "type": "object"
           },
-          "type": "array",
+          "type": [
+            "array",
+            "null"
+          ],
           "x-kubernetes-list-map-keys": [
             "type"
           ],
@@ -428,43 +588,72 @@
         },
         "disabled": {
           "description": "Disabled reflects whether the user is disabled in Pocket-ID",
-          "type": "boolean"
+          "type": [
+            "boolean",
+            "null"
+          ]
         },
         "emailVerified": {
           "description": "EmailVerified reflects whether the user's email has been verified in Pocket-ID.",
-          "type": "boolean"
+          "type": [
+            "boolean",
+            "null"
+          ]
         },
         "isAdmin": {
           "description": "IsAdmin reflects whether the user is an admin in Pocket-ID",
-          "type": "boolean"
+          "type": [
+            "boolean",
+            "null"
+          ]
         },
         "locale": {
           "description": "Locale of the user from Pocket-ID",
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "oneTimeLoginExpiresAt": {
           "description": "OneTimeLoginExpiresAt is the RFC3339 timestamp when the login token expires",
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "oneTimeLoginToken": {
           "description": "OneTimeLoginToken is the one-time login token for a newly created user",
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "oneTimeLoginURL": {
           "description": "OneTimeLoginURL is the login URL built from the one-time login token",
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "userID": {
           "description": "UserID is the ID assigned by Pocket-ID",
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "userInfoSecretName": {
-          "description": "UserInfoSecretName is the name of the Secret storing user profile fields.\nThe operator writes to \"<name>-user-data\".",
-          "type": "string"
+          "description": "UserInfoSecretName is the name of the Secret storing user profile fields.\nThe operator writes to \"\u003cname\u003e-user-data\".",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
-      "type": "object",
-      "additionalProperties": false
+      "type": [
+        "object",
+        "null"
+      ]
     }
   },
   "type": "object"
