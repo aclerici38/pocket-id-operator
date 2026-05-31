@@ -15,6 +15,9 @@ pre-commit:
       glob: "*.go"
       run: gofmt -w {staged_files}
       stage_fixed: true
+    zizmor:
+      glob: ".github/**/*.{yml,yaml}"
+      run: zizmor --offline {staged_files}
 
 # Once per push: make sure generated files are committed before they hit CI.
 pre-push:
