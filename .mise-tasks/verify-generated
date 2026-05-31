@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Regenerate derived files and fail if any committed generated file is out of date
+#MISE description="Regenerate derived files and fail if any committed generated file is out of date"
 set -euo pipefail
 
 mise run regen
