@@ -75,7 +75,7 @@ jobs:
       - name: Setup mise
         uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
         with:
-          install_args: "kind kubectl go:github.com/onsi/ginkgo/v2/ginkgo"
+          install_args: "kind kubectl kustomize go:sigs.k8s.io/controller-tools/cmd/controller-gen go:github.com/onsi/ginkgo/v2/ginkgo"
 
       - name: Download image artifact
         if: inputs.image_tag != '' && !inputs.latest_release
