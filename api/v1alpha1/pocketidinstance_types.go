@@ -558,6 +558,18 @@ type PocketIDInstanceSpec struct {
 	// Sets the TZ environment variable
 	// +optional
 	Timezone string `json:"timezone,omitempty"`
+
+	// OIDCClientRotation configures instance-wide throttling of OIDC client secret rotations.
+	// +optional
+	OIDCClientRotation *OIDCClientRotationConfig `json:"oidcClientRotation,omitempty"`
+}
+
+// OIDCClientRotationConfig controls instance-wide throttling of OIDC client secret rotations.
+type OIDCClientRotationConfig struct {
+	// MinSpacing is the minimum time between any two client secret rotations on this instance.
+	// Prevents thundering-herd when many clients become due simultaneously.
+	// +kubebuilder:validation:Required
+	MinSpacing metav1.Duration `json:"minSpacing"`
 }
 
 // PocketIDInstanceStatus defines the observed state of PocketIDInstance.
@@ -576,6 +588,11 @@ type PocketIDInstanceStatus struct {
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// LastRotatedClientSecret is the timestamp of the most recent OIDC client secret rotation
+	// on this instance. Used to enforce spec.oidcClientRotation.minSpacing.
+	// +optional
+	LastRotatedClientSecret *metav1.Time `json:"lastRotatedClientSecret,omitempty"`
 }
 
 // +kubebuilder:object:root=true
