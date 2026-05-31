@@ -1,0 +1,45 @@
+---
+# Git hooks for pocket-id-operator, wired to mise tasks.
+#
+# `mise install` registers these automatically vioa [hooks].
+# To bypass once append --no-verify to the git command.
+# Everything here will be rerun by the github workflows
+
+pre-commit:
+  parallel: true
+  skip:
+    - merge
+    - rebase
+  commands:
+    gofmt:
+      glob: "*.go"
+      run: gofmt -w {staged_files}
+      stage_fixed: true
+
+# Heavier checks, once per push. Mirrors CI so red builds are caught locally
+# first. Sequential on purpose: `regen` (inside verify-generated) writes files
+# that `lint` then reads.
+pre-push:
+  commands:
+    # Derived files (CRDs, deepcopy, install.yaml, schemas) must
+    # match the API types. Fails if `regen` changes any committed generated file
+    generated-up-to-date:
+      run: mise run verify-generated
+    lint:
+      run: mise run lint
+
+# Keep derived files reconciled after pulling or rebasing in upstream changes,
+# so a merge that touches the API types never leaves stale CRDs/schemas behind.
+post-merge:
+  commands:
+    regen:
+      run: |-
+        mise run regen
+        echo "ℹ Ran 'mise run regen' after the merge — check 'git status' and commit any refreshed generated files."
+
+post-rewrite:
+  commands:
+    regen:
+      run: |-
+        mise run regen
+        echo "ℹ Ran 'mise run regen' after the rebase — check 'git status' and commit any refreshed generated files."

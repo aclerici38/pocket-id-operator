@@ -2,6 +2,7 @@
 # `mise run <task>` to run one. Multi-line tasks live in ./.mise-tasks.
 
 [settings]
+experimental = true
 lockfile = true
 lockfile_platforms = ["linux-x64", "linux-arm64", "macos-arm64"]
 
@@ -26,6 +27,14 @@ helm = "4.2.0"
 # CRD → JSON schema conversion
 "aqua:sholdee/crd-schema-publisher" = "2026.519.317"
 
+# Git hooks
+lefthook = "2.1.9"
+
+# Register lefthook's git hooks after `mise install`. 
+# No-op in CI jobs
+[hooks]
+postinstall = "command -v lefthook >/dev/null 2>&1 && lefthook install || true"
+
 [env]
 # Default image for the docker/deploy tasks. Override with `IMG=… mise run …`.
 # Kept separate from IMG so it never leaks into the e2e suite's image logic.
@@ -46,6 +55,17 @@ run = "go fmt ./..."
 [tasks.vet]
 description = "Run go vet"
 run = "go vet ./..."
+
+[tasks.regen]
+description = "Regenerate every derived file from the API types (deepcopy, CRDs, installer, schemas), then format and vet. Mirrors the regenerate-manifests CI job; run this after changing api/."
+# build-installer pulls in `manifests` + `generate`; generate-schemas pulls in
+# `manifests`. Run sequentially so generators finish before fmt/vet read output.
+run = [
+  "mise run build-installer",
+  "mise run generate-schemas",
+  "mise run fmt",
+  "mise run vet",
+]
 
 [tasks.test]
 description = "Regenerate, format, vet, then run unit tests"

@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+#MISE description="Regenerate derived files and fail if any committed generated file is out of date
+set -euo pipefail
+
+mise run regen
+
+# Sync with the linguist-generated paths in .gitattributes.
+gen=(
+  api/v1alpha1/zz_generated.deepcopy.go
+  config/crd/bases
+  config/rbac/role.yaml
+  dist/chart/templates/rbac/manager-role.yaml
+  dist/chart/crds
+  dist/install.yaml
+  dist/schemas
+  dist/chart/values.schema.json
+)
+
+if ! git diff --quiet -- "${gen[@]}"; then
+  echo "" >&2
+  echo "✖ Generated files are out of date — 'mise run regen' just updated:" >&2
+  git --no-pager diff --stat -- "${gen[@]}" >&2
+  echo "" >&2
+  echo "  Review and commit the changes above, then push again." >&2
+  exit 1
+fi
+
+echo "✓ Generated files are up to date."
