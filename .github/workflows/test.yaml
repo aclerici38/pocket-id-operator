@@ -35,7 +35,7 @@ jobs:
         with:
           # renovate: datasource=github-releases depName=jdx/mise
           version: "2026.5.16"
-          install_args: "go:sigs.k8s.io/controller-runtime/tools/setup-envtest"
+          install_args: setup-envtest
 
       - name: Run tests
         run: mise run test-only

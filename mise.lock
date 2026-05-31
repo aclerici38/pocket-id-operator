@@ -4,10 +4,6 @@
 version = "2.29.0"
 backend = "go:github.com/onsi/ginkgo/v2/ginkgo"
 
-[[tools."go:sigs.k8s.io/controller-runtime/tools/setup-envtest"]]
-version = "0.24.1"
-backend = "go:sigs.k8s.io/controller-runtime/tools/setup-envtest"
-
 [[tools."go:sigs.k8s.io/controller-tools/cmd/controller-gen"]]
 version = "0.21.0"
 backend = "go:sigs.k8s.io/controller-tools/cmd/controller-gen"
@@ -94,6 +90,22 @@ url = "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/
 [tools.kustomize."platforms.macos-arm64"]
 checksum = "sha256:073e9d16d5a235e2ff83e62d6b76edb5d962adbc33be1e4860c4b3f1f39b33b9"
 url = "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v5.7.1/kustomize_v5.7.1_darwin_arm64.tar.gz"
+
+[[tools.setup-envtest]]
+version = "0.24.1"
+backend = "aqua:kubernetes-sigs/controller-runtime/setup-envtest"
+
+[tools.setup-envtest."platforms.linux-arm64"]
+checksum = "sha256:c5d8968ec3f2a120b66bc13bd36f80fe4150c34aae7cc491bf9624c8680296c7"
+url = "https://github.com/kubernetes-sigs/controller-runtime/releases/download/v0.24.1/setup-envtest-linux-arm64"
+
+[tools.setup-envtest."platforms.linux-x64"]
+checksum = "sha256:a9a78fadfc338a38188332f36863c76877f1c86df1a83d2241d2bfc3935297d2"
+url = "https://github.com/kubernetes-sigs/controller-runtime/releases/download/v0.24.1/setup-envtest-linux-amd64"
+
+[tools.setup-envtest."platforms.macos-arm64"]
+checksum = "sha256:7e59a0d526f6946aa2f114d34b2e309639c811f3a4f83d56f37b6e3197c6fdfb"
+url = "https://github.com/kubernetes-sigs/controller-runtime/releases/download/v0.24.1/setup-envtest-darwin-arm64"
 
 [[tools.uv]]
 version = "0.11.17"

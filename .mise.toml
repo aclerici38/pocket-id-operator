@@ -11,8 +11,8 @@ kustomize = "5.7.1"
 "go:sigs.k8s.io/controller-tools/cmd/controller-gen" = "0.21.0"
 
 # Test tooling
-# setup-envtest version tracks sigs.k8s.io/controller-runtime in go.mod.
-"go:sigs.k8s.io/controller-runtime/tools/setup-envtest" = "0.24.1"
+setup-envtest = "0.24.1"
+# ginkgo stays a go: build so the CLI matches the ginkgo library version the
 "go:github.com/onsi/ginkgo/v2/ginkgo" = "2.29.0"
 
 # Linting
