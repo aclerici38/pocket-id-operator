@@ -25,8 +25,10 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@82606bf257cbaff209d206a39f5134f0cfbfd2ee # v9.2.1
+      - name: Setup mise
+        uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
         with:
-          # renovate: datasource=github-releases depName=golangci/golangci-lint
-          version: v2.12.2
+          install_args: golangci-lint
+
+      - name: Run golangci-lint
+        run: make lint

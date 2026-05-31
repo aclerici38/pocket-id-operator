@@ -1,0 +1,22 @@
+# Install everything with `mise install`
+
+[tools]
+# Kubernetes manifest tooling
+kustomize = "5.7.1"
+"go:sigs.k8s.io/controller-tools/cmd/controller-gen" = "0.21.0"
+
+# Test tooling
+# setup-envtest version tracks sigs.k8s.io/controller-runtime in go.mod.
+"go:sigs.k8s.io/controller-runtime/tools/setup-envtest" = "0.24.1"
+"go:github.com/onsi/ginkgo/v2/ginkgo" = "2.29.0"
+
+# Linting
+golangci-lint = "2.12.2"
+
+# Local cluster / cluster CLIs for e2e and chart tests
+kind = "0.31.0"
+kubectl = "1.36.1"
+helm = "3.21.0"
+
+# kubeconform schema script
+uv = "0.11.17"

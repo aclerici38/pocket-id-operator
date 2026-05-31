@@ -65,14 +65,6 @@
   "customManagers": [
     {
       "customType": "regex",
-      "managerFilePatterns": ["/^Makefile$/"],
-      "matchStrings": [
-        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)( versioning=(?<versioning>.*?))?\\n.*?_VERSION \\?= (?<currentValue>.*)"
-      ],
-      "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}"
-    },
-    {
-      "customType": "regex",
       "managerFilePatterns": [
         "/\\.go$/",
         "/\\.ya?ml$/",

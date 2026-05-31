@@ -8,12 +8,6 @@ on:
         required: true
         type: string
 
-env:
-  # renovate: datasource=github-releases depName=kubernetes-sigs/controller-tools
-  CONTROLLER_TOOLS_VERSION: v0.21.0
-  # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize
-  KUSTOMIZE_VERSION: v5.7.1
-
 jobs:
   validate:
     name: Validate version
@@ -179,6 +173,11 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+
+      - name: Setup mise
+        uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+        with:
+          install_args: "go:sigs.k8s.io/controller-tools/cmd/controller-gen kustomize"
 
       - name: Generate install manifest
         env:
