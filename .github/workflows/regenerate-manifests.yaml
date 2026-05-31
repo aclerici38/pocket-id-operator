@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   # install_args installs this job's tool subset; don't let `mise run`
@@ -35,27 +35,9 @@ jobs:
     name: Regenerate
     runs-on: ubuntu-latest
     steps:
-      - name: Generate GitHub App token
-        id: app-token
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_KEY }}
-
-      - name: Checkout code from same repo
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+      - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ github.head_ref || github.ref }}
-          token: ${{ steps.app-token.outputs.token || github.token }}
-          persist-credentials: false
-
-      - name: Checkout code from fork
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
 
       - name: Setup Go
@@ -72,77 +54,11 @@ jobs:
           version: "2026.5.16"
           install_args: "go:sigs.k8s.io/controller-tools/cmd/controller-gen kustomize aqua:sholdee/crd-schema-publisher"
 
-      - name: Regenerate manifests
+      - name: Verify generated files are up to date
         run: |
-          mise run build-installer
-          mise run generate-schemas
-          mise run fmt
-          mise run vet
-
-      - name: Commit changes
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-        env:
-          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
-          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
-          REPO: ${{ github.repository }}
-          BRANCH: ${{ github.head_ref || github.ref_name }}
-        run: |
-          git config user.name "${APP_SLUG}[bot]"
-          git config user.email "200541989+${APP_SLUG}[bot]@users.noreply.github.com"
+          mise run regen
           if [ -n "$(git status --porcelain)" ]; then
-            git add -A
-            git commit -m "chore: regenerate manifests"
-            git push "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "HEAD:${BRANCH}"
-            echo "::error::Manifests were out of date and have been regenerated. Failing to prevent duplicate CI runs."
+            echo "::error::Generated files are out of date. Run 'mise run regen' locally and commit the result."
+            git --no-pager diff
             exit 1
           fi
-
-      - name: Check for uncommitted changes
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
-        id: check-diff
-        run: |
-          if [ -n "$(git status --porcelain)" ]; then
-            echo "has_diff=true" >> "$GITHUB_OUTPUT"
-            echo "::error::Generated files are out of date. Please run 'mise run build-installer && mise run generate-schemas && mise run fmt && mise run vet' and commit the changes."
-          fi
-
-      - name: Generate diff artifact
-        if: steps.check-diff.outputs.has_diff == 'true'
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          echo "${PR_NUMBER}" > /tmp/pr-number.txt
-          cat > /tmp/schema-diff.md << 'HEADER'
-          ## Generated files are out of date
-
-          The following files need to be regenerated. Please run:
-          ```sh
-          mise run build-installer && mise run generate-schemas && mise run fmt && mise run vet
-          ```
-          and commit the changes.
-
-          <details>
-          <summary>Diff</summary>
-
-          ```diff
-          HEADER
-          git diff >> /tmp/schema-diff.md
-          cat >> /tmp/schema-diff.md << 'FOOTER'
-          ```
-
-          </details>
-          FOOTER
-
-      - name: Upload diff artifact
-        if: steps.check-diff.outputs.has_diff == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: schema-diff
-          path: |
-            /tmp/pr-number.txt
-            /tmp/schema-diff.md
-          retention-days: 1
-
-      - name: Fail if diff exists
-        if: steps.check-diff.outputs.has_diff == 'true'
-        run: exit 1
