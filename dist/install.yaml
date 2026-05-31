@@ -1475,6 +1475,18 @@ spec:
                 required:
                 - enabled
                 type: object
+              oidcClientRotation:
+                description: OIDCClientRotation configures instance-wide throttling
+                  of OIDC client secret rotations.
+                properties:
+                  minSpacing:
+                    description: |-
+                      MinSpacing is the minimum time between any two client secret rotations on this instance.
+                      Prevents thundering-herd when many clients become due simultaneously.
+                    type: string
+                required:
+                - minSpacing
+                type: object
               persistence:
                 description: |-
                   Configures persistence for Pocket-ID
@@ -2850,6 +2862,12 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              lastRotatedClientSecret:
+                description: |-
+                  LastRotatedClientSecret is the timestamp of the most recent OIDC client secret rotation
+                  on this instance. Used to enforce spec.oidcClientRotation.minSpacing.
+                format: date-time
+                type: string
               staticApiKeySecretName:
                 description: StaticAPIKeySecretName is the name of the secret containing
                   the STATIC_API_KEY
@@ -2941,6 +2959,41 @@ spec:
                 maxLength: 128
                 minLength: 2
                 type: string
+              clientSecretRotation:
+                description: |-
+                  ClientSecretRotation configures automatic, scheduled regeneration of the client secret.
+                  When unset the secret is only regenerated on create/adopt, on self-heal,
+                  or when the regenerate-client-secret annotation is set.
+                properties:
+                  enabled:
+                    default: false
+                    description: Enabled controls whether automatic rotation is active.
+                    type: boolean
+                  interval:
+                    description: Interval is the minimum time between rotations (e.g.
+                      "720h" for 30 days). Must be positive.
+                    type: string
+                  window:
+                    description: |-
+                      Window restricts rotations to a recurring maintenance window.
+                      When unset, rotations fire as soon as the interval and global min-spacing are satisfied.
+                    properties:
+                      closesAfter:
+                        description: ClosesAfter is how long the window stays open
+                          after each cron fire.
+                        type: string
+                      opens:
+                        description: Opens is a standard 5-field cron expression (e.g.
+                          "0 1 * * *" for 1am daily, UTC).
+                        type: string
+                    required:
+                    - closesAfter
+                    - opens
+                    type: object
+                required:
+                - enabled
+                - interval
+                type: object
               darkLogoUrl:
                 description: |-
                   Dark logo URL for the client
@@ -3072,26 +3125,6 @@ spec:
                 default: false
                 description: Requires reauthentication on login
                 type: boolean
-              rotation:
-                description: |-
-                  Rotation configures automatic, scheduled regeneration of the client secret.
-                  When unset the secret is only regenerated on create/adopt, on self-heal,
-                  or when the regenerate-client-secret annotation is set.
-                properties:
-                  interval:
-                    description: Interval is the rotation period (e.g. "720h" for
-                      30 days). Must be positive.
-                    type: string
-                  offset:
-                    description: |-
-                      Offset is an explicit phase shift within the interval. Must be strictly less
-                      than Interval. When unset, a deterministic per-client offset is derived from
-                      hash(namespace/name), so multiple clients with the same Interval spread
-                      automatically across the rotation window.
-                    type: string
-                required:
-                - interval
-                type: object
               scim:
                 description: |-
                   SCIM configures SCIM provisioning for this OIDC client.

@@ -906,31 +906,8 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 		} else if helpers.HasAnnotation(oidcClient, "pocketid.internal/regenerate-client-secret", "true") {
 			// User explicitly requested regeneration via annotation
 			shouldRegenerateSecret = true
-		} else if rot := oidcClient.Spec.ClientSecretRotation; rot != nil && rot.Enabled {
-			// Gate 1: interval elapsed since last rotation (source of truth: secret annotation).
-			var lastRotated time.Time
-			if ts, ok := existingSecret.Annotations[lastRotatedAtAnnotation]; ok {
-				if t, err := time.Parse(time.RFC3339, ts); err == nil {
-					lastRotated = t
-				}
-			}
-			if rotationDue(time.Now(), lastRotated, oidcClient.CreationTimestamp.Time, rot.Interval.Duration) {
-				// Gate 2: global min-spacing between rotations on this instance.
-				var minSpacing time.Duration
-				if instance.Spec.OIDCClientRotation != nil {
-					minSpacing = instance.Spec.OIDCClientRotation.MinSpacing.Duration
-				}
-				if minSpacingOK(time.Now(), instance.Status.LastRotatedClientSecret, minSpacing) {
-					// Gate 3: optional maintenance window.
-					if rot.Window == nil {
-						shouldRegenerateSecret = true
-					} else if inWindow, err := withinWindow(time.Now(), rot.Window.Opens, rot.Window.ClosesAfter.Duration); err != nil {
-						logf.FromContext(ctx).Error(err, "Invalid rotation window cron expression, skipping rotation")
-					} else if inWindow {
-						shouldRegenerateSecret = true
-					}
-				}
-			}
+		} else if r.rotationDue(ctx, oidcClient, instance, existingSecret) {
+			shouldRegenerateSecret = true
 		}
 
 		if shouldRegenerateSecret {
@@ -1032,6 +1009,40 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 	}
 
 	return nil
+}
+
+// rotationDue checks whether all three rotation gates pass: interval elapsed,
+// instance-wide min-spacing satisfied, and current time inside the window (if set).
+func (r *Reconciler) rotationDue(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, instance *pocketidinternalv1alpha1.PocketIDInstance, existingSecret *corev1.Secret) bool {
+	rot := oidcClient.Spec.ClientSecretRotation
+	if rot == nil || !rot.Enabled {
+		return false
+	}
+	var lastRotated time.Time
+	if ts, ok := existingSecret.Annotations[lastRotatedAtAnnotation]; ok {
+		if t, err := time.Parse(time.RFC3339, ts); err == nil {
+			lastRotated = t
+		}
+	}
+	if !rotationDue(time.Now(), lastRotated, oidcClient.CreationTimestamp.Time, rot.Interval.Duration) {
+		return false
+	}
+	var minSpacing time.Duration
+	if instance.Spec.OIDCClientRotation != nil {
+		minSpacing = instance.Spec.OIDCClientRotation.MinSpacing.Duration
+	}
+	if !minSpacingOK(time.Now(), instance.Status.LastRotatedClientSecret, minSpacing) {
+		return false
+	}
+	if rot.Window == nil {
+		return true
+	}
+	inWindow, err := withinWindow(time.Now(), rot.Window.Opens, rot.Window.ClosesAfter.Duration)
+	if err != nil {
+		logf.FromContext(ctx).Error(err, "Invalid rotation window cron expression, skipping rotation")
+		return false
+	}
+	return inWindow
 }
 
 func (r *Reconciler) GetSecretName(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) string {

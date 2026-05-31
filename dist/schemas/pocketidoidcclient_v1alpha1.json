@@ -72,6 +72,45 @@
             "null"
           ]
         },
+        "clientSecretRotation": {
+          "description": "ClientSecretRotation configures automatic, scheduled regeneration of the client secret.\nWhen unset the secret is only regenerated on create/adopt, on self-heal,\nor when the regenerate-client-secret annotation is set.",
+          "properties": {
+            "enabled": {
+              "default": false,
+              "description": "Enabled controls whether automatic rotation is active.",
+              "type": "boolean"
+            },
+            "interval": {
+              "description": "Interval is the minimum time between rotations (e.g. \"720h\" for 30 days). Must be positive.",
+              "type": "string"
+            },
+            "window": {
+              "description": "Window restricts rotations to a recurring maintenance window.\nWhen unset, rotations fire as soon as the interval and global min-spacing are satisfied.",
+              "properties": {
+                "closesAfter": {
+                  "description": "ClosesAfter is how long the window stays open after each cron fire.",
+                  "type": "string"
+                },
+                "opens": {
+                  "description": "Opens is a standard 5-field cron expression (e.g. \"0 1 * * *\" for 1am daily, UTC).",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "closesAfter",
+                "opens"
+              ],
+              "type": "object",
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "enabled",
+            "interval"
+          ],
+          "type": "object",
+          "additionalProperties": false
+        },
         "darkLogoUrl": {
           "description": "Dark logo URL for the client\nDeprecated: Use spec.logo.darkLogoUrl instead.",
           "type": [
@@ -272,24 +311,6 @@
             "boolean",
             "null"
           ]
-        },
-        "rotation": {
-          "description": "Rotation configures automatic, scheduled regeneration of the client secret.\nWhen unset the secret is only regenerated on create/adopt, on self-heal,\nor when the regenerate-client-secret annotation is set.",
-          "properties": {
-            "interval": {
-              "description": "Interval is the rotation period (e.g. \"720h\" for 30 days). Must be positive.",
-              "type": "string"
-            },
-            "offset": {
-              "description": "Offset is an explicit phase shift within the interval. Must be strictly less\nthan Interval. When unset, a deterministic per-client offset is derived from\nhash(namespace/name), so multiple clients with the same Interval spread\nautomatically across the rotation window.",
-              "type": "string"
-            }
-          },
-          "required": [
-            "interval"
-          ],
-          "type": "object",
-          "additionalProperties": false
         },
         "scim": {
           "additionalProperties": false,

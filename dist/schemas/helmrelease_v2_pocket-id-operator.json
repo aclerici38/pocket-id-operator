@@ -2998,6 +2998,20 @@
                           "null"
                         ]
                       },
+                      "oidcClientRotation": {
+                        "description": "OIDCClientRotation configures instance-wide throttling of OIDC client secret rotations.",
+                        "properties": {
+                          "minSpacing": {
+                            "description": "MinSpacing is the minimum time between any two client secret rotations on this instance.\nPrevents thundering-herd when many clients become due simultaneously.",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "minSpacing"
+                        ],
+                        "type": "object",
+                        "additionalProperties": false
+                      },
                       "persistence": {
                         "additionalProperties": false,
                         "description": "Configures persistence for Pocket-ID\nNote: Pocket-ID can be run statelessly if using Postgres as a file and db backend\nIf not enabled mounts an emptydir instead",
