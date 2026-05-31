@@ -32,7 +32,7 @@ There will also be a generated manifest to install without helm attached to each
 
 ## Development
 
-Tooling is managed by [mise](https://mise.jdx.dev) (`mise.toml`); run `mise install` once.
+Tooling is managed by [mise](https://mise.jdx.dev) (`.mise.toml`); run `mise install` once.
 
 Install CRDs and deploy the controller:
 
@@ -41,16 +41,31 @@ mise run install
 IMG=<registry>/pocket-id-operator:tag mise run deploy
 ```
 
-Apply a sample instance:
-
-```sh
-kubectl apply -k config/samples/
-```
-
 ## Contributing
 
 Run `mise tasks` for available tasks. See the docs in `docs/` for CRD usage and
 examples.
+
+### General Workflow
+
+CI runs these checks on every pull request, you can use them to validate locally
+
+```sh
+mise run lint       # golangci-lint
+mise run test       # regenerate, fmt, vet, then unit tests
+mise run test-e2e   # full suite against a local Kind cluster (needs Docker)
+```
+
+Generated artifacts (CRDs, `dist/install.yaml`, JSON schemas) must be committed
+and up to date. Regenerate them with:
+
+```sh
+mise run build-installer && mise run generate-schemas && mise run fmt && mise run vet
+```
+
+If they're out of date, the CI will fail and comment a diff of what exactly needs to be updated.
+
+If any features are added or functionality is changed, documentation in `docs/` should be updated.
 
 ## Acknowledgments
 
