@@ -12,19 +12,54 @@ import (
 )
 
 // GetAPIClient retrieves an API client for the given instance.
+// For external instances the URL and API key come from spec.external; otherwise
+// the operator-managed in-cluster service + static API key Secret are used.
 func GetAPIClient(ctx context.Context, k8sClient client.Client, apiReader client.Reader, instance *pocketidinternalv1alpha1.PocketIDInstance) (*pocketid.Client, error) {
-	apiKey, err := getAPIKeyForInstance(ctx, apiReader, instance)
+	url, apiKey, err := resolveAPIClientCredentials(ctx, apiReader, instance)
 	if err != nil {
 		return nil, err
 	}
 
-	serviceURL := InternalServiceURL(instance.Name, instance.Namespace)
-	apiClient, err := pocketid.NewClient(serviceURL, apiKey)
+	apiClient, err := pocketid.NewClient(url, apiKey)
 	if err != nil {
 		return nil, fmt.Errorf("create pocketid client: %w", err)
 	}
 
 	return apiClient, nil
+}
+
+// resolveAPIClientCredentials returns the URL + API key for the instance, branching
+// between deployed and externally-adopted instances.
+func resolveAPIClientCredentials(ctx context.Context, apiReader client.Reader, instance *pocketidinternalv1alpha1.PocketIDInstance) (string, string, error) {
+	if instance.Spec.External != nil {
+		apiKey, err := getExternalAPIKey(ctx, apiReader, instance)
+		if err != nil {
+			return "", "", err
+		}
+		return instance.Spec.External.URL, apiKey, nil
+	}
+	apiKey, err := getAPIKeyForInstance(ctx, apiReader, instance)
+	if err != nil {
+		return "", "", err
+	}
+	return InternalServiceURL(instance.Name, instance.Namespace), apiKey, nil
+}
+
+// getExternalAPIKey reads the user-provided API key for an externally-adopted instance.
+func getExternalAPIKey(ctx context.Context, apiReader client.Reader, instance *pocketidinternalv1alpha1.PocketIDInstance) (string, error) {
+	if apiReader == nil {
+		return "", fmt.Errorf("%w: apiReader is nil", ErrAPIClientNotReady)
+	}
+	ref := instance.Spec.External.APIKeySecretRef
+	secret := &corev1.Secret{}
+	if err := apiReader.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: ref.Name}, secret); err != nil {
+		return "", fmt.Errorf("%w: get external API key secret %q: %w", ErrAPIClientNotReady, ref.Name, err)
+	}
+	token, ok := secret.Data[ref.Key]
+	if !ok || len(token) == 0 {
+		return "", fmt.Errorf("%w: external API key secret %q missing key %q", ErrAPIClientNotReady, ref.Name, ref.Key)
+	}
+	return string(token), nil
 }
 
 // getAPIKeyForInstance retrieves the static API key for authenticating with the instance.

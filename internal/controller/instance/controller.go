@@ -104,6 +104,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	log.V(1).Info("Reconciling PocketIDInstance", "name", instance.Name)
 
+	// External instances skip the deploy pipeline; the operator only manages OIDC
+	// clients/users/groups via the existing instance's API.
+	if instance.Spec.External != nil {
+		return r.reconcileExternal(ctx, instance)
+	}
+
 	// Ensure static API key secret exists
 	if err := r.ensureStaticAPIKeySecret(ctx, instance); err != nil {
 		return ctrl.Result{}, fmt.Errorf("ensure static API key secret: %w", err)
@@ -139,6 +145,51 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		}
 		metrics.RecordInstanceInfo(instance.Namespace, instance.Name, instance.Status.Version, instance.Status.Version, deploymentType, instance.Spec.AppURL)
 	}
+
+	return common.ApplyResync(ctrl.Result{}), nil
+}
+
+// reconcileExternal handles instances that adopt an existing Pocket-ID: no workload
+// is created. The operator validates connectivity and reports Ready based on the
+// API's reachability so downstream OIDC/User/Group reconcilers can use this client.
+func (r *Reconciler) reconcileExternal(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) (ctrl.Result, error) {
+	log := logf.FromContext(ctx)
+	base := instance.DeepCopy()
+
+	ready := metav1.ConditionFalse
+	reason := "Unreachable"
+	var message string
+
+	apiClient, err := common.GetAPIClient(ctx, r.Client, r.APIReader, instance)
+	if err != nil {
+		reason = "APIClientError"
+		message = err.Error()
+		log.Error(err, "external instance API client unavailable")
+	} else if version, vErr := apiClient.GetCurrentVersion(ctx); vErr != nil {
+		message = fmt.Sprintf("ping external Pocket-ID: %v", vErr)
+		log.Error(vErr, "could not reach external Pocket-ID")
+	} else {
+		ready = metav1.ConditionTrue
+		reason = "Ready"
+		message = "Adopted external Pocket-ID"
+		instance.Status.Version = version
+	}
+
+	meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{
+		Type:               "Ready",
+		Status:             ready,
+		Reason:             reason,
+		Message:            message,
+		ObservedGeneration: instance.Generation,
+	})
+	instance.Status.StaticAPIKeySecretName = ""
+
+	if err := r.Status().Patch(ctx, instance, client.MergeFrom(base)); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	metrics.RecordReadiness("PocketIDInstance", instance.Namespace, instance.Name, ready == metav1.ConditionTrue)
+	metrics.RecordInstanceInfo(instance.Namespace, instance.Name, instance.Status.Version, instance.Status.Version, "External", instance.Spec.External.URL)
 
 	return common.ApplyResync(ctrl.Result{}), nil
 }

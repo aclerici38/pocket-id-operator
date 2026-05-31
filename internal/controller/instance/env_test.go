@@ -60,7 +60,7 @@ func minimalInstance() *pocketidinternalv1alpha1.PocketIDInstance {
 	inst := &pocketidinternalv1alpha1.PocketIDInstance{}
 	inst.Name = "test-instance"
 	inst.Namespace = "default"
-	inst.Spec.EncryptionKey = pocketidinternalv1alpha1.SensitiveValue{Value: "test-encryption-key-32chars!!!!!"}
+	inst.Spec.EncryptionKey = &pocketidinternalv1alpha1.SensitiveValue{Value: "test-encryption-key-32chars!!!!!"}
 	return inst
 }
 
@@ -75,6 +75,14 @@ func TestBuildEnvVars_CoreAlwaysSet(t *testing.T) {
 	requireEnv(t, env, "DISABLE_RATE_LIMITING", "true")
 	requireEnv(t, env, "APP_URL", "https://id.example.com")
 	requireEnvFromSecret(t, env, "STATIC_API_KEY", "test-instance-static-api-key", "token")
+}
+
+func TestBuildEnvVars_EncryptionKeyAbsentWhenNil(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.EncryptionKey = nil
+
+	env := buildEnvVars(inst)
+	requireEnvAbsent(t, env, "ENCRYPTION_KEY")
 }
 
 func TestBuildEnvVars_UIConfigDisabledAbsentByDefault(t *testing.T) {
