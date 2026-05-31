@@ -21,7 +21,7 @@ golangci-lint = "2.12.2"
 # Local cluster / cluster CLIs for e2e and chart tests
 kind = "0.31.0"
 kubectl = "1.36.1"
-helm = "3.21.0"
+helm = "4.2.0"
 
 # kubeconform schema script
 uv = "0.11.17"
