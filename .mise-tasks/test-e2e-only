@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Run e2e specs against an existing Kind cluster"
+#MISE depends=["setup-test-e2e"]
+set -euo pipefail
+
+# IMG and KIND_CLUSTER are read from the environment by the suite.
+# E2E_FOCUS_FILE optionally scopes the run, e.g.
+#   E2E_FOCUS_FILE=test/e2e/httproute_test.go mise run test-e2e-only
+ginkgo -tags=e2e -v -procs=8 ${E2E_FOCUS_FILE:+--focus-file="$E2E_FOCUS_FILE"} ./test/e2e/

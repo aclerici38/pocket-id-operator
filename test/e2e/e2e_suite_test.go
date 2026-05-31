@@ -35,10 +35,13 @@ func TestE2E(t *testing.T) {
 var _ = SynchronizedBeforeSuite(func() []byte {
 	// This runs only on process 1
 	projectImage = resolveProjectImage()
+	imgProvided := os.Getenv("IMG") != ""
+	// Subprocess mise tasks (docker-build, deploy-e2e) read the image from IMG.
+	Expect(os.Setenv("IMG", projectImage)).To(Succeed())
 
 	By("building the operator image")
-	if os.Getenv("IMG") == "" {
-		cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
+	if !imgProvided {
+		cmd := exec.Command("mise", "run", "docker-build")
 		_, err := utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to build operator image")
 	} else {
@@ -55,12 +58,12 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	}
 
 	By("installing CRDs")
-	cmd := exec.Command("make", "install")
+	cmd := exec.Command("mise", "run", "install")
 	_, err = utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
 
 	By("deploying the operator with e2e config (faster resync)")
-	cmd = exec.Command("make", "deploy-e2e", fmt.Sprintf("IMG=%s", projectImage))
+	cmd = exec.Command("mise", "run", "deploy-e2e")
 	_, err = utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred(), "Failed to deploy operator")
 
@@ -123,11 +126,11 @@ var _ = SynchronizedAfterSuite(func() {
 	cleanupAllResources()
 
 	By("undeploying the operator")
-	cmd := exec.Command("make", "undeploy", "--ignore-errors")
+	cmd := exec.Command("mise", "run", "undeploy")
 	_, _ = utils.Run(cmd)
 
 	By("uninstalling CRDs")
-	cmd = exec.Command("make", "uninstall", "--ignore-errors")
+	cmd = exec.Command("mise", "run", "uninstall")
 	_, _ = utils.Run(cmd)
 })
 

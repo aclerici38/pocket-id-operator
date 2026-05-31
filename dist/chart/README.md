@@ -12,7 +12,7 @@ To modify the schema, edit `values.schema.skeleton.json`. The skeleton file cont
 Run:
 
 ```sh
-make generate-schemas
+mise run generate-schemas
 ```
 
 This will:

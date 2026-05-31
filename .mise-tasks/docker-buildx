@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+#MISE description="Build and push a cross-platform manager image"
+set -euo pipefail
+
+img="${IMG:-$DEFAULT_IMG}"
+
+# Copy the Dockerfile and insert --platform=${BUILDPLATFORM}, preserving the original.
+sed -e '1 s/\(^FROM\)/FROM --platform=${BUILDPLATFORM}/; t' \
+    -e ' 1,// s//FROM --platform=${BUILDPLATFORM}/' Dockerfile > Dockerfile.cross
+
+"$CONTAINER_TOOL" buildx create --name pocket-id-operator-builder || true
+"$CONTAINER_TOOL" buildx use pocket-id-operator-builder
+"$CONTAINER_TOOL" buildx build --push --platform="$PLATFORMS" --tag "$img" -f Dockerfile.cross . || true
+"$CONTAINER_TOOL" buildx rm pocket-id-operator-builder || true
+rm Dockerfile.cross
