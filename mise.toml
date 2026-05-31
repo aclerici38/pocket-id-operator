@@ -1,6 +1,10 @@
 # Install everything with `mise install`. Run `mise tasks` to list tasks,
 # `mise run <task>` to run one. Multi-line tasks live in ./.mise-tasks.
 
+[settings]
+lockfile = true
+lockfile_platforms = ["linux-x64", "linux-arm64", "macos-arm64"]
+
 [tools]
 # Kubernetes manifest tooling
 kustomize = "5.7.1"
