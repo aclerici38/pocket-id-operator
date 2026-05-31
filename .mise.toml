@@ -57,15 +57,11 @@ description = "Run go vet"
 run = "go vet ./..."
 
 [tasks.regen]
-description = "Regenerate every derived file from the API types (deepcopy, CRDs, installer, schemas), then format and vet. Mirrors the regenerate-manifests CI job; run this after changing api/."
-# build-installer pulls in `manifests` + `generate`; generate-schemas pulls in
-# `manifests`. Run sequentially so generators finish before fmt/vet read output.
-run = [
-  "mise run build-installer",
-  "mise run generate-schemas",
-  "mise run fmt",
-  "mise run vet",
-]
+description = "Regenerate every derived file from the API types (deepcopy, CRDs, installer, schemas). Run after changing api/. Formatting/vetting is left to pre-commit and the lint/test workflows."
+# Aggregator only. build-installer needs manifests+generate; generate-schemas
+# needs manifests. Declaring both as deps lets mise run the shared manifests and
+# generate once, then build-installer and generate-schemas in parallel.
+depends = ["build-installer", "generate-schemas"]
 
 [tasks.test]
 description = "Regenerate, format, vet, then run unit tests"
