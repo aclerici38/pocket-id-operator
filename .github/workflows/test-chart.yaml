@@ -27,6 +27,11 @@ permissions:
   contents: read
   packages: read
 
+env:
+  # install_args installs this job's tool subset; don't let `mise run`
+  # auto-install the rest of mise.toml on top of it.
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+
 jobs:
   test:
     name: Lint and install test
@@ -50,11 +55,8 @@ jobs:
         with:
           token: ${{ github.token }}
 
-      - name: Lint Helm chart with instance
-        run: helm lint dist/chart --values .github/helm-test-values.yaml
-
-      - name: Lint Helm chart without instance
-        run: helm lint dist/chart --set instance.enabled=false
+      - name: Lint Helm chart
+        run: mise run lint-chart
 
       - name: Package chart
         env:
