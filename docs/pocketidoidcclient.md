@@ -250,4 +250,30 @@ spec:
 
 When `spec.scim` is removed the operator deletes the SCIM service provider from Pocket ID.
 
+## Client Secret Rotation
+
+When `spec.clientSecretRotation.enabled` is true, the operator automatically regenerates
+the OIDC client secret on a schedule. Three gates must all pass before a rotation fires:
+the configured interval must have elapsed, the instance-wide minimum spacing must be
+satisfied, and (if configured) the current time must fall inside the maintenance window.
+
+```yaml
+spec:
+  clientSecretRotation:
+    enabled: true
+    interval: "720h"                 # rotate after 30 days
+    window:                          # optional: restrict to a time window
+      opens: "0 1 * * *"            # cron (UTC): 1am daily
+      closesAfter: "4h"             # window is open for 4 hours
+```
+
+To throttle how frequently rotations happen across all clients on an instance, set
+`spec.oidcClientRotation.minSpacing` on the `PocketIDInstance`:
+
+```yaml
+spec:
+  oidcClientRotation:
+    minSpacing: "1h"                 # at most one rotation per hour across all clients
+```
+
 *Note:* For all options and an up-to-date spec `kubectl explain PocketIDOIDCClient` 
