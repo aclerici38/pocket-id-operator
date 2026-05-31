@@ -16,17 +16,13 @@ pre-commit:
       run: gofmt -w {staged_files}
       stage_fixed: true
 
-# Heavier checks, once per push. Mirrors CI so red builds are caught locally
-# first. Sequential on purpose: `regen` (inside verify-generated) writes files
-# that `lint` then reads.
+# Once per push: make sure generated files are committed before they hit CI.
 pre-push:
   commands:
     # Derived files (CRDs, deepcopy, install.yaml, schemas) must
     # match the API types. Fails if `regen` changes any committed generated file
     generated-up-to-date:
       run: mise run verify-generated
-    lint:
-      run: mise run lint
 
 # Keep derived files reconciled after pulling or rebasing in upstream changes,
 # so a merge that touches the API types never leaves stale CRDs/schemas behind.
