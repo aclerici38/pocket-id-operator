@@ -1,0 +1,20 @@
+# Generated files — collapsed in GitHub diffs and excluded from language stats.
+# These are reproduced by `mise run` tasks from the Go API types; do not edit
+# by hand. See dist/chart/README.md and the .mise-tasks/ scripts.
+
+# controller-gen (mise run generate / manifests)
+api/v1alpha1/zz_generated.deepcopy.go        linguist-generated=true
+config/crd/bases/*.yaml                       linguist-generated=true
+config/rbac/role.yaml                         linguist-generated=true
+dist/chart/templates/rbac/manager-role.yaml   linguist-generated=true
+dist/chart/crds/*.yaml                        linguist-generated=true
+
+# kustomize bundle (mise run build-installer)
+dist/install.yaml                             linguist-generated=true
+
+# tool-managed lockfile (mise install)
+mise.lock                                     linguist-generated=true
+
+# crd-schema-publisher + jq splice (mise run generate-schemas)
+dist/schemas/*.json                           linguist-generated=true
+dist/chart/values.schema.json                 linguist-generated=true
