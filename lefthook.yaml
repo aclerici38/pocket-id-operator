@@ -25,7 +25,11 @@ pre-push:
     # Derived files (CRDs, deepcopy, install.yaml, schemas) must
     # match the API types. Fails if `regen` changes any committed generated file
     generated-up-to-date:
+      glob: "{api,config,internal,dist,hack}/**"
       run: mise run verify-generated
+    lint-chart:
+      glob: "dist/chart/**"
+      run: mise run lint-chart
 
 # Keep derived files reconciled after pulling or rebasing in upstream changes,
 # so a merge that touches the API types never leaves stale CRDs/schemas behind.

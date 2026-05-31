@@ -55,7 +55,7 @@ jobs:
         with:
           token: ${{ github.token }}
 
-      - name: Lint Helm chart (strict)
+      - name: Lint Helm chart
         run: mise run lint-chart
 
       - name: Package chart
