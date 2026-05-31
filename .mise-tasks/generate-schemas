@@ -3,14 +3,19 @@
 #MISE depends=["manifests"]
 set -euo pipefail
 
-command -v uvx >/dev/null 2>&1 || { echo "Error: uvx not found. Run 'mise install'."; exit 1; }
+command -v crd-schema-publisher >/dev/null 2>&1 || { echo "Error: crd-schema-publisher not found. Run 'mise install'."; exit 1; }
 
-root="$PWD"
 mkdir -p dist/schemas
 rm -f dist/schemas/*.json
 
-curl -sfL https://raw.githubusercontent.com/yannh/kubeconform/master/scripts/openapi2jsonschema.py -o /tmp/openapi2jsonschema.py
-(cd dist/schemas && uvx --with pyyaml python /tmp/openapi2jsonschema.py "$root"/config/crd/bases/*.yaml)
+# crd-schema-publisher writes group-scoped subdirs (<group>/<kind>_<version>.json)
+# plus a kubeconform "master-standalone" copy and a _meta manifest. Convert into a
+# staging dir and flatten the group-scoped schemas into dist/schemas/ to preserve
+# the published flat layout (see docs/README.md).
+stage="$(mktemp -d)"
+trap 'rm -rf "$stage"' EXIT
+crd-schema-publisher convert -d config/crd/bases -o "$stage"
+cp "$stage"/pocketid.internal/*.json dist/schemas/
 
 jq --slurpfile instance dist/schemas/pocketidinstance_v1alpha1.json \
   --slurpfile user dist/schemas/pocketiduser_v1alpha1.json \

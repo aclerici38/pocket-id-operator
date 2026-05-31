@@ -3,40 +3,60 @@
   "properties": {
     "apiVersion": {
       "description": "APIVersion defines the versioned schema of this representation of an object.\nServers should convert recognized schemas to the latest internal value, and\nmay reject unrecognized values.\nMore info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "kind": {
       "description": "Kind is a string value representing the REST resource this object represents.\nServers may infer this from the endpoint the client submits requests to.\nCannot be updated.\nIn CamelCase.\nMore info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "metadata": {
-      "type": "object"
+      "type": [
+        "object",
+        "null"
+      ]
     },
     "spec": {
+      "additionalProperties": false,
       "description": "spec defines the desired state of PocketIDUserGroup",
       "properties": {
         "allowedOIDCClients": {
           "description": "AllowedOIDCClients lists PocketIDOIDCClient CRs that this group grants access to.\nThe final set of allowed clients is the union of this field and any\nOIDCClients that reference this group in their allowedUserGroups.",
           "items": {
+            "additionalProperties": false,
             "description": "NamespacedOIDCClientReference references a PocketIDOIDCClient by name and namespace.",
             "properties": {
               "name": {
                 "description": "Name is the name of the PocketIDOIDCClient CR",
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "namespace": {
                 "description": "Namespace is the namespace of the PocketIDOIDCClient CR\nDefaults to the referencing resource's namespace",
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             },
-            "type": "object",
-            "additionalProperties": false
+            "type": "object"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "customClaims": {
           "description": "CustomClaims are additional claims to attach to users in this group",
           "items": {
+            "additionalProperties": false,
             "description": "CustomClaim defines a custom claim key/value pair for a user group.",
             "properties": {
               "key": {
@@ -52,23 +72,30 @@
               "key",
               "value"
             ],
-            "type": "object",
-            "additionalProperties": false
+            "type": "object"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "friendlyName": {
           "description": "FriendlyName is the display name for the user group",
           "maxLength": 50,
           "minLength": 2,
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "instanceSelector": {
+          "additionalProperties": false,
           "description": "InstanceSelector selects the PocketIDInstance to reconcile against.\nIf omitted, the controller expects exactly one instance in the cluster.",
           "properties": {
             "matchExpressions": {
               "description": "matchExpressions is a list of label selector requirements. The requirements are ANDed.",
               "items": {
+                "additionalProperties": false,
                 "description": "A label selector requirement is a selector that contains values, a key, and an operator that\nrelates the key and values.",
                 "properties": {
                   "key": {
@@ -84,7 +111,10 @@
                     "items": {
                       "type": "string"
                     },
-                    "type": "array",
+                    "type": [
+                      "array",
+                      "null"
+                    ],
                     "x-kubernetes-list-type": "atomic"
                   }
                 },
@@ -92,10 +122,12 @@
                   "key",
                   "operator"
                 ],
-                "type": "object",
-                "additionalProperties": false
+                "type": "object"
               },
-              "type": "array",
+              "type": [
+                "array",
+                "null"
+              ],
               "x-kubernetes-list-type": "atomic"
             },
             "matchLabels": {
@@ -103,20 +135,29 @@
                 "type": "string"
               },
               "description": "matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels\nmap is equivalent to an element of matchExpressions, whose key field is \"key\", the\noperator is \"In\", and the values array contains only \"value\". The requirements are ANDed.",
-              "type": "object"
+              "type": [
+                "object",
+                "null"
+              ]
             }
           },
-          "type": "object",
-          "x-kubernetes-map-type": "atomic",
-          "additionalProperties": false
+          "type": [
+            "object",
+            "null"
+          ],
+          "x-kubernetes-map-type": "atomic"
         },
         "name": {
           "description": "Name of the user group. Defaults to the metadata.name",
           "maxLength": 255,
           "minLength": 2,
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "users": {
+          "additionalProperties": false,
           "description": "Users defines the users to add to this group",
           "properties": {
             "userIDs": {
@@ -124,43 +165,63 @@
               "items": {
                 "type": "string"
               },
-              "type": "array"
+              "type": [
+                "array",
+                "null"
+              ]
             },
             "userRefs": {
               "description": "UserRefs are PocketIDUser custom resources to add to this group",
               "items": {
+                "additionalProperties": false,
                 "description": "NamespacedUserReference references a PocketIDUser by name and namespace.",
                 "properties": {
                   "name": {
                     "description": "Name is the name of the PocketIDUser CR",
-                    "type": "string"
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "namespace": {
                     "description": "Namespace is the namespace of the PocketIDUser CR\nDefaults to the referencing resource's namespace",
-                    "type": "string"
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   }
                 },
-                "type": "object",
-                "additionalProperties": false
+                "type": "object"
               },
-              "type": "array"
+              "type": [
+                "array",
+                "null"
+              ]
             },
             "usernames": {
               "description": "Usernames are Pocket-ID usernames to add to this group.\nThe controller will look up the user ID from Pocket-ID by username.",
               "items": {
                 "type": "string"
               },
-              "type": "array"
+              "type": [
+                "array",
+                "null"
+              ]
             }
           },
-          "type": "object",
-          "additionalProperties": false
+          "type": [
+            "object",
+            "null"
+          ]
         }
       },
-      "type": "object",
-      "additionalProperties": false
+      "type": [
+        "object",
+        "null"
+      ]
     },
     "status": {
+      "additionalProperties": false,
       "description": "status defines the observed state of PocketIDUserGroup",
       "properties": {
         "allowedOIDCClientIDs": {
@@ -168,11 +229,15 @@
           "items": {
             "type": "string"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "conditions": {
           "description": "Conditions represent the current state of the PocketIDUserGroup resource.",
           "items": {
+            "additionalProperties": false,
             "description": "Condition contains details for one aspect of the current state of this API Resource.",
             "properties": {
               "lastTransitionTime": {
@@ -189,7 +254,10 @@
                 "description": "observedGeneration represents the .metadata.generation that the condition was set based upon.\nFor instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date\nwith respect to the current state of the instance.",
                 "format": "int64",
                 "minimum": 0,
-                "type": "integer"
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "reason": {
                 "description": "reason contains a programmatic identifier indicating the reason for the condition's last transition.\nProducers of specific condition types may define expected values and meanings for this field,\nand whether the values are considered a guaranteed API.\nThe value should be a CamelCase string.\nThis field may not be empty.",
@@ -221,10 +289,12 @@
               "status",
               "type"
             ],
-            "type": "object",
-            "additionalProperties": false
+            "type": "object"
           },
-          "type": "array",
+          "type": [
+            "array",
+            "null"
+          ],
           "x-kubernetes-list-map-keys": [
             "type"
           ],
@@ -232,11 +302,15 @@
         },
         "createdAt": {
           "description": "CreatedAt is the creation timestamp from Pocket-ID",
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "customClaims": {
           "description": "CustomClaims are the resolved custom claims on the group",
           "items": {
+            "additionalProperties": false,
             "description": "CustomClaim defines a custom claim key/value pair for a user group.",
             "properties": {
               "key": {
@@ -252,41 +326,63 @@
               "key",
               "value"
             ],
-            "type": "object",
-            "additionalProperties": false
+            "type": "object"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "friendlyName": {
           "description": "FriendlyName is the resolved display name from Pocket-ID",
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "groupID": {
           "description": "GroupID is the ID assigned by Pocket-ID",
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "ldapID": {
           "description": "LdapID is the LDAP identifier if the group is managed via LDAP",
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "managedUserIDs": {
           "description": "ManagedUserIDs are the Pocket-ID user IDs that the operator is actively managing.\nUsers not in this list are considered externally managed and won't be removed.",
           "items": {
             "type": "string"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "name": {
           "description": "Name is the resolved group name from Pocket-ID",
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "totalUserCount": {
           "description": "TotalUserCount is the total number of users in the group including externally managed",
-          "type": "integer"
+          "type": [
+            "integer",
+            "null"
+          ]
         }
       },
-      "type": "object",
-      "additionalProperties": false
+      "type": [
+        "object",
+        "null"
+      ]
     }
   },
   "type": "object"
