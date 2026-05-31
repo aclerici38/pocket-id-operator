@@ -466,11 +466,9 @@ spec:
 Setting `spec.external` switches the instance to adoption mode: the operator creates no workload
 and instead manages OIDC clients, users, and groups on an existing Pocket-ID via its API.
 All workload configuration (`spec.encryptionKey`, `spec.smtp`, `spec.persistence`, etc.) is
-ignored in this mode. `spec.external` and `spec.encryptionKey` are mutually exclusive.
+ignored in this mode. `spec.external` and `spec.encryptionKey` are mutually exclusive. To migrate from an external instance to an internal one or vice versa, the instance must be recreated.
 
-Your Pocket-ID instance must have `DISABLE_RATE_LIMITING=true`; without it the operator may hit
-rate limits on startup or when many resources are synced at once. Managed instances have this set
-automatically.
+It is recommended to set `DISABLE_RATE_LIMITING=true` on an external instance. Without it the operator may hit rate limits on startup or when many resources are synced at once. Managed instances have this set automatically.
 
 ```yaml
 apiVersion: v1
