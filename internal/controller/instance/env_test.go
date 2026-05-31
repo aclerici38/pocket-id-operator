@@ -77,6 +77,14 @@ func TestBuildEnvVars_CoreAlwaysSet(t *testing.T) {
 	requireEnvFromSecret(t, env, "STATIC_API_KEY", "test-instance-static-api-key", "token")
 }
 
+func TestBuildEnvVars_EncryptionKeyAbsentWhenNil(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.EncryptionKey = nil
+
+	env := buildEnvVars(inst)
+	requireEnvAbsent(t, env, "ENCRYPTION_KEY")
+}
+
 func TestBuildEnvVars_UIConfigDisabledAbsentByDefault(t *testing.T) {
 	inst := minimalInstance()
 	env := buildEnvVars(inst)

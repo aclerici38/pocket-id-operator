@@ -461,11 +461,44 @@ spec:
             - --http-address=0.0.0.0:4180
 ```
 
+## External Instance
+
+Setting `spec.external` switches the instance to adoption mode: the operator creates no workload
+and instead manages OIDC clients, users, and groups on an existing Pocket-ID via its API.
+All workload configuration (`spec.encryptionKey`, `spec.smtp`, `spec.persistence`, etc.) is
+ignored in this mode. `spec.external` and `spec.encryptionKey` are mutually exclusive.
+
+Your Pocket-ID instance must have `DISABLE_RATE_LIMITING=true`; without it the operator may hit
+rate limits on startup or when many resources are synced at once. Managed instances have this set
+automatically.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pocket-id-api-key
+  namespace: pocket-id
+stringData:
+  key: "your-api-key-here"
+---
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDInstance
+metadata:
+  name: pocket-id
+  namespace: pocket-id
+spec:
+  external:
+    url: "https://auth.example.com"
+    apiKeySecretRef:
+      name: pocket-id-api-key
+      key: key
+```
+
 ## Generated Resources And Environment
 
 - Service name: `<instance>`, port 1411.
 - Static API key Secret: `<instance>-static-api-key`, key `token`.
-- Environment variables always set by the operator:
+- Environment variables always set by the operator (managed instances only):
   - `ENCRYPTION_KEY` (from `spec.encryptionKey`)
   - `TRUST_PROXY=true`
   - `DISABLE_RATE_LIMITING=true`
