@@ -7,8 +7,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// rotationDue
-
 func TestRotationDue_DueWhenIntervalElapsed(t *testing.T) {
 	now := time.Date(2026, 1, 31, 12, 0, 0, 0, time.UTC)
 	lastRotated := now.Add(-31 * 24 * time.Hour)
@@ -50,8 +48,6 @@ func TestRotationDue_NeverDueWithBothAnchorsZero(t *testing.T) {
 	}
 }
 
-// withinWindow
-
 func TestWithinWindow_InsideWindow(t *testing.T) {
 	// 1am daily window, 4h duration: 2:30am is inside
 	now := time.Date(2026, 1, 31, 2, 30, 0, 0, time.UTC)
@@ -77,7 +73,7 @@ func TestWithinWindow_OutsideWindow(t *testing.T) {
 }
 
 func TestWithinWindow_AtWindowOpen(t *testing.T) {
-	// Exactly at 1am — should be inside
+	// Exactly at 1am, should be inside
 	now := time.Date(2026, 1, 31, 1, 0, 0, 0, time.UTC)
 	ok, err := withinWindow(now, "0 1 * * *", 4*time.Hour)
 	if err != nil {
@@ -95,8 +91,6 @@ func TestWithinWindow_InvalidCron(t *testing.T) {
 		t.Error("expected error for invalid cron expression")
 	}
 }
-
-// minSpacingOK
 
 func TestMinSpacingOK_ZeroSpacing(t *testing.T) {
 	now := time.Date(2026, 1, 31, 12, 0, 0, 0, time.UTC)

@@ -253,9 +253,9 @@ When `spec.scim` is removed the operator deletes the SCIM service provider from 
 ## Client Secret Rotation
 
 When `spec.clientSecretRotation.enabled` is true, the operator automatically regenerates
-the OIDC client secret on a schedule. Three gates must all pass before a rotation fires:
-the configured interval must have elapsed, the instance-wide minimum spacing must be
-satisfied, and (if configured) the current time must fall inside the maintenance window.
+the OIDC client secret on a schedule. A rotation fires only when the configured interval
+has elapsed, the instance-wide minimum spacing is satisfied, and (if configured) the
+current time falls inside the maintenance window.
 
 ```yaml
 spec:

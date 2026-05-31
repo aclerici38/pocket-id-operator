@@ -80,6 +80,7 @@ type Reconciler struct {
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidoidcclients/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidoidcclients/finalizers,verbs=update
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidinstances,verbs=get;list;watch
+// +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidinstances/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidusergroups,verbs=get;list;watch
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidusers,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
@@ -905,17 +906,30 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 		} else if helpers.HasAnnotation(oidcClient, "pocketid.internal/regenerate-client-secret", "true") {
 			// User explicitly requested regeneration via annotation
 			shouldRegenerateSecret = true
-		} else if oidcClient.Spec.ClientSecretRotation != nil {
-			// TODO(task5): wire up rotationDue + withinWindow + minSpacingOK here.
-			interval := oidcClient.Spec.ClientSecretRotation.Interval.Duration
+		} else if rot := oidcClient.Spec.ClientSecretRotation; rot != nil && rot.Enabled {
+			// Gate 1: interval elapsed since last rotation (source of truth: secret annotation).
 			var lastRotated time.Time
 			if ts, ok := existingSecret.Annotations[lastRotatedAtAnnotation]; ok {
 				if t, err := time.Parse(time.RFC3339, ts); err == nil {
 					lastRotated = t
 				}
 			}
-			if rotationDue(time.Now(), lastRotated, oidcClient.CreationTimestamp.Time, interval) {
-				shouldRegenerateSecret = true
+			if rotationDue(time.Now(), lastRotated, oidcClient.CreationTimestamp.Time, rot.Interval.Duration) {
+				// Gate 2: global min-spacing between rotations on this instance.
+				var minSpacing time.Duration
+				if instance.Spec.OIDCClientRotation != nil {
+					minSpacing = instance.Spec.OIDCClientRotation.MinSpacing.Duration
+				}
+				if minSpacingOK(time.Now(), instance.Status.LastRotatedClientSecret, minSpacing) {
+					// Gate 3: optional maintenance window.
+					if rot.Window == nil {
+						shouldRegenerateSecret = true
+					} else if inWindow, err := withinWindow(time.Now(), rot.Window.Opens, rot.Window.ClosesAfter.Duration); err != nil {
+						logf.FromContext(ctx).Error(err, "Invalid rotation window cron expression, skipping rotation")
+					} else if inWindow {
+						shouldRegenerateSecret = true
+					}
+				}
 			}
 		}
 
@@ -1004,7 +1018,15 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 		base := oidcClient.DeepCopy()
 		oidcClient.Status.LastRotatedAt = rotatedAt
 		if err := r.Status().Patch(ctx, oidcClient, client.MergeFrom(base)); err != nil {
-			logf.FromContext(ctx).Error(err, "failed to mirror LastRotatedAt to status")
+			logf.FromContext(ctx).Error(err, "Failed to mirror LastRotatedAt to status")
+		}
+	}
+
+	if rotatedAt != nil {
+		base := instance.DeepCopy()
+		instance.Status.LastRotatedClientSecret = rotatedAt
+		if err := r.Status().Patch(ctx, instance, client.MergeFrom(base)); err != nil {
+			logf.FromContext(ctx).Error(err, "Failed to update instance LastRotatedClientSecret")
 		}
 	}
 
