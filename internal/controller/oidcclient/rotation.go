@@ -1,40 +1,15 @@
 package oidcclient
 
 import (
-	"hash/fnv"
 	"time"
 
+	"github.com/robfig/cron/v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// rotationPhase returns the rotation phase for a client within the given interval.
-// With an explicit offset the offset is taken modulo interval (so an offset >=
-// interval still produces a valid phase). With no explicit offset, the phase is
-// derived deterministically from a fnv64a hash of namespace/name so clients with
-// the same interval stagger across the rotation window without manual coordination.
-func rotationPhase(namespace, name string, interval time.Duration, offset *metav1.Duration) time.Duration {
-	if interval <= 0 {
-		return 0
-	}
-	intervalNs := interval.Nanoseconds()
-	if offset != nil {
-		off := offset.Duration.Nanoseconds()
-		if off < 0 {
-			off = -off
-		}
-		return time.Duration(off % intervalNs)
-	}
-	h := fnv.New64a()
-	_, _ = h.Write([]byte(namespace + "/" + name))
-	return time.Duration(int64(h.Sum64() % uint64(intervalNs)))
-}
-
-// rotationDue reports whether the client's secret has crossed a fresh rotation
-// slot boundary since the last rotation. Slot boundaries align to the Unix epoch
-// offset by phase, repeating every interval. When lastRotated is zero (no prior
-// rotation recorded), creationTime anchors the calculation so a fresh client
-// rotates only after the first slot boundary past its creation.
-func rotationDue(now, lastRotated, creationTime time.Time, interval, phase time.Duration) bool {
+// rotationDue reports whether the elapsed time since the last rotation (or creation,
+// if never rotated) has reached the configured interval.
+func rotationDue(now, lastRotated, creationTime time.Time, interval time.Duration) bool {
 	if interval <= 0 {
 		return false
 	}
@@ -45,14 +20,29 @@ func rotationDue(now, lastRotated, creationTime time.Time, interval, phase time.
 	if anchor.IsZero() {
 		return false
 	}
-	return slotIndex(now, interval, phase) > slotIndex(anchor, interval, phase)
+	return now.Sub(anchor) >= interval
 }
 
-// slotIndex returns the rotation slot index that time t falls into. Slots are
-// half-open intervals of width "interval" aligned to (epoch + phase).
-func slotIndex(t time.Time, interval, phase time.Duration) int64 {
-	if interval <= 0 {
-		return 0
+// withinWindow reports whether now falls inside a recurring maintenance window.
+// opens is a standard 5-field cron expression (UTC). The window stays open for
+// closesAfter after each cron fire.
+func withinWindow(now time.Time, opens string, closesAfter time.Duration) (bool, error) {
+	schedule, err := cron.ParseStandard(opens)
+	if err != nil {
+		return false, err
 	}
-	return (t.UnixNano() - int64(phase)) / int64(interval)
+	// Next() after (now - closesAfter) gives the most recent window open at or after
+	// that point. If it is <= now, we are inside the open window.
+	windowStart := schedule.Next(now.Add(-closesAfter))
+	return !windowStart.After(now), nil
+}
+
+// minSpacingOK reports whether enough time has elapsed since the last rotation
+// across all clients on the instance. Returns true when minSpacing is zero or
+// no global rotation has been recorded yet.
+func minSpacingOK(now time.Time, lastGlobal *metav1.Time, minSpacing time.Duration) bool {
+	if minSpacing <= 0 || lastGlobal == nil {
+		return true
+	}
+	return now.Sub(lastGlobal.Time) >= minSpacing
 }

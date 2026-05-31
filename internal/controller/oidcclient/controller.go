@@ -905,21 +905,16 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 		} else if helpers.HasAnnotation(oidcClient, "pocketid.internal/regenerate-client-secret", "true") {
 			// User explicitly requested regeneration via annotation
 			shouldRegenerateSecret = true
-		} else if oidcClient.Spec.Rotation != nil {
-			// Scheduled rotation: due at the next slot boundary aligned to a
-			// hash-derived phase (or the explicit offset), so clients stagger
-			// across the interval without manual coordination.
-			// Source of truth is the secret annotation, written atomically with
-			// the secret value, so a failed status patch never skips a rotation.
-			interval := oidcClient.Spec.Rotation.Interval.Duration
-			phase := rotationPhase(oidcClient.Namespace, oidcClient.Name, interval, oidcClient.Spec.Rotation.Offset)
+		} else if oidcClient.Spec.ClientSecretRotation != nil {
+			// TODO(task5): wire up rotationDue + withinWindow + minSpacingOK here.
+			interval := oidcClient.Spec.ClientSecretRotation.Interval.Duration
 			var lastRotated time.Time
 			if ts, ok := existingSecret.Annotations[lastRotatedAtAnnotation]; ok {
 				if t, err := time.Parse(time.RFC3339, ts); err == nil {
 					lastRotated = t
 				}
 			}
-			if rotationDue(time.Now(), lastRotated, oidcClient.CreationTimestamp.Time, interval, phase) {
+			if rotationDue(time.Now(), lastRotated, oidcClient.CreationTimestamp.Time, interval) {
 				shouldRegenerateSecret = true
 			}
 		}
