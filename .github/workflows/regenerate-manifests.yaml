@@ -25,6 +25,11 @@ concurrency:
 permissions:
   contents: write
 
+env:
+  # install_args installs this job's tool subset; don't let `mise run`
+  # auto-install the rest of mise.toml on top of it.
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+
 jobs:
   regenerate:
     name: Regenerate

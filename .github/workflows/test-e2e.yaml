@@ -40,6 +40,9 @@ permissions:
 env:
   # renovate: datasource=docker depName=ghcr.io/pocket-id/pocket-id versioning=docker
   POCKET_ID_IMAGE: ghcr.io/pocket-id/pocket-id:v2.7.0-distroless@sha256:ba71ff2988ba42d527784ccfc7530b356ec3f931e600a195de48f2962e2ce1ba
+  # install_args already installed this job's tool subset; don't let `mise run`
+  # auto-install the rest of mise.toml on top of it.
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
 
 jobs:
   test-e2e:
