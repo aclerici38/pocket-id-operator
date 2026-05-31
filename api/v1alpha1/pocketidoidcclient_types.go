@@ -316,7 +316,7 @@ type ClientSecretRotation struct {
 // PocketIDOIDCClientStatus defines the observed state of PocketIDOIDCClient.
 type PocketIDOIDCClientStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Important: Run "mise run generate" to regenerate code after modifying this file
 
 	// For Kubernetes API conventions, see:
 	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties

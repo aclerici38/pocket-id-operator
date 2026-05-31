@@ -23,40 +23,21 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 env:
-  # renovate: datasource=github-releases depName=kubernetes-sigs/controller-tools
-  CONTROLLER_TOOLS_VERSION: v0.21.0
-  # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize
-  KUSTOMIZE_VERSION: v5.7.1
+  # install_args installs this job's tool subset; don't let `mise run`
+  # auto-install the rest of mise.toml on top of it.
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
 
 jobs:
   regenerate:
     name: Regenerate
     runs-on: ubuntu-latest
     steps:
-      - name: Generate GitHub App token
-        id: app-token
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_KEY }}
-
-      - name: Checkout code from same repo
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+      - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ github.head_ref || github.ref }}
-          token: ${{ steps.app-token.outputs.token || github.token }}
-          persist-credentials: false
-
-      - name: Checkout code from fork
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
 
       - name: Setup Go
@@ -66,85 +47,18 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
-      - name: Cache tool binaries
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      - name: Setup mise
+        uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
         with:
-          path: bin
-          key: tools-${{ runner.os }}-go-${{ hashFiles('go.mod') }}-controller-gen-${{ env.CONTROLLER_TOOLS_VERSION }}-kustomize-${{ env.KUSTOMIZE_VERSION }}
+          # renovate: datasource=github-releases depName=jdx/mise
+          version: "2026.5.16"
+          install_args: "go:sigs.k8s.io/controller-tools/cmd/controller-gen kustomize aqua:sholdee/crd-schema-publisher"
 
-      - name: Setup uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
-        with:
-          version: "0.11.17"
-          ignore-nothing-to-cache: true
-
-      - name: Regenerate manifests
-        run: make build-installer generate-schemas fmt vet
-
-      - name: Commit changes
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-        env:
-          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
-          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
-          REPO: ${{ github.repository }}
-          BRANCH: ${{ github.head_ref || github.ref_name }}
+      - name: Verify generated files are up to date
         run: |
-          git config user.name "${APP_SLUG}[bot]"
-          git config user.email "200541989+${APP_SLUG}[bot]@users.noreply.github.com"
+          mise run regen
           if [ -n "$(git status --porcelain)" ]; then
-            git add -A
-            git commit -m "chore: regenerate manifests"
-            git push "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "HEAD:${BRANCH}"
-            echo "::error::Manifests were out of date and have been regenerated. Failing to prevent duplicate CI runs."
+            echo "::error::Generated files are out of date. Run 'mise run regen' locally and commit the result."
+            git --no-pager diff
             exit 1
           fi
-
-      - name: Check for uncommitted changes
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
-        id: check-diff
-        run: |
-          if [ -n "$(git status --porcelain)" ]; then
-            echo "has_diff=true" >> "$GITHUB_OUTPUT"
-            echo "::error::Generated files are out of date. Please run 'make manifests generate fmt build-installer generate-schemas' and commit the changes."
-          fi
-
-      - name: Generate diff artifact
-        if: steps.check-diff.outputs.has_diff == 'true'
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          echo "${PR_NUMBER}" > /tmp/pr-number.txt
-          cat > /tmp/schema-diff.md << 'HEADER'
-          ## Generated files are out of date
-
-          The following files need to be regenerated. Please run:
-          ```sh
-          make manifests generate fmt build-installer generate-schemas
-          ```
-          and commit the changes.
-
-          <details>
-          <summary>Diff</summary>
-
-          ```diff
-          HEADER
-          git diff >> /tmp/schema-diff.md
-          cat >> /tmp/schema-diff.md << 'FOOTER'
-          ```
-
-          </details>
-          FOOTER
-
-      - name: Upload diff artifact
-        if: steps.check-diff.outputs.has_diff == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: schema-diff
-          path: |
-            /tmp/pr-number.txt
-            /tmp/schema-diff.md
-          retention-days: 1
-
-      - name: Fail if diff exists
-        if: steps.check-diff.outputs.has_diff == 'true'
-        run: exit 1

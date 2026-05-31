@@ -30,3 +30,7 @@ go.work
 
 # Kubeconfig might contain secrets
 *.kubeconfig
+
+# lefthook per-developer overrides
+lefthook-local.yaml
+lefthook-local.yml

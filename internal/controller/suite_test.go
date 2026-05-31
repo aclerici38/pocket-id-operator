@@ -160,7 +160,7 @@ var _ = AfterSuite(func() {
 //
 // This function streamlines the process by finding the required binaries, similar to
 // setting the 'KUBEBUILDER_ASSETS' environment variable. To ensure the binaries are
-// properly set up, run 'make setup-envtest' beforehand.
+// properly set up, run 'mise run setup-envtest' beforehand.
 
 // findModCacheDir returns the on-disk path inside the Go module cache for the given module.
 // It runs "go list -m -json <module>" to discover the directory.

@@ -28,10 +28,9 @@ permissions:
   packages: read
 
 env:
-  # renovate: datasource=github-releases depName=kubernetes-sigs/kind
-  KIND_VERSION: v0.31.0
-  # renovate: datasource=github-releases depName=kubernetes/kubernetes
-  KUBECTL_VERSION: v1.36.1
+  # install_args installs this job's tool subset; don't let `mise run`
+  # auto-install the rest of mise.toml on top of it.
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
 
 jobs:
   test:
@@ -43,8 +42,12 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Helm
-        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
+      - name: Setup mise
+        uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+        with:
+          # renovate: datasource=github-releases depName=jdx/mise
+          version: "2026.5.16"
+          install_args: kubectl kind helm
 
       - name: Resolve latest release
         id: release
@@ -52,11 +55,8 @@ jobs:
         with:
           token: ${{ github.token }}
 
-      - name: Lint Helm chart with instance
-        run: helm lint dist/chart --values .github/helm-test-values.yaml
-
-      - name: Lint Helm chart without instance
-        run: helm lint dist/chart --set instance.enabled=false
+      - name: Lint Helm chart
+        run: mise run lint-chart
 
       - name: Package chart
         env:
@@ -80,10 +80,7 @@ jobs:
         run: docker load -i "/tmp/operator-image-${IMAGE_TAG}.tar"
 
       - name: Create kind cluster
-        uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
-        with:
-          version: ${{ env.KIND_VERSION }}
-          kubectl_version: ${{ env.KUBECTL_VERSION }}
+        run: kind create cluster --name chart-testing
 
       - name: Load image into kind
         env:

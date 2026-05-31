@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+#MISE description="Run unit tests without regenerating manifests"
+#MISE depends=["setup-envtest"]
+set -euo pipefail
+
+v="$(go list -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' k8s.io/api)"
+k8s="$(printf '%s\n' "$v" | sed -E 's/^v?[0-9]+\.([0-9]+).*/1.\1/')"
+
+KUBEBUILDER_ASSETS="$(setup-envtest use "$k8s" --bin-dir "$PWD/bin" -p path)" \
+  go test $(go list ./... | grep -v /e2e) -coverprofile cover.out -timeout 90s

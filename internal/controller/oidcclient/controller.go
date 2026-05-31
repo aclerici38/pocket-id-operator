@@ -951,8 +951,9 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 		}
 	}
 
-	if instance.Spec.AppURL != "" {
-		secretData[keys.IssuerURL] = []byte(instance.Spec.AppURL)
+	appURL := instance.EffectiveAppURL()
+	if appURL != "" {
+		secretData[keys.IssuerURL] = []byte(appURL)
 	}
 
 	if len(oidcClient.Spec.CallbackURLs) > 0 {
@@ -971,8 +972,8 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 		secretData[keys.LogoutCallbackURLs] = logoutCallbackURLsJSON
 	}
 
-	if instance.Spec.AppURL != "" {
-		baseURL := instance.Spec.AppURL
+	if appURL != "" {
+		baseURL := appURL
 		secretData[keys.DiscoveryURL] = []byte(baseURL + "/.well-known/openid-configuration")
 		secretData[keys.AuthorizationURL] = []byte(baseURL + "/authorize")
 		secretData[keys.TokenURL] = []byte(baseURL + "/api/oidc/token")

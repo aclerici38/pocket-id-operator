@@ -12,14 +12,13 @@ To modify the schema, edit `values.schema.skeleton.json`. The skeleton file cont
 Run:
 
 ```sh
-make generate-schemas
+mise run generate-schemas
 ```
 
 This will:
 
-1. Download the [`openapi2jsonschema.py`](https://github.com/yannh/kubeconform) script from kubeconform
-2. Convert the CRD OpenAPI specs in `config/crd/bases/` to standalone JSON schemas (output to `dist/schemas/`)
-3. Merge those schemas into the skeleton to produce the final `values.schema.json`
-4. Generate a FluxCD HelmRelease schema with the values schema embedded
+1. Convert the CRD OpenAPI specs in `config/crd/bases/` to standalone JSON schemas (output flat to `dist/schemas/`)
+2. Merge those schemas into the skeleton to produce the final `values.schema.json`
+3. Generate a FluxCD HelmRelease schema with the values schema embedded
 
-Requires [uv](https://docs.astral.sh/uv/) (used to run the Python script via `uvx` with the `pyyaml` dependency).
+Conversion uses [`crd-schema-publisher`](https://github.com/sholdee/crd-schema-publisher) (installed via mise here)

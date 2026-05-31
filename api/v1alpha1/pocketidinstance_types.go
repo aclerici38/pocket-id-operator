@@ -17,6 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"strings"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,6 +37,30 @@ type SensitiveValue struct {
 	// Source for the value (e.g. secretKeyRef, configMapKeyRef)
 	// +optional
 	ValueFrom *corev1.EnvVarSource `json:"valueFrom,omitempty"`
+}
+
+// ExternalInstanceConfig points the operator at an existing, externally-managed
+// Pocket-ID instead of deploying one. When set, the operator creates no workload
+// and manages OIDC clients, users, and groups on that instance via its API.
+type ExternalInstanceConfig struct {
+	// URL is the base URL of the existing Pocket-ID instance (e.g. https://auth.example.com).
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Pattern=`^https?://`
+	URL string `json:"url"`
+
+	// APIKeySecretRef references a Secret key holding a Pocket-ID API key with
+	// permission to manage clients, users, and groups on the instance.
+	// +kubebuilder:validation:Required
+	APIKeySecretRef corev1.SecretKeySelector `json:"apiKeySecretRef"`
+}
+
+// EffectiveAppURL returns the externally-reachable URL of the Pocket-ID instance:
+// the external URL for adopted instances, otherwise the deployed instance's appUrl.
+func (i *PocketIDInstance) EffectiveAppURL() string {
+	if i.Spec.External != nil && i.Spec.External.URL != "" {
+		return strings.TrimRight(i.Spec.External.URL, "/")
+	}
+	return strings.TrimRight(i.Spec.AppURL, "/")
 }
 
 // S3Config configures S3 as the file backend.
@@ -386,11 +412,13 @@ type MetricsConfig struct {
 
 // PocketIDInstanceSpec defines the desired state of PocketIDInstance
 // +kubebuilder:validation:XValidation:rule="self.deploymentType == oldSelf.deploymentType",message="deploymentType is immutable"
+// +kubebuilder:validation:XValidation:rule="has(self.external) == has(oldSelf.external)",message="external is immutable; create a new PocketIDInstance to switch modes"
 // +kubebuilder:validation:XValidation:rule="!has(self.s3) || !has(self.fileBackend) || self.fileBackend == 's3'",message="fileBackend must be 's3' (or unset) when s3 config is present"
-// +kubebuilder:validation:XValidation:rule="!has(self.encryptionKey.value) || size(self.encryptionKey.value) == 0 || size(self.encryptionKey.value) >= 16",message="encryptionKey value must be at least 16 characters"
+// +kubebuilder:validation:XValidation:rule="!has(self.encryptionKey) || !has(self.encryptionKey.value) || size(self.encryptionKey.value) == 0 || size(self.encryptionKey.value) >= 16",message="encryptionKey value must be at least 16 characters"
+// +kubebuilder:validation:XValidation:rule="has(self.external) != has(self.encryptionKey)",message="set exactly one of external (adopt an existing Pocket-ID) or encryptionKey (deploy a new one)"
 type PocketIDInstanceSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Important: Run "mise run generate" to regenerate code after modifying this file
 	// The following markers will use OpenAPI v3 schema to validate the value
 	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
 
@@ -405,10 +433,17 @@ type PocketIDInstanceSpec struct {
 	Image string `json:"image,omitempty"`
 
 	// Encryption Key
-	// Required since Pocket-ID v2
+	// Required since Pocket-ID v2 when deploying an instance; omit for external instances.
 	// See the official documentation for ENCRYPTION_KEY environment variable
-	// +kubebuilder:validation:Required
-	EncryptionKey SensitiveValue `json:"encryptionKey"`
+	// +optional
+	EncryptionKey *SensitiveValue `json:"encryptionKey,omitempty"`
+
+	// External adopts an existing Pocket-ID instead of deploying one. When set, no
+	// workload/service/PVC is created and the operator manages OIDC clients, users,
+	// and groups on that instance via its API. Mutually exclusive with encryptionKey
+	// and the other deployment fields.
+	// +optional
+	External *ExternalInstanceConfig `json:"external,omitempty"`
 
 	// URL to access database at
 	// See the official documentation for DB_CONNECTION_STRING

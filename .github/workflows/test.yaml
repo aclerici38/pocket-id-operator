@@ -9,10 +9,9 @@ permissions:
   contents: read
 
 env:
-  # renovate: datasource=github-releases depName=kubernetes-sigs/controller-tools
-  CONTROLLER_TOOLS_VERSION: v0.21.0
-  # renovate: datasource=github-releases depName=kubernetes-sigs/controller-tools extractVersion=^envtest-v(?<version>.+)$
-  ENVTEST_K8S_VERSION: "1.36.0"
+  # install_args installs this job's tool subset; don't let `mise run`
+  # auto-install the rest of mise.toml on top of it.
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
 
 jobs:
   test:
@@ -31,11 +30,12 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
-      - name: Cache tool binaries
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      - name: Setup mise
+        uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
         with:
-          path: bin
-          key: tools-${{ runner.os }}-go-${{ hashFiles('go.mod') }}-controller-gen-${{ env.CONTROLLER_TOOLS_VERSION }}-envtest-${{ env.ENVTEST_K8S_VERSION }}
+          # renovate: datasource=github-releases depName=jdx/mise
+          version: "2026.5.16"
+          install_args: setup-envtest
 
       - name: Run tests
-        run: make test-only
+        run: mise run test-only

@@ -86,7 +86,7 @@ type APIKeyStatus struct {
 // PocketIDUserSpec defines the desired state of PocketIDUser
 type PocketIDUserSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Important: Run "mise run generate" to regenerate code after modifying this file
 	// The following markers will use OpenAPI v3 schema to validate the value
 	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
 

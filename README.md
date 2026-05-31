@@ -32,23 +32,71 @@ There will also be a generated manifest to install without helm attached to each
 
 ## Development
 
+Tooling and Git hooks are managed by [mise](https://mise.jdx.dev) (`.mise.toml`);
+run `mise install` once to set both up (it installs the toolchain and registers
+the [lefthook](https://github.com/evilmartians/lefthook) hooks described under
+[Contributing](#contributing)).
+
 Install CRDs and deploy the controller:
 
 ```sh
-make install
-make deploy IMG=<registry>/pocket-id-operator:tag
-```
-
-Apply a sample instance:
-
-```sh
-kubectl apply -k config/samples/
+mise run install
+IMG=<registry>/pocket-id-operator:tag mise run deploy
 ```
 
 ## Contributing
 
-Run `make help` for available targets. See the docs in `docs/` for CRD usage and
+Run `mise tasks` for available tasks. See the docs in `docs/` for CRD usage and
 examples.
+
+### General Workflow
+
+CI runs these checks on every pull request, you can use them to validate locally
+
+```sh
+mise run lint       # golangci-lint
+mise run test       # regenerate, fmt, vet, then unit tests
+mise run test-e2e   # full suite against a local Kind cluster (needs Docker)
+```
+
+### Generated files
+
+CRDs, DeepCopy methods, `dist/install.yaml`, the chart's CRDs, and the JSON
+schemas are all derived from the Go API types in `api/` and must be committed
+and current. Regenerate everything with one task:
+
+```sh
+mise run regen
+```
+
+The lefthook hooks installed by `mise install` mostly handle this for you:
+
+- **pre-commit** — formats staged Go files.
+- **pre-push** — runs `mise run verify-generated` and blocks the push if any
+  derived file is out of date.
+- **post-merge / post-rewrite** — re-run `mise run regen` after a pull or
+  rebase, so merged-in API changes never leave stale generated files behind.
+
+CI enforces the same check: if generated files are out of date, the
+`Regenerate Manifests` workflow fails with the command to run. To skip the hooks append `--no-verify` to the git command.
+
+### Resolving merge conflicts in generated files
+
+Every generated file is derived from `api/`, so **never hand-merge a conflict in
+one** — resolve the source and regenerate:
+
+1. Resolve any conflicts in the API types themselves (`api/**/*_types.go`) by
+   hand. These are the only real conflicts.
+2. Regenerate the derived files — this overwrites the conflict markers left in
+   the CRDs, schemas, `install.yaml`, DeepCopy, etc. with correct output:
+
+   ```sh
+   mise run regen
+   git add -A
+   git rebase --continue   # or git commit when merging
+   ```
+
+If any features are added or functionality is changed, documentation in `docs/` should be updated.
 
 ## Acknowledgments
 

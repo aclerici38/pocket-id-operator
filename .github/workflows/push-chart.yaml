@@ -68,8 +68,12 @@ jobs:
           CHART_REF="ghcr.io/${REPO_OWNER}/charts/${CHART_NAME}"
           echo "chart_ref=${CHART_REF}" >> "$GITHUB_OUTPUT"
 
-      - name: Setup Helm
-        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
+      - name: Setup mise
+        uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+        with:
+          # renovate: datasource=github-releases depName=jdx/mise
+          version: "2026.5.16"
+          install_args: helm
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
