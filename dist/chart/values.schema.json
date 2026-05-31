@@ -2094,6 +2094,7 @@
                 ]
               },
               "oidcClientRotation": {
+                "additionalProperties": false,
                 "description": "OIDCClientRotation configures instance-wide throttling of OIDC client secret rotations.",
                 "properties": {
                   "minSpacing": {
@@ -2104,8 +2105,10 @@
                 "required": [
                   "minSpacing"
                 ],
-                "type": "object",
-                "additionalProperties": false
+                "type": [
+                  "object",
+                  "null"
+                ]
               },
               "persistence": {
                 "additionalProperties": false,

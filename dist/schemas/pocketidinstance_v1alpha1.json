@@ -2042,6 +2042,7 @@
           ]
         },
         "oidcClientRotation": {
+          "additionalProperties": false,
           "description": "OIDCClientRotation configures instance-wide throttling of OIDC client secret rotations.",
           "properties": {
             "minSpacing": {
@@ -2052,8 +2053,10 @@
           "required": [
             "minSpacing"
           ],
-          "type": "object",
-          "additionalProperties": false
+          "type": [
+            "object",
+            "null"
+          ]
         },
         "persistence": {
           "additionalProperties": false,
@@ -3747,7 +3750,10 @@
         "lastRotatedClientSecret": {
           "description": "LastRotatedClientSecret is the timestamp of the most recent OIDC client secret rotation\non this instance. Used to enforce spec.oidcClientRotation.minSpacing.",
           "format": "date-time",
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "staticApiKeySecretName": {
           "description": "StaticAPIKeySecretName is the name of the secret containing the STATIC_API_KEY",
