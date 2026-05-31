@@ -31,4 +31,4 @@ jobs:
           install_args: golangci-lint
 
       - name: Run golangci-lint
-        run: make lint
+        run: mise run lint

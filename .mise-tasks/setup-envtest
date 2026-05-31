@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+#MISE description="Download the Kubernetes binaries envtest needs (version tracks k8s.io/api)"
+set -euo pipefail
+
+v="$(go list -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' k8s.io/api)"
+[ -n "$v" ] || { echo "Could not resolve k8s.io/api version; set it manually." >&2; exit 1; }
+k8s="$(printf '%s\n' "$v" | sed -E 's/^v?[0-9]+\.([0-9]+).*/1.\1/')"
+
+echo "Setting up envtest binaries for Kubernetes ${k8s}..."
+setup-envtest use "$k8s" --bin-dir "$PWD/bin" -p path

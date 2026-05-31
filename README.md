@@ -32,11 +32,13 @@ There will also be a generated manifest to install without helm attached to each
 
 ## Development
 
+Tooling is managed by [mise](https://mise.jdx.dev) (`mise.toml`); run `mise install` once.
+
 Install CRDs and deploy the controller:
 
 ```sh
-make install
-make deploy IMG=<registry>/pocket-id-operator:tag
+mise run install
+IMG=<registry>/pocket-id-operator:tag mise run deploy
 ```
 
 Apply a sample instance:
@@ -47,7 +49,7 @@ kubectl apply -k config/samples/
 
 ## Contributing
 
-Run `make help` for available targets. See the docs in `docs/` for CRD usage and
+Run `mise tasks` for available tasks. See the docs in `docs/` for CRD usage and
 examples.
 
 ## Acknowledgments

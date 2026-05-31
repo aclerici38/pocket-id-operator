@@ -31,4 +31,4 @@ jobs:
           install_args: "go:sigs.k8s.io/controller-runtime/tools/setup-envtest"
 
       - name: Run tests
-        run: make test-only
+        run: mise run test-only

@@ -66,7 +66,11 @@ jobs:
           install_args: "go:sigs.k8s.io/controller-tools/cmd/controller-gen kustomize uv"
 
       - name: Regenerate manifests
-        run: make build-installer generate-schemas fmt vet
+        run: |
+          mise run build-installer
+          mise run generate-schemas
+          mise run fmt
+          mise run vet
 
       - name: Commit changes
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
@@ -92,7 +96,7 @@ jobs:
         run: |
           if [ -n "$(git status --porcelain)" ]; then
             echo "has_diff=true" >> "$GITHUB_OUTPUT"
-            echo "::error::Generated files are out of date. Please run 'make manifests generate fmt build-installer generate-schemas' and commit the changes."
+            echo "::error::Generated files are out of date. Please run 'mise run build-installer && mise run generate-schemas && mise run fmt && mise run vet' and commit the changes."
           fi
 
       - name: Generate diff artifact
@@ -106,7 +110,7 @@ jobs:
 
           The following files need to be regenerated. Please run:
           ```sh
-          make manifests generate fmt build-installer generate-schemas
+          mise run build-installer && mise run generate-schemas && mise run fmt && mise run vet
           ```
           and commit the changes.
 

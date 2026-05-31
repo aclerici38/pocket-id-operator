@@ -184,7 +184,7 @@ jobs:
           IMAGE_REPO: ${{ needs.validate.outputs.image_repo }}
           VERSION: ${{ needs.validate.outputs.version }}
         run: |
-          make build-installer IMG="${IMAGE_REPO}:${VERSION}"
+          IMG="${IMAGE_REPO}:${VERSION}" mise run build-installer
 
       - name: Create GitHub release
         env:

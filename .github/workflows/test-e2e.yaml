@@ -100,7 +100,7 @@ jobs:
         run: docker pull "${RELEASE_IMAGE}"
 
       - name: Create kind cluster
-        run: make setup-test-e2e
+        run: mise run setup-test-e2e
 
       - name: Run e2e tests
         env:
@@ -110,9 +110,9 @@ jobs:
           IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
           if [ "${LATEST_RELEASE}" = "true" ]; then
-            make test-e2e-only IMG="${RELEASE_IMAGE}"
+            IMG="${RELEASE_IMAGE}" mise run test-e2e-only
           elif [ -n "${IMAGE_TAG}" ]; then
-            make test-e2e-only IMG=pocket-id-operator:local-test
+            IMG=pocket-id-operator:local-test mise run test-e2e-only
           else
-            make test-e2e-only
+            mise run test-e2e-only
           fi
