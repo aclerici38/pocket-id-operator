@@ -85,7 +85,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					DeploymentType: "Deployment",
-					Image:          "ghcr.io/pocket-id/pocket-id:v2.7.0-distroless@sha256:ba71ff2988ba42d527784ccfc7530b356ec3f931e600a195de48f2962e2ce1ba",
+					Image:          "ghcr.io/pocket-id/pocket-id:v2.8.0-distroless@sha256:6a3aad6023ea0729e3763c75b77060d6d5d9069ad566af0b0b14a2288da0c9e0",
 					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
@@ -123,7 +123,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 			}, timeout, interval).Should(Succeed())
 
 			Expect(deployment.Spec.Template.Spec.Containers).To(HaveLen(1))
-			Expect(deployment.Spec.Template.Spec.Containers[0].Image).To(Equal("ghcr.io/pocket-id/pocket-id:v2.7.0-distroless@sha256:ba71ff2988ba42d527784ccfc7530b356ec3f931e600a195de48f2962e2ce1ba"))
+			Expect(deployment.Spec.Template.Spec.Containers[0].Image).To(Equal("ghcr.io/pocket-id/pocket-id:v2.8.0-distroless@sha256:6a3aad6023ea0729e3763c75b77060d6d5d9069ad566af0b0b14a2288da0c9e0"))
 			Expect(deployment.Spec.Template.Spec.Containers[0].Name).To(Equal("pocket-id"))
 
 			// Verify owner reference is set
@@ -1461,7 +1461,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					Image: "ghcr.io/pocket-id/pocket-id:v2.7.0-distroless@sha256:ba71ff2988ba42d527784ccfc7530b356ec3f931e600a195de48f2962e2ce1ba",
+					Image: "ghcr.io/pocket-id/pocket-id:v2.8.0-distroless@sha256:6a3aad6023ea0729e3763c75b77060d6d5d9069ad566af0b0b14a2288da0c9e0",
 					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
@@ -1501,7 +1501,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 				if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(instance), instance); err != nil {
 					return err
 				}
-				instance.Spec.Image = "ghcr.io/pocket-id/pocket-id:v2.7.0-distroless@sha256:ba71ff2988ba42d527784ccfc7530b356ec3f931e600a195de48f2962e2ce1ba"
+				instance.Spec.Image = "ghcr.io/pocket-id/pocket-id:v2.8.0-distroless@sha256:6a3aad6023ea0729e3763c75b77060d6d5d9069ad566af0b0b14a2288da0c9e0"
 				return k8sClient.Update(ctx, instance)
 			}, timeout, interval).Should(Succeed())
 
@@ -1515,7 +1515,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					return ""
 				}
 				return deployment.Spec.Template.Spec.Containers[0].Image
-			}, timeout, interval).Should(Equal("ghcr.io/pocket-id/pocket-id:v2.7.0-distroless@sha256:ba71ff2988ba42d527784ccfc7530b356ec3f931e600a195de48f2962e2ce1ba"))
+			}, timeout, interval).Should(Equal("ghcr.io/pocket-id/pocket-id:v2.8.0-distroless@sha256:6a3aad6023ea0729e3763c75b77060d6d5d9069ad566af0b0b14a2288da0c9e0"))
 		})
 
 		It("Should reject changes to deploymentType", func() {
