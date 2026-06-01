@@ -482,6 +482,43 @@
                 ]
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Deployment Type"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Deployment": {
+                        "text": "Deployment",
+                        "color": "blue",
+                        "index": 0
+                      },
+                      "StatefulSet": {
+                        "text": "StatefulSet",
+                        "color": "purple",
+                        "index": 1
+                      },
+                      "External": {
+                        "text": "External",
+                        "color": "orange",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-text"
+              }
+            ]
           }
         ]
       },
