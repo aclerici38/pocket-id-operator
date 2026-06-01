@@ -791,7 +791,7 @@ func (r *Reconciler) reconcileVersion(ctx context.Context, instance *pocketidint
 	}
 
 	if semver.IsValid(normalizedVersion) && semver.Compare(normalizedVersion, latestTestedPocketIDVersion) > 0 {
-		log.Info("WARNING: pocket-id version is newer than the latest tested version, the operator may not work correctly",
+		log.Info("Pocket-id version is newer than the latest tested version. This should be fine, but please report any errors at https://github.com/aclerici38/pocket-id-operator",
 			"detectedVersion", version,
 			"latestTestedVersion", latestTestedPocketIDVersion,
 		)

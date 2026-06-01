@@ -30,6 +30,13 @@ It's recommended to install this operator via the helm chart.
 
 There will also be a generated manifest to install without helm attached to each release.
 
+## Release Cadence
+For now, this project does not match the release cadence of upstream Pocket-id. Features and bug fixes will be released as time permits which is likely within 24 hours of being merged. The operator is mostly feature-complete with Pocket-id and does not benefit from frequent updates anymore. This may obviously change in the future.
+
+Each new release of Pocket-id is run through all tests against the latest release and current codebase. In addition, I will always run updates in my own k8s cluster immediately to confirm there are no errors that get by the tests. I feel this is adequate testing against upstream updates and allows the operator versioning to be decoupled from upstream. 
+
+Therefore, to use an up-to-date version of Pocket-id with this operator it is recommended to manage the upstream pocket-id version separately (`instance.spec.image`). The version the operator comes bundled with may be behind the latest upstream release. To ensure stability, you can wait several days before updating as I will be sure to release any fixes necessary ASAP.
+
 ## Development
 
 Tooling and Git hooks are managed by [mise](https://mise.jdx.dev) (`.mise.toml`);
