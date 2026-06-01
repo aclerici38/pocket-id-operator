@@ -995,23 +995,30 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 		return fmt.Errorf("failed to create or update secret: %w", err)
 	}
 
-	if rotatedAt != nil {
-		base := oidcClient.DeepCopy()
-		oidcClient.Status.LastRotatedAt = rotatedAt
-		if err := r.Status().Patch(ctx, oidcClient, client.MergeFrom(base)); err != nil {
-			logf.FromContext(ctx).Error(err, "Failed to mirror LastRotatedAt to status")
-		}
-	}
+	r.applyRotationStatus(ctx, oidcClient, instance, rotatedAt, scheduledRotation)
 
-	if rotatedAt != nil && scheduledRotation {
+	return nil
+}
+
+// applyRotationStatus updates the oidcclient and (for scheduled rotations) the instance
+// status after a secret rotation. Extracted to keep ReconcileSecret under the cyclomatic
+// complexity limit.
+func (r *Reconciler) applyRotationStatus(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, instance *pocketidinternalv1alpha1.PocketIDInstance, rotatedAt *metav1.Time, scheduledRotation bool) {
+	if rotatedAt == nil {
+		return
+	}
+	base := oidcClient.DeepCopy()
+	oidcClient.Status.LastRotatedAt = rotatedAt
+	if err := r.Status().Patch(ctx, oidcClient, client.MergeFrom(base)); err != nil {
+		logf.FromContext(ctx).Error(err, "Failed to mirror LastRotatedAt to status")
+	}
+	if scheduledRotation {
 		base := instance.DeepCopy()
 		instance.Status.LastRotatedClientSecret = rotatedAt
 		if err := r.Status().Patch(ctx, instance, client.MergeFrom(base)); err != nil {
 			logf.FromContext(ctx).Error(err, "Failed to update instance LastRotatedClientSecret")
 		}
 	}
-
-	return nil
 }
 
 // rotationDue checks whether all three rotation gates pass: interval elapsed,
