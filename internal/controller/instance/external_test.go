@@ -6,15 +6,20 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 )
 
 func externalTestScheme(t *testing.T) *runtime.Scheme {
@@ -153,6 +158,39 @@ func TestReconcileExternal_APIKeySecretMissing(t *testing.T) {
 	}
 	if cond.Reason != "APIClientError" {
 		t.Errorf("reason: got %q, want %q", cond.Reason, "APIClientError")
+	}
+}
+
+// TestReconcile_ExternalSkipsWorkload locks in the invariant that an external
+// instance never enters the deploy pipeline: Reconcile must early-return into
+// reconcileExternal, so no Deployment, Service, or operator-managed static API
+// key Secret (the carrier for ENCRYPTION_KEY / STATIC_API_KEY env) is created.
+func TestReconcile_ExternalSkipsWorkload(t *testing.T) {
+	ctx := context.Background()
+	// Pointed at an unreachable URL on purpose (connection refused, fails fast): the
+	// workload-skipping behavior must hold regardless of reachability.
+	instance := newExternalInstance("http://127.0.0.1:1", "admin-token", "token")
+	r := newReconcilerFor(t, instance, apiKeySecret("admin-token", "token", "api-key"))
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(instance)}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	key := client.ObjectKeyFromObject(instance)
+
+	if err := r.Get(ctx, key, &appsv1.Deployment{}); !apierrors.IsNotFound(err) {
+		t.Errorf("expected no Deployment for external instance, got err=%v", err)
+	}
+	if err := r.Get(ctx, key, &appsv1.StatefulSet{}); !apierrors.IsNotFound(err) {
+		t.Errorf("expected no StatefulSet for external instance, got err=%v", err)
+	}
+	if err := r.Get(ctx, key, &corev1.Service{}); !apierrors.IsNotFound(err) {
+		t.Errorf("expected no Service for external instance, got err=%v", err)
+	}
+
+	staticKey := types.NamespacedName{Namespace: instance.Namespace, Name: common.StaticAPIKeySecretName(instance.Name)}
+	if err := r.Get(ctx, staticKey, &corev1.Secret{}); !apierrors.IsNotFound(err) {
+		t.Errorf("expected no operator-managed static API key Secret for external instance, got err=%v", err)
 	}
 }
 
