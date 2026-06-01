@@ -1058,8 +1058,7 @@ func (r *Reconciler) rotationDue(ctx context.Context, oidcClient *pocketidintern
 	if rot.Window != nil {
 		inWindow, err := withinWindow(now, rot.Window.Opens, rot.Window.ClosesAfter.Duration)
 		if err != nil {
-			logf.FromContext(ctx).Error(err, "Invalid rotation window cron expression, skipping rotation")
-			return false, nil
+			return false, err
 		}
 		if !inWindow {
 			return false, nil
