@@ -1351,6 +1351,34 @@
                 "value": "color-text"
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Next Rotation (in)"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "green",
+                      "value": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-text"
+              }
+            ]
           }
         ]
       },
@@ -1381,7 +1409,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "pocketid_operator_oidcclient_rotation_enabled",
+          "expr": "sum by (namespace, name) (pocketid_operator_oidcclient_rotation_enabled)",
           "format": "table",
           "instant": true,
           "refId": "A"
@@ -1391,7 +1419,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "time() - pocketid_operator_oidcclient_last_rotation_timestamp_seconds",
+          "expr": "time() - sum by (namespace, name) (pocketid_operator_oidcclient_last_rotation_timestamp_seconds)",
           "format": "table",
           "instant": true,
           "refId": "B"
@@ -1401,7 +1429,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "pocketid_operator_oidcclient_next_rotation_timestamp_seconds - time()",
+          "expr": "sum by (namespace, name) (pocketid_operator_oidcclient_next_rotation_timestamp_seconds) - time()",
           "format": "table",
           "instant": true,
           "refId": "C"
@@ -1411,7 +1439,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "pocketid_operator_oidcclient_rotation_interval_seconds",
+          "expr": "sum by (namespace, name) (pocketid_operator_oidcclient_rotation_interval_seconds)",
           "format": "table",
           "instant": true,
           "refId": "D"
@@ -1421,7 +1449,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "pocketid_operator_oidcclient_rotation_window_open",
+          "expr": "sum by (namespace, name) (pocketid_operator_oidcclient_rotation_window_open)",
           "format": "table",
           "instant": true,
           "refId": "E"
@@ -1431,7 +1459,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "pocketid_operator_oidcclient_rotation_window_next_open_timestamp_seconds - time()",
+          "expr": "sum by (namespace, name) (pocketid_operator_oidcclient_rotation_window_next_open_timestamp_seconds) - time()",
           "format": "table",
           "instant": true,
           "refId": "F"
@@ -1446,14 +1474,7 @@
           "id": "organize",
           "options": {
             "excludeByName": {
-              "Time": true,
-              "container": true,
-              "endpoint": true,
-              "exported_namespace": true,
-              "instance": true,
-              "job": true,
-              "pod": true,
-              "service": true
+              "Time": true
             },
             "indexByName": {
               "name": 0,
@@ -1476,89 +1497,6 @@
               "Value #F": "Next Window (in)"
             }
           }
-        }
-      ]
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "custom": {
-            "fillOpacity": 70,
-            "lineWidth": 0
-          },
-          "mappings": [
-            {
-              "type": "value",
-              "options": {
-                "1": {
-                  "text": "Open",
-                  "color": "green",
-                  "index": 0
-                },
-                "0": {
-                  "text": "Closed",
-                  "color": "dark-gray",
-                  "index": 1
-                }
-              }
-            }
-          ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "dark-gray",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 65
-      },
-      "id": 26,
-      "options": {
-        "alignValue": "left",
-        "mergeValues": true,
-        "rowHeight": 0.9,
-        "showValue": "never",
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "title": "Maintenance Window Open",
-      "type": "state-timeline",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "pocketid_operator_oidcclient_rotation_window_open",
-          "legendFormat": "{{namespace}}/{{name}}",
-          "refId": "A"
         }
       ]
     }

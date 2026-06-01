@@ -472,8 +472,9 @@ present while rotation is enabled.
 
 Whether the client's maintenance window is currently open (`1`) or closed (`0`). Only present
 for enabled clients that configure `spec.clientSecretRotation.window`. The value refreshes each
-reconcile (default every ~2 minutes), so it is well suited to a state-timeline panel that shows
-when windows were open over time. Absent for clients with no window (rotation may fire anytime).
+reconcile (default every ~2 minutes). The bundled dashboard surfaces it as the **Window** column
+of the Rotation Schedule table; it also works well in a state-timeline panel that shows when
+windows were open over time. Absent for clients with no window (rotation may fire anytime).
 
 ---
 
