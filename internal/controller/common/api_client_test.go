@@ -28,12 +28,12 @@ func fakeReader(t *testing.T, objs ...client.Object) client.Reader {
 	return fake.NewClientBuilder().WithScheme(newSecretScheme(t)).WithObjects(objs...).Build()
 }
 
-func externalInstance(namespace, secretName, secretKey, url string) *pocketidinternalv1alpha1.PocketIDInstance {
+func externalInstance(secretName, secretKey string) *pocketidinternalv1alpha1.PocketIDInstance {
 	inst := &pocketidinternalv1alpha1.PocketIDInstance{}
 	inst.Name = "external-instance"
-	inst.Namespace = namespace
+	inst.Namespace = "pocket-id"
 	inst.Spec.External = &pocketidinternalv1alpha1.ExternalInstanceConfig{
-		URL: url,
+		URL: "https://auth.example.com",
 		APIKeySecretRef: corev1.SecretKeySelector{
 			LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
 			Key:                  secretKey,
@@ -55,7 +55,7 @@ func TestGetExternalAPIKey_Success(t *testing.T) {
 	ctx := context.Background()
 	secret := apiKeySecret("pocket-id", "admin-token", "token", "super-secret-key")
 	reader := fakeReader(t, secret)
-	inst := externalInstance("pocket-id", "admin-token", "token", "https://auth.example.com")
+	inst := externalInstance("admin-token", "token")
 
 	key, err := getExternalAPIKey(ctx, reader, inst)
 	if err != nil {
@@ -71,7 +71,7 @@ func TestGetExternalAPIKey_CustomKeyName(t *testing.T) {
 	// The Secret stores the token under a non-default key; the ref must honor it.
 	secret := apiKeySecret("pocket-id", "admin-token", "api-key", "value-under-custom-key")
 	reader := fakeReader(t, secret)
-	inst := externalInstance("pocket-id", "admin-token", "api-key", "https://auth.example.com")
+	inst := externalInstance("admin-token", "api-key")
 
 	key, err := getExternalAPIKey(ctx, reader, inst)
 	if err != nil {
@@ -84,7 +84,7 @@ func TestGetExternalAPIKey_CustomKeyName(t *testing.T) {
 
 func TestGetExternalAPIKey_NilReader(t *testing.T) {
 	ctx := context.Background()
-	inst := externalInstance("pocket-id", "admin-token", "token", "https://auth.example.com")
+	inst := externalInstance("admin-token", "token")
 
 	_, err := getExternalAPIKey(ctx, nil, inst)
 	if !errors.Is(err, ErrAPIClientNotReady) {
@@ -95,7 +95,7 @@ func TestGetExternalAPIKey_NilReader(t *testing.T) {
 func TestGetExternalAPIKey_SecretNotFound(t *testing.T) {
 	ctx := context.Background()
 	reader := fakeReader(t) // no secrets
-	inst := externalInstance("pocket-id", "missing-secret", "token", "https://auth.example.com")
+	inst := externalInstance("missing-secret", "token")
 
 	_, err := getExternalAPIKey(ctx, reader, inst)
 	if !errors.Is(err, ErrAPIClientNotReady) {
@@ -108,7 +108,7 @@ func TestGetExternalAPIKey_KeyMissingInSecret(t *testing.T) {
 	// Secret exists but does not contain the referenced key.
 	secret := apiKeySecret("pocket-id", "admin-token", "some-other-key", "value")
 	reader := fakeReader(t, secret)
-	inst := externalInstance("pocket-id", "admin-token", "token", "https://auth.example.com")
+	inst := externalInstance("admin-token", "token")
 
 	_, err := getExternalAPIKey(ctx, reader, inst)
 	if !errors.Is(err, ErrAPIClientNotReady) {
@@ -121,7 +121,7 @@ func TestGetExternalAPIKey_EmptyValue(t *testing.T) {
 	// Key is present but holds an empty value, which must be rejected.
 	secret := apiKeySecret("pocket-id", "admin-token", "token", "")
 	reader := fakeReader(t, secret)
-	inst := externalInstance("pocket-id", "admin-token", "token", "https://auth.example.com")
+	inst := externalInstance("admin-token", "token")
 
 	_, err := getExternalAPIKey(ctx, reader, inst)
 	if !errors.Is(err, ErrAPIClientNotReady) {
@@ -135,7 +135,7 @@ func TestGetExternalAPIKey_ReadsFromInstanceNamespace(t *testing.T) {
 	wrong := apiKeySecret("other-ns", "admin-token", "token", "wrong-namespace-value")
 	right := apiKeySecret("pocket-id", "admin-token", "token", "correct-value")
 	reader := fakeReader(t, wrong, right)
-	inst := externalInstance("pocket-id", "admin-token", "token", "https://auth.example.com")
+	inst := externalInstance("admin-token", "token")
 
 	key, err := getExternalAPIKey(ctx, reader, inst)
 	if err != nil {
@@ -152,7 +152,7 @@ func TestResolveAPIClientCredentials_External(t *testing.T) {
 	ctx := context.Background()
 	secret := apiKeySecret("pocket-id", "admin-token", "token", "ext-key")
 	reader := fakeReader(t, secret)
-	inst := externalInstance("pocket-id", "admin-token", "token", "https://auth.example.com")
+	inst := externalInstance("admin-token", "token")
 
 	url, key, err := resolveAPIClientCredentials(ctx, reader, inst)
 	if err != nil {
@@ -169,7 +169,7 @@ func TestResolveAPIClientCredentials_External(t *testing.T) {
 func TestResolveAPIClientCredentials_ExternalPropagatesSecretError(t *testing.T) {
 	ctx := context.Background()
 	reader := fakeReader(t) // secret absent
-	inst := externalInstance("pocket-id", "admin-token", "token", "https://auth.example.com")
+	inst := externalInstance("admin-token", "token")
 
 	_, _, err := resolveAPIClientCredentials(ctx, reader, inst)
 	if !errors.Is(err, ErrAPIClientNotReady) {
@@ -218,7 +218,7 @@ func TestGetAPIClient_ExternalSuccess(t *testing.T) {
 	ctx := context.Background()
 	secret := apiKeySecret("pocket-id", "admin-token", "token", "ext-key")
 	reader := fakeReader(t, secret)
-	inst := externalInstance("pocket-id", "admin-token", "token", "https://auth.example.com")
+	inst := externalInstance("admin-token", "token")
 
 	apiClient, err := GetAPIClient(ctx, nil, reader, inst)
 	if err != nil {
@@ -232,7 +232,7 @@ func TestGetAPIClient_ExternalSuccess(t *testing.T) {
 func TestGetAPIClient_ExternalPropagatesError(t *testing.T) {
 	ctx := context.Background()
 	reader := fakeReader(t) // secret missing -> credential resolution fails
-	inst := externalInstance("pocket-id", "admin-token", "token", "https://auth.example.com")
+	inst := externalInstance("admin-token", "token")
 
 	_, err := GetAPIClient(ctx, nil, reader, inst)
 	if !errors.Is(err, ErrAPIClientNotReady) {

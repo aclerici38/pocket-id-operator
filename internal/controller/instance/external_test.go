@@ -34,15 +34,15 @@ func externalTestScheme(t *testing.T) *runtime.Scheme {
 	return s
 }
 
-func newExternalInstance(url, secretName, secretKey string) *pocketidinternalv1alpha1.PocketIDInstance {
+func newExternalInstance(url string) *pocketidinternalv1alpha1.PocketIDInstance {
 	return &pocketidinternalv1alpha1.PocketIDInstance{
 		ObjectMeta: metav1.ObjectMeta{Name: "adopted", Namespace: "pocket-id"},
 		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 			External: &pocketidinternalv1alpha1.ExternalInstanceConfig{
 				URL: url,
 				APIKeySecretRef: corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
-					Key:                  secretKey,
+					LocalObjectReference: corev1.LocalObjectReference{Name: "admin-token"},
+					Key:                  "token",
 				},
 			},
 		},
@@ -92,7 +92,7 @@ func TestReconcileExternal_Reachable(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	instance := newExternalInstance(srv.URL, "admin-token", "token")
+	instance := newExternalInstance(srv.URL)
 	r := newReconcilerFor(t, instance, apiKeySecret("admin-token", "token", "api-key"))
 
 	if _, err := r.reconcileExternal(ctx, instance); err != nil {
@@ -126,7 +126,7 @@ func TestReconcileExternal_Unreachable(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	instance := newExternalInstance(srv.URL, "admin-token", "token")
+	instance := newExternalInstance(srv.URL)
 	r := newReconcilerFor(t, instance, apiKeySecret("admin-token", "token", "api-key"))
 
 	if _, err := r.reconcileExternal(ctx, instance); err != nil {
@@ -145,7 +145,7 @@ func TestReconcileExternal_Unreachable(t *testing.T) {
 func TestReconcileExternal_APIKeySecretMissing(t *testing.T) {
 	ctx := context.Background()
 	// No API key secret present, so the client cannot be built.
-	instance := newExternalInstance("https://auth.example.com", "admin-token", "token")
+	instance := newExternalInstance("https://auth.example.com")
 	r := newReconcilerFor(t, instance)
 
 	if _, err := r.reconcileExternal(ctx, instance); err != nil {
@@ -169,7 +169,7 @@ func TestReconcile_ExternalSkipsWorkload(t *testing.T) {
 	ctx := context.Background()
 	// Pointed at an unreachable URL on purpose (connection refused, fails fast): the
 	// workload-skipping behavior must hold regardless of reachability.
-	instance := newExternalInstance("http://127.0.0.1:1", "admin-token", "token")
+	instance := newExternalInstance("http://127.0.0.1:1")
 	r := newReconcilerFor(t, instance, apiKeySecret("admin-token", "token", "api-key"))
 
 	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(instance)}); err != nil {
@@ -196,7 +196,7 @@ func TestReconcile_ExternalSkipsWorkload(t *testing.T) {
 
 func TestReconcileExternal_ObservedGeneration(t *testing.T) {
 	ctx := context.Background()
-	instance := newExternalInstance("https://auth.example.com", "admin-token", "token")
+	instance := newExternalInstance("https://auth.example.com")
 	instance.Generation = 7
 	r := newReconcilerFor(t, instance)
 
