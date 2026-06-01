@@ -2,6 +2,7 @@ package oidcclient
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
@@ -754,6 +756,328 @@ func TestReconcileSecret_ManualRotation(t *testing.T) {
 	}
 	if gotClient.Status.LastRotatedAt == nil {
 		t.Error("expected oidcclient LastRotatedAt to be mirrored for a manual rotation")
+	}
+}
+
+// TestRotationDue locks the three-gate decision, most importantly that min-spacing actually
+// blocks a scheduled rotation (the thundering-herd guarantee) and the gate precedence.
+func TestRotationDue(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	now := time.Now()
+	ann := func(d time.Duration) map[string]string {
+		return map[string]string{lastRotatedAtAnnotation: now.Add(d).UTC().Format(time.RFC3339)}
+	}
+	rot := func(interval time.Duration, window *pocketidinternalv1alpha1.RotationWindow) *pocketidinternalv1alpha1.ClientSecretRotation {
+		return &pocketidinternalv1alpha1.ClientSecretRotation{
+			Enabled:  true,
+			Interval: metav1.Duration{Duration: interval},
+			Window:   window,
+		}
+	}
+	tp := func(d time.Duration) *metav1.Time { ts := metav1.NewTime(now.Add(d)); return &ts }
+
+	tests := []struct {
+		name       string
+		rotation   *pocketidinternalv1alpha1.ClientSecretRotation
+		secretAnn  map[string]string
+		minSpacing time.Duration
+		lastGlobal *metav1.Time
+		omitInst   bool // omit the instance from the store → APIReader read fails
+		wantDue    bool
+		wantErr    bool
+	}{
+		{name: "nil rotation is never due", rotation: nil, secretAnn: ann(-48 * time.Hour)},
+		{name: "disabled rotation is never due", rotation: &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: false, Interval: metav1.Duration{Duration: time.Hour}}, secretAnn: ann(-48 * time.Hour)},
+		{name: "interval not elapsed blocks", rotation: rot(24*time.Hour, nil), secretAnn: ann(-1 * time.Hour)},
+		{name: "due when interval elapsed and spacing ok", rotation: rot(24*time.Hour, nil), secretAnn: ann(-48 * time.Hour), wantDue: true},
+		{name: "min-spacing blocks the herd", rotation: rot(24*time.Hour, nil), secretAnn: ann(-48 * time.Hour), minSpacing: time.Hour, lastGlobal: tp(-30 * time.Minute)},
+		{name: "min-spacing met allows rotation", rotation: rot(24*time.Hour, nil), secretAnn: ann(-48 * time.Hour), minSpacing: time.Hour, lastGlobal: tp(-90 * time.Minute), wantDue: true},
+		{name: "invalid window config errors", rotation: rot(24*time.Hour, &pocketidinternalv1alpha1.RotationWindow{Opens: "* * * * *", ClosesAfter: metav1.Duration{Duration: 2 * time.Minute}}), secretAnn: ann(-48 * time.Hour), wantErr: true},
+		{name: "APIReader failure errors", rotation: rot(24*time.Hour, nil), secretAnn: ann(-48 * time.Hour), omitInst: true, wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{Name: "c", Namespace: testNamespace},
+				Spec:       pocketidinternalv1alpha1.PocketIDOIDCClientSpec{ClientSecretRotation: tc.rotation},
+			}
+			secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "c-oidc-credentials", Namespace: testNamespace, Annotations: tc.secretAnn}}
+			instance := &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-instance", Namespace: testNamespace},
+			}
+			if tc.minSpacing > 0 {
+				instance.Spec.OIDCClientRotation = &pocketidinternalv1alpha1.OIDCClientRotationConfig{MinSpacing: metav1.Duration{Duration: tc.minSpacing}}
+			}
+			instance.Status.LastRotatedClientSecret = tc.lastGlobal
+
+			builder := fake.NewClientBuilder().WithScheme(scheme)
+			if !tc.omitInst {
+				builder = builder.WithObjects(instance)
+			}
+			fakeClient := builder.Build()
+
+			r := &Reconciler{Client: fakeClient, APIReader: fakeClient, Scheme: scheme}
+			due, err := r.rotationDue(ctx, oidcClient, instance, secret)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if due != tc.wantDue {
+				t.Errorf("rotationDue = %v, want %v", due, tc.wantDue)
+			}
+		})
+	}
+}
+
+// TestSecretRegenDecision pins the scheduled-vs-manual-vs-initial classification that drives
+// whether the scheduled annotation and instance aggregate get written.
+func TestSecretRegenDecision(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	now := time.Now()
+	const secretName = "c-oidc-credentials"
+	dueRotation := &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: true, Interval: metav1.Duration{Duration: 24 * time.Hour}}
+
+	fullSecret := func(annAge time.Duration) *corev1.Secret {
+		return &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        secretName,
+				Namespace:   testNamespace,
+				Annotations: map[string]string{lastRotatedAtAnnotation: now.Add(annAge).UTC().Format(time.RFC3339)},
+			},
+			Data: map[string][]byte{"client_id": []byte("c-id"), "client_secret": []byte("old")},
+		}
+	}
+
+	tests := []struct {
+		name            string
+		regenAnnotation bool
+		rotation        *pocketidinternalv1alpha1.ClientSecretRotation
+		secret          *corev1.Secret // nil = not in the store
+		wantRegen       bool
+		wantScheduled   bool
+	}{
+		{name: "missing secret is initial creation", secret: nil, wantRegen: true, wantScheduled: false},
+		{name: "missing client_secret regenerates unscheduled", secret: &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: testNamespace}, Data: map[string][]byte{"client_id": []byte("c-id")}}, wantRegen: true, wantScheduled: false},
+		{name: "manual annotation regenerates unscheduled", regenAnnotation: true, secret: fullSecret(-1 * time.Hour), wantRegen: true, wantScheduled: false},
+		{name: "scheduled rotation due", rotation: dueRotation, secret: fullSecret(-48 * time.Hour), wantRegen: true, wantScheduled: true},
+		{name: "not due does not regenerate", rotation: dueRotation, secret: fullSecret(-1 * time.Hour), wantRegen: false, wantScheduled: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{Name: "c", Namespace: testNamespace},
+				Spec:       pocketidinternalv1alpha1.PocketIDOIDCClientSpec{ClientSecretRotation: tc.rotation},
+			}
+			if tc.regenAnnotation {
+				oidcClient.Annotations = map[string]string{"pocketid.internal/regenerate-client-secret": "true"}
+			}
+			instance := &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-instance", Namespace: testNamespace},
+			}
+
+			objs := []client.Object{instance}
+			if tc.secret != nil {
+				objs = append(objs, tc.secret)
+			}
+			fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
+
+			r := &Reconciler{Client: fakeClient, APIReader: fakeClient, Scheme: scheme}
+			regen, scheduled, _, err := r.secretRegenDecision(ctx, oidcClient, instance, secretName)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if regen != tc.wantRegen || scheduled != tc.wantScheduled {
+				t.Errorf("got (regen=%v, scheduled=%v), want (regen=%v, scheduled=%v)", regen, scheduled, tc.wantRegen, tc.wantScheduled)
+			}
+		})
+	}
+}
+
+// TestReconcileSecret_InstanceStatusWriteFailureRequeues proves the durability fix: when the
+// instance aggregate write fails, ReconcileSecret returns an error so the reconcile requeues
+// instead of silently leaving min-spacing blind.
+func TestReconcileSecret_InstanceStatusWriteFailureRequeues(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "rot-client", Namespace: testNamespace, UID: "rot-uid"},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			CallbackURLs: []string{"https://example.com/cb"},
+			ClientSecretRotation: &pocketidinternalv1alpha1.ClientSecretRotation{
+				Enabled:  true,
+				Interval: metav1.Duration{Duration: 24 * time.Hour},
+			},
+		},
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{ClientID: "rot-id"},
+	}
+	existingSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "rot-client-oidc-credentials",
+			Namespace:   testNamespace,
+			Annotations: map[string]string{lastRotatedAtAnnotation: time.Now().Add(-48 * time.Hour).UTC().Format(time.RFC3339)},
+		},
+		Data: map[string][]byte{"client_id": []byte("rot-id"), "client_secret": []byte("old-secret")},
+	}
+	instance := &pocketidinternalv1alpha1.PocketIDInstance{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-instance", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+			AppURL:        "http://test.example.com",
+			EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{Value: "0123456789abcdef"},
+		},
+	}
+
+	baseClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(oidcClient, existingSecret, instance).
+		WithStatusSubresource(oidcClient, instance).
+		Build()
+
+	// Fail only the instance status patch; let the per-client status mirror succeed.
+	failing := interceptor.NewClient(baseClient, interceptor.Funcs{
+		SubResourcePatch: func(ctx context.Context, c client.Client, subResourceName string, obj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error {
+			if _, ok := obj.(*pocketidinternalv1alpha1.PocketIDInstance); ok {
+				return fmt.Errorf("simulated instance status patch failure")
+			}
+			return c.Status().Patch(ctx, obj, patch, opts...)
+		},
+	})
+
+	ts := rotationSecretServer(t)
+	defer ts.Close()
+	apiClient, _ := pocketid.NewClient(ts.URL, "")
+
+	reconciler := &Reconciler{Client: failing, APIReader: failing, Scheme: scheme}
+	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient); err == nil {
+		t.Fatal("expected ReconcileSecret to return an error when the instance status write fails")
+	}
+}
+
+// TestReconcileSecret_SelfHealsAfterLostInstanceWrite is the full round trip: a scheduled
+// rotation fires but the instance aggregate write is lost (pass 1); on the next reconcile the
+// secret is NOT re-rotated (interval gate) yet the aggregate self-heals from the durable
+// scheduled annotation (pass 2). This proves the rotation and the aggregate recording are
+// decoupled exactly as intended.
+func TestReconcileSecret_SelfHealsAfterLostInstanceWrite(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "rot-client", Namespace: testNamespace, UID: "rot-uid"},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			CallbackURLs: []string{"https://example.com/cb"},
+			ClientSecretRotation: &pocketidinternalv1alpha1.ClientSecretRotation{
+				Enabled:  true,
+				Interval: metav1.Duration{Duration: 24 * time.Hour},
+			},
+		},
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{ClientID: "rot-id"},
+	}
+	existingSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "rot-client-oidc-credentials",
+			Namespace:   testNamespace,
+			Annotations: map[string]string{lastRotatedAtAnnotation: time.Now().Add(-48 * time.Hour).UTC().Format(time.RFC3339)},
+		},
+		Data: map[string][]byte{"client_id": []byte("rot-id"), "client_secret": []byte("old-secret")},
+	}
+	instance := &pocketidinternalv1alpha1.PocketIDInstance{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-instance", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+			AppURL:        "http://test.example.com",
+			EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{Value: "0123456789abcdef"},
+		},
+	}
+
+	baseClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(oidcClient, existingSecret, instance).
+		WithStatusSubresource(oidcClient, instance).
+		Build()
+
+	// Fail only the FIRST instance status patch; later ones succeed.
+	var instancePatchCalls int
+	healing := interceptor.NewClient(baseClient, interceptor.Funcs{
+		SubResourcePatch: func(ctx context.Context, c client.Client, subResourceName string, obj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error {
+			if _, ok := obj.(*pocketidinternalv1alpha1.PocketIDInstance); ok {
+				instancePatchCalls++
+				if instancePatchCalls == 1 {
+					return fmt.Errorf("simulated instance status patch failure")
+				}
+			}
+			return c.Status().Patch(ctx, obj, patch, opts...)
+		},
+	})
+
+	// Count secret regenerations to prove pass 2 does not rotate again.
+	var regenCalls int
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		regenCalls++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"secret":"rotated-secret"}`))
+	}))
+	defer ts.Close()
+	apiClient, _ := pocketid.NewClient(ts.URL, "")
+
+	reconciler := &Reconciler{Client: healing, APIReader: healing, Scheme: scheme}
+
+	// Pass 1: rotation fires, secret + annotations are durable, but the aggregate write is lost.
+	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient); err == nil {
+		t.Fatal("pass 1: expected error from the lost instance status write")
+	}
+
+	secretAfter1 := &corev1.Secret{}
+	if err := healing.Get(ctx, client.ObjectKey{Name: existingSecret.Name, Namespace: testNamespace}, secretAfter1); err != nil {
+		t.Fatalf("pass 1: get secret: %v", err)
+	}
+	scheduledTS, ok := secretAfter1.Annotations[lastScheduledRotationAtAnnotation]
+	if !ok {
+		t.Fatal("pass 1: scheduled annotation must be durable even though the status write failed")
+	}
+	instanceAfter1 := &pocketidinternalv1alpha1.PocketIDInstance{}
+	if err := healing.Get(ctx, client.ObjectKey{Name: "test-instance", Namespace: testNamespace}, instanceAfter1); err != nil {
+		t.Fatalf("pass 1: get instance: %v", err)
+	}
+	if instanceAfter1.Status.LastRotatedClientSecret != nil {
+		t.Fatalf("pass 1: aggregate must stay unset after a failed write, got %v", instanceAfter1.Status.LastRotatedClientSecret)
+	}
+
+	// Pass 2: interval has not elapsed, so no re-rotation — but the aggregate heals from the annotation.
+	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient); err != nil {
+		t.Fatalf("pass 2: unexpected error: %v", err)
+	}
+	if regenCalls != 1 {
+		t.Errorf("expected exactly 1 secret regeneration across both passes, got %d", regenCalls)
+	}
+	instanceAfter2 := &pocketidinternalv1alpha1.PocketIDInstance{}
+	if err := healing.Get(ctx, client.ObjectKey{Name: "test-instance", Namespace: testNamespace}, instanceAfter2); err != nil {
+		t.Fatalf("pass 2: get instance: %v", err)
+	}
+	if instanceAfter2.Status.LastRotatedClientSecret == nil {
+		t.Fatal("pass 2: aggregate must self-heal from the durable scheduled annotation")
+	}
+	want, _ := time.Parse(time.RFC3339, scheduledTS)
+	if !instanceAfter2.Status.LastRotatedClientSecret.Time.Equal(want) {
+		t.Errorf("healed aggregate %v != scheduled annotation %v", instanceAfter2.Status.LastRotatedClientSecret.Time, want)
 	}
 }
 
