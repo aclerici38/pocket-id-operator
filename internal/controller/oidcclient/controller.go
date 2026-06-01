@@ -895,23 +895,11 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 	var rotatedAt *metav1.Time
 	var scheduledRotation bool
 	if !oidcClient.Spec.IsPublic && oidcClient.Status.ClientID != "" {
-		existingSecret := &corev1.Secret{}
-		err := r.Get(ctx, client.ObjectKey{Name: secretName, Namespace: oidcClient.Namespace}, existingSecret)
-
-		shouldRegenerateSecret := false
+		shouldRegenerateSecret, scheduled, existingSecret, err := r.secretRegenDecision(ctx, oidcClient, instance, secretName)
 		if err != nil {
-			// Secret doesn't exist, we need to generate it
-			shouldRegenerateSecret = true
-		} else if _, exists := existingSecret.Data[keys.ClientSecret]; !exists {
-			// Secret exists but doesn't have the client_secret key
-			shouldRegenerateSecret = true
-		} else if helpers.HasAnnotation(oidcClient, "pocketid.internal/regenerate-client-secret", "true") {
-			// User explicitly requested regeneration via annotation
-			shouldRegenerateSecret = true
-		} else if r.rotationDue(ctx, oidcClient, instance, existingSecret) {
-			shouldRegenerateSecret = true
-			scheduledRotation = true
+			return err
 		}
+		scheduledRotation = scheduled
 
 		if shouldRegenerateSecret {
 			if apiClient == nil {
@@ -1021,14 +1009,37 @@ func (r *Reconciler) applyRotationStatus(ctx context.Context, oidcClient *pocket
 	}
 }
 
+// secretRegenDecision fetches the existing client secret (if any) and decides whether it
+// needs to be regenerated and whether the regeneration was triggered by scheduled rotation.
+// Extracted to keep ReconcileSecret under the cyclomatic complexity limit.
+func (r *Reconciler) secretRegenDecision(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, instance *pocketidinternalv1alpha1.PocketIDInstance, secretName string) (shouldRegen bool, scheduled bool, existing *corev1.Secret, err error) {
+	existing = &corev1.Secret{}
+	getErr := r.Get(ctx, client.ObjectKey{Name: secretName, Namespace: oidcClient.Namespace}, existing)
+	if getErr != nil {
+		return true, false, existing, nil
+	}
+	keys := r.GetSecretKeys(oidcClient)
+	if _, exists := existing.Data[keys.ClientSecret]; !exists {
+		return true, false, existing, nil
+	}
+	if helpers.HasAnnotation(oidcClient, "pocketid.internal/regenerate-client-secret", "true") {
+		return true, false, existing, nil
+	}
+	due, err := r.rotationDue(ctx, oidcClient, instance, existing)
+	if err != nil {
+		return false, false, existing, err
+	}
+	return due, due, existing, nil
+}
+
 // rotationDue checks whether all three rotation gates pass: interval elapsed,
 // optional maintenance window, and instance-wide min-spacing satisfied.
 // The min-spacing check fetches a fresh instance status directly from the API server
 // (bypassing the cache) so a rotation written by a previous reconcile is visible immediately.
-func (r *Reconciler) rotationDue(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, instance *pocketidinternalv1alpha1.PocketIDInstance, existingSecret *corev1.Secret) bool {
+func (r *Reconciler) rotationDue(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, instance *pocketidinternalv1alpha1.PocketIDInstance, existingSecret *corev1.Secret) (bool, error) {
 	rot := oidcClient.Spec.ClientSecretRotation
 	if rot == nil || !rot.Enabled {
-		return false
+		return false, nil
 	}
 	now := time.Now()
 
@@ -1040,7 +1051,7 @@ func (r *Reconciler) rotationDue(ctx context.Context, oidcClient *pocketidintern
 		}
 	}
 	if !intervalElapsed(now, lastRotated, oidcClient.CreationTimestamp.Time, rot.Interval.Duration) {
-		return false
+		return false, nil
 	}
 
 	// Gate 2: optional maintenance window — checked before the API call below.
@@ -1048,10 +1059,10 @@ func (r *Reconciler) rotationDue(ctx context.Context, oidcClient *pocketidintern
 		inWindow, err := withinWindow(now, rot.Window.Opens, rot.Window.ClosesAfter.Duration)
 		if err != nil {
 			logf.FromContext(ctx).Error(err, "Invalid rotation window cron expression, skipping rotation")
-			return false
+			return false, nil
 		}
 		if !inWindow {
-			return false
+			return false, nil
 		}
 	}
 
@@ -1059,14 +1070,13 @@ func (r *Reconciler) rotationDue(ctx context.Context, oidcClient *pocketidintern
 	// so a rotation written by a previous reconcile is visible immediately.
 	fresh := &pocketidinternalv1alpha1.PocketIDInstance{}
 	if err := r.APIReader.Get(ctx, client.ObjectKeyFromObject(instance), fresh); err != nil {
-		logf.FromContext(ctx).Error(err, "Failed to get fresh instance status for min-spacing check")
-		return false
+		return false, fmt.Errorf("failed to get fresh instance status for min-spacing check: %w", err)
 	}
 	var minSpacing time.Duration
 	if fresh.Spec.OIDCClientRotation != nil {
 		minSpacing = fresh.Spec.OIDCClientRotation.MinSpacing.Duration
 	}
-	return minSpacingOK(now, fresh.Status.LastRotatedClientSecret, minSpacing)
+	return minSpacingOK(now, fresh.Status.LastRotatedClientSecret, minSpacing), nil
 }
 
 func (r *Reconciler) GetSecretName(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) string {

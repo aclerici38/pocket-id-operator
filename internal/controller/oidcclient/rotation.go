@@ -1,6 +1,7 @@
 package oidcclient
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -31,6 +32,11 @@ func withinWindow(now time.Time, opens string, closesAfter time.Duration) (bool,
 	schedule, err := cron.ParseStandard(opens)
 	if err != nil {
 		return false, err
+	}
+	first := schedule.Next(now)
+	gap := schedule.Next(first).Sub(first)
+	if closesAfter >= gap {
+		return false, fmt.Errorf("closesAfter (%s) must be shorter than the cron repeat period (%s)", closesAfter, gap)
 	}
 	// Next() after (now - closesAfter) gives the most recent window open at or after
 	// that point. If it is <= now, we are inside the open window.
