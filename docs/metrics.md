@@ -184,6 +184,52 @@ spec:
             description: >-
               The {{ $labels.name }} work queue has had more than 10 pending items
               for over 10 minutes, indicating the operator may be falling behind due to errors.
+
+        # A client-secret rotation failed in the last hour
+        - alert: PocketIDOIDCClientRotationFailing
+          expr: increase(pocketid_operator_oidcclient_secret_rotations_total{result="error"}[1h]) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: >-
+              Client-secret rotation failing for {{ $labels.namespace }}/{{ $labels.name }}
+            description: >-
+              {{ $value }} client-secret rotation(s) for the PocketIDOIDCClient
+              {{ $labels.namespace }}/{{ $labels.name }} (trigger {{ $labels.trigger }})
+              failed in the last hour.
+
+        # A client with rotation enabled is overdue, a gate is perpetually blocking it
+        - alert: PocketIDOIDCClientRotationOverdue
+          expr: |-
+            (pocketid_operator_oidcclient_rotation_enabled == 1)
+            and ((time() - pocketid_operator_oidcclient_next_rotation_timestamp_seconds) > 86400)
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: >-
+              Client-secret rotation overdue for {{ $labels.namespace }}/{{ $labels.name }}
+            description: >-
+              The PocketIDOIDCClient {{ $labels.namespace }}/{{ $labels.name }} has been
+              eligible for client-secret rotation for over 24h but has not rotated. A maintenance
+              window misconfiguration or instance-wide min-spacing starvation may be blocking it.
+
+        # Scheduled rotations are being deferred persistently (e.g. min-spacing starvation)
+        - alert: PocketIDOIDCClientRotationDeferrals
+          expr: |-
+            sum by (namespace, name, reason) (
+              increase(pocketid_operator_oidcclient_rotation_deferred_total[1h])
+            ) > 0
+          for: 6h
+          labels:
+            severity: info
+          annotations:
+            summary: >-
+              Client-secret rotation deferred ({{ $labels.reason }}) for {{ $labels.namespace }}/{{ $labels.name }}
+            description: >-
+              A due client-secret rotation for {{ $labels.namespace }}/{{ $labels.name }}
+              has been deferred (reason: {{ $labels.reason }}) continuously for over 6 hours.
+              This is expected for narrow maintenance windows but may indicate min-spacing starvation.
 ```
 
 ---
@@ -357,3 +403,121 @@ after each successful reconcile. The gauge is removed when the group is deleted.
 |-------|--------|
 | `namespace` | Kubernetes namespace of the `PocketIDUserGroup` |
 | `name` | Kubernetes name of the `PocketIDUserGroup` |
+
+---
+
+### Secret Rotation
+
+These metrics track per-client scheduled OIDC **client-secret rotation** (configured via
+`spec.clientSecretRotation` on a `PocketIDOIDCClient` and throttled instance-wide by
+`spec.OIDCClientRotation.minSpacing` on a `PocketIDInstance`). A rotation fires only when
+three gates pass: the per-client **interval** has elapsed, an optional per-client
+**maintenance window** is open, and the instance-wide **min-spacing** is satisfied. See
+[pocketidoidcclient.md](pocketidoidcclient.md#client-secret-rotation) for the feature itself.
+
+#### `pocketid_operator_oidcclient_rotation_enabled`
+
+**Type:** Gauge (`0`/`1`)
+**Labels:** `namespace`, `name`
+
+Whether scheduled rotation is enabled for a client (`spec.clientSecretRotation.enabled`).
+Use `sum(pocketid_operator_oidcclient_rotation_enabled)` for the count of clients with
+rotation on. Set to `0` when disabled (the schedule gauges below are then removed); the
+whole series is removed when the client is deleted.
+
+| Label | Values |
+|-------|--------|
+| `namespace` | Kubernetes namespace of the `PocketIDOIDCClient` |
+| `name` | Kubernetes name of the `PocketIDOIDCClient` |
+
+---
+
+#### `pocketid_operator_oidcclient_rotation_interval_seconds`
+
+**Type:** Gauge
+**Labels:** `namespace`, `name`
+
+The configured rotation interval in seconds. Only present while rotation is enabled.
+
+---
+
+#### `pocketid_operator_oidcclient_last_rotation_timestamp_seconds`
+
+**Type:** Gauge (Unix seconds)
+**Labels:** `namespace`, `name`
+
+Unix timestamp of the most recent client-secret rotation, read from the managed secret's
+`pocketid.internal/last-rotated-at` annotation. Compute time-since-last-rotation with
+`time() - pocketid_operator_oidcclient_last_rotation_timestamp_seconds`. Absent until the
+client has rotated at least once.
+
+---
+
+#### `pocketid_operator_oidcclient_next_rotation_timestamp_seconds`
+
+**Type:** Gauge (Unix seconds)
+**Labels:** `namespace`, `name`
+
+Unix timestamp at which the secret next becomes **eligible** for rotation (rotation anchor +
+interval). The actual rotation may still be delayed by the maintenance window or instance-wide
+min-spacing, so a value in the past means "eligible now" rather than "rotating now." Only
+present while rotation is enabled.
+
+---
+
+#### `pocketid_operator_oidcclient_rotation_window_open`
+
+**Type:** Gauge (`0`/`1`)
+**Labels:** `namespace`, `name`
+
+Whether the client's maintenance window is currently open (`1`) or closed (`0`). Only present
+for enabled clients that configure `spec.clientSecretRotation.window`. The value refreshes each
+reconcile (default every ~2 minutes). The bundled dashboard surfaces it as the **Window** column
+of the Rotation Schedule table; it also works well in a state-timeline panel that shows when
+windows were open over time. Absent for clients with no window (rotation may fire anytime).
+
+---
+
+#### `pocketid_operator_oidcclient_rotation_window_next_open_timestamp_seconds`
+
+**Type:** Gauge (Unix seconds)
+**Labels:** `namespace`, `name`
+
+Unix timestamp at which the maintenance window next opens (the next cron fire; when the window
+is currently open, this is the following occurrence). Render "time until next window" with
+`pocketid_operator_oidcclient_rotation_window_next_open_timestamp_seconds - time()`. Only
+present for enabled clients that configure a window.
+
+---
+
+#### `pocketid_operator_oidcclient_secret_rotations_total`
+
+**Type:** Counter
+**Labels:** `namespace`, `name`, `result`, `trigger`
+
+Counts client-secret rotations that actually reached the Pocket-ID regenerate call,
+partitioned by outcome and what triggered them. Use it to track rotation success/failure
+rates and to alert specifically on failed scheduled rotations.
+
+| Label | Values |
+|-------|--------|
+| `namespace` | Kubernetes namespace of the `PocketIDOIDCClient` |
+| `name` | Kubernetes name of the `PocketIDOIDCClient` |
+| `result` | `success`, `error` |
+| `trigger` | `scheduled` (interval-driven), `manual` (`regenerate-client-secret` annotation), `initial` (secret created/seeded) |
+
+---
+
+#### `pocketid_operator_oidcclient_rotation_deferred_total`
+
+**Type:** Counter
+**Labels:** `namespace`, `name`, `reason`
+
+Counts occasions where a scheduled rotation was **due** (its interval had elapsed) but a
+downstream gate prevented it from firing. This is the "out of schedule / why" signal.
+
+| Label | Values |
+|-------|--------|
+| `namespace` | Kubernetes namespace of the `PocketIDOIDCClient` |
+| `name` | Kubernetes name of the `PocketIDOIDCClient` |
+| `reason` | `window_closed` (outside the maintenance window), `min_spacing` (instance min-spacing not yet satisfied), `window_error` (invalid window configuration) |

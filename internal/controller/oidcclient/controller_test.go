@@ -780,6 +780,9 @@ func TestRotationDue(t *testing.T) {
 	}
 	tp := func(d time.Duration) *metav1.Time { ts := metav1.NewTime(now.Add(d)); return &ts }
 
+	// closedWindow opens at midnight Jan 1 and stays open 1h — effectively always closed.
+	closedWindow := &pocketidinternalv1alpha1.RotationWindow{Opens: "0 0 1 1 *", ClosesAfter: metav1.Duration{Duration: time.Hour}}
+
 	tests := []struct {
 		name       string
 		rotation   *pocketidinternalv1alpha1.ClientSecretRotation
@@ -789,14 +792,16 @@ func TestRotationDue(t *testing.T) {
 		omitInst   bool // omit the instance from the store → APIReader read fails
 		wantDue    bool
 		wantErr    bool
+		wantDefer  string
 	}{
 		{name: "nil rotation is never due", rotation: nil, secretAnn: ann(-48 * time.Hour)},
 		{name: "disabled rotation is never due", rotation: &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: false, Interval: metav1.Duration{Duration: time.Hour}}, secretAnn: ann(-48 * time.Hour)},
 		{name: "interval not elapsed blocks", rotation: rot(24*time.Hour, nil), secretAnn: ann(-1 * time.Hour)},
 		{name: "due when interval elapsed and spacing ok", rotation: rot(24*time.Hour, nil), secretAnn: ann(-48 * time.Hour), wantDue: true},
-		{name: "min-spacing blocks the herd", rotation: rot(24*time.Hour, nil), secretAnn: ann(-48 * time.Hour), minSpacing: time.Hour, lastGlobal: tp(-30 * time.Minute)},
+		{name: "window closed defers", rotation: rot(24*time.Hour, closedWindow), secretAnn: ann(-48 * time.Hour), wantDefer: "window_closed"},
+		{name: "min-spacing blocks the herd", rotation: rot(24*time.Hour, nil), secretAnn: ann(-48 * time.Hour), minSpacing: time.Hour, lastGlobal: tp(-30 * time.Minute), wantDefer: "min_spacing"},
 		{name: "min-spacing met allows rotation", rotation: rot(24*time.Hour, nil), secretAnn: ann(-48 * time.Hour), minSpacing: time.Hour, lastGlobal: tp(-90 * time.Minute), wantDue: true},
-		{name: "invalid window config errors", rotation: rot(24*time.Hour, &pocketidinternalv1alpha1.RotationWindow{Opens: "* * * * *", ClosesAfter: metav1.Duration{Duration: 2 * time.Minute}}), secretAnn: ann(-48 * time.Hour), wantErr: true},
+		{name: "invalid window config errors", rotation: rot(24*time.Hour, &pocketidinternalv1alpha1.RotationWindow{Opens: "* * * * *", ClosesAfter: metav1.Duration{Duration: 2 * time.Minute}}), secretAnn: ann(-48 * time.Hour), wantErr: true, wantDefer: "window_error"},
 		{name: "APIReader failure errors", rotation: rot(24*time.Hour, nil), secretAnn: ann(-48 * time.Hour), omitInst: true, wantErr: true},
 	}
 
@@ -822,18 +827,24 @@ func TestRotationDue(t *testing.T) {
 			fakeClient := builder.Build()
 
 			r := &Reconciler{Client: fakeClient, APIReader: fakeClient, Scheme: scheme}
-			due, err := r.rotationDue(ctx, oidcClient, instance, secret)
+			eval, err := r.rotationDue(ctx, oidcClient, instance, secret)
 			if tc.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")
+				}
+				if eval.deferReason != tc.wantDefer {
+					t.Errorf("deferReason = %q, want %q", eval.deferReason, tc.wantDefer)
 				}
 				return
 			}
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if due != tc.wantDue {
-				t.Errorf("rotationDue = %v, want %v", due, tc.wantDue)
+			if eval.due != tc.wantDue {
+				t.Errorf("rotationDue = %v, want %v", eval.due, tc.wantDue)
+			}
+			if eval.deferReason != tc.wantDefer {
+				t.Errorf("deferReason = %q, want %q", eval.deferReason, tc.wantDefer)
 			}
 		})
 	}
@@ -897,12 +908,12 @@ func TestSecretRegenDecision(t *testing.T) {
 			fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
 
 			r := &Reconciler{Client: fakeClient, APIReader: fakeClient, Scheme: scheme}
-			regen, scheduled, _, err := r.secretRegenDecision(ctx, oidcClient, instance, secretName)
+			decision, err := r.secretRegenDecision(ctx, oidcClient, instance, secretName)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if regen != tc.wantRegen || scheduled != tc.wantScheduled {
-				t.Errorf("got (regen=%v, scheduled=%v), want (regen=%v, scheduled=%v)", regen, scheduled, tc.wantRegen, tc.wantScheduled)
+			if decision.regenerate != tc.wantRegen || decision.scheduled != tc.wantScheduled {
+				t.Errorf("got (regen=%v, scheduled=%v), want (regen=%v, scheduled=%v)", decision.regenerate, decision.scheduled, tc.wantRegen, tc.wantScheduled)
 			}
 		})
 	}

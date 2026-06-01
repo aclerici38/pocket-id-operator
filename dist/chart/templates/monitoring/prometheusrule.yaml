@@ -111,6 +111,52 @@ spec:
               The {{`{{ $labels.name }}`}} work queue has had more than 10 pending items
               for over 10 minutes, indicating the operator may be falling behind.
 
+        # -- A client-secret rotation failed in the last hour
+        - alert: PocketIDOIDCClientRotationFailing
+          expr: increase(pocketid_operator_oidcclient_secret_rotations_total{result="error"}[1h]) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: >-
+              Client-secret rotation failing for {{`{{ $labels.namespace }}`}}/{{`{{ $labels.name }}`}}
+            description: >-
+              {{`{{ $value }}`}} client-secret rotation(s) for the PocketIDOIDCClient
+              {{`{{ $labels.namespace }}`}}/{{`{{ $labels.name }}`}} (trigger
+              {{`{{ $labels.trigger }}`}}) failed in the last hour.
+
+        # -- A client with rotation enabled is overdue, a gate is perpetually blocking it
+        - alert: PocketIDOIDCClientRotationOverdue
+          expr: |-
+            (pocketid_operator_oidcclient_rotation_enabled == 1)
+            and ((time() - pocketid_operator_oidcclient_next_rotation_timestamp_seconds) > 86400)
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: >-
+              Client-secret rotation overdue for {{`{{ $labels.namespace }}`}}/{{`{{ $labels.name }}`}}
+            description: >-
+              The PocketIDOIDCClient {{`{{ $labels.namespace }}`}}/{{`{{ $labels.name }}`}} has been
+              eligible for client-secret rotation for over 24h but has not rotated. A maintenance
+              window misconfiguration or instance-wide min-spacing starvation may be blocking it.
+
+        # -- Scheduled rotations are being deferred persistently (e.g. min-spacing starvation)
+        - alert: PocketIDOIDCClientRotationDeferrals
+          expr: |-
+            sum by (namespace, name, reason) (
+              increase(pocketid_operator_oidcclient_rotation_deferred_total[1h])
+            ) > 0
+          for: 6h
+          labels:
+            severity: info
+          annotations:
+            summary: >-
+              Client-secret rotation deferred ({{`{{ $labels.reason }}`}}) for {{`{{ $labels.namespace }}`}}/{{`{{ $labels.name }}`}}
+            description: >-
+              A due client-secret rotation for {{`{{ $labels.namespace }}`}}/{{`{{ $labels.name }}`}}
+              has been deferred (reason: {{`{{ $labels.reason }}`}}) continuously for over 6 hours.
+              This is expected for narrow maintenance windows but may indicate min-spacing starvation.
+
         {{- with .Values.metrics.prometheusRule.additionalRules }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

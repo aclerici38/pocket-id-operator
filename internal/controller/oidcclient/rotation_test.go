@@ -92,6 +92,45 @@ func TestWithinWindow_InvalidCron(t *testing.T) {
 	}
 }
 
+func TestWindowState_OpenReportsNextOccurrence(t *testing.T) {
+	// 1am daily, 4h window: at 2:30am the window is open and the next open is the following 1am.
+	now := time.Date(2026, 1, 31, 2, 30, 0, 0, time.UTC)
+	open, nextOpen, err := windowState(now, "0 1 * * *", 4*time.Hour)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !open {
+		t.Error("expected window to be open")
+	}
+	want := time.Date(2026, 2, 1, 1, 0, 0, 0, time.UTC)
+	if !nextOpen.Equal(want) {
+		t.Errorf("nextOpen = %v, want %v", nextOpen, want)
+	}
+}
+
+func TestWindowState_ClosedReportsUpcomingOpen(t *testing.T) {
+	// 1am daily, 4h window: at 6am the window is closed and opens again at 1am next day.
+	now := time.Date(2026, 1, 31, 6, 0, 0, 0, time.UTC)
+	open, nextOpen, err := windowState(now, "0 1 * * *", 4*time.Hour)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if open {
+		t.Error("expected window to be closed")
+	}
+	want := time.Date(2026, 2, 1, 1, 0, 0, 0, time.UTC)
+	if !nextOpen.Equal(want) {
+		t.Errorf("nextOpen = %v, want %v", nextOpen, want)
+	}
+}
+
+func TestWindowState_InvalidCron(t *testing.T) {
+	now := time.Date(2026, 1, 31, 2, 0, 0, 0, time.UTC)
+	if _, _, err := windowState(now, "not a cron", 4*time.Hour); err == nil {
+		t.Error("expected error for invalid cron expression")
+	}
+}
+
 func TestMinSpacingOK_ZeroSpacing(t *testing.T) {
 	now := time.Date(2026, 1, 31, 12, 0, 0, 0, time.UTC)
 	recent := metav1.NewTime(now.Add(-30 * time.Second))

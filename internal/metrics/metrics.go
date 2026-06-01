@@ -135,6 +135,126 @@ var (
 		},
 		[]string{"namespace", "name"},
 	)
+
+	// OIDCClientRotationEnabled tracks whether scheduled client-secret rotation is enabled
+	// for each OIDC client. Value is 1 when spec.clientSecretRotation.enabled is true, 0 otherwise.
+	// Labels:
+	//
+	//	namespace - Kubernetes namespace of the PocketIDOIDCClient
+	//	name      - Kubernetes name of the PocketIDOIDCClient
+	OIDCClientRotationEnabled = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "pocketid_operator_oidcclient_rotation_enabled",
+			Help: "Whether scheduled client-secret rotation is enabled (1) or not (0) for a PocketIDOIDCClient.",
+		},
+		[]string{"namespace", "name"},
+	)
+
+	// OIDCClientRotationIntervalSeconds exposes the configured rotation interval in seconds.
+	// Only set while rotation is enabled; removed when rotation is disabled.
+	// Labels:
+	//
+	//	namespace - Kubernetes namespace of the PocketIDOIDCClient
+	//	name      - Kubernetes name of the PocketIDOIDCClient
+	OIDCClientRotationIntervalSeconds = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "pocketid_operator_oidcclient_rotation_interval_seconds",
+			Help: "Configured client-secret rotation interval in seconds for a PocketIDOIDCClient.",
+		},
+		[]string{"namespace", "name"},
+	)
+
+	// OIDCClientLastRotationTimestamp exposes the Unix timestamp (seconds) of the most recent
+	// client-secret rotation, read from the managed secret's annotation. Only set while rotation
+	// is enabled; removed when rotation is disabled.
+	// Labels:
+	//
+	//	namespace - Kubernetes namespace of the PocketIDOIDCClient
+	//	name      - Kubernetes name of the PocketIDOIDCClient
+	OIDCClientLastRotationTimestamp = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "pocketid_operator_oidcclient_last_rotation_timestamp_seconds",
+			Help: "Unix timestamp (seconds) of the most recent client-secret rotation for a PocketIDOIDCClient.",
+		},
+		[]string{"namespace", "name"},
+	)
+
+	// OIDCClientNextRotationTimestamp exposes the Unix timestamp (seconds) at which the client
+	// secret next becomes eligible for rotation (rotation anchor + interval). The actual rotation
+	// may still be delayed by the maintenance window or instance-wide min-spacing. Only set while
+	// rotation is enabled; removed when rotation is disabled.
+	// Labels:
+	//
+	//	namespace - Kubernetes namespace of the PocketIDOIDCClient
+	//	name      - Kubernetes name of the PocketIDOIDCClient
+	OIDCClientNextRotationTimestamp = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "pocketid_operator_oidcclient_next_rotation_timestamp_seconds",
+			Help: "Unix timestamp (seconds) at which a PocketIDOIDCClient secret next becomes eligible for rotation.",
+		},
+		[]string{"namespace", "name"},
+	)
+
+	// OIDCClientRotationWindowOpen tracks whether a client's maintenance window is currently open.
+	// Value is 1 while now falls inside the recurring window, 0 otherwise. Only set for enabled
+	// clients that configure spec.clientSecretRotation.window; removed otherwise.
+	// Labels:
+	//
+	//	namespace - Kubernetes namespace of the PocketIDOIDCClient
+	//	name      - Kubernetes name of the PocketIDOIDCClient
+	OIDCClientRotationWindowOpen = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "pocketid_operator_oidcclient_rotation_window_open",
+			Help: "Whether a PocketIDOIDCClient maintenance window is currently open (1) or closed (0).",
+		},
+		[]string{"namespace", "name"},
+	)
+
+	// OIDCClientRotationWindowNextOpenTimestamp exposes the Unix timestamp (seconds) at which the
+	// maintenance window next opens. Only set for enabled clients that configure a window.
+	// Labels:
+	//
+	//	namespace - Kubernetes namespace of the PocketIDOIDCClient
+	//	name      - Kubernetes name of the PocketIDOIDCClient
+	OIDCClientRotationWindowNextOpenTimestamp = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "pocketid_operator_oidcclient_rotation_window_next_open_timestamp_seconds",
+			Help: "Unix timestamp (seconds) at which a PocketIDOIDCClient maintenance window next opens.",
+		},
+		[]string{"namespace", "name"},
+	)
+
+	// OIDCClientSecretRotations counts client-secret rotation attempts that actually reached the
+	// Pocket-ID regenerate call (i.e. the operator decided to rotate), partitioned by outcome and
+	// what triggered them.
+	// Labels:
+	//
+	//	namespace - Kubernetes namespace of the PocketIDOIDCClient
+	//	name      - Kubernetes name of the PocketIDOIDCClient
+	//	result    - "success" or "error"
+	//	trigger   - "scheduled", "manual", or "initial"
+	OIDCClientSecretRotations = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "pocketid_operator_oidcclient_secret_rotations_total",
+			Help: "Total client-secret rotations performed, partitioned by result and trigger.",
+		},
+		[]string{"namespace", "name", "result", "trigger"},
+	)
+
+	// OIDCClientRotationDeferred counts occasions where a scheduled rotation was due (its interval
+	// had elapsed) but a downstream gate prevented it from firing.
+	// Labels:
+	//
+	//	namespace - Kubernetes namespace of the PocketIDOIDCClient
+	//	name      - Kubernetes name of the PocketIDOIDCClient
+	//	reason    - "window_closed", "min_spacing", or "window_error"
+	OIDCClientRotationDeferred = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "pocketid_operator_oidcclient_rotation_deferred_total",
+			Help: "Total times a due client-secret rotation was deferred, partitioned by reason.",
+		},
+		[]string{"namespace", "name", "reason"},
+	)
 )
 
 func init() {
@@ -148,6 +268,14 @@ func init() {
 		InstanceInfo,
 		UserGroupMemberCount,
 		OIDCClientAllowedGroupCount,
+		OIDCClientRotationEnabled,
+		OIDCClientRotationIntervalSeconds,
+		OIDCClientLastRotationTimestamp,
+		OIDCClientNextRotationTimestamp,
+		OIDCClientRotationWindowOpen,
+		OIDCClientRotationWindowNextOpenTimestamp,
+		OIDCClientSecretRotations,
+		OIDCClientRotationDeferred,
 	)
 
 	// Init ExternalDeletions to 0 so increase() works in rules
@@ -198,4 +326,68 @@ func DeleteUserGroupMemberCount(namespace, name string) {
 // Call this when a PocketIDOIDCClient is deleted.
 func DeleteOIDCClientAllowedGroupCount(namespace, name string) {
 	OIDCClientAllowedGroupCount.DeleteLabelValues(namespace, name)
+}
+
+// SetOIDCClientRotationEnabled records whether scheduled rotation is enabled for a client.
+func SetOIDCClientRotationEnabled(namespace, name string, enabled bool) {
+	val := 0.0
+	if enabled {
+		val = 1.0
+	}
+	OIDCClientRotationEnabled.WithLabelValues(namespace, name).Set(val)
+}
+
+// SetOIDCClientRotationSchedule records the rotation schedule gauges for an enabled client:
+// the configured interval, the last rotation timestamp, and the next-eligible timestamp
+// (all in seconds). Pass a non-positive value to skip a particular gauge (e.g. lastUnix when
+// the client has never rotated).
+func SetOIDCClientRotationSchedule(namespace, name string, intervalSeconds, lastUnix, nextUnix float64) {
+	if intervalSeconds > 0 {
+		OIDCClientRotationIntervalSeconds.WithLabelValues(namespace, name).Set(intervalSeconds)
+	}
+	if lastUnix > 0 {
+		OIDCClientLastRotationTimestamp.WithLabelValues(namespace, name).Set(lastUnix)
+	}
+	if nextUnix > 0 {
+		OIDCClientNextRotationTimestamp.WithLabelValues(namespace, name).Set(nextUnix)
+	}
+}
+
+// SetOIDCClientRotationWindow records the maintenance window gauges for a client: whether the
+// window is currently open and when it next opens (Unix seconds). Pass a non-positive
+// nextOpenUnix to skip the next-open gauge.
+func SetOIDCClientRotationWindow(namespace, name string, open bool, nextOpenUnix float64) {
+	val := 0.0
+	if open {
+		val = 1.0
+	}
+	OIDCClientRotationWindowOpen.WithLabelValues(namespace, name).Set(val)
+	if nextOpenUnix > 0 {
+		OIDCClientRotationWindowNextOpenTimestamp.WithLabelValues(namespace, name).Set(nextOpenUnix)
+	}
+}
+
+// DeleteOIDCClientRotationWindow removes the maintenance window gauges for a client. Used when
+// the client has no window configured (or its window config is invalid).
+func DeleteOIDCClientRotationWindow(namespace, name string) {
+	OIDCClientRotationWindowOpen.DeleteLabelValues(namespace, name)
+	OIDCClientRotationWindowNextOpenTimestamp.DeleteLabelValues(namespace, name)
+}
+
+// DeleteOIDCClientRotationSchedule removes the interval/last/next and maintenance window gauges
+// for a client while leaving the enabled gauge in place. Used when rotation is disabled so the
+// dashboard can still report the client as not rotating.
+func DeleteOIDCClientRotationSchedule(namespace, name string) {
+	OIDCClientRotationIntervalSeconds.DeleteLabelValues(namespace, name)
+	OIDCClientLastRotationTimestamp.DeleteLabelValues(namespace, name)
+	OIDCClientNextRotationTimestamp.DeleteLabelValues(namespace, name)
+	DeleteOIDCClientRotationWindow(namespace, name)
+}
+
+// DeleteOIDCClientRotationMetrics removes all rotation gauge entries for a client. Call this when
+// a PocketIDOIDCClient is deleted, to avoid stale series. The rotation counters are intentionally
+// left in place (matching ResourceOperations) so historical rates remain queryable.
+func DeleteOIDCClientRotationMetrics(namespace, name string) {
+	OIDCClientRotationEnabled.DeleteLabelValues(namespace, name)
+	DeleteOIDCClientRotationSchedule(namespace, name)
 }
