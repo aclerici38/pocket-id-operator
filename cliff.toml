@@ -2,24 +2,29 @@
 header = ""
 body = """
 {% for group, commits in commits | group_by(attribute="group") %}
-{% if group == "Dependencies" %}
+{% set name = group | striptags | trim %}
+{% if name == "Dependencies" %}
 <details>
-<summary>{{ group }}</summary>
+<summary><h3 style="display:inline-block;margin:0">{{ name }}</h3></summary>
 
 {% for commit in commits %}
-- {% if commit.breaking %}**breaking** {% endif %}{% if commit.scope %}**{{ commit.scope }}**: {% endif %}{{ commit.message }} ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/aclerici38/pocket-id-operator/commit/{{ commit.id }}))
+- {% if commit.breaking %}**breaking** {% endif %}{% if commit.scope %}**{{ commit.scope }}**: {% endif %}{{ commit.message }} ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/aclerici38/pocket-id-operator/commit/{{ commit.id }})){% if commit.remote.username and commit.remote.username != "aclerici38" and commit.remote.username != "botthebuilder25[bot]" %} by @{{ commit.remote.username }}{% endif %}
 {%- endfor %}
 
 </details>
 {% else %}
-### {{ group }}
+### {{ name }}
 {% for commit in commits %}
-- {% if commit.breaking %}**breaking** {% endif %}{% if commit.scope %}**{{ commit.scope }}**: {% endif %}{{ commit.message }} ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/aclerici38/pocket-id-operator/commit/{{ commit.id }}))
+- {% if commit.breaking %}**breaking** {% endif %}{% if commit.scope %}**{{ commit.scope }}**: {% endif %}{{ commit.message }} ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/aclerici38/pocket-id-operator/commit/{{ commit.id }})){% if commit.remote.username and commit.remote.username != "aclerici38" and commit.remote.username != "botthebuilder25[bot]" %} by @{{ commit.remote.username }}{% endif %}
 {%- endfor %}
 {% endif %}
 {% endfor %}
 """
 trim = true
+
+[remote.github]
+owner = "aclerici38"
+repo = "pocket-id-operator"
 
 [git]
 conventional_commits = true
@@ -27,12 +32,12 @@ filter_unconventional = true
 split_commits = false
 
 commit_parsers = [
-  { message = "\\(deps\\)", group = "Dependencies" },
-  { message = "^feat", group = "Features" },
-  { message = "^fix", group = "Bug Fixes" },
-  { message = "^refactor", group = "Refactor" },
-  { message = "^docs", group = "Documentation" },
-  { message = "^chore", group = "Miscellaneous" },
+  { message = "\\(deps\\)", group = "<!-- 5 -->Dependencies" },
+  { message = "^feat", group = "<!-- 0 -->Features" },
+  { message = "^refactor", group = "<!-- 1 -->Refactor" },
+  { message = "^fix", group = "<!-- 2 -->Bug Fixes" },
+  { message = "^docs", group = "<!-- 3 -->Documentation" },
+  { message = "^chore", group = "<!-- 4 -->Miscellaneous" },
 ]
 
 protect_breaking_commits = false
