@@ -37,6 +37,8 @@ Each new release of Pocket-id is run through all tests against the latest releas
 
 Therefore, to use an up-to-date version of Pocket-id with this operator it is recommended to manage the upstream pocket-id version separately (`instance.spec.image`). The version the operator comes bundled with may be behind the latest upstream release. To ensure stability, you can wait several days before updating as I will be sure to release any fixes necessary ASAP.
 
+If you have an issue with this or wuld like to suggest a different approach, feel free to ping me (@aclerici38) in a discussion or issue
+
 ## Development
 
 Tooling and Git hooks are managed by [mise](https://mise.jdx.dev) (`.mise.toml`);
