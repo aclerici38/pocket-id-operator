@@ -1,5 +1,8 @@
 ---
 # yaml-language-server: $schema=../dist/chart/values.schema.json
+operator:
+  timezone: "America/New_York"
+
 instance:
   spec:
     encryptionKey:

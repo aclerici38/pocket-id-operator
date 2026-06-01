@@ -982,6 +982,29 @@
                     "additionalProperties": false,
                     "description": "spec defines the desired state of PocketIDInstance",
                     "properties": {
+                      "OIDCClientRotation": {
+                        "additionalProperties": false,
+                        "description": "OIDCClientRotation configures instance-wide throttling of OIDC client secret rotations.",
+                        "properties": {
+                          "minSpacing": {
+                            "description": "MinSpacing is the minimum time between any two client secret rotations on this instance.\nPrevents thundering-herd when many clients become due simultaneously.",
+                            "type": "string",
+                            "x-kubernetes-validations": [
+                              {
+                                "message": "minSpacing must be a positive duration",
+                                "rule": "duration(self) > duration('0s')"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "minSpacing"
+                        ],
+                        "type": [
+                          "object",
+                          "null"
+                        ]
+                      },
                       "analyticsDisabled": {
                         "default": false,
                         "description": "Disable anonymous 24-hour usage analytics heartbeat",
@@ -5379,6 +5402,11 @@
                 "resources": {
                   "type": "object",
                   "description": "Resource requests and limits for the operator container"
+                },
+                "timezone": {
+                  "type": "string",
+                  "description": "Sets the TZ env var on the operator container, controlling the local timezone for clientSecretRotation.window cron expressions. Defaults to UTC when unset.",
+                  "default": ""
                 },
                 "autoGenerateLogos": {
                   "type": "boolean",

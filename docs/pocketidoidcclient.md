@@ -25,6 +25,38 @@ metadata:
     pocketid.internal/regenerate-client-secret: "true"
 ```
 
+## Client Secret Rotation
+
+**Note:** For an accurate cron schedule be sure to set the `TZ` environment variable to your local TZ.
+In the helm chart this is `operator.timezone`; if you have an instance configured **via the chart** the value
+can be derived from `instance.spec.timezone` in the chart values.
+
+When `spec.clientSecretRotation.enabled` is true, the operator automatically regenerates
+the OIDC client secret on a schedule. A rotation fires only when the configured interval
+has elapsed, the instance-wide minimum spacing is satisfied, and (if configured) the
+current time falls inside the maintenance window.
+
+Currently manual regeneration (setting `pocketid.internal/regenerate-client-secret` annotation) is accounted for by the rotation interval on the respective OIDC client but not the global minimum spacing. For example, if `spec.OIDCClientRotation.minSpacing` is set to `4h`, and 2 hours have elapsed since the last auto-rotation, setting the annotation will NOT delay the auto-rotation but it WILL reset the interval on the manually-rotated OIDC client.
+
+```yaml
+spec:
+  clientSecretRotation:
+    enabled: true
+    interval: "720h"                 # rotate after 30 days
+    window:                          # optional: restrict to a time window
+      opens: "0 1 * * *"            # cron (local TZ): 1am daily
+      closesAfter: "4h"             # window is open for 4 hours
+```
+
+To throttle how frequently rotations happen across all clients on an instance, set
+`spec.OIDCClientRotation.minSpacing` on the `PocketIDInstance`:
+
+```yaml
+spec:
+  OIDCClientRotation:
+    minSpacing: "1h"                 # at most one rotation per hour across all clients
+```
+
 ## Minimal Public Client
 
 ```yaml

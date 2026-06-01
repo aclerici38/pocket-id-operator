@@ -176,6 +176,11 @@
           "type": "object",
           "description": "Resource requests and limits for the operator container"
         },
+        "timezone": {
+          "type": "string",
+          "description": "Sets the TZ env var on the operator container, controlling the local timezone for clientSecretRotation.window cron expressions. Defaults to UTC when unset.",
+          "default": ""
+        },
         "autoGenerateLogos": {
           "type": "boolean",
           "description": "Auto-generate logo URLs for OIDC clients from templates. Set to false to make it opt-in per client.",

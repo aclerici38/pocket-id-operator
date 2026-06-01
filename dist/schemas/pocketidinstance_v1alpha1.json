@@ -25,6 +25,29 @@
       "additionalProperties": false,
       "description": "spec defines the desired state of PocketIDInstance",
       "properties": {
+        "OIDCClientRotation": {
+          "additionalProperties": false,
+          "description": "OIDCClientRotation configures instance-wide throttling of OIDC client secret rotations.",
+          "properties": {
+            "minSpacing": {
+              "description": "MinSpacing is the minimum time between any two client secret rotations on this instance.\nPrevents thundering-herd when many clients become due simultaneously.",
+              "type": "string",
+              "x-kubernetes-validations": [
+                {
+                  "message": "minSpacing must be a positive duration",
+                  "rule": "duration(self) \u003e duration('0s')"
+                }
+              ]
+            }
+          },
+          "required": [
+            "minSpacing"
+          ],
+          "type": [
+            "object",
+            "null"
+          ]
+        },
         "analyticsDisabled": {
           "default": false,
           "description": "Disable anonymous 24-hour usage analytics heartbeat",
@@ -3729,6 +3752,14 @@
             "type"
           ],
           "x-kubernetes-list-type": "map"
+        },
+        "lastRotatedClientSecret": {
+          "description": "LastRotatedClientSecret is the timestamp of the most recent OIDC client secret rotation\non this instance. Used to enforce spec.OIDCClientRotation.minSpacing.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "staticApiKeySecretName": {
           "description": "StaticAPIKeySecretName is the name of the secret containing the STATIC_API_KEY",

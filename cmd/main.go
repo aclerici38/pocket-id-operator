@@ -21,6 +21,11 @@ import (
 	"flag"
 	"os"
 
+	// Embed the Go timezone database so the operator works in distroless images
+	// where /usr/share/zoneinfo is absent. Required for cron window expressions
+	// when operator.timezone (TZ env var) is set to a non-UTC zone.
+	_ "time/tzdata"
+
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
