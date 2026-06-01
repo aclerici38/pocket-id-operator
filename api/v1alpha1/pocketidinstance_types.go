@@ -596,7 +596,7 @@ type PocketIDInstanceSpec struct {
 
 	// OIDCClientRotation configures instance-wide throttling of OIDC client secret rotations.
 	// +optional
-	OIDCClientRotation *OIDCClientRotationConfig `json:"oidcClientRotation,omitempty"`
+	OIDCClientRotation *OIDCClientRotationConfig `json:"OIDCClientRotation,omitempty"`
 }
 
 // OIDCClientRotationConfig controls instance-wide throttling of OIDC client secret rotations.
@@ -626,7 +626,7 @@ type PocketIDInstanceStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
 	// LastRotatedClientSecret is the timestamp of the most recent OIDC client secret rotation
-	// on this instance. Used to enforce spec.oidcClientRotation.minSpacing.
+	// on this instance. Used to enforce spec.OIDCClientRotation.minSpacing.
 	// +optional
 	LastRotatedClientSecret *metav1.Time `json:"lastRotatedClientSecret,omitempty"`
 }

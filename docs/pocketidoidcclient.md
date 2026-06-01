@@ -36,7 +36,7 @@ the OIDC client secret on a schedule. A rotation fires only when the configured 
 has elapsed, the instance-wide minimum spacing is satisfied, and (if configured) the
 current time falls inside the maintenance window.
 
-Currently manual regeneration (setting `pocketid.internal/regenerate-client-secret` annotation) is accounted for by the rotation interval on the respective OIDC client but not the global minimum spacing. For example, if `spec.oidcClientRotation.minSpacing` is set to `4h`, and 2 hours have elapsed since the last auto-rotation, setting the annotation will NOT delay the auto-rotation but it WILL reset the interval on the manually-rotated OIDC client.
+Currently manual regeneration (setting `pocketid.internal/regenerate-client-secret` annotation) is accounted for by the rotation interval on the respective OIDC client but not the global minimum spacing. For example, if `spec.OIDCClientRotation.minSpacing` is set to `4h`, and 2 hours have elapsed since the last auto-rotation, setting the annotation will NOT delay the auto-rotation but it WILL reset the interval on the manually-rotated OIDC client.
 
 ```yaml
 spec:
@@ -49,11 +49,11 @@ spec:
 ```
 
 To throttle how frequently rotations happen across all clients on an instance, set
-`spec.oidcClientRotation.minSpacing` on the `PocketIDInstance`:
+`spec.OIDCClientRotation.minSpacing` on the `PocketIDInstance`:
 
 ```yaml
 spec:
-  oidcClientRotation:
+  OIDCClientRotation:
     minSpacing: "1h"                 # at most one rotation per hour across all clients
 ```
 

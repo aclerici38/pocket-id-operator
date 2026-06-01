@@ -41,6 +41,21 @@ spec:
           spec:
             description: spec defines the desired state of PocketIDInstance
             properties:
+              OIDCClientRotation:
+                description: OIDCClientRotation configures instance-wide throttling
+                  of OIDC client secret rotations.
+                properties:
+                  minSpacing:
+                    description: |-
+                      MinSpacing is the minimum time between any two client secret rotations on this instance.
+                      Prevents thundering-herd when many clients become due simultaneously.
+                    type: string
+                    x-kubernetes-validations:
+                    - message: minSpacing must be a positive duration
+                      rule: duration(self) > duration('0s')
+                required:
+                - minSpacing
+                type: object
               analyticsDisabled:
                 default: false
                 description: Disable anonymous 24-hour usage analytics heartbeat
@@ -1467,21 +1482,6 @@ spec:
                 required:
                 - enabled
                 type: object
-              oidcClientRotation:
-                description: OIDCClientRotation configures instance-wide throttling
-                  of OIDC client secret rotations.
-                properties:
-                  minSpacing:
-                    description: |-
-                      MinSpacing is the minimum time between any two client secret rotations on this instance.
-                      Prevents thundering-herd when many clients become due simultaneously.
-                    type: string
-                    x-kubernetes-validations:
-                    - message: minSpacing must be a positive duration
-                      rule: duration(self) > duration('0s')
-                required:
-                - minSpacing
-                type: object
               persistence:
                 description: |-
                   Configures persistence for Pocket-ID
@@ -2860,7 +2860,7 @@ spec:
               lastRotatedClientSecret:
                 description: |-
                   LastRotatedClientSecret is the timestamp of the most recent OIDC client secret rotation
-                  on this instance. Used to enforce spec.oidcClientRotation.minSpacing.
+                  on this instance. Used to enforce spec.OIDCClientRotation.minSpacing.
                 format: date-time
                 type: string
               staticApiKeySecretName:
