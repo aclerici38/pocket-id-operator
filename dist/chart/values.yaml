@@ -16,10 +16,13 @@ operator:
 
   # Auto-generate logo URLs for OIDC clients from templates (set to false to make it opt-in per client)
   autoGenerateLogos: true
+
   # timezone sets the TZ env var on the operator container, which determines the
   # local timezone used for clientSecretRotation.window cron expressions.
-  # Defaults to UTC when unset.
+  # When unset, falls back to instance.spec.timezone; if neither is set the TZ
+  # env var is left unset.
   timezone: ""
+
   # Default URL template for light logos ({{name}} is replaced with the client name)
   # Defaults to the dashboard-icons CDN if not set
   # defaultLogoUrl: "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}.png"
