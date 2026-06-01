@@ -51,6 +51,11 @@ const (
 	oidcClientFinalizer          = "pocketid.internal/oidc-client-finalizer"
 	UserGroupOIDCClientFinalizer = "pocketid.internal/user-group-oidc-client-finalizer"
 	lastRotatedAtAnnotation      = "pocketid.internal/last-rotated-at"
+	// lastScheduledRotationAtAnnotation records only scheduled rotations and is the sole driver
+	// of the instance-wide min-spacing aggregate. Manual rotations update lastRotatedAtAnnotation
+	// (which gates the per-client interval) but deliberately leave this one untouched, so an
+	// out-of-band rotation never perturbs the instance's scheduled-rotation spacing.
+	lastScheduledRotationAtAnnotation = "pocketid.internal/last-scheduled-rotation-at"
 
 	defaultLogoTemplate     = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}.png"
 	defaultDarkLogoTemplate = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}-dark.png"
@@ -893,11 +898,13 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 	// Include client_secret for non-public clients
 	// Only regenerate if the secret doesn't exist yet or if explicitly requested via annotation
 	var rotatedAt *metav1.Time
+	var scheduledRotation bool
 	if !oidcClient.Spec.IsPublic && oidcClient.Status.ClientID != "" {
-		shouldRegenerateSecret, _, existingSecret, err := r.secretRegenDecision(ctx, oidcClient, instance, secretName)
+		shouldRegenerateSecret, scheduled, existingSecret, err := r.secretRegenDecision(ctx, oidcClient, instance, secretName)
 		if err != nil {
 			return err
 		}
+		scheduledRotation = scheduled
 
 		if shouldRegenerateSecret {
 			if apiClient == nil {
@@ -968,6 +975,10 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 				secret.Annotations = make(map[string]string)
 			}
 			secret.Annotations[lastRotatedAtAnnotation] = rotatedAt.UTC().Format(time.RFC3339)
+			// Only scheduled rotations advance the instance-wide aggregate.
+			if scheduledRotation {
+				secret.Annotations[lastScheduledRotationAtAnnotation] = rotatedAt.UTC().Format(time.RFC3339)
+			}
 		}
 
 		if err := controllerutil.SetControllerReference(oidcClient, secret, r.Scheme); err != nil {
@@ -1006,13 +1017,14 @@ func (r *Reconciler) applyRotationStatus(ctx context.Context, oidcClient *pocket
 }
 
 // advanceInstanceRotationStatus moves instance.Status.LastRotatedClientSecret forward to the
-// secret's lastRotatedAtAnnotation when that annotation is newer. Running this on every reconcile
-// decouples recording the aggregate from the rotation event, so a lost status
-// write self-heals on a subsequent reconcile instead of leaving min-spacing permanently blind.
+// secret's lastScheduledRotationAtAnnotation when that annotation is newer. Running this on every
+// reconcile decouples recording the aggregate from the rotation event, so a lost status write
+// self-heals on a subsequent reconcile instead of leaving min-spacing permanently blind. Manual
+// rotations never set that annotation, so they cannot move the aggregate.
 //
 // Check cached first, then verify via apiReader. The advance is monotonic.
 func (r *Reconciler) advanceInstanceRotationStatus(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, secret *corev1.Secret) error {
-	ts, ok := secret.Annotations[lastRotatedAtAnnotation]
+	ts, ok := secret.Annotations[lastScheduledRotationAtAnnotation]
 	if !ok {
 		return nil
 	}

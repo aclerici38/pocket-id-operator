@@ -2,6 +2,8 @@ package oidcclient
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -477,7 +479,7 @@ func TestAdvanceInstanceRotationStatus(t *testing.T) {
 	secretWith := func(ts *time.Time) *corev1.Secret {
 		s := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "sec", Namespace: testNamespace}}
 		if ts != nil {
-			s.Annotations = map[string]string{lastRotatedAtAnnotation: ts.Format(time.RFC3339)}
+			s.Annotations = map[string]string{lastScheduledRotationAtAnnotation: ts.Format(time.RFC3339)}
 		}
 		return s
 	}
@@ -523,7 +525,9 @@ func TestAdvanceInstanceRotationStatus(t *testing.T) {
 			wantStored: tp(t2),
 		},
 		{
-			name:       "no annotation is a no-op",
+			// A manual-only rotation never writes lastScheduledRotationAtAnnotation, so the
+			// aggregate must not move even though the secret was rotated.
+			name:       "manual rotation (no scheduled annotation) does not advance",
 			storedAgg:  nil,
 			cachedAgg:  nil,
 			annotation: nil,
@@ -568,6 +572,188 @@ func TestAdvanceInstanceRotationStatus(t *testing.T) {
 				t.Fatalf("expected a status write but resourceVersion was unchanged (%s)", got.ResourceVersion)
 			}
 		})
+	}
+}
+
+// rotationSecretServer returns an httptest server that answers the regenerate-secret endpoint.
+func rotationSecretServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"secret":"rotated-secret"}`))
+	}))
+}
+
+// TestReconcileSecret_ScheduledRotation verifies a scheduled rotation writes BOTH secret
+// annotations, mirrors the per-client LastRotatedAt, and advances the instance aggregate.
+func TestReconcileSecret_ScheduledRotation(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "rot-client", Namespace: testNamespace, UID: "rot-uid"},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			CallbackURLs: []string{"https://example.com/cb"},
+			ClientSecretRotation: &pocketidinternalv1alpha1.ClientSecretRotation{
+				Enabled:  true,
+				Interval: metav1.Duration{Duration: 24 * time.Hour},
+			},
+		},
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{ClientID: "rot-id"},
+	}
+
+	existingSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "rot-client-oidc-credentials",
+			Namespace: testNamespace,
+			// Last rotation was 48h ago and the 24h interval has elapsed → rotation is due.
+			Annotations: map[string]string{
+				lastRotatedAtAnnotation: time.Now().Add(-48 * time.Hour).UTC().Format(time.RFC3339),
+			},
+		},
+		Data: map[string][]byte{
+			"client_id":     []byte("rot-id"),
+			"client_secret": []byte("old-secret"),
+		},
+	}
+
+	instance := &pocketidinternalv1alpha1.PocketIDInstance{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-instance", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+			AppURL:        "http://test.example.com",
+			EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{Value: "0123456789abcdef"},
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(oidcClient, existingSecret, instance).
+		WithStatusSubresource(oidcClient, instance).
+		Build()
+
+	ts := rotationSecretServer(t)
+	defer ts.Close()
+	apiClient, _ := pocketid.NewClient(ts.URL, "")
+
+	reconciler := &Reconciler{Client: fakeClient, APIReader: fakeClient, Scheme: scheme}
+	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient); err != nil {
+		t.Fatalf("ReconcileSecret returned error: %v", err)
+	}
+
+	gotSecret := &corev1.Secret{}
+	if err := fakeClient.Get(ctx, client.ObjectKey{Name: existingSecret.Name, Namespace: testNamespace}, gotSecret); err != nil {
+		t.Fatalf("get secret: %v", err)
+	}
+	if got := string(gotSecret.Data["client_secret"]); got != "rotated-secret" {
+		t.Errorf("expected rotated client_secret, got %q", got)
+	}
+	if _, ok := gotSecret.Annotations[lastRotatedAtAnnotation]; !ok {
+		t.Error("expected lastRotatedAtAnnotation to be set")
+	}
+	if _, ok := gotSecret.Annotations[lastScheduledRotationAtAnnotation]; !ok {
+		t.Error("expected lastScheduledRotationAtAnnotation to be set for a scheduled rotation")
+	}
+
+	gotInstance := &pocketidinternalv1alpha1.PocketIDInstance{}
+	if err := fakeClient.Get(ctx, client.ObjectKey{Name: "test-instance", Namespace: testNamespace}, gotInstance); err != nil {
+		t.Fatalf("get instance: %v", err)
+	}
+	if gotInstance.Status.LastRotatedClientSecret == nil {
+		t.Error("expected instance LastRotatedClientSecret to advance for a scheduled rotation")
+	}
+
+	gotClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
+	if err := fakeClient.Get(ctx, client.ObjectKey{Name: "rot-client", Namespace: testNamespace}, gotClient); err != nil {
+		t.Fatalf("get oidcclient: %v", err)
+	}
+	if gotClient.Status.LastRotatedAt == nil {
+		t.Error("expected oidcclient LastRotatedAt to be mirrored")
+	}
+}
+
+// TestReconcileSecret_ManualRotation verifies a manual (annotation-triggered) rotation writes
+// only lastRotatedAtAnnotation and mirrors LastRotatedAt, but does NOT write the scheduled
+// annotation or advance the instance aggregate.
+func TestReconcileSecret_ManualRotation(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "man-client",
+			Namespace:   testNamespace,
+			UID:         "man-uid",
+			Annotations: map[string]string{"pocketid.internal/regenerate-client-secret": "true"},
+		},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			CallbackURLs: []string{"https://example.com/cb"},
+		},
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{ClientID: "man-id"},
+	}
+
+	existingSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "man-client-oidc-credentials", Namespace: testNamespace},
+		Data: map[string][]byte{
+			"client_id":     []byte("man-id"),
+			"client_secret": []byte("old-secret"),
+		},
+	}
+
+	instance := &pocketidinternalv1alpha1.PocketIDInstance{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-instance", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+			AppURL:        "http://test.example.com",
+			EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{Value: "0123456789abcdef"},
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(oidcClient, existingSecret, instance).
+		WithStatusSubresource(oidcClient, instance).
+		Build()
+
+	ts := rotationSecretServer(t)
+	defer ts.Close()
+	apiClient, _ := pocketid.NewClient(ts.URL, "")
+
+	reconciler := &Reconciler{Client: fakeClient, APIReader: fakeClient, Scheme: scheme}
+	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient); err != nil {
+		t.Fatalf("ReconcileSecret returned error: %v", err)
+	}
+
+	gotSecret := &corev1.Secret{}
+	if err := fakeClient.Get(ctx, client.ObjectKey{Name: existingSecret.Name, Namespace: testNamespace}, gotSecret); err != nil {
+		t.Fatalf("get secret: %v", err)
+	}
+	if got := string(gotSecret.Data["client_secret"]); got != "rotated-secret" {
+		t.Errorf("expected rotated client_secret, got %q", got)
+	}
+	if _, ok := gotSecret.Annotations[lastRotatedAtAnnotation]; !ok {
+		t.Error("expected lastRotatedAtAnnotation to be set for a manual rotation")
+	}
+	if _, ok := gotSecret.Annotations[lastScheduledRotationAtAnnotation]; ok {
+		t.Error("manual rotation must NOT set lastScheduledRotationAtAnnotation")
+	}
+
+	gotInstance := &pocketidinternalv1alpha1.PocketIDInstance{}
+	if err := fakeClient.Get(ctx, client.ObjectKey{Name: "test-instance", Namespace: testNamespace}, gotInstance); err != nil {
+		t.Fatalf("get instance: %v", err)
+	}
+	if gotInstance.Status.LastRotatedClientSecret != nil {
+		t.Errorf("manual rotation must NOT advance the instance aggregate, got %v", gotInstance.Status.LastRotatedClientSecret)
+	}
+
+	gotClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
+	if err := fakeClient.Get(ctx, client.ObjectKey{Name: "man-client", Namespace: testNamespace}, gotClient); err != nil {
+		t.Fatalf("get oidcclient: %v", err)
+	}
+	if gotClient.Status.LastRotatedAt == nil {
+		t.Error("expected oidcclient LastRotatedAt to be mirrored for a manual rotation")
 	}
 }
 
