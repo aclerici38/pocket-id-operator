@@ -3,6 +3,7 @@ package oidcclient
 import (
 	"context"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -458,6 +459,115 @@ func TestReconcileSecret_CreateForPublicClient(t *testing.T) {
 	}
 	if _, ok := secret.Data["issuer_url"]; !ok {
 		t.Error("expected secret to have issuer_url key")
+	}
+}
+
+// TestAdvanceInstanceRotationStatus covers the min-spacing aggregate self-heal: the secret's
+// lastRotatedAtAnnotation is the durable source of truth, and instance.Status.LastRotatedClientSecret
+// must converge to it on a later reconcile even if the original status write was lost — without ever
+// regressing a value another client already moved past.
+func TestAdvanceInstanceRotationStatus(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	t1 := time.Now().UTC().Truncate(time.Second)
+	t2 := t1.Add(time.Hour)
+
+	secretWith := func(ts *time.Time) *corev1.Secret {
+		s := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "sec", Namespace: testNamespace}}
+		if ts != nil {
+			s.Annotations = map[string]string{lastRotatedAtAnnotation: ts.Format(time.RFC3339)}
+		}
+		return s
+	}
+	instanceWith := func(ts *time.Time) *pocketidinternalv1alpha1.PocketIDInstance {
+		inst := &pocketidinternalv1alpha1.PocketIDInstance{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-instance", Namespace: testNamespace},
+		}
+		if ts != nil {
+			inst.Status.LastRotatedClientSecret = &metav1.Time{Time: *ts}
+		}
+		return inst
+	}
+	tp := func(ts time.Time) *time.Time { return &ts }
+
+	tests := []struct {
+		name        string
+		storedAgg   *time.Time // aggregate persisted on the API server (what APIReader sees)
+		cachedAgg   *time.Time // aggregate on the in-scope (possibly stale) instance
+		annotation  *time.Time // secret's lastRotatedAtAnnotation, nil = no annotation
+		wantStored  *time.Time // expected persisted aggregate after the call
+		wantPatched bool       // whether the stored object should have changed
+	}{
+		{
+			name:        "self-heal from lost write",
+			storedAgg:   nil, // previous reconcile rotated but failed to persist this
+			cachedAgg:   nil,
+			annotation:  tp(t1),
+			wantStored:  tp(t1),
+			wantPatched: true,
+		},
+		{
+			name:       "already in sync skips the write",
+			storedAgg:  tp(t1),
+			cachedAgg:  tp(t1),
+			annotation: tp(t1),
+			wantStored: tp(t1),
+		},
+		{
+			name:       "stale cache but fresh already ahead does not regress",
+			storedAgg:  tp(t2), // another client already advanced it past us
+			cachedAgg:  nil,    // our cached view is behind, forcing the fresh read
+			annotation: tp(t1),
+			wantStored: tp(t2),
+		},
+		{
+			name:       "no annotation is a no-op",
+			storedAgg:  nil,
+			cachedAgg:  nil,
+			annotation: nil,
+			wantStored: nil,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			stored := instanceWith(tc.storedAgg)
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(stored).
+				WithStatusSubresource(stored).
+				Build()
+
+			reconciler := &Reconciler{Client: fakeClient, APIReader: fakeClient, Scheme: scheme}
+
+			// The in-scope instance carries the (possibly stale) cached aggregate.
+			cached := instanceWith(tc.cachedAgg)
+			cached.ResourceVersion = stored.ResourceVersion
+
+			if err := reconciler.advanceInstanceRotationStatus(context.Background(), cached, secretWith(tc.annotation)); err != nil {
+				t.Fatalf("advanceInstanceRotationStatus returned error: %v", err)
+			}
+
+			got := &pocketidinternalv1alpha1.PocketIDInstance{}
+			if err := fakeClient.Get(context.Background(), client.ObjectKey{Name: "test-instance", Namespace: testNamespace}, got); err != nil {
+				t.Fatalf("failed to get instance: %v", err)
+			}
+
+			switch {
+			case tc.wantStored == nil && got.Status.LastRotatedClientSecret != nil:
+				t.Fatalf("expected aggregate to stay unset, got %v", got.Status.LastRotatedClientSecret)
+			case tc.wantStored != nil && got.Status.LastRotatedClientSecret == nil:
+				t.Fatalf("expected aggregate %v, got nil", tc.wantStored)
+			case tc.wantStored != nil && !got.Status.LastRotatedClientSecret.Time.Equal(*tc.wantStored):
+				t.Fatalf("expected aggregate %v, got %v", tc.wantStored, got.Status.LastRotatedClientSecret.Time)
+			}
+
+			if tc.wantPatched && got.ResourceVersion == stored.ResourceVersion {
+				t.Fatalf("expected a status write but resourceVersion was unchanged (%s)", got.ResourceVersion)
+			}
+		})
 	}
 }
 

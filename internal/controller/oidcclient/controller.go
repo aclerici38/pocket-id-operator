@@ -893,13 +893,11 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 	// Include client_secret for non-public clients
 	// Only regenerate if the secret doesn't exist yet or if explicitly requested via annotation
 	var rotatedAt *metav1.Time
-	var scheduledRotation bool
 	if !oidcClient.Spec.IsPublic && oidcClient.Status.ClientID != "" {
-		shouldRegenerateSecret, scheduled, existingSecret, err := r.secretRegenDecision(ctx, oidcClient, instance, secretName)
+		shouldRegenerateSecret, _, existingSecret, err := r.secretRegenDecision(ctx, oidcClient, instance, secretName)
 		if err != nil {
 			return err
 		}
-		scheduledRotation = scheduled
 
 		if shouldRegenerateSecret {
 			if apiClient == nil {
@@ -983,15 +981,20 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 		return fmt.Errorf("failed to create or update secret: %w", err)
 	}
 
-	r.applyRotationStatus(ctx, oidcClient, instance, rotatedAt, scheduledRotation)
+	r.applyRotationStatus(ctx, oidcClient, rotatedAt)
+
+	// Set instance rotation status each reconcile to self-correct
+	// when secret write succeeds but instance.status write fails
+	if err := r.advanceInstanceRotationStatus(ctx, instance, secret); err != nil {
+		return fmt.Errorf("failed to advance instance rotation status: %w", err)
+	}
 
 	return nil
 }
 
-// applyRotationStatus updates the oidcclient and (for scheduled rotations) the instance
-// status after a secret rotation. Extracted to keep ReconcileSecret under the cyclomatic
-// complexity limit.
-func (r *Reconciler) applyRotationStatus(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, instance *pocketidinternalv1alpha1.PocketIDInstance, rotatedAt *metav1.Time, scheduledRotation bool) {
+// applyRotationStatus mirrors the rotation timestamp onto the oidcclient status after a
+// secret rotation.
+func (r *Reconciler) applyRotationStatus(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, rotatedAt *metav1.Time) {
 	if rotatedAt == nil {
 		return
 	}
@@ -1000,13 +1003,46 @@ func (r *Reconciler) applyRotationStatus(ctx context.Context, oidcClient *pocket
 	if err := r.Status().Patch(ctx, oidcClient, client.MergeFrom(base)); err != nil {
 		logf.FromContext(ctx).Error(err, "Failed to mirror LastRotatedAt to status")
 	}
-	if scheduledRotation {
-		base := instance.DeepCopy()
-		instance.Status.LastRotatedClientSecret = rotatedAt
-		if err := r.Status().Patch(ctx, instance, client.MergeFrom(base)); err != nil {
-			logf.FromContext(ctx).Error(err, "Failed to update instance LastRotatedClientSecret")
-		}
+}
+
+// advanceInstanceRotationStatus moves instance.Status.LastRotatedClientSecret forward to the
+// secret's lastRotatedAtAnnotation when that annotation is newer. Running this on every reconcile
+// decouples recording the aggregate from the rotation event, so a lost status
+// write self-heals on a subsequent reconcile instead of leaving min-spacing permanently blind.
+//
+// Check cached first, then verify via apiReader. The advance is monotonic.
+func (r *Reconciler) advanceInstanceRotationStatus(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, secret *corev1.Secret) error {
+	ts, ok := secret.Annotations[lastRotatedAtAnnotation]
+	if !ok {
+		return nil
 	}
+	rotatedAt, err := time.Parse(time.RFC3339, ts)
+	if err != nil {
+		return nil
+	}
+
+	// Cheap cached gate: in steady state the aggregate already reflects this rotation, so we
+	// skip the API read and write entirely.
+	if cur := instance.Status.LastRotatedClientSecret; cur != nil && !rotatedAt.After(cur.Time) {
+		return nil
+	}
+
+	// Cached aggregate is behind. Confirm against a strongly-consistent read before advancing
+	// so we never regress a value another client already moved past us.
+	fresh := &pocketidinternalv1alpha1.PocketIDInstance{}
+	if err := r.APIReader.Get(ctx, client.ObjectKeyFromObject(instance), fresh); err != nil {
+		return fmt.Errorf("failed to read fresh instance status for rotation aggregate: %w", err)
+	}
+	if cur := fresh.Status.LastRotatedClientSecret; cur != nil && !rotatedAt.After(cur.Time) {
+		return nil
+	}
+
+	base := fresh.DeepCopy()
+	fresh.Status.LastRotatedClientSecret = &metav1.Time{Time: rotatedAt}
+	if err := r.Status().Patch(ctx, fresh, client.MergeFrom(base)); err != nil {
+		return fmt.Errorf("failed to advance instance LastRotatedClientSecret: %w", err)
+	}
+	return nil
 }
 
 // secretRegenDecision fetches the existing client secret (if any) and decides whether it
