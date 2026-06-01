@@ -58,6 +58,10 @@ spec:
             - name: DEFAULT_DARK_LOGO_URL
               value: {{ .Values.operator.defaultDarkLogoUrl | quote }}
             {{- end }}
+            {{- if .Values.operator.timezone }}
+            - name: TZ
+              value: {{ .Values.operator.timezone | quote }}
+            {{- end }}
             {{- range .Values.operator.env }}
             - {{- toYaml . | nindent 14 }}
             {{- end }}

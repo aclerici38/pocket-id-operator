@@ -3004,7 +3004,13 @@
                         "properties": {
                           "minSpacing": {
                             "description": "MinSpacing is the minimum time between any two client secret rotations on this instance.\nPrevents thundering-herd when many clients become due simultaneously.",
-                            "type": "string"
+                            "type": "string",
+                            "x-kubernetes-validations": [
+                              {
+                                "message": "minSpacing must be a positive duration",
+                                "rule": "duration(self) > duration('0s')"
+                              }
+                            ]
                           }
                         },
                         "required": [

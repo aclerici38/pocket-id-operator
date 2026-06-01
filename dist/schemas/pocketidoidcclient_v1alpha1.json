@@ -82,19 +82,31 @@
               "type": "boolean"
             },
             "interval": {
-              "description": "Interval is the minimum time between rotations (e.g. \"720h\" for 30 days). Must be positive.",
-              "type": "string"
+              "description": "Interval is the minimum time between rotations (e.g. \"720h\" for 30 days). Must be between 1h and 8760h.",
+              "type": "string",
+              "x-kubernetes-validations": [
+                {
+                  "message": "interval must be between 1h and 8760h (1 year)",
+                  "rule": "duration(self) \u003e= duration('1h') \u0026\u0026 duration(self) \u003c= duration('8760h')"
+                }
+              ]
             },
             "window": {
               "additionalProperties": false,
               "description": "Window restricts rotations to a recurring maintenance window.\nWhen unset, rotations fire as soon as the interval and global min-spacing are satisfied.",
               "properties": {
                 "closesAfter": {
-                  "description": "ClosesAfter is how long the window stays open after each cron fire.",
-                  "type": "string"
+                  "description": "ClosesAfter is how long the window stays open after each cron fire. Minimum 5m.",
+                  "type": "string",
+                  "x-kubernetes-validations": [
+                    {
+                      "message": "closesAfter must be at least 5m",
+                      "rule": "duration(self) \u003e= duration('5m')"
+                    }
+                  ]
                 },
                 "opens": {
-                  "description": "Opens is a standard 5-field cron expression (e.g. \"0 1 * * *\" for 1am daily, UTC).",
+                  "description": "Opens is a standard 5-field cron expression (e.g. \"0 1 * * *\" for 1am daily, local TZ).",
                   "type": "string"
                 }
               },
@@ -115,6 +127,12 @@
           "type": [
             "object",
             "null"
+          ],
+          "x-kubernetes-validations": [
+            {
+              "message": "window.closesAfter must not exceed interval",
+              "rule": "!has(self.window) || duration(self.window.closesAfter) \u003c= duration(self.interval)"
+            }
           ]
         },
         "darkLogoUrl": {

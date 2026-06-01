@@ -84,8 +84,12 @@ spec:
                     type: boolean
                   interval:
                     description: Interval is the minimum time between rotations (e.g.
-                      "720h" for 30 days). Must be positive.
+                      "720h" for 30 days). Must be between 1h and 8760h.
                     type: string
+                    x-kubernetes-validations:
+                    - message: interval must be between 1h and 8760h (1 year)
+                      rule: duration(self) >= duration('1h') && duration(self) <=
+                        duration('8760h')
                   window:
                     description: |-
                       Window restricts rotations to a recurring maintenance window.
@@ -93,11 +97,14 @@ spec:
                     properties:
                       closesAfter:
                         description: ClosesAfter is how long the window stays open
-                          after each cron fire.
+                          after each cron fire. Minimum 5m.
                         type: string
+                        x-kubernetes-validations:
+                        - message: closesAfter must be at least 5m
+                          rule: duration(self) >= duration('5m')
                       opens:
                         description: Opens is a standard 5-field cron expression (e.g.
-                          "0 1 * * *" for 1am daily, UTC).
+                          "0 1 * * *" for 1am daily, local TZ).
                         type: string
                     required:
                     - closesAfter
@@ -107,6 +114,10 @@ spec:
                 - enabled
                 - interval
                 type: object
+                x-kubernetes-validations:
+                - message: window.closesAfter must not exceed interval
+                  rule: '!has(self.window) || duration(self.window.closesAfter) <=
+                    duration(self.interval)'
               darkLogoUrl:
                 description: |-
                   Dark logo URL for the client

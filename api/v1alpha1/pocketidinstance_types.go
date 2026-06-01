@@ -604,6 +604,7 @@ type OIDCClientRotationConfig struct {
 	// MinSpacing is the minimum time between any two client secret rotations on this instance.
 	// Prevents thundering-herd when many clients become due simultaneously.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:XValidation:rule="duration(self) > duration('0s')",message="minSpacing must be a positive duration"
 	MinSpacing metav1.Duration `json:"minSpacing"`
 }
 

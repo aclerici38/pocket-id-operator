@@ -288,23 +288,26 @@ type PocketIDOIDCClientSpec struct {
 
 // RotationWindow restricts rotations to a recurring time window.
 type RotationWindow struct {
-	// Opens is a standard 5-field cron expression (e.g. "0 1 * * *" for 1am daily, UTC).
+	// Opens is a standard 5-field cron expression (e.g. "0 1 * * *" for 1am daily, local TZ).
 	// +kubebuilder:validation:Required
 	Opens string `json:"opens"`
 
-	// ClosesAfter is how long the window stays open after each cron fire.
+	// ClosesAfter is how long the window stays open after each cron fire. Minimum 5m.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:XValidation:rule="duration(self) >= duration('5m')",message="closesAfter must be at least 5m"
 	ClosesAfter metav1.Duration `json:"closesAfter"`
 }
 
 // ClientSecretRotation configures automatic, scheduled regeneration of the OIDC client secret.
+// +kubebuilder:validation:XValidation:rule="!has(self.window) || duration(self.window.closesAfter) <= duration(self.interval)",message="window.closesAfter must not exceed interval"
 type ClientSecretRotation struct {
 	// Enabled controls whether automatic rotation is active.
 	// +kubebuilder:default=false
 	Enabled bool `json:"enabled"`
 
-	// Interval is the minimum time between rotations (e.g. "720h" for 30 days). Must be positive.
+	// Interval is the minimum time between rotations (e.g. "720h" for 30 days). Must be between 1h and 8760h.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:XValidation:rule="duration(self) >= duration('1h') && duration(self) <= duration('8760h')",message="interval must be between 1h and 8760h (1 year)"
 	Interval metav1.Duration `json:"interval"`
 
 	// Window restricts rotations to a recurring maintenance window.

@@ -7,43 +7,43 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func TestRotationDue_DueWhenIntervalElapsed(t *testing.T) {
+func TestIntervalElapsed_DueWhenIntervalElapsed(t *testing.T) {
 	now := time.Date(2026, 1, 31, 12, 0, 0, 0, time.UTC)
 	lastRotated := now.Add(-31 * 24 * time.Hour)
 	interval := 30 * 24 * time.Hour
-	if !rotationDue(now, lastRotated, time.Time{}, interval) {
+	if !intervalElapsed(now, lastRotated, time.Time{}, interval) {
 		t.Error("expected rotation to be due")
 	}
 }
 
-func TestRotationDue_NotDueWhenIntervalNotElapsed(t *testing.T) {
+func TestIntervalElapsed_NotDueWhenIntervalNotElapsed(t *testing.T) {
 	now := time.Date(2026, 1, 31, 12, 0, 0, 0, time.UTC)
 	lastRotated := now.Add(-29 * 24 * time.Hour)
 	interval := 30 * 24 * time.Hour
-	if rotationDue(now, lastRotated, time.Time{}, interval) {
+	if intervalElapsed(now, lastRotated, time.Time{}, interval) {
 		t.Error("expected rotation to not be due")
 	}
 }
 
-func TestRotationDue_UsesCreationTimeWhenNeverRotated(t *testing.T) {
+func TestIntervalElapsed_UsesCreationTimeWhenNeverRotated(t *testing.T) {
 	now := time.Date(2026, 1, 31, 12, 0, 0, 0, time.UTC)
 	created := now.Add(-31 * 24 * time.Hour)
 	interval := 30 * 24 * time.Hour
-	if !rotationDue(now, time.Time{}, created, interval) {
+	if !intervalElapsed(now, time.Time{}, created, interval) {
 		t.Error("expected rotation to be due based on creation time")
 	}
 }
 
-func TestRotationDue_NeverDueWithZeroInterval(t *testing.T) {
+func TestIntervalElapsed_NeverDueWithZeroInterval(t *testing.T) {
 	now := time.Date(2026, 1, 31, 12, 0, 0, 0, time.UTC)
-	if rotationDue(now, time.Time{}, time.Time{}, 0) {
+	if intervalElapsed(now, time.Time{}, time.Time{}, 0) {
 		t.Error("expected no rotation with zero interval")
 	}
 }
 
-func TestRotationDue_NeverDueWithBothAnchorsZero(t *testing.T) {
+func TestIntervalElapsed_NeverDueWithBothAnchorsZero(t *testing.T) {
 	now := time.Date(2026, 1, 31, 12, 0, 0, 0, time.UTC)
-	if rotationDue(now, time.Time{}, time.Time{}, 30*24*time.Hour) {
+	if intervalElapsed(now, time.Time{}, time.Time{}, 30*24*time.Hour) {
 		t.Error("expected no rotation when no anchor available")
 	}
 }

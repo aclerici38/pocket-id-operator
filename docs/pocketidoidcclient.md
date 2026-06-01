@@ -263,7 +263,7 @@ spec:
     enabled: true
     interval: "720h"                 # rotate after 30 days
     window:                          # optional: restrict to a time window
-      opens: "0 1 * * *"            # cron (UTC): 1am daily
+      opens: "0 1 * * *"            # cron (local TZ): 1am daily
       closesAfter: "4h"             # window is open for 4 hours
 ```
 

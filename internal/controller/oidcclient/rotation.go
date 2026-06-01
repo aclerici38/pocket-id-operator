@@ -7,9 +7,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// rotationDue reports whether the elapsed time since the last rotation (or creation,
+// intervalElapsed reports whether the elapsed time since the last rotation (or creation,
 // if never rotated) has reached the configured interval.
-func rotationDue(now, lastRotated, creationTime time.Time, interval time.Duration) bool {
+func intervalElapsed(now, lastRotated, creationTime time.Time, interval time.Duration) bool {
 	if interval <= 0 {
 		return false
 	}
@@ -24,7 +24,8 @@ func rotationDue(now, lastRotated, creationTime time.Time, interval time.Duratio
 }
 
 // withinWindow reports whether now falls inside a recurring maintenance window.
-// opens is a standard 5-field cron expression (UTC). The window stays open for
+// opens is a standard 5-field cron expression evaluated in the operator's local
+// timezone (set via the TZ env var; UTC when unset). The window stays open for
 // closesAfter after each cron fire.
 func withinWindow(now time.Time, opens string, closesAfter time.Duration) (bool, error) {
 	schedule, err := cron.ParseStandard(opens)
