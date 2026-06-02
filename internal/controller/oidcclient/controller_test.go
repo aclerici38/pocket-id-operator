@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
@@ -1705,5 +1706,60 @@ func TestReconcileSCIM_TokenFromSecret_MissingKey_ReturnsError(t *testing.T) {
 	err := r.ReconcileSCIM(ctx, oidcClient, api)
 	if err == nil {
 		t.Fatal("expected error for missing key, got nil")
+	}
+}
+
+// TestOidcClientPredicate_ManualRotationEnqueues guards the manual-rotation trigger:
+// setting the regenerate-client-secret annotation must enqueue a reconcile even though
+// annotations do not bump metadata.generation. Without this the rotation would not fire
+// until the next periodic resync, so a manual annotation would not "force" a rotation.
+func TestOidcClientPredicate_ManualRotationEnqueues(t *testing.T) {
+	pred := oidcClientPredicate()
+
+	obj := func(gen int64, annotations map[string]string) *pocketidinternalv1alpha1.PocketIDOIDCClient {
+		return &pocketidinternalv1alpha1.PocketIDOIDCClient{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        "trek",
+				Namespace:   testNamespace,
+				Generation:  gen,
+				Annotations: annotations,
+			},
+		}
+	}
+
+	tests := []struct {
+		name     string
+		old, new *pocketidinternalv1alpha1.PocketIDOIDCClient
+		want     bool
+	}{
+		{
+			name: "regenerate annotation added without a generation bump",
+			old:  obj(2, nil),
+			new:  obj(2, map[string]string{regenerateClientSecretAnnotation: "true"}),
+			want: true,
+		},
+		{
+			name: "spec change bumps generation",
+			old:  obj(2, nil),
+			new:  obj(3, nil),
+			want: true,
+		},
+		{
+			// Guards against simply dropping the predicate, which would reconcile on
+			// every status write and resync (the rate-limiting the predicate prevents).
+			name: "no generation or annotation change",
+			old:  obj(2, map[string]string{regenerateClientSecretAnnotation: "true"}),
+			new:  obj(2, map[string]string{regenerateClientSecretAnnotation: "true"}),
+			want: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := pred.Update(event.UpdateEvent{ObjectOld: tc.old, ObjectNew: tc.new})
+			if got != tc.want {
+				t.Errorf("predicate.Update() = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }

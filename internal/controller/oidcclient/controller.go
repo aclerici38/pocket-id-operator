@@ -56,6 +56,9 @@ const (
 	// (which gates the per-client interval) but deliberately leave this one untouched, so an
 	// out-of-band rotation never perturbs the instance's scheduled-rotation spacing.
 	lastScheduledRotationAtAnnotation = "pocketid.internal/last-scheduled-rotation-at"
+	// regenerateClientSecretAnnotation is set by a user to force an immediate secret
+	// rotation, bypassing the scheduled-rotation gates.
+	regenerateClientSecretAnnotation = "pocketid.internal/regenerate-client-secret"
 
 	defaultLogoTemplate     = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}.png"
 	defaultDarkLogoTemplate = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}-dark.png"
@@ -199,7 +202,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
-	if removed, err := helpers.CheckAndRemoveAnnotation(ctx, r.Client, oidcClient, "pocketid.internal/regenerate-client-secret", "true"); err != nil {
+	if removed, err := helpers.CheckAndRemoveAnnotation(ctx, r.Client, oidcClient, regenerateClientSecretAnnotation, "true"); err != nil {
 		log.Error(err, "Failed to remove regenerate-client-secret annotation")
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	} else if removed {
@@ -1149,7 +1152,7 @@ func (r *Reconciler) secretRegenDecision(ctx context.Context, oidcClient *pocket
 		d.regenerate, d.trigger = true, "initial"
 		return d, nil
 	}
-	if helpers.HasAnnotation(oidcClient, "pocketid.internal/regenerate-client-secret", "true") {
+	if helpers.HasAnnotation(oidcClient, regenerateClientSecretAnnotation, "true") {
 		d.regenerate, d.trigger = true, "manual"
 		return d, nil
 	}
@@ -1364,6 +1367,15 @@ func (r *Reconciler) requestsForUserGroup(ctx context.Context, obj client.Object
 	return requests
 }
 
+// oidcClientPredicate gates which events enqueue a reconcile. GenerationChangedPredicate
+// alone drops annotation-only edits (annotations don't bump metadata.generation), which
+// would delay a manual regenerate-client-secret request until the next periodic resync.
+// Or-ing in AnnotationChangedPredicate lets the annotation force an immediate rotation
+// while still filtering out status-only updates.
+func oidcClientPredicate() predicate.Predicate {
+	return predicate.Or(predicate.GenerationChangedPredicate{}, predicate.AnnotationChangedPredicate{})
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	ctx := context.Background()
@@ -1394,7 +1406,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&pocketidinternalv1alpha1.PocketIDOIDCClient{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		For(&pocketidinternalv1alpha1.PocketIDOIDCClient{}, builder.WithPredicates(oidcClientPredicate())).
 		Watches(
 			&pocketidinternalv1alpha1.PocketIDUserGroup{},
 			handler.EnqueueRequestsFromMapFunc(r.requestsForUserGroup),
