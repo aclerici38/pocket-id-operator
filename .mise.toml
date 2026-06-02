@@ -21,7 +21,7 @@ golangci-lint = "2.12.2"
 zizmor = "1.25.2"
 
 # Local cluster / cluster CLIs for e2e and chart tests
-kind = "0.31.0"
+kind = "0.32.0"
 kubectl = "1.36.1"
 helm = "4.2.0"
 
