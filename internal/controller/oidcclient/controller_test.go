@@ -856,6 +856,167 @@ func TestReconcileSecret_ManualRotation(t *testing.T) {
 	}
 }
 
+// TestReconcileSecret_InitialCreationIsNotScheduled is the regression guard for the most
+// dangerous annotation-drift case: a confidential client with rotation ENABLED whose secret does
+// not exist yet. This first reconcile must perform an "initial" (unscheduled) creation — it stamps
+// lastRotatedAtAnnotation to start the interval clock, but must NOT stamp the scheduled annotation
+// and must NOT advance the instance aggregate. If initial creations counted as scheduled
+// rotations, a fleet of newly-created clients would each consume the instance-wide min-spacing
+// budget and starve one another.
+func TestReconcileSecret_InitialCreationIsNotScheduled(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "init-client", Namespace: testNamespace, UID: "init-uid"},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			CallbackURLs: []string{"https://example.com/cb"},
+			// Rotation is enabled, but with no secret yet the secret must still be created via the
+			// initial (unscheduled) path rather than treated as a scheduled rotation.
+			ClientSecretRotation: &pocketidinternalv1alpha1.ClientSecretRotation{
+				Enabled:  true,
+				Interval: &metav1.Duration{Duration: 24 * time.Hour},
+			},
+		},
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{ClientID: "init-id"},
+	}
+
+	instance := &pocketidinternalv1alpha1.PocketIDInstance{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-instance", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+			AppURL:        "http://test.example.com",
+			EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{Value: "0123456789abcdef"},
+		},
+	}
+
+	// No existing secret in the store → initial creation.
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(oidcClient, instance).
+		WithStatusSubresource(oidcClient, instance).
+		Build()
+
+	ts := rotationSecretServer(t)
+	defer ts.Close()
+	apiClient, _ := pocketid.NewClient(ts.URL, "")
+
+	reconciler := &Reconciler{Client: fakeClient, APIReader: fakeClient, Scheme: scheme}
+	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient); err != nil {
+		t.Fatalf("ReconcileSecret returned error: %v", err)
+	}
+
+	gotSecret := &corev1.Secret{}
+	if err := fakeClient.Get(ctx, client.ObjectKey{Name: "init-client-oidc-credentials", Namespace: testNamespace}, gotSecret); err != nil {
+		t.Fatalf("expected secret to be created: %v", err)
+	}
+	if got := string(gotSecret.Data["client_secret"]); got != "rotated-secret" {
+		t.Errorf("expected a freshly generated client_secret, got %q", got)
+	}
+	// lastRotatedAtAnnotation IS set: initial creation is a rotation and must start the clock.
+	if _, ok := gotSecret.Annotations[lastRotatedAtAnnotation]; !ok {
+		t.Error("expected lastRotatedAtAnnotation to be set on initial creation")
+	}
+	// scheduled annotation must NOT be set: initial creation is not a scheduled rotation.
+	if _, ok := gotSecret.Annotations[lastScheduledRotationAtAnnotation]; ok {
+		t.Error("initial creation must NOT set lastScheduledRotationAtAnnotation")
+	}
+
+	// The instance aggregate must NOT advance — otherwise creating N clients would each consume
+	// the global min-spacing budget.
+	gotInstance := &pocketidinternalv1alpha1.PocketIDInstance{}
+	if err := fakeClient.Get(ctx, client.ObjectKey{Name: "test-instance", Namespace: testNamespace}, gotInstance); err != nil {
+		t.Fatalf("get instance: %v", err)
+	}
+	if gotInstance.Status.LastRotatedClientSecret != nil {
+		t.Errorf("initial creation must NOT advance the instance aggregate, got %v", gotInstance.Status.LastRotatedClientSecret)
+	}
+}
+
+// TestReconcileSecret_NotDuePreservesAnnotations is the regression guard against annotation drift
+// on the steady-state path: a reconcile that does NOT rotate must leave the secret untouched. The
+// existing lastRotatedAtAnnotation must survive byte-for-byte (re-stamping it would silently reset
+// the interval anchor so the secret never rotates), the client_secret must stay as-is, no scheduled
+// annotation may appear, and the instance aggregate must not move. A nil apiClient guarantees the
+// test fails loudly if the code ever attempts a rotation it shouldn't.
+func TestReconcileSecret_NotDuePreservesAnnotations(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	// Last rotation 1h ago against a 24h interval → not due.
+	origRotatedAt := time.Now().Add(-1 * time.Hour).UTC().Format(time.RFC3339)
+
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "steady-client", Namespace: testNamespace, UID: "steady-uid"},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			CallbackURLs: []string{"https://example.com/cb"},
+			ClientSecretRotation: &pocketidinternalv1alpha1.ClientSecretRotation{
+				Enabled:  true,
+				Interval: &metav1.Duration{Duration: 24 * time.Hour},
+			},
+		},
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{ClientID: "steady-id"},
+	}
+
+	existingSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "steady-client-oidc-credentials",
+			Namespace:   testNamespace,
+			Annotations: map[string]string{lastRotatedAtAnnotation: origRotatedAt},
+		},
+		Data: map[string][]byte{
+			"client_id":     []byte("steady-id"),
+			"client_secret": []byte("old-secret"),
+		},
+	}
+
+	instance := &pocketidinternalv1alpha1.PocketIDInstance{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-instance", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+			AppURL:        "http://test.example.com",
+			EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{Value: "0123456789abcdef"},
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(oidcClient, existingSecret, instance).
+		WithStatusSubresource(oidcClient, instance).
+		Build()
+
+	// nil apiClient: the not-due path must never call the rotation endpoint. If it tries, the
+	// regenerate branch errors on the nil client and the test fails.
+	reconciler := &Reconciler{Client: fakeClient, APIReader: fakeClient, Scheme: scheme}
+	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, nil); err != nil {
+		t.Fatalf("ReconcileSecret returned error: %v", err)
+	}
+
+	gotSecret := &corev1.Secret{}
+	if err := fakeClient.Get(ctx, client.ObjectKey{Name: existingSecret.Name, Namespace: testNamespace}, gotSecret); err != nil {
+		t.Fatalf("get secret: %v", err)
+	}
+	if got := string(gotSecret.Data["client_secret"]); got != "old-secret" {
+		t.Errorf("not-due reconcile must preserve the existing client_secret, got %q", got)
+	}
+	if got := gotSecret.Annotations[lastRotatedAtAnnotation]; got != origRotatedAt {
+		t.Errorf("not-due reconcile must preserve lastRotatedAtAnnotation verbatim (anchor drift): got %q, want %q", got, origRotatedAt)
+	}
+	if _, ok := gotSecret.Annotations[lastScheduledRotationAtAnnotation]; ok {
+		t.Error("not-due reconcile must NOT create lastScheduledRotationAtAnnotation")
+	}
+
+	gotInstance := &pocketidinternalv1alpha1.PocketIDInstance{}
+	if err := fakeClient.Get(ctx, client.ObjectKey{Name: "test-instance", Namespace: testNamespace}, gotInstance); err != nil {
+		t.Fatalf("get instance: %v", err)
+	}
+	if gotInstance.Status.LastRotatedClientSecret != nil {
+		t.Errorf("not-due reconcile must NOT advance the instance aggregate, got %v", gotInstance.Status.LastRotatedClientSecret)
+	}
+}
+
 // TestRotationDue locks the three-gate decision, most importantly that min-spacing actually
 // blocks a scheduled rotation (the thundering-herd guarantee) and the gate precedence.
 func TestRotationDue(t *testing.T) {
