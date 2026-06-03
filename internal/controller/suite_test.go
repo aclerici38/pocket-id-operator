@@ -19,6 +19,8 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -43,6 +45,7 @@ import (
 	"github.com/aclerici38/pocket-id-operator/internal/controller/oidcclient"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/user"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/usergroup"
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -55,6 +58,13 @@ var (
 	testEnv   *envtest.Environment
 	cfg       *rest.Config
 	k8sClient client.Client
+
+	// pocketIDServer stands in for a real Pocket-ID API. envtest has no CoreDNS or
+	// Service endpoints, so the in-cluster URL the instance reconciler would dial
+	// (`*.svc.cluster.local`) is unresolvable; on macOS that name also routes to
+	// mDNS and stalls. The instance reconciler is pointed here instead so version
+	// reconciliation stays hermetic and fast.
+	pocketIDServer *httptest.Server
 )
 
 func TestControllers(t *testing.T) {
@@ -108,10 +118,19 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).NotTo(HaveOccurred())
 
+	pocketIDServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"currentVersion":"2.8.0"}`))
+	}))
+
 	err = (&instance.Reconciler{
 		Client:    k8sManager.GetClient(),
 		APIReader: k8sManager.GetAPIReader(),
 		Scheme:    k8sManager.GetScheme(),
+		// Avoid dialing the in-cluster Service DNS name (unresolvable under envtest).
+		NewAPIClient: func(context.Context, client.Client, client.Reader, *pocketidinternalv1alpha1.PocketIDInstance) (*pocketid.Client, error) {
+			return pocketid.NewClient(pocketIDServer.URL, "test-api-key")
+		},
 	}).SetupWithManager(k8sManager)
 	Expect(err).NotTo(HaveOccurred())
 
@@ -149,6 +168,9 @@ var _ = BeforeSuite(func() {
 var _ = AfterSuite(func() {
 	By("tearing down the test environment")
 	cancel()
+	if pocketIDServer != nil {
+		pocketIDServer.Close()
+	}
 	err := testEnv.Stop()
 	Expect(err).NotTo(HaveOccurred())
 })
