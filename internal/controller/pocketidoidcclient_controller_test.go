@@ -467,8 +467,8 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 			}
 		}
 		dur := func(d time.Duration) *metav1.Duration { return &metav1.Duration{Duration: d} }
-		win := func(opens string, closesAfter time.Duration) *pocketidinternalv1alpha1.RotationWindow {
-			return &pocketidinternalv1alpha1.RotationWindow{Opens: opens, ClosesAfter: metav1.Duration{Duration: closesAfter}}
+		win := func(closesAfter time.Duration) *pocketidinternalv1alpha1.RotationWindow {
+			return &pocketidinternalv1alpha1.RotationWindow{Opens: "0 1 * * *", ClosesAfter: metav1.Duration{Duration: closesAfter}}
 		}
 		expectAccepted := func(resource *pocketidinternalv1alpha1.PocketIDOIDCClient) {
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
@@ -493,15 +493,15 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 		})
 
 		It("accepts window-only rotation", func() {
-			expectAccepted(newClient("rot-cel-window", &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: true, Window: win("0 1 * * *", time.Hour)}))
+			expectAccepted(newClient("rot-cel-window", &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: true, Window: win(time.Hour)}))
 		})
 
 		It("accepts interval and window when closesAfter does not exceed interval", func() {
-			expectAccepted(newClient("rot-cel-both-ok", &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: true, Interval: dur(24 * time.Hour), Window: win("0 1 * * *", time.Hour)}))
+			expectAccepted(newClient("rot-cel-both-ok", &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: true, Interval: dur(24 * time.Hour), Window: win(time.Hour)}))
 		})
 
 		It("rejects interval and window when closesAfter exceeds interval", func() {
-			expectRejected(newClient("rot-cel-both-bad", &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: true, Interval: dur(time.Hour), Window: win("0 1 * * *", 2*time.Hour)}))
+			expectRejected(newClient("rot-cel-both-bad", &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: true, Interval: dur(time.Hour), Window: win(2 * time.Hour)}))
 		})
 
 		It("rejects an interval below the allowed minimum", func() {
@@ -509,7 +509,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 		})
 
 		It("rejects a window closesAfter below 5m", func() {
-			expectRejected(newClient("rot-cel-window-min", &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: true, Window: win("0 1 * * *", time.Minute)}))
+			expectRejected(newClient("rot-cel-window-min", &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: true, Window: win(time.Minute)}))
 		})
 	})
 
