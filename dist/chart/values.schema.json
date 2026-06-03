@@ -4562,6 +4562,134 @@
                 "type": "string"
               }
             },
+            "rules": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Toggle individual default alerting rules on or off. Each rule defaults to enabled.",
+              "properties": {
+                "PocketIDInstanceNotReady": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Alert when a Pocket-ID instance is not ready for over 5 minutes",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    }
+                  }
+                },
+                "PocketIDResourceNotReady": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Alert when a managed resource is not ready for over 5 minutes",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    }
+                  }
+                },
+                "PocketIDAPIHighErrorRate": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Alert when the Pocket-ID API error rate exceeds 50%",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    }
+                  }
+                },
+                "PocketIDAPISlowRequests": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Alert when the Pocket-ID API p99 latency exceeds 5 seconds",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    }
+                  }
+                },
+                "PocketIDExternalDeletions": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Alert when resources are deleted outside the operator",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    }
+                  }
+                },
+                "PocketIDReconcileErrors": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Alert when controller reconciliation errors are sustained over 10 minutes",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    }
+                  }
+                },
+                "PocketIDWorkQueueBackup": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Alert when the work queue depth grows, indicating the operator is falling behind",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    }
+                  }
+                },
+                "PocketIDOIDCClientRotationFailing": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Alert when a client-secret rotation failed in the last hour",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    }
+                  }
+                },
+                "PocketIDOIDCClientRotationOverdue": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Alert when an interval-driven client has been eligible to rotate for over 24h but is blocked",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    }
+                  }
+                },
+                "PocketIDOIDCClientRotationWindowMissed": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Alert when a window-driven client keeps missing its maintenance window",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    }
+                  }
+                },
+                "PocketIDOIDCClientRotationDeferrals": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Alert when scheduled rotations are being deferred persistently",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    }
+                  }
+                }
+              }
+            },
             "additionalRules": {
               "type": "array",
               "description": "Additional alerting rules appended to the default set",

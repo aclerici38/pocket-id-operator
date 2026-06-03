@@ -1,4 +1,5 @@
 {{- if and .Values.metrics .Values.metrics.prometheusRule (ne .Values.metrics.prometheusRule.enabled false) (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1") }}
+{{- $rules := .Values.metrics.prometheusRule.rules | default dict }}
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -13,6 +14,7 @@ spec:
   groups:
     - name: pocket-id-operator
       rules:
+        {{- if dig "PocketIDInstanceNotReady" "enabled" true $rules }}
         # -- Pocket-ID instance not ready for over 5 minutes
         - alert: PocketIDInstanceNotReady
           expr: pocketid_operator_resource_ready{kind="PocketIDInstance"} == 0
@@ -25,7 +27,9 @@ spec:
             description: >-
               The PocketIDInstance {{`{{ $labels.namespace }}`}}/{{`{{ $labels.name }}`}} has been
               in a non-ready state for more than 5 minutes.
+        {{- end }}
 
+        {{- if dig "PocketIDResourceNotReady" "enabled" true $rules }}
         # -- Managed resource not ready for over 5 minutes
         - alert: PocketIDResourceNotReady
           expr: pocketid_operator_resource_ready{kind!="PocketIDInstance"} == 0
@@ -38,7 +42,9 @@ spec:
             description: >-
               The {{`{{ $labels.kind }}`}} {{`{{ $labels.namespace }}`}}/{{`{{ $labels.name }}`}} has been
               in a non-ready state for more than 5 minutes.
+        {{- end }}
 
+        {{- if dig "PocketIDAPIHighErrorRate" "enabled" true $rules }}
         # -- Pocket-ID API error rate exceeds 50%
         - alert: PocketIDAPIHighErrorRate
           expr: |-
@@ -54,7 +60,9 @@ spec:
             description: >-
               More than 50% of Pocket-ID API requests have been failing for over 5 minutes.
               This usually indicates the Pocket-ID server is unreachable or unhealthy.
+        {{- end }}
 
+        {{- if dig "PocketIDAPISlowRequests" "enabled" true $rules }}
         # -- Pocket-ID API p99 latency exceeds 5 seconds
         - alert: PocketIDAPISlowRequests
           expr: |-
@@ -71,7 +79,9 @@ spec:
             description: >-
               The 99th percentile latency of Pocket-ID API requests has exceeded 5 seconds
               for more than 5 minutes.
+        {{- end }}
 
+        {{- if dig "PocketIDExternalDeletions" "enabled" true $rules }}
         # -- Resources deleted outside the operator
         - alert: PocketIDExternalDeletions
           expr: increase(pocketid_operator_external_deletions_total[10m]) > 0
@@ -84,7 +94,9 @@ spec:
               {{`{{ $value }}`}} {{`{{ $labels.kind }}`}} resource(s) were deleted outside the
               operator in the last 10 minutes. The operator will recreate them, but this
               may indicate manual interference or a competing controller.
+        {{- end }}
 
+        {{- if dig "PocketIDReconcileErrors" "enabled" true $rules }}
         # -- Controller reconciliation errors sustained over 10 minutes
         - alert: PocketIDReconcileErrors
           expr: rate(controller_runtime_reconcile_total{result="error",job=~".*pocket-id-operator.*"}[5m]) > 0
@@ -97,7 +109,9 @@ spec:
             description: >-
               The {{`{{ $labels.controller }}`}} controller has been producing reconcile
               errors continuously for over 10 minutes.
+        {{- end }}
 
+        {{- if dig "PocketIDWorkQueueBackup" "enabled" true $rules }}
         # -- Work queue depth growing, indicating the operator is falling behind
         - alert: PocketIDWorkQueueBackup
           expr: workqueue_depth{job=~".*pocket-id-operator.*"} > 10
@@ -110,7 +124,9 @@ spec:
             description: >-
               The {{`{{ $labels.name }}`}} work queue has had more than 10 pending items
               for over 10 minutes, indicating the operator may be falling behind.
+        {{- end }}
 
+        {{- if dig "PocketIDOIDCClientRotationFailing" "enabled" true $rules }}
         # -- A client-secret rotation failed in the last hour
         - alert: PocketIDOIDCClientRotationFailing
           expr: increase(pocketid_operator_oidcclient_secret_rotations_total{result="error"}[1h]) > 0
@@ -123,7 +139,9 @@ spec:
               {{`{{ $value }}`}} client-secret rotation(s) for the PocketIDOIDCClient
               {{`{{ $labels.namespace }}`}}/{{`{{ $labels.name }}`}} (trigger
               {{`{{ $labels.trigger }}`}}) failed in the last hour.
+        {{- end }}
 
+        {{- if dig "PocketIDOIDCClientRotationOverdue" "enabled" true $rules }}
         # -- An interval-driven client has been eligible to rotate for over 24h but a gate keeps
         # -- blocking it. Keyed off the next-eligible gauge, which only interval-driven clients
         # -- export; window-driven clients are covered by PocketIDOIDCClientRotationWindowMissed.
@@ -142,7 +160,9 @@ spec:
               eligible for interval-driven client-secret rotation for over 24h but has not rotated.
               A maintenance window misconfiguration or instance-wide min-spacing starvation may be
               blocking it.
+        {{- end }}
 
+        {{- if dig "PocketIDOIDCClientRotationWindowMissed" "enabled" true $rules }}
         # -- A window-driven client (no interval) keeps missing its maintenance window: an opening
         # -- came and went without rotating, repeatedly, for longer than a typical daily cycle.
         # -- This is the window-driven analog of RotationOverdue. Tune `for` above your window
@@ -163,7 +183,9 @@ spec:
               has had its maintenance window open and close without rotating for over 24h. The
               operator may be missing the window (window narrower than the reconcile interval) or
               instance-wide min-spacing may be starving it at every opening.
+        {{- end }}
 
+        {{- if dig "PocketIDOIDCClientRotationDeferrals" "enabled" true $rules }}
         # -- Scheduled rotations are being deferred persistently. Excludes window_missed (its own
         # -- warning alert above); the remaining reasons are expected throttling (window_closed —
         # -- an interval client waiting for its window; min_spacing) or config errors (window_error).
@@ -183,6 +205,7 @@ spec:
               has been deferred (reason: {{`{{ $labels.reason }}`}}) continuously for over 6 hours.
               This is expected for narrow maintenance windows but may indicate min-spacing starvation
               or, for window_error, an invalid maintenance-window configuration.
+        {{- end }}
 
         {{- with .Values.metrics.prometheusRule.additionalRules }}
         {{- toYaml . | nindent 8 }}

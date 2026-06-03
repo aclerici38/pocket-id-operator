@@ -61,6 +61,31 @@ metrics:
     # Set to false to explicitly disable.
     enabled: true
     labels: {}
+    # Toggle individual default alerting rules on or off. Each rule defaults to
+    # enabled; set enabled: false to omit it from the generated PrometheusRule.
+    rules:
+      PocketIDInstanceNotReady:
+        enabled: true
+      PocketIDResourceNotReady:
+        enabled: true
+      PocketIDAPIHighErrorRate:
+        enabled: true
+      PocketIDAPISlowRequests:
+        enabled: true
+      PocketIDExternalDeletions:
+        enabled: true
+      PocketIDReconcileErrors:
+        enabled: true
+      PocketIDWorkQueueBackup:
+        enabled: true
+      PocketIDOIDCClientRotationFailing:
+        enabled: true
+      PocketIDOIDCClientRotationOverdue:
+        enabled: true
+      PocketIDOIDCClientRotationWindowMissed:
+        enabled: true
+      PocketIDOIDCClientRotationDeferrals:
+        enabled: true
     # Additional custom alerting rules appended to the default set
     additionalRules: []
   # Setting dashboard.enabled creates a configmap with the dashboard json.
