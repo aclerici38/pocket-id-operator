@@ -17,22 +17,22 @@ checksum = "sha256:21547ae4a0421164070ab75c2522864ea5565858a011fabc5f583061b20f1
 url = "https://github.com/orhun/git-cliff/releases/download/v2.13.1/git-cliff-2.13.1-aarch64-apple-darwin.tar.gz"
 
 [[tools."aqua:sholdee/crd-schema-publisher"]]
-version = "2026.603.200"
+version = "2026.603.41610"
 backend = "aqua:sholdee/crd-schema-publisher"
 
 [tools."aqua:sholdee/crd-schema-publisher"."platforms.linux-arm64"]
-checksum = "sha256:0f9215fd314702b3688f5309e27ed22633b5b7f9eeba33bd1ce52cf6f578e7a8"
-url = "https://github.com/sholdee/crd-schema-publisher/releases/download/v2026.603.200/crd-schema-publisher-linux-arm64"
+checksum = "sha256:596fc631d1b1d6a37c2dd6fa30a8c58078f6ff44c41e745bb04903debcff98d7"
+url = "https://github.com/sholdee/crd-schema-publisher/releases/download/v2026.603.41610/crd-schema-publisher-linux-arm64"
 provenance = "github-attestations"
 
 [tools."aqua:sholdee/crd-schema-publisher"."platforms.linux-x64"]
-checksum = "sha256:f702b848fafab40b4754a5e6de50814b75d9e1507272854b9ae3b58c4d17319e"
-url = "https://github.com/sholdee/crd-schema-publisher/releases/download/v2026.603.200/crd-schema-publisher-linux-amd64"
+checksum = "sha256:8bbb14113359b29a11920a5bba0bb5345ed7afffbd53c6d946a409cd20cbc86c"
+url = "https://github.com/sholdee/crd-schema-publisher/releases/download/v2026.603.41610/crd-schema-publisher-linux-amd64"
 provenance = "github-attestations"
 
 [tools."aqua:sholdee/crd-schema-publisher"."platforms.macos-arm64"]
-checksum = "sha256:c16161b873eab02b78d48ae1c77bad7bf5ff0666580741753568364782aa14e3"
-url = "https://github.com/sholdee/crd-schema-publisher/releases/download/v2026.603.200/crd-schema-publisher-darwin-arm64"
+checksum = "sha256:d18ce3380d1bfd95ae575e5f24615c8838ddda5f8ee8a28b88cac18d67a80f1c"
+url = "https://github.com/sholdee/crd-schema-publisher/releases/download/v2026.603.41610/crd-schema-publisher-darwin-arm64"
 provenance = "github-attestations"
 
 [[tools."go:github.com/onsi/ginkgo/v2/ginkgo"]]
