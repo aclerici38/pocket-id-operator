@@ -459,6 +459,60 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 		})
 	})
 
+	Context("ClientSecretRotation validation", func() {
+		newClient := func(name string, rot *pocketidinternalv1alpha1.ClientSecretRotation) *pocketidinternalv1alpha1.PocketIDOIDCClient {
+			return &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+				Spec:       pocketidinternalv1alpha1.PocketIDOIDCClientSpec{ClientSecretRotation: rot},
+			}
+		}
+		dur := func(d time.Duration) *metav1.Duration { return &metav1.Duration{Duration: d} }
+		win := func(opens string, closesAfter time.Duration) *pocketidinternalv1alpha1.RotationWindow {
+			return &pocketidinternalv1alpha1.RotationWindow{Opens: opens, ClosesAfter: metav1.Duration{Duration: closesAfter}}
+		}
+		expectAccepted := func(resource *pocketidinternalv1alpha1.PocketIDOIDCClient) {
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, resource) })
+		}
+		expectRejected := func(resource *pocketidinternalv1alpha1.PocketIDOIDCClient) {
+			err := k8sClient.Create(ctx, resource)
+			Expect(err).To(HaveOccurred())
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+		}
+
+		It("rejects enabled rotation with neither interval nor window", func() {
+			expectRejected(newClient("rot-cel-neither", &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: true}))
+		})
+
+		It("accepts disabled rotation with neither interval nor window", func() {
+			expectAccepted(newClient("rot-cel-disabled", &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: false}))
+		})
+
+		It("accepts interval-only rotation", func() {
+			expectAccepted(newClient("rot-cel-interval", &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: true, Interval: dur(24 * time.Hour)}))
+		})
+
+		It("accepts window-only rotation", func() {
+			expectAccepted(newClient("rot-cel-window", &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: true, Window: win("0 1 * * *", time.Hour)}))
+		})
+
+		It("accepts interval and window when closesAfter does not exceed interval", func() {
+			expectAccepted(newClient("rot-cel-both-ok", &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: true, Interval: dur(24 * time.Hour), Window: win("0 1 * * *", time.Hour)}))
+		})
+
+		It("rejects interval and window when closesAfter exceeds interval", func() {
+			expectRejected(newClient("rot-cel-both-bad", &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: true, Interval: dur(time.Hour), Window: win("0 1 * * *", 2*time.Hour)}))
+		})
+
+		It("rejects an interval below the allowed minimum", func() {
+			expectRejected(newClient("rot-cel-interval-min", &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: true, Interval: dur(30 * time.Minute)}))
+		})
+
+		It("rejects a window closesAfter below 5m", func() {
+			expectRejected(newClient("rot-cel-window-min", &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: true, Window: win("0 1 * * *", time.Minute)}))
+		})
+	})
+
 	Context("Updating OIDC client status", func() {
 		const clientName = "test-oidc-status-update"
 

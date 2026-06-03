@@ -82,8 +82,11 @@
               "type": "boolean"
             },
             "interval": {
-              "description": "Interval is the minimum time between rotations (e.g. \"720h\" for 30 days). Must be between 1h and 8760h.",
-              "type": "string",
+              "description": "Interval is the minimum time between rotations (e.g. \"720h\" for 30 days). Must be between\n1h and 8760h. When omitted, rotation is driven entirely by window (which then becomes\nrequired) and the secret rotates once per window opening.",
+              "type": [
+                "string",
+                "null"
+              ],
               "x-kubernetes-validations": [
                 {
                   "message": "interval must be between 1h and 8760h (1 year)",
@@ -93,7 +96,7 @@
             },
             "window": {
               "additionalProperties": false,
-              "description": "Window restricts rotations to a recurring maintenance window.\nWhen unset, rotations fire as soon as the interval and global min-spacing are satisfied.",
+              "description": "Window restricts rotations to a recurring maintenance window. When interval is set, rotations\nfire as soon as the interval and global min-spacing are satisfied, confined to the window\nwhen one is configured. When interval is omitted, the window opening is itself the trigger:\nthe secret rotates once per opening (subject to min-spacing).",
               "properties": {
                 "closesAfter": {
                   "description": "ClosesAfter is how long the window stays open after each cron fire. Minimum 5m.",
@@ -121,8 +124,7 @@
             }
           },
           "required": [
-            "enabled",
-            "interval"
+            "enabled"
           ],
           "type": [
             "object",
@@ -130,8 +132,12 @@
           ],
           "x-kubernetes-validations": [
             {
+              "message": "enabled rotation requires interval, window, or both",
+              "rule": "!self.enabled || has(self.interval) || has(self.window)"
+            },
+            {
               "message": "window.closesAfter must not exceed interval",
-              "rule": "!has(self.window) || duration(self.window.closesAfter) \u003c= duration(self.interval)"
+              "rule": "!has(self.window) || !has(self.interval) || duration(self.window.closesAfter) \u003c= duration(self.interval)"
             }
           ]
         },

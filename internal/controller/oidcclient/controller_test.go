@@ -601,7 +601,7 @@ func TestReconcileSecret_ScheduledRotation(t *testing.T) {
 			CallbackURLs: []string{"https://example.com/cb"},
 			ClientSecretRotation: &pocketidinternalv1alpha1.ClientSecretRotation{
 				Enabled:  true,
-				Interval: metav1.Duration{Duration: 24 * time.Hour},
+				Interval: &metav1.Duration{Duration: 24 * time.Hour},
 			},
 		},
 		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{ClientID: "rot-id"},
@@ -665,6 +665,102 @@ func TestReconcileSecret_ScheduledRotation(t *testing.T) {
 	}
 	if gotInstance.Status.LastRotatedClientSecret == nil {
 		t.Error("expected instance LastRotatedClientSecret to advance for a scheduled rotation")
+	}
+
+	gotClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
+	if err := fakeClient.Get(ctx, client.ObjectKey{Name: "rot-client", Namespace: testNamespace}, gotClient); err != nil {
+		t.Fatalf("get oidcclient: %v", err)
+	}
+	if gotClient.Status.LastRotatedAt == nil {
+		t.Error("expected oidcclient LastRotatedAt to be mirrored")
+	}
+}
+
+// TestReconcileSecret_WindowDrivenRotation is the window-driven analog of the scheduled-rotation
+// round trip: no interval, only a maintenance window that is currently open with a missed opening
+// owed. It must rotate the secret, stamp both rotation annotations, advance the instance aggregate,
+// and mirror status — proving window-driven rotations are first-class scheduled rotations.
+func TestReconcileSecret_WindowDrivenRotation(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	// A daily window that opened a minute ago and stays open 30m → reliably open now.
+	opened := time.Now().Add(-1 * time.Minute)
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "rot-client", Namespace: testNamespace, UID: "rot-uid"},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			CallbackURLs: []string{"https://example.com/cb"},
+			ClientSecretRotation: &pocketidinternalv1alpha1.ClientSecretRotation{
+				Enabled: true,
+				Window: &pocketidinternalv1alpha1.RotationWindow{
+					Opens:       fmt.Sprintf("%d %d * * *", opened.Minute(), opened.Hour()),
+					ClosesAfter: metav1.Duration{Duration: 30 * time.Minute},
+				},
+			},
+		},
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{ClientID: "rot-id"},
+	}
+
+	existingSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "rot-client-oidc-credentials",
+			Namespace: testNamespace,
+			// Last rotation was 48h ago, before this opening → an opening is owed.
+			Annotations: map[string]string{
+				lastRotatedAtAnnotation: time.Now().Add(-48 * time.Hour).UTC().Format(time.RFC3339),
+			},
+		},
+		Data: map[string][]byte{
+			"client_id":     []byte("rot-id"),
+			"client_secret": []byte("old-secret"),
+		},
+	}
+
+	instance := &pocketidinternalv1alpha1.PocketIDInstance{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-instance", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+			AppURL:        "http://test.example.com",
+			EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{Value: "0123456789abcdef"},
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(oidcClient, existingSecret, instance).
+		WithStatusSubresource(oidcClient, instance).
+		Build()
+
+	ts := rotationSecretServer(t)
+	defer ts.Close()
+	apiClient, _ := pocketid.NewClient(ts.URL, "")
+
+	reconciler := &Reconciler{Client: fakeClient, APIReader: fakeClient, Scheme: scheme}
+	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient); err != nil {
+		t.Fatalf("ReconcileSecret returned error: %v", err)
+	}
+
+	gotSecret := &corev1.Secret{}
+	if err := fakeClient.Get(ctx, client.ObjectKey{Name: existingSecret.Name, Namespace: testNamespace}, gotSecret); err != nil {
+		t.Fatalf("get secret: %v", err)
+	}
+	if got := string(gotSecret.Data["client_secret"]); got != "rotated-secret" {
+		t.Errorf("expected rotated client_secret, got %q", got)
+	}
+	if _, ok := gotSecret.Annotations[lastRotatedAtAnnotation]; !ok {
+		t.Error("expected lastRotatedAtAnnotation to be set")
+	}
+	if _, ok := gotSecret.Annotations[lastScheduledRotationAtAnnotation]; !ok {
+		t.Error("expected lastScheduledRotationAtAnnotation to be set for a window-driven scheduled rotation")
+	}
+
+	gotInstance := &pocketidinternalv1alpha1.PocketIDInstance{}
+	if err := fakeClient.Get(ctx, client.ObjectKey{Name: "test-instance", Namespace: testNamespace}, gotInstance); err != nil {
+		t.Fatalf("get instance: %v", err)
+	}
+	if gotInstance.Status.LastRotatedClientSecret == nil {
+		t.Error("expected instance LastRotatedClientSecret to advance for a window-driven rotation")
 	}
 
 	gotClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
@@ -775,11 +871,36 @@ func TestRotationDue(t *testing.T) {
 	rot := func(interval time.Duration, window *pocketidinternalv1alpha1.RotationWindow) *pocketidinternalv1alpha1.ClientSecretRotation {
 		return &pocketidinternalv1alpha1.ClientSecretRotation{
 			Enabled:  true,
-			Interval: metav1.Duration{Duration: interval},
+			Interval: &metav1.Duration{Duration: interval},
 			Window:   window,
 		}
 	}
 	tp := func(d time.Duration) *metav1.Time { ts := metav1.NewTime(now.Add(d)); return &ts }
+
+	// winRot builds a window-driven rotation: enabled with a window but no interval, so the
+	// window opening is the sole trigger.
+	winRot := func(window *pocketidinternalv1alpha1.RotationWindow) *pocketidinternalv1alpha1.ClientSecretRotation {
+		return &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: true, Window: window}
+	}
+	// openNowWindow builds a daily window whose most recent opening was a minute ago and stays
+	// open 30m, so it is reliably open right now regardless of wall-clock time.
+	openNowWindow := func() *pocketidinternalv1alpha1.RotationWindow {
+		opened := time.Now().Add(-1 * time.Minute)
+		return &pocketidinternalv1alpha1.RotationWindow{
+			Opens:       fmt.Sprintf("%d %d * * *", opened.Minute(), opened.Hour()),
+			ClosesAfter: metav1.Duration{Duration: 30 * time.Minute},
+		}
+	}
+	// missedWindow builds a daily window that opened two hours ago and closed an hour ago, so it
+	// is reliably closed now with its most recent opening in the recent past — modelling a missed
+	// opening for a secret last rotated before it.
+	missedWindow := func() *pocketidinternalv1alpha1.RotationWindow {
+		opened := time.Now().Add(-2 * time.Hour)
+		return &pocketidinternalv1alpha1.RotationWindow{
+			Opens:       fmt.Sprintf("%d %d * * *", opened.Minute(), opened.Hour()),
+			ClosesAfter: metav1.Duration{Duration: time.Hour},
+		}
+	}
 
 	// closedWindow opens at midnight Jan 1 and stays open 1h — effectively always closed.
 	closedWindow := &pocketidinternalv1alpha1.RotationWindow{Opens: "0 0 1 1 *", ClosesAfter: metav1.Duration{Duration: time.Hour}}
@@ -796,7 +917,7 @@ func TestRotationDue(t *testing.T) {
 		wantDefer  string
 	}{
 		{name: "nil rotation is never due", rotation: nil, secretAnn: ann(-48 * time.Hour)},
-		{name: "disabled rotation is never due", rotation: &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: false, Interval: metav1.Duration{Duration: time.Hour}}, secretAnn: ann(-48 * time.Hour)},
+		{name: "disabled rotation is never due", rotation: &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: false, Interval: &metav1.Duration{Duration: time.Hour}}, secretAnn: ann(-48 * time.Hour)},
 		{name: "interval not elapsed blocks", rotation: rot(24*time.Hour, nil), secretAnn: ann(-1 * time.Hour)},
 		{name: "due when interval elapsed and spacing ok", rotation: rot(24*time.Hour, nil), secretAnn: ann(-48 * time.Hour), wantDue: true},
 		{name: "window closed defers", rotation: rot(24*time.Hour, closedWindow), secretAnn: ann(-48 * time.Hour), wantDefer: "window_closed"},
@@ -804,6 +925,21 @@ func TestRotationDue(t *testing.T) {
 		{name: "min-spacing met allows rotation", rotation: rot(24*time.Hour, nil), secretAnn: ann(-48 * time.Hour), minSpacing: time.Hour, lastGlobal: tp(-90 * time.Minute), wantDue: true},
 		{name: "invalid window config errors", rotation: rot(24*time.Hour, &pocketidinternalv1alpha1.RotationWindow{Opens: "* * * * *", ClosesAfter: metav1.Duration{Duration: 2 * time.Minute}}), secretAnn: ann(-48 * time.Hour), wantErr: true, wantDefer: "window_error"},
 		{name: "APIReader failure errors", rotation: rot(24*time.Hour, nil), secretAnn: ann(-48 * time.Hour), omitInst: true, wantErr: true},
+
+		// Window-driven rotation: interval unset, the window opening is the trigger.
+		{name: "window-driven due when open and never rotated", rotation: winRot(openNowWindow()), wantDue: true},
+		{name: "window-driven due when open and last rotation predates opening", rotation: winRot(openNowWindow()), secretAnn: ann(-48 * time.Hour), wantDue: true},
+		{name: "window-driven not due when already rotated this opening", rotation: winRot(openNowWindow()), secretAnn: ann(-30 * time.Second)},
+		// A missed opening (the window opened since the last rotation but is now closed) defers as
+		// window_missed — distinct from interval mode's window_closed, which is healthy waiting for
+		// an upcoming window rather than an opening that came and went unserved.
+		{name: "window-driven missed opening defers as window_missed", rotation: winRot(missedWindow()), secretAnn: ann(-48 * time.Hour), wantDefer: "window_missed"},
+		// No opening has occurred since the last rotation (closedWindow last fired Jan 1, before the
+		// recent rotation), so nothing is owed and there is no deferral.
+		{name: "window-driven not owed when no opening since last rotation", rotation: winRot(closedWindow), secretAnn: ann(-48 * time.Hour)},
+		{name: "window-driven invalid window errors", rotation: winRot(&pocketidinternalv1alpha1.RotationWindow{Opens: "* * * * *", ClosesAfter: metav1.Duration{Duration: 2 * time.Minute}}), secretAnn: ann(-48 * time.Hour), wantErr: true, wantDefer: "window_error"},
+		{name: "window-driven honors min-spacing", rotation: winRot(openNowWindow()), secretAnn: ann(-48 * time.Hour), minSpacing: time.Hour, lastGlobal: tp(-30 * time.Minute), wantDefer: "min_spacing"},
+		{name: "window-driven due when min-spacing met", rotation: winRot(openNowWindow()), secretAnn: ann(-48 * time.Hour), minSpacing: time.Hour, lastGlobal: tp(-90 * time.Minute), wantDue: true},
 	}
 
 	for _, tc := range tests {
@@ -851,6 +987,75 @@ func TestRotationDue(t *testing.T) {
 	}
 }
 
+// TestRotationTrigger exercises the trigger dispatcher (the only mode-specific seam) in both modes
+// against a fixed clock. The window opens at 1am daily and stays open 4h (opens 1am, closes 5am);
+// the most recent fire relative to the test instants is 1am on Jan 31.
+func TestRotationTrigger(t *testing.T) {
+	opensAt := time.Date(2026, 1, 31, 1, 0, 0, 0, time.UTC)
+	insideWindow := time.Date(2026, 1, 31, 2, 0, 0, 0, time.UTC)
+	outsideWindow := time.Date(2026, 1, 31, 6, 0, 0, 0, time.UTC)
+	elapsedLR := time.Date(2026, 1, 29, 2, 0, 0, 0, time.UTC) // > 24h before either instant
+	freshLR := opensAt                                        // 1h before insideWindow → interval not elapsed
+
+	win4h := &pocketidinternalv1alpha1.RotationWindow{Opens: "0 1 * * *", ClosesAfter: metav1.Duration{Duration: 4 * time.Hour}}
+	invalidWin := &pocketidinternalv1alpha1.RotationWindow{Opens: "* * * * *", ClosesAfter: metav1.Duration{Duration: 2 * time.Minute}}
+	iv := func(w *pocketidinternalv1alpha1.RotationWindow) *pocketidinternalv1alpha1.ClientSecretRotation {
+		return &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: true, Interval: &metav1.Duration{Duration: 24 * time.Hour}, Window: w}
+	}
+	wd := func(w *pocketidinternalv1alpha1.RotationWindow) *pocketidinternalv1alpha1.ClientSecretRotation {
+		return &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: true, Window: w}
+	}
+
+	tests := []struct {
+		name          string
+		rotation      *pocketidinternalv1alpha1.ClientSecretRotation
+		lastRotated   time.Time
+		creation      time.Time
+		now           time.Time
+		wantOwed      bool
+		wantWindow    bool // expected windowOpen
+		wantHasWindow bool
+		wantErr       bool
+	}{
+		// Interval-driven.
+		{name: "interval elapsed, no window", rotation: iv(nil), lastRotated: elapsedLR, now: insideWindow, wantOwed: true},
+		{name: "interval not elapsed, no window", rotation: iv(nil), lastRotated: freshLR, now: insideWindow},
+		{name: "interval elapsed, window open", rotation: iv(win4h), lastRotated: elapsedLR, now: insideWindow, wantOwed: true, wantWindow: true, wantHasWindow: true},
+		{name: "interval elapsed, window closed", rotation: iv(win4h), lastRotated: elapsedLR, now: outsideWindow, wantOwed: true, wantHasWindow: true},
+		// The window is only evaluated once owed, so an invalid window is harmless until the interval fires.
+		{name: "interval not elapsed, invalid window not evaluated", rotation: iv(invalidWin), lastRotated: freshLR, now: insideWindow, wantHasWindow: true},
+		{name: "interval elapsed, invalid window errors", rotation: iv(invalidWin), lastRotated: elapsedLR, now: insideWindow, wantHasWindow: true, wantErr: true},
+
+		// Window-driven.
+		{name: "window-driven owed and open", rotation: wd(win4h), lastRotated: elapsedLR, now: insideWindow, wantOwed: true, wantWindow: true, wantHasWindow: true},
+		{name: "window-driven owed but closed (missed opening)", rotation: wd(win4h), lastRotated: elapsedLR, now: outsideWindow, wantOwed: true, wantHasWindow: true},
+		{name: "window-driven not owed (already rotated this opening)", rotation: wd(win4h), lastRotated: opensAt.Add(30 * time.Minute), now: insideWindow, wantWindow: true, wantHasWindow: true},
+		{name: "window-driven never rotated is anchored on creation", rotation: wd(win4h), creation: elapsedLR, now: insideWindow, wantOwed: true, wantWindow: true, wantHasWindow: true},
+		{name: "window-driven invalid window errors", rotation: wd(invalidWin), lastRotated: elapsedLR, now: insideWindow, wantHasWindow: true, wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			owed, windowOpen, hasWindow, err := rotationTrigger(tc.rotation, tc.lastRotated, tc.creation, tc.now)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err = %v, wantErr = %v", err, tc.wantErr)
+			}
+			if hasWindow != tc.wantHasWindow {
+				t.Errorf("hasWindow = %v, want %v", hasWindow, tc.wantHasWindow)
+			}
+			if tc.wantErr {
+				return // owed/windowOpen are unspecified on error
+			}
+			if owed != tc.wantOwed {
+				t.Errorf("owed = %v, want %v", owed, tc.wantOwed)
+			}
+			if windowOpen != tc.wantWindow {
+				t.Errorf("windowOpen = %v, want %v", windowOpen, tc.wantWindow)
+			}
+		})
+	}
+}
+
 // TestSecretRegenDecision pins the scheduled-vs-manual-vs-initial classification that drives
 // whether the scheduled annotation and instance aggregate get written.
 func TestSecretRegenDecision(t *testing.T) {
@@ -861,7 +1066,17 @@ func TestSecretRegenDecision(t *testing.T) {
 
 	now := time.Now()
 	const secretName = "c-oidc-credentials"
-	dueRotation := &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: true, Interval: metav1.Duration{Duration: 24 * time.Hour}}
+	dueRotation := &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: true, Interval: &metav1.Duration{Duration: 24 * time.Hour}}
+	// windowDueRotation is interval-less: a daily window that opened a minute ago (open 30m), so a
+	// secret last rotated long before now is due right now and classified as a scheduled rotation.
+	opened := now.Add(-1 * time.Minute)
+	windowDueRotation := &pocketidinternalv1alpha1.ClientSecretRotation{
+		Enabled: true,
+		Window: &pocketidinternalv1alpha1.RotationWindow{
+			Opens:       fmt.Sprintf("%d %d * * *", opened.Minute(), opened.Hour()),
+			ClosesAfter: metav1.Duration{Duration: 30 * time.Minute},
+		},
+	}
 
 	fullSecret := func(annAge time.Duration) *corev1.Secret {
 		return &corev1.Secret{
@@ -887,6 +1102,8 @@ func TestSecretRegenDecision(t *testing.T) {
 		{name: "manual annotation regenerates unscheduled", regenAnnotation: true, secret: fullSecret(-1 * time.Hour), wantRegen: true, wantScheduled: false},
 		{name: "scheduled rotation due", rotation: dueRotation, secret: fullSecret(-48 * time.Hour), wantRegen: true, wantScheduled: true},
 		{name: "not due does not regenerate", rotation: dueRotation, secret: fullSecret(-1 * time.Hour), wantRegen: false, wantScheduled: false},
+		{name: "window-driven rotation due is scheduled", rotation: windowDueRotation, secret: fullSecret(-48 * time.Hour), wantRegen: true, wantScheduled: true},
+		{name: "window-driven already rotated this opening is not due", rotation: windowDueRotation, secret: fullSecret(-30 * time.Second), wantRegen: false, wantScheduled: false},
 	}
 
 	for _, tc := range tests {
@@ -935,7 +1152,7 @@ func TestReconcileSecret_InstanceStatusWriteFailureRequeues(t *testing.T) {
 			CallbackURLs: []string{"https://example.com/cb"},
 			ClientSecretRotation: &pocketidinternalv1alpha1.ClientSecretRotation{
 				Enabled:  true,
-				Interval: metav1.Duration{Duration: 24 * time.Hour},
+				Interval: &metav1.Duration{Duration: 24 * time.Hour},
 			},
 		},
 		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{ClientID: "rot-id"},
@@ -999,7 +1216,7 @@ func TestReconcileSecret_SelfHealsAfterLostInstanceWrite(t *testing.T) {
 			CallbackURLs: []string{"https://example.com/cb"},
 			ClientSecretRotation: &pocketidinternalv1alpha1.ClientSecretRotation{
 				Enabled:  true,
-				Interval: metav1.Duration{Duration: 24 * time.Hour},
+				Interval: &metav1.Duration{Duration: 24 * time.Hour},
 			},
 		},
 		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{ClientID: "rot-id"},

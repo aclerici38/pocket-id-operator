@@ -339,18 +339,24 @@ func SetOIDCClientRotationEnabled(namespace, name string, enabled bool) {
 
 // SetOIDCClientRotationSchedule records the rotation schedule gauges for an enabled client:
 // the configured interval, the last rotation timestamp, and the next-eligible timestamp
-// (all in seconds). Pass a non-positive value to skip a particular gauge (e.g. lastUnix when
-// the client has never rotated).
+// (all in seconds). A non-positive value means the gauge does not apply (e.g. intervalSeconds
+// and nextUnix for a window-driven client, or lastUnix when the client has never rotated); the
+// corresponding series is deleted rather than left stale, so a client that switches modes (e.g.
+// interval-driven to window-driven) does not keep exporting an obsolete value.
 func SetOIDCClientRotationSchedule(namespace, name string, intervalSeconds, lastUnix, nextUnix float64) {
-	if intervalSeconds > 0 {
-		OIDCClientRotationIntervalSeconds.WithLabelValues(namespace, name).Set(intervalSeconds)
+	setOrDelete(OIDCClientRotationIntervalSeconds, namespace, name, intervalSeconds)
+	setOrDelete(OIDCClientLastRotationTimestamp, namespace, name, lastUnix)
+	setOrDelete(OIDCClientNextRotationTimestamp, namespace, name, nextUnix)
+}
+
+// setOrDelete sets the gauge for (namespace, name) when value is positive, otherwise deletes the
+// series so a no-longer-applicable value does not linger.
+func setOrDelete(gauge *prometheus.GaugeVec, namespace, name string, value float64) {
+	if value > 0 {
+		gauge.WithLabelValues(namespace, name).Set(value)
+		return
 	}
-	if lastUnix > 0 {
-		OIDCClientLastRotationTimestamp.WithLabelValues(namespace, name).Set(lastUnix)
-	}
-	if nextUnix > 0 {
-		OIDCClientNextRotationTimestamp.WithLabelValues(namespace, name).Set(nextUnix)
-	}
+	gauge.DeleteLabelValues(namespace, name)
 }
 
 // SetOIDCClientRotationWindow records the maintenance window gauges for a client: whether the

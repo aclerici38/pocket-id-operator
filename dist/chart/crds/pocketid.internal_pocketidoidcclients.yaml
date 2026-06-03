@@ -83,8 +83,10 @@ spec:
                     description: Enabled controls whether automatic rotation is active.
                     type: boolean
                   interval:
-                    description: Interval is the minimum time between rotations (e.g.
-                      "720h" for 30 days). Must be between 1h and 8760h.
+                    description: |-
+                      Interval is the minimum time between rotations (e.g. "720h" for 30 days). Must be between
+                      1h and 8760h. When omitted, rotation is driven entirely by window (which then becomes
+                      required) and the secret rotates once per window opening.
                     type: string
                     x-kubernetes-validations:
                     - message: interval must be between 1h and 8760h (1 year)
@@ -92,8 +94,10 @@ spec:
                         duration('8760h')
                   window:
                     description: |-
-                      Window restricts rotations to a recurring maintenance window.
-                      When unset, rotations fire as soon as the interval and global min-spacing are satisfied.
+                      Window restricts rotations to a recurring maintenance window. When interval is set, rotations
+                      fire as soon as the interval and global min-spacing are satisfied, confined to the window
+                      when one is configured. When interval is omitted, the window opening is itself the trigger:
+                      the secret rotates once per opening (subject to min-spacing).
                     properties:
                       closesAfter:
                         description: ClosesAfter is how long the window stays open
@@ -112,12 +116,13 @@ spec:
                     type: object
                 required:
                 - enabled
-                - interval
                 type: object
                 x-kubernetes-validations:
+                - message: enabled rotation requires interval, window, or both
+                  rule: '!self.enabled || has(self.interval) || has(self.window)'
                 - message: window.closesAfter must not exceed interval
-                  rule: '!has(self.window) || duration(self.window.closesAfter) <=
-                    duration(self.interval)'
+                  rule: '!has(self.window) || !has(self.interval) || duration(self.window.closesAfter)
+                    <= duration(self.interval)'
               darkLogoUrl:
                 description: |-
                   Dark logo URL for the client

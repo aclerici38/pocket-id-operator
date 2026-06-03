@@ -299,19 +299,27 @@ type RotationWindow struct {
 }
 
 // ClientSecretRotation configures automatic, scheduled regeneration of the OIDC client secret.
-// +kubebuilder:validation:XValidation:rule="!has(self.window) || duration(self.window.closesAfter) <= duration(self.interval)",message="window.closesAfter must not exceed interval"
+// When enabled, a rotation trigger is required: set interval , window
+// (secret rotates once per window opening), or both (interval-driven,
+// confined to the window). Instance-wide min-spacing is honored in every mode.
+// +kubebuilder:validation:XValidation:rule="!self.enabled || has(self.interval) || has(self.window)",message="enabled rotation requires interval, window, or both"
+// +kubebuilder:validation:XValidation:rule="!has(self.window) || !has(self.interval) || duration(self.window.closesAfter) <= duration(self.interval)",message="window.closesAfter must not exceed interval"
 type ClientSecretRotation struct {
 	// Enabled controls whether automatic rotation is active.
 	// +kubebuilder:default=false
 	Enabled bool `json:"enabled"`
 
-	// Interval is the minimum time between rotations (e.g. "720h" for 30 days). Must be between 1h and 8760h.
-	// +kubebuilder:validation:Required
+	// Interval is the minimum time between rotations (e.g. "720h" for 30 days). Must be between
+	// 1h and 8760h. When omitted, rotation is driven entirely by window (which then becomes
+	// required) and the secret rotates once per window opening.
+	// +optional
 	// +kubebuilder:validation:XValidation:rule="duration(self) >= duration('1h') && duration(self) <= duration('8760h')",message="interval must be between 1h and 8760h (1 year)"
-	Interval metav1.Duration `json:"interval"`
+	Interval *metav1.Duration `json:"interval,omitempty"`
 
-	// Window restricts rotations to a recurring maintenance window.
-	// When unset, rotations fire as soon as the interval and global min-spacing are satisfied.
+	// Window restricts rotations to a recurring maintenance window. When interval is set, rotations
+	// fire as soon as the interval and global min-spacing are satisfied, confined to the window
+	// when one is configured. When interval is omitted, the window opening is itself the trigger:
+	// the secret rotates once per opening (subject to min-spacing).
 	// +optional
 	Window *RotationWindow `json:"window,omitempty"`
 }

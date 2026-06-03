@@ -198,7 +198,9 @@ spec:
               {{ $labels.namespace }}/{{ $labels.name }} (trigger {{ $labels.trigger }})
               failed in the last hour.
 
-        # A client with rotation enabled is overdue, a gate is perpetually blocking it
+        # An interval-driven client has been eligible to rotate for over 24h but a gate keeps
+        # blocking it. Keyed off the next-eligible gauge, which only interval-driven clients
+        # export; window-driven clients are covered by PocketIDOIDCClientRotationWindowMissed.
         - alert: PocketIDOIDCClientRotationOverdue
           expr: |-
             (pocketid_operator_oidcclient_rotation_enabled == 1)
@@ -211,14 +213,38 @@ spec:
               Client-secret rotation overdue for {{ $labels.namespace }}/{{ $labels.name }}
             description: >-
               The PocketIDOIDCClient {{ $labels.namespace }}/{{ $labels.name }} has been
-              eligible for client-secret rotation for over 24h but has not rotated. A maintenance
-              window misconfiguration or instance-wide min-spacing starvation may be blocking it.
+              eligible for interval-driven client-secret rotation for over 24h but has not rotated.
+              A maintenance window misconfiguration or instance-wide min-spacing starvation may be
+              blocking it.
 
-        # Scheduled rotations are being deferred persistently (e.g. min-spacing starvation)
+        # A window-driven client (no interval) keeps missing its maintenance window: an opening
+        # came and went without rotating, repeatedly, for longer than a typical daily cycle. This
+        # is the window-driven analog of RotationOverdue. Tune `for` above your window period so a
+        # single transient miss (adoption, one brief outage) self-heals quietly.
+        - alert: PocketIDOIDCClientRotationWindowMissed
+          expr: |-
+            sum by (namespace, name) (
+              increase(pocketid_operator_oidcclient_rotation_deferred_total{reason="window_missed"}[1h])
+            ) > 0
+          for: 24h
+          labels:
+            severity: warning
+          annotations:
+            summary: >-
+              Client-secret rotation window repeatedly missed for {{ $labels.namespace }}/{{ $labels.name }}
+            description: >-
+              The window-driven PocketIDOIDCClient {{ $labels.namespace }}/{{ $labels.name }} has had
+              its maintenance window open and close without rotating for over 24h. The operator may
+              be missing the window (window narrower than the reconcile interval) or instance-wide
+              min-spacing may be starving it at every opening.
+
+        # Scheduled rotations are being deferred persistently. Excludes window_missed (its own
+        # warning alert above); the remaining reasons are expected throttling (window_closed — an
+        # interval client waiting for its window; min_spacing) or config errors (window_error).
         - alert: PocketIDOIDCClientRotationDeferrals
           expr: |-
             sum by (namespace, name, reason) (
-              increase(pocketid_operator_oidcclient_rotation_deferred_total[1h])
+              increase(pocketid_operator_oidcclient_rotation_deferred_total{reason!="window_missed"}[1h])
             ) > 0
           for: 6h
           labels:
@@ -229,7 +255,8 @@ spec:
             description: >-
               A due client-secret rotation for {{ $labels.namespace }}/{{ $labels.name }}
               has been deferred (reason: {{ $labels.reason }}) continuously for over 6 hours.
-              This is expected for narrow maintenance windows but may indicate min-spacing starvation.
+              This is expected for narrow maintenance windows but may indicate min-spacing starvation
+              or, for window_error, an invalid maintenance-window configuration.
 ```
 
 ---
@@ -410,10 +437,12 @@ after each successful reconcile. The gauge is removed when the group is deleted.
 
 These metrics track per-client scheduled OIDC **client-secret rotation** (configured via
 `spec.clientSecretRotation` on a `PocketIDOIDCClient` and throttled instance-wide by
-`spec.OIDCClientRotation.minSpacing` on a `PocketIDInstance`). A rotation fires only when
-three gates pass: the per-client **interval** has elapsed, an optional per-client
-**maintenance window** is open, and the instance-wide **min-spacing** is satisfied. See
-[pocketidoidcclient.md](pocketidoidcclient.md#client-secret-rotation) for the feature itself.
+`spec.OIDCClientRotation.minSpacing` on a `PocketIDInstance`). A rotation fires only when its
+gates pass: the per-client **trigger** is due (an elapsed **interval**, a **maintenance window**
+opening, or both), the **maintenance window** is open when one is configured, and the
+instance-wide **min-spacing** is satisfied. See
+[pocketidoidcclient.md](pocketidoidcclient.md#client-secret-rotation) for the feature itself,
+including the interval-driven and window-driven trigger modes.
 
 #### `pocketid_operator_oidcclient_rotation_enabled`
 
@@ -437,7 +466,9 @@ whole series is removed when the client is deleted.
 **Type:** Gauge
 **Labels:** `namespace`, `name`
 
-The configured rotation interval in seconds. Only present while rotation is enabled.
+The configured rotation interval in seconds. Present while rotation is enabled **in an
+interval-driven mode**; absent for window-driven clients (no `interval` configured), where the
+maintenance-window gauges below describe the schedule instead.
 
 ---
 
@@ -460,8 +491,9 @@ client has rotated at least once.
 
 Unix timestamp at which the secret next becomes **eligible** for rotation (rotation anchor +
 interval). The actual rotation may still be delayed by the maintenance window or instance-wide
-min-spacing, so a value in the past means "eligible now" rather than "rotating now." Only
-present while rotation is enabled.
+min-spacing, so a value in the past means "eligible now" rather than "rotating now." Present for
+interval-driven clients; absent for window-driven clients (no `interval`), whose next opportunity
+is `pocketid_operator_oidcclient_rotation_window_next_open_timestamp_seconds` instead.
 
 ---
 
@@ -474,7 +506,8 @@ Whether the client's maintenance window is currently open (`1`) or closed (`0`).
 for enabled clients that configure `spec.clientSecretRotation.window`. The value refreshes each
 reconcile (default every ~2 minutes). The bundled dashboard surfaces it as the **Window** column
 of the Rotation Schedule table; it also works well in a state-timeline panel that shows when
-windows were open over time. Absent for clients with no window (rotation may fire anytime).
+windows were open over time. Absent for interval-only clients with no window configured
+(rotation may fire any time the interval has elapsed).
 
 ---
 
@@ -504,7 +537,7 @@ rates and to alert specifically on failed scheduled rotations.
 | `namespace` | Kubernetes namespace of the `PocketIDOIDCClient` |
 | `name` | Kubernetes name of the `PocketIDOIDCClient` |
 | `result` | `success`, `error` |
-| `trigger` | `scheduled` (interval-driven), `manual` (`regenerate-client-secret` annotation), `initial` (secret created/seeded) |
+| `trigger` | `scheduled` (interval-driven or window-driven automatic rotation), `manual` (`regenerate-client-secret` annotation), `initial` (secret created/seeded) |
 
 ---
 
@@ -513,11 +546,12 @@ rates and to alert specifically on failed scheduled rotations.
 **Type:** Counter
 **Labels:** `namespace`, `name`, `reason`
 
-Counts occasions where a scheduled rotation was **due** (its interval had elapsed) but a
-downstream gate prevented it from firing. This is the "out of schedule / why" signal.
+Counts occasions where a scheduled rotation was **due** (its trigger fired — an elapsed interval,
+or in window-driven mode an opening that has not been served) but a downstream gate prevented it
+from firing. This is the "out of schedule / why" signal.
 
 | Label | Values |
 |-------|--------|
 | `namespace` | Kubernetes namespace of the `PocketIDOIDCClient` |
 | `name` | Kubernetes name of the `PocketIDOIDCClient` |
-| `reason` | `window_closed` (outside the maintenance window), `min_spacing` (instance min-spacing not yet satisfied), `window_error` (invalid window configuration) |
+| `reason` | `window_closed` (interval-driven: an elapsed interval is waiting for its window to open — healthy), `window_missed` (window-driven: an opening came and went unserved, so the rotation has fallen a full cycle behind), `min_spacing` (instance min-spacing not yet satisfied), `window_error` (invalid window configuration) |
