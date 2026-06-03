@@ -53,6 +53,7 @@ import (
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 	"github.com/aclerici38/pocket-id-operator/internal/metrics"
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
 const (
@@ -72,11 +73,30 @@ const (
 	defaultMountPath = "/app/data"
 )
 
+// APIClientFactory builds the Pocket-ID API client used to talk to an instance.
+// It mirrors common.GetAPIClient and exists so tests can inject a client that
+// targets a local server instead of the in-cluster Service DNS name, which is
+// unresolvable under envtest.
+type APIClientFactory func(ctx context.Context, k8sClient client.Client, apiReader client.Reader, instance *pocketidinternalv1alpha1.PocketIDInstance) (*pocketid.Client, error)
+
 // Reconciler reconciles a PocketIDInstance object
 type Reconciler struct {
 	client.Client
 	APIReader client.Reader
 	Scheme    *runtime.Scheme
+
+	// NewAPIClient builds the Pocket-ID API client for an instance. When nil it
+	// defaults to common.GetAPIClient; tests override it to avoid real network I/O.
+	NewAPIClient APIClientFactory
+}
+
+// apiClientFor returns the Pocket-ID API client for the instance, using the
+// injected factory when set and falling back to the production default.
+func (r *Reconciler) apiClientFor(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) (*pocketid.Client, error) {
+	if r.NewAPIClient != nil {
+		return r.NewAPIClient(ctx, r.Client, r.APIReader, instance)
+	}
+	return common.GetAPIClient(ctx, r.Client, r.APIReader, instance)
 }
 
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidinstances,verbs=get;list;watch;create;update;patch;delete
@@ -162,7 +182,7 @@ func (r *Reconciler) reconcileExternal(ctx context.Context, instance *pocketidin
 	reason := "Unreachable"
 	var message string
 
-	apiClient, err := common.GetAPIClient(ctx, r.Client, r.APIReader, instance)
+	apiClient, err := r.apiClientFor(ctx, instance)
 	if err != nil {
 		reason = "APIClientError"
 		message = err.Error()
@@ -772,7 +792,7 @@ func (r *Reconciler) reconcileVolume(ctx context.Context, instance *pocketidinte
 }
 
 func (r *Reconciler) reconcileVersion(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
-	apiClient, err := common.GetAPIClient(ctx, r.Client, r.APIReader, instance)
+	apiClient, err := r.apiClientFor(ctx, instance)
 	if err != nil {
 		return err
 	}
