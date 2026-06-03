@@ -183,7 +183,7 @@ jobs:
         uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: "2026.5.18"
+          version: "2026.6.0"
           install_args: "go:sigs.k8s.io/controller-tools/cmd/controller-gen kustomize"
 
       - name: Generate install manifest
