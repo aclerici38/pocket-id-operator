@@ -502,6 +502,7 @@ func TestAdvanceInstanceRotationStatus(t *testing.T) {
 		storedAgg   *time.Time // aggregate persisted on the API server (what APIReader sees)
 		cachedAgg   *time.Time // aggregate on the in-scope (possibly stale) instance
 		annotation  *time.Time // secret's lastRotatedAtAnnotation, nil = no annotation
+		rotatedNow  bool       // whether the rotation happened in this same reconcile
 		wantStored  *time.Time // expected persisted aggregate after the call
 		wantPatched bool       // whether the stored object should have changed
 	}{
@@ -510,6 +511,16 @@ func TestAdvanceInstanceRotationStatus(t *testing.T) {
 			storedAgg:   nil, // previous reconcile rotated but failed to persist this
 			cachedAgg:   nil,
 			annotation:  tp(t1),
+			rotatedNow:  false, // not this reconcile → genuine lost-write
+			wantStored:  tp(t1),
+			wantPatched: true,
+		},
+		{
+			name:        "expected advance after this reconcile's rotation",
+			storedAgg:   nil, // we are the first writer of the aggregate for this rotation
+			cachedAgg:   nil,
+			annotation:  tp(t1),
+			rotatedNow:  true,
 			wantStored:  tp(t1),
 			wantPatched: true,
 		},
@@ -553,7 +564,7 @@ func TestAdvanceInstanceRotationStatus(t *testing.T) {
 			cached := instanceWith(tc.cachedAgg)
 			cached.ResourceVersion = stored.ResourceVersion
 
-			if err := reconciler.advanceInstanceRotationStatus(context.Background(), cached, secretWith(tc.annotation)); err != nil {
+			if err := reconciler.advanceInstanceRotationStatus(context.Background(), cached, secretWith(tc.annotation), tc.rotatedNow); err != nil {
 				t.Fatalf("advanceInstanceRotationStatus returned error: %v", err)
 			}
 

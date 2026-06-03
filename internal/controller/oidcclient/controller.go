@@ -1011,8 +1011,11 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 	r.applyRotationStatus(ctx, oidcClient, rotatedAt)
 
 	// Set instance rotation status each reconcile to self-correct
-	// when secret write succeeds but instance.status write fails
-	if err := r.advanceInstanceRotationStatus(ctx, instance, secret); err != nil {
+	// when secret write succeeds but instance.status write fails.
+	// rotatedThisReconcile distinguishes the expected advance that follows a rotation we just
+	// performed from a genuine lost-write recovered on a later reconcile.
+	rotatedThisReconcile := rotatedAt != nil && scheduledRotation
+	if err := r.advanceInstanceRotationStatus(ctx, instance, secret, rotatedThisReconcile); err != nil {
 		return fmt.Errorf("failed to advance instance rotation status: %w", err)
 	}
 
@@ -1078,7 +1081,12 @@ func (r *Reconciler) applyRotationStatus(ctx context.Context, oidcClient *pocket
 // rotations never set that annotation, so they cannot move the aggregate.
 //
 // Check cached first, then verify via apiReader. The advance is monotonic.
-func (r *Reconciler) advanceInstanceRotationStatus(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, secret *corev1.Secret) error {
+//
+// rotatedThisReconcile reports whether the caller performed the scheduled rotation in this same
+// reconcile. When true, the aggregate trailing the rotation is expected (this call is its first
+// writer) and the advance is logged at V(1). When false, a trailing aggregate means a prior
+// reconcile rotated but failed to persist it.
+func (r *Reconciler) advanceInstanceRotationStatus(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, secret *corev1.Secret, rotatedThisReconcile bool) error {
 	ts, ok := secret.Annotations[lastScheduledRotationAtAnnotation]
 	if !ok {
 		return nil
@@ -1104,13 +1112,19 @@ func (r *Reconciler) advanceInstanceRotationStatus(ctx context.Context, instance
 		return nil
 	}
 
-	// Reaching here means the strongly-consistent read still trails the rotation we just
-	// recorded: a previous reconcile rotated the secret but failed to persist the instance
-	// aggregate, leaving min-spacing blind until now. Flag the self-heal.
-	logf.FromContext(ctx).Info("WARNING: instance rotation aggregate fell behind a recorded rotation, advancing to self-heal",
-		"instance", client.ObjectKeyFromObject(fresh),
-		"cachedLastRotatedClientSecret", fresh.Status.LastRotatedClientSecret,
-		"advancingTo", rotatedAt.UTC().Format(time.RFC3339))
+	// The strongly-consistent read still trails the recorded rotation. If we rotated in this
+	// reconcile, that's the expected first write of the aggregate (debug). Otherwise a prior
+	// reconcile rotated but failed to persist the aggregate, leaving min-spacing blind until now.
+	if rotatedThisReconcile {
+		logf.FromContext(ctx).V(1).Info("Advancing instance rotation aggregate after rotation",
+			"instance", client.ObjectKeyFromObject(fresh),
+			"advancingTo", rotatedAt.UTC().Format(time.RFC3339))
+	} else {
+		logf.FromContext(ctx).Info("WARNING: instance rotation aggregate fell behind a recorded rotation, advancing to self-heal",
+			"instance", client.ObjectKeyFromObject(fresh),
+			"cachedLastRotatedClientSecret", fresh.Status.LastRotatedClientSecret,
+			"advancingTo", rotatedAt.UTC().Format(time.RFC3339))
+	}
 
 	base := fresh.DeepCopy()
 	fresh.Status.LastRotatedClientSecret = &metav1.Time{Time: rotatedAt}
@@ -1242,9 +1256,9 @@ func (r *Reconciler) rotationDue(ctx context.Context, oidcClient *pocketidintern
 	}
 	if !owed {
 		if rot.Interval != nil {
-			log.Info("Secret rotation not due: interval not yet elapsed", "nextEligible", eval.nextEligible())
+			log.V(1).Info("Secret rotation not due: interval not yet elapsed", "nextEligible", eval.nextEligible())
 		} else {
-			log.Info("Secret rotation not due: no maintenance window has opened since the last rotation",
+			log.V(1).Info("Secret rotation not due: no maintenance window has opened since the last rotation",
 				"lastRotated", eval.lastRotated)
 		}
 		return eval, nil
@@ -1261,7 +1275,7 @@ func (r *Reconciler) rotationDue(ctx context.Context, oidcClient *pocketidintern
 		if rot.Interval == nil {
 			eval.deferReason = "window_missed"
 		}
-		log.Info("Secret rotation deferred: maintenance window closed",
+		log.V(1).Info("Secret rotation deferred: maintenance window closed",
 			"reason", eval.deferReason, "windowOpens", rot.Window.Opens, "closesAfter", rot.Window.ClosesAfter.Duration)
 		return eval, nil
 	}
