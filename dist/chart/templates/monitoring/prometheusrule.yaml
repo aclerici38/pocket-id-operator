@@ -124,7 +124,9 @@ spec:
               {{`{{ $labels.namespace }}`}}/{{`{{ $labels.name }}`}} (trigger
               {{`{{ $labels.trigger }}`}}) failed in the last hour.
 
-        # -- A client with rotation enabled is overdue, a gate is perpetually blocking it
+        # -- An interval-driven client has been eligible to rotate for over 24h but a gate keeps
+        # -- blocking it. Keyed off the next-eligible gauge, which only interval-driven clients
+        # -- export; window-driven clients are covered by PocketIDOIDCClientRotationWindowMissed.
         - alert: PocketIDOIDCClientRotationOverdue
           expr: |-
             (pocketid_operator_oidcclient_rotation_enabled == 1)
@@ -137,14 +139,38 @@ spec:
               Client-secret rotation overdue for {{`{{ $labels.namespace }}`}}/{{`{{ $labels.name }}`}}
             description: >-
               The PocketIDOIDCClient {{`{{ $labels.namespace }}`}}/{{`{{ $labels.name }}`}} has been
-              eligible for client-secret rotation for over 24h but has not rotated. A maintenance
-              window misconfiguration or instance-wide min-spacing starvation may be blocking it.
+              eligible for interval-driven client-secret rotation for over 24h but has not rotated.
+              A maintenance window misconfiguration or instance-wide min-spacing starvation may be
+              blocking it.
 
-        # -- Scheduled rotations are being deferred persistently (e.g. min-spacing starvation)
+        # -- A window-driven client (no interval) keeps missing its maintenance window: an opening
+        # -- came and went without rotating, repeatedly, for longer than a typical daily cycle.
+        # -- This is the window-driven analog of RotationOverdue. Tune `for` above your window
+        # -- period so a single transient miss (adoption, one brief outage) self-heals quietly.
+        - alert: PocketIDOIDCClientRotationWindowMissed
+          expr: |-
+            sum by (namespace, name) (
+              increase(pocketid_operator_oidcclient_rotation_deferred_total{reason="window_missed"}[1h])
+            ) > 0
+          for: 24h
+          labels:
+            severity: warning
+          annotations:
+            summary: >-
+              Client-secret rotation window repeatedly missed for {{`{{ $labels.namespace }}`}}/{{`{{ $labels.name }}`}}
+            description: >-
+              The window-driven PocketIDOIDCClient {{`{{ $labels.namespace }}`}}/{{`{{ $labels.name }}`}}
+              has had its maintenance window open and close without rotating for over 24h. The
+              operator may be missing the window (window narrower than the reconcile interval) or
+              instance-wide min-spacing may be starving it at every opening.
+
+        # -- Scheduled rotations are being deferred persistently. Excludes window_missed (its own
+        # -- warning alert above); the remaining reasons are expected throttling (window_closed —
+        # -- an interval client waiting for its window; min_spacing) or config errors (window_error).
         - alert: PocketIDOIDCClientRotationDeferrals
           expr: |-
             sum by (namespace, name, reason) (
-              increase(pocketid_operator_oidcclient_rotation_deferred_total[1h])
+              increase(pocketid_operator_oidcclient_rotation_deferred_total{reason!="window_missed"}[1h])
             ) > 0
           for: 6h
           labels:
@@ -155,7 +181,8 @@ spec:
             description: >-
               A due client-secret rotation for {{`{{ $labels.namespace }}`}}/{{`{{ $labels.name }}`}}
               has been deferred (reason: {{`{{ $labels.reason }}`}}) continuously for over 6 hours.
-              This is expected for narrow maintenance windows but may indicate min-spacing starvation.
+              This is expected for narrow maintenance windows but may indicate min-spacing starvation
+              or, for window_error, an invalid maintenance-window configuration.
 
         {{- with .Values.metrics.prometheusRule.additionalRules }}
         {{- toYaml . | nindent 8 }}

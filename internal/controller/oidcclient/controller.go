@@ -1127,7 +1127,9 @@ type regenDecision struct {
 	regenerate bool
 	// trigger is "initial", "manual", or "scheduled"; only meaningful when regenerate is true.
 	trigger string
-	// scheduled is true only for interval-driven rotations.
+	// scheduled is true for any automatic scheduled rotation (interval- or window-driven);
+	// false for "initial" and "manual" triggers. Only scheduled rotations advance the
+	// instance-wide aggregate.
 	scheduled bool
 	existing  *corev1.Secret
 	// eval holds the rotation evaluation. evaluated reports whether it was populated (i.e.
@@ -1173,9 +1175,38 @@ func (r *Reconciler) secretRegenDecision(ctx context.Context, oidcClient *pocket
 	return d, nil
 }
 
-// rotationDue checks whether all three rotation gates pass: interval elapsed,
-// optional maintenance window, and instance-wide min-spacing satisfied. It returns a
-// rotationEval describing the decision (and, when a due rotation was blocked, which gate
+// rotationTrigger reports whether a rotation is owed — its time-based trigger has fired since the
+// anchor (last rotation, or creation when never rotated) — and the current state of any configured
+// maintenance window. The two trigger modes are selected by whether interval is set:
+//   - interval set:   owed once the interval has elapsed. The window, if configured, is evaluated
+//     only when owed (its open state confines the rotation but never triggers it).
+//   - interval unset: window-driven. The window opening is the trigger, so owed and the window's
+//     open state are derived together from the same schedule: owed means a window
+//     has opened since the anchor that has not been acted on.
+//
+// hasWindow reports whether a window is configured. An invalid window returns an error.
+func rotationTrigger(rot *pocketidinternalv1alpha1.ClientSecretRotation, lastRotated, creation, now time.Time) (owed, windowOpen, hasWindow bool, err error) {
+	hasWindow = rot.Window != nil
+	if rot.Interval != nil {
+		owed = intervalElapsed(now, lastRotated, creation, rot.Interval.Duration)
+		if owed && hasWindow {
+			windowOpen, err = withinWindow(now, rot.Window.Opens, rot.Window.ClosesAfter.Duration)
+		}
+		return owed, windowOpen, hasWindow, err
+	}
+	// Interval unset: the window is the sole trigger, so it must be configured. Admission (CEL)
+	// guarantees this for enabled rotations, but guard the dereference so a malformed object
+	// surfaces a clear error instead of panicking the reconcile loop.
+	if !hasWindow {
+		return false, false, false, fmt.Errorf("rotation has neither interval nor window configured")
+	}
+	windowOpen, owed, err = windowRotationDue(now, rotationAnchor(lastRotated, creation), rot.Window.Opens, rot.Window.ClosesAfter.Duration)
+	return owed, windowOpen, hasWindow, err
+}
+
+// rotationDue checks whether all rotation gates pass: the time-based trigger (interval-driven or
+// window-driven), the optional maintenance window, and instance-wide min-spacing. It returns a
+// rotationEval describing the decision (and, when an owed rotation was blocked, which gate
 // deferred it) so callers can drive logging, metrics, and the schedule gauges.
 // The min-spacing check fetches a fresh instance status directly from the API server
 // (bypassing the cache) so a rotation written by a previous reconcile is visible immediately.
@@ -1188,39 +1219,51 @@ func (r *Reconciler) rotationDue(ctx context.Context, oidcClient *pocketidintern
 		return eval, nil
 	}
 	eval.enabled = true
-	eval.interval = rot.Interval.Duration
 	now := time.Now()
+	creation := oidcClient.CreationTimestamp.Time
 
-	// Gate 1: interval elapsed since last rotation.
+	// Read the last rotation timestamp; the zero value means the secret has never been rotated.
 	if ts, ok := existingSecret.Annotations[lastRotatedAtAnnotation]; ok {
 		if t, err := time.Parse(time.RFC3339, ts); err == nil {
 			eval.lastRotated = t
 		}
 	}
-	eval.anchor = rotationAnchor(eval.lastRotated, oidcClient.CreationTimestamp.Time)
+	eval.anchor = rotationAnchor(eval.lastRotated, creation)
+	if rot.Interval != nil {
+		eval.interval = rot.Interval.Duration
+	}
 
-	log.V(1).Info("Evaluating secret rotation",
-		"interval", eval.interval, "lastRotated", eval.lastRotated, "nextEligible", eval.nextEligible())
-
-	if !intervalElapsed(now, eval.lastRotated, oidcClient.CreationTimestamp.Time, eval.interval) {
-		log.Info("Secret rotation not due: interval not yet elapsed", "nextEligible", eval.nextEligible())
+	// Gate 1: trigger. A rotation is "owed" when its time-based trigger has fired since the anchor
+	// — an elapsed interval (interval-driven) or a maintenance-window opening (window-driven).
+	owed, windowOpen, hasWindow, err := rotationTrigger(rot, eval.lastRotated, creation, now)
+	if err != nil {
+		eval.deferReason = "window_error"
+		return eval, err
+	}
+	if !owed {
+		if rot.Interval != nil {
+			log.Info("Secret rotation not due: interval not yet elapsed", "nextEligible", eval.nextEligible())
+		} else {
+			log.Info("Secret rotation not due: no maintenance window has opened since the last rotation",
+				"lastRotated", eval.lastRotated)
+		}
 		return eval, nil
 	}
-	eval.intervalElapsed = true
 
-	// Gate 2: optional maintenance window — checked before the API call below.
-	if rot.Window != nil {
-		inWindow, err := withinWindow(now, rot.Window.Opens, rot.Window.ClosesAfter.Duration)
-		if err != nil {
-			eval.deferReason = "window_error"
-			return eval, err
+	// Gate 2: maintenance window. When configured, an owed rotation may only fire while the window
+	// is open; otherwise it is deferred. The two modes record distinct reasons because they mean
+	// opposite things: interval-driven "window_closed" is healthy waiting (the interval elapsed
+	// ahead of the window and will rotate at the next opening), whereas window-driven
+	// "window_missed" means an opening passed unserved (operator down, min-spacing starvation, or
+	// a freshly adopted secret) and the rotation has fallen a full cycle behind.
+	if hasWindow && !windowOpen {
+		eval.deferReason = "window_closed"
+		if rot.Interval == nil {
+			eval.deferReason = "window_missed"
 		}
-		if !inWindow {
-			eval.deferReason = "window_closed"
-			log.Info("Secret rotation deferred: maintenance window closed",
-				"windowOpens", rot.Window.Opens, "closesAfter", rot.Window.ClosesAfter.Duration)
-			return eval, nil
-		}
+		log.Info("Secret rotation deferred: maintenance window closed",
+			"reason", eval.deferReason, "windowOpens", rot.Window.Opens, "closesAfter", rot.Window.ClosesAfter.Duration)
+		return eval, nil
 	}
 
 	// Gate 3: instance-wide min-spacing. Bypass the cache for a fresh status read

@@ -31,12 +31,52 @@ metadata:
 In the helm chart this is `operator.timezone`; if you have an instance configured **via the chart** the value
 can be derived from `instance.spec.timezone` in the chart values.
 
-When `spec.clientSecretRotation.enabled` is true, the operator automatically regenerates
-the OIDC client secret on a schedule. A rotation fires only when the configured interval
-has elapsed, the instance-wide minimum spacing is satisfied, and (if configured) the
-current time falls inside the maintenance window.
+When `spec.clientSecretRotation.enabled` is true, the operator automatically regenerates the
+OIDC client secret on a schedule. Every scheduled rotation passes through up to three gates, in
+order:
 
-Currently manual regeneration (setting `pocketid.internal/regenerate-client-secret` annotation) is accounted for by the rotation interval on the respective OIDC client but not the global minimum spacing. For example, if `spec.OIDCClientRotation.minSpacing` is set to `4h`, and 2 hours have elapsed since the last auto-rotation, setting the annotation will NOT delay the auto-rotation but it WILL reset the interval on the manually-rotated OIDC client.
+1. **Trigger** — the time-based condition that makes a rotation *due*. This is either the
+   per-client `interval`, the per-client `window`, or both (see [Trigger modes](#trigger-modes)).
+2. **Maintenance window** — when a `window` is configured, the rotation may only fire while the
+   window is open.
+3. **Instance min-spacing** — `spec.OIDCClientRotation.minSpacing` on the `PocketIDInstance`
+   throttles how often *any* client on the instance rotates. Applies in every trigger mode.
+
+A rotation only happens when all applicable gates pass on the same reconcile. The rotation
+**anchor** is the last rotation or the client's creation time when it has never rotated.
+
+### Trigger modes
+
+You must configure at least one trigger (`interval`, `window`, or both) when rotation is
+enabled.
+
+| `interval` | `window` | Mode | When a rotation becomes due |
+| --- | --- | --- | --- |
+| set | unset | **Interval-driven** | As soon as `interval` has elapsed since the anchor. |
+| set | set | **Interval-driven, window-confined** | `interval` has elapsed **and** the window is open. If the interval elapses while the window is closed, the rotation waits (and is reported as deferred) until the next time the window opens. |
+| unset | set | **Window-driven** | Once per window opening: the window opening *is* the trigger. The secret rotates the first reconcile inside an opening it has not already rotated for. |
+| unset | unset | — | Rejected by the API server (no trigger). |
+
+When both are set, `window.closesAfter` must not exceed `interval`.
+
+#### Window-driven mode (interval omitted)
+
+With no `interval`, the maintenance window's cron `opens` schedule is the trigger. The secret
+rotates **once per opening**: the first reconcile inside a given window after the anchor rotates,
+and subsequent reconciles in that same opening do nothing. The next opening triggers the next
+rotation.
+
+If an opening is missed entirely — the operator was down, instance min-spacing consumed the whole
+window, or the client was adopted with an existing secret but no recorded rotation — that pending
+rotation is reported as deferred (`reason="window_missed"`) until the window next opens. This is a
+distinct signal from interval mode's `window_closed` (an elapsed interval *healthily* waiting for
+an upcoming window): a missed opening means the rotation has fallen a full cycle behind. (A
+brand-new client with no secret yet takes the immediate `initial` path instead, not the window
+trigger.)
+
+### Examples
+
+Interval-driven, optionally confined to a nightly window:
 
 ```yaml
 spec:
@@ -48,14 +88,35 @@ spec:
       closesAfter: "4h"             # window is open for 4 hours
 ```
 
-To throttle how frequently rotations happen across all clients on an instance, set
-`spec.OIDCClientRotation.minSpacing` on the `PocketIDInstance`:
+Window-driven — rotate once at every window opening, with no fixed interval:
+
+```yaml
+spec:
+  clientSecretRotation:
+    enabled: true
+    window:
+      opens: "0 3 * * 0"            # cron (local TZ): 3am every Sunday
+      closesAfter: "1h"             # window is open for 1 hour
+```
+
+### Instance-wide minimum spacing
+
+To throttle how frequently rotations happen across all clients on an instance — regardless of
+trigger mode — set `spec.OIDCClientRotation.minSpacing` on the `PocketIDInstance`:
 
 ```yaml
 spec:
   OIDCClientRotation:
     minSpacing: "1h"                 # at most one rotation per hour across all clients
 ```
+
+### Manual regeneration interaction
+
+Manual regeneration (setting the `pocketid.internal/regenerate-client-secret` annotation) is
+accounted for by the per-client trigger on the respective OIDC client but **not** by the global
+minimum spacing. For example, if `spec.OIDCClientRotation.minSpacing` is set to `4h` and 2 hours
+have elapsed since the last auto-rotation, setting the annotation will NOT delay the auto-rotation
+but it WILL reset the rotation anchor on the manually-rotated OIDC client.
 
 ## Minimal Public Client
 

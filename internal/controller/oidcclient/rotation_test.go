@@ -131,6 +131,63 @@ func TestWindowState_InvalidCron(t *testing.T) {
 	}
 }
 
+// TestWindowRotationDue pins the window-driven open/owed evaluation against a fixed clock. The
+// window opens at 1am daily and stays open 4h (open 1am–5am); the most recent fire relative to the
+// test instants is 1am on Jan 31.
+func TestWindowRotationDue(t *testing.T) {
+	const opens = "0 1 * * *"
+	const closesAfter = 4 * time.Hour
+	opensAt := time.Date(2026, 1, 31, 1, 0, 0, 0, time.UTC)
+	insideWindow := time.Date(2026, 1, 31, 2, 0, 0, 0, time.UTC)
+	outsideWindow := time.Date(2026, 1, 31, 6, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name     string
+		now      time.Time
+		anchor   time.Time
+		wantOpen bool
+		wantOwed bool
+		wantErr  bool
+	}{
+		{name: "open and anchor before the opening is owed", now: insideWindow, anchor: opensAt.Add(-24 * time.Hour), wantOpen: true, wantOwed: true},
+		{name: "open but anchor at the opening is not owed", now: insideWindow, anchor: opensAt, wantOpen: true, wantOwed: false},
+		{name: "open but anchor after the opening is not owed", now: insideWindow, anchor: opensAt.Add(30 * time.Minute), wantOpen: true, wantOwed: false},
+		{name: "closed with a missed opening is owed", now: outsideWindow, anchor: opensAt.Add(-24 * time.Hour), wantOpen: false, wantOwed: true},
+		{name: "closed with no opening since anchor is not owed", now: outsideWindow, anchor: opensAt.Add(30 * time.Minute), wantOpen: false, wantOwed: false},
+		{name: "zero anchor (never rotated) is owed", now: insideWindow, anchor: time.Time{}, wantOpen: true, wantOwed: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			open, owed, err := windowRotationDue(tc.now, tc.anchor, opens, closesAfter)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if open != tc.wantOpen {
+				t.Errorf("open = %v, want %v", open, tc.wantOpen)
+			}
+			if owed != tc.wantOwed {
+				t.Errorf("owed = %v, want %v", owed, tc.wantOwed)
+			}
+		})
+	}
+}
+
+func TestWindowRotationDue_InvalidCron(t *testing.T) {
+	now := time.Date(2026, 1, 31, 2, 0, 0, 0, time.UTC)
+	if _, _, err := windowRotationDue(now, time.Time{}, "not a cron", 4*time.Hour); err == nil {
+		t.Error("expected error for invalid cron expression")
+	}
+}
+
+func TestWindowRotationDue_ClosesAfterTooLong(t *testing.T) {
+	// closesAfter (2m) is not shorter than the every-minute repeat period (1m) → error.
+	now := time.Date(2026, 1, 31, 2, 0, 0, 0, time.UTC)
+	if _, _, err := windowRotationDue(now, time.Time{}, "* * * * *", 2*time.Minute); err == nil {
+		t.Error("expected error when closesAfter exceeds the cron repeat period")
+	}
+}
+
 func TestMinSpacingOK_ZeroSpacing(t *testing.T) {
 	now := time.Date(2026, 1, 31, 12, 0, 0, 0, time.UTC)
 	recent := metav1.NewTime(now.Add(-30 * time.Second))
