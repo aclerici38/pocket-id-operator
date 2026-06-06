@@ -37,29 +37,36 @@
       "minimumGroupSize": 2
     },
     {
-      "matchPackagePatterns": ["^k8s\\.io/", "^sigs\\.k8s\\.io/"],
-      "matchPackageNames": ["kubernetes/kubernetes"],
+      "matchPackageNames": ["kubernetes/kubernetes", "/^k8s\\.io//", "/^sigs\\.k8s\\.io//"],
       "groupName": "kubernetes"
     },
     {
-      "matchPackagePatterns": ["^github\\.com/go-openapi/"],
-      "groupName": "go-openapi"
+      "groupName": "go-openapi",
+      "matchPackageNames": [
+        "/^github\\.com/go-openapi//"
+      ]
     },
     {
-      "matchPackagePatterns": ["^go\\.opentelemetry\\.io/"],
-      "groupName": "opentelemetry"
+      "groupName": "opentelemetry",
+      "matchPackageNames": [
+        "/^go\\.opentelemetry\\.io//"
+      ]
     },
     {
-      "matchPackagePatterns": ["^golang\\.org/x/"],
-      "groupName": "golang.org/x"
+      "groupName": "golang.org/x",
+      "matchPackageNames": [
+        "/^golang\\.org/x//"
+      ]
     },
     {
       "matchPackageNames": ["github.com/onsi/ginkgo/v2", "github.com/onsi/gomega"],
       "groupName": "onsi"
     },
     {
-      "matchPackagePatterns": ["^github\\.com/prometheus/"],
-      "groupName": "prometheus"
+      "groupName": "prometheus",
+      "matchPackageNames": [
+        "/^github\\.com/prometheus//"
+      ]
     }
   ],
   "customManagers": [
