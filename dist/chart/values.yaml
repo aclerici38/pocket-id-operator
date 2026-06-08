@@ -104,8 +104,8 @@ metrics:
       enabled: true
       allowCrossNamespaceImport: true
       instanceSelector:
-        matchLabels:
-          grafana.internal/instance: grafana
+        # Defaults to {grafana.internal/instance: grafana} when left empty.
+        matchLabels: {}
 
 # PocketIDInstance configuration
 # Creates a PocketIDInstance custom resource when enabled
