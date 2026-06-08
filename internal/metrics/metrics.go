@@ -224,6 +224,21 @@ var (
 		[]string{"namespace", "name"},
 	)
 
+	// OIDCClientRotationWindowNextCloseTimestamp exposes the Unix timestamp (seconds) at which the
+	// maintenance window next closes: the close of the currently-open window, or of the next window
+	// to open when currently closed. Only set for enabled clients that configure a window.
+	// Labels:
+	//
+	//	namespace - Kubernetes namespace of the PocketIDOIDCClient
+	//	name      - Kubernetes name of the PocketIDOIDCClient
+	OIDCClientRotationWindowNextCloseTimestamp = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "pocketid_operator_oidcclient_rotation_window_next_close_timestamp_seconds",
+			Help: "Unix timestamp (seconds) at which a PocketIDOIDCClient maintenance window next closes.",
+		},
+		[]string{"namespace", "name"},
+	)
+
 	// OIDCClientSecretRotations counts client-secret rotation attempts that actually reached the
 	// Pocket-ID regenerate call (i.e. the operator decided to rotate), partitioned by outcome and
 	// what triggered them.
@@ -242,12 +257,13 @@ var (
 	)
 
 	// OIDCClientRotationDeferred counts occasions where a scheduled rotation was due (its interval
-	// had elapsed) but a downstream gate prevented it from firing.
+	// had elapsed, or a maintenance window opened) but a downstream gate prevented it from firing.
 	// Labels:
 	//
 	//	namespace - Kubernetes namespace of the PocketIDOIDCClient
 	//	name      - Kubernetes name of the PocketIDOIDCClient
-	//	reason    - "window_closed", "min_spacing", or "window_error"
+	//	reason    - "window_closed" (interval-driven, waiting for its window), "window_missed"
+	//	            (window-driven, an opening passed unserved), "min_spacing", or "window_error"
 	OIDCClientRotationDeferred = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "pocketid_operator_oidcclient_rotation_deferred_total",
@@ -274,6 +290,7 @@ func init() {
 		OIDCClientNextRotationTimestamp,
 		OIDCClientRotationWindowOpen,
 		OIDCClientRotationWindowNextOpenTimestamp,
+		OIDCClientRotationWindowNextCloseTimestamp,
 		OIDCClientSecretRotations,
 		OIDCClientRotationDeferred,
 	)
@@ -328,6 +345,27 @@ func DeleteOIDCClientAllowedGroupCount(namespace, name string) {
 	OIDCClientAllowedGroupCount.DeleteLabelValues(namespace, name)
 }
 
+// rotationResults and rotationTriggers enumerate the label values of the secret-rotation counter
+// so its series can be pre-initialised to 0.
+var (
+	rotationResults  = []string{"success", "error"}
+	rotationTriggers = []string{"scheduled", "manual", "initial"}
+)
+
+// InitOIDCClientRotationCounters ensures the OIDCClientSecretRotations series exist at 0 for every
+// result/trigger combination of a client. Without this, a client's first rotation of a given kind
+// is born as a fresh series at value 1, and increase()/rate() cannot measure a step that has no
+// prior sample — so that first rotation is silently dropped from event timelines and rate-based
+// alerts (e.g. a one-off manual rotation never appears). Pre-seeding 0 makes it a visible 0→1 step.
+// Safe to call every reconcile; Add(0) is a no-op once a series exists.
+func InitOIDCClientRotationCounters(namespace, name string) {
+	for _, result := range rotationResults {
+		for _, trigger := range rotationTriggers {
+			OIDCClientSecretRotations.WithLabelValues(namespace, name, result, trigger).Add(0)
+		}
+	}
+}
+
 // SetOIDCClientRotationEnabled records whether scheduled rotation is enabled for a client.
 func SetOIDCClientRotationEnabled(namespace, name string, enabled bool) {
 	val := 0.0
@@ -360,9 +398,9 @@ func setOrDelete(gauge *prometheus.GaugeVec, namespace, name string, value float
 }
 
 // SetOIDCClientRotationWindow records the maintenance window gauges for a client: whether the
-// window is currently open and when it next opens (Unix seconds). Pass a non-positive
-// nextOpenUnix to skip the next-open gauge.
-func SetOIDCClientRotationWindow(namespace, name string, open bool, nextOpenUnix float64) {
+// window is currently open, when it next opens, and when it next closes (Unix seconds). Pass a
+// non-positive nextOpenUnix or nextCloseUnix to skip the corresponding gauge.
+func SetOIDCClientRotationWindow(namespace, name string, open bool, nextOpenUnix, nextCloseUnix float64) {
 	val := 0.0
 	if open {
 		val = 1.0
@@ -371,6 +409,9 @@ func SetOIDCClientRotationWindow(namespace, name string, open bool, nextOpenUnix
 	if nextOpenUnix > 0 {
 		OIDCClientRotationWindowNextOpenTimestamp.WithLabelValues(namespace, name).Set(nextOpenUnix)
 	}
+	if nextCloseUnix > 0 {
+		OIDCClientRotationWindowNextCloseTimestamp.WithLabelValues(namespace, name).Set(nextCloseUnix)
+	}
 }
 
 // DeleteOIDCClientRotationWindow removes the maintenance window gauges for a client. Used when
@@ -378,6 +419,7 @@ func SetOIDCClientRotationWindow(namespace, name string, open bool, nextOpenUnix
 func DeleteOIDCClientRotationWindow(namespace, name string) {
 	OIDCClientRotationWindowOpen.DeleteLabelValues(namespace, name)
 	OIDCClientRotationWindowNextOpenTimestamp.DeleteLabelValues(namespace, name)
+	OIDCClientRotationWindowNextCloseTimestamp.DeleteLabelValues(namespace, name)
 }
 
 // DeleteOIDCClientRotationSchedule removes the interval/last/next and maintenance window gauges
