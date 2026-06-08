@@ -4,6 +4,13 @@ metadata:
   labels:
     {{- include "chart.labels" . | nindent 4 }}
     control-plane: controller-manager
+    {{- with .Values.operator.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.operator.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   name: pocket-id-operator
   namespace: {{ .Release.Namespace }}
 spec:
@@ -16,9 +23,15 @@ spec:
     metadata:
       annotations:
         kubectl.kubernetes.io/default-container: operator
+        {{- with .Values.operator.annotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       labels:
         app.kubernetes.io/name: pocket-id-operator
         control-plane: controller-manager
+        {{- with .Values.operator.labels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
       affinity:
         nodeAffinity:

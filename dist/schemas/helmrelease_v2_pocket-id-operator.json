@@ -5391,6 +5391,22 @@
                   },
                   "default": []
                 },
+                "labels": {
+                  "type": "object",
+                  "description": "Additional labels applied to the operator Deployment and its pod template",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "default": {}
+                },
+                "annotations": {
+                  "type": "object",
+                  "description": "Additional annotations applied to the operator Deployment and its pod template",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "default": {}
+                },
                 "podSecurityContext": {
                   "type": "object",
                   "description": "Pod-level security context for the operator"

@@ -21,13 +21,17 @@
         "labels": {
           "type": "object",
           "description": "Additional labels for the PocketIDInstance resource",
-          "additionalProperties": { "type": "string" },
+          "additionalProperties": {
+            "type": "string"
+          },
           "default": {}
         },
         "annotations": {
           "type": "object",
           "description": "Additional annotations for the PocketIDInstance resource",
-          "additionalProperties": { "type": "string" },
+          "additionalProperties": {
+            "type": "string"
+          },
           "default": {}
         },
         "spec": {},
@@ -48,15 +52,23 @@
             "labels": {
               "type": "object",
               "description": "Additional labels for the ServiceMonitor",
-              "additionalProperties": { "type": "string" }
+              "additionalProperties": {
+                "type": "string"
+              }
             }
           }
         }
       },
       "if": {
         "not": {
-          "properties": { "enabled": { "const": false } },
-          "required": ["enabled"]
+          "properties": {
+            "enabled": {
+              "const": false
+            }
+          },
+          "required": [
+            "enabled"
+          ]
         }
       },
       "then": {
@@ -71,7 +83,9 @@
       "default": [],
       "items": {
         "type": "object",
-        "required": ["name"],
+        "required": [
+          "name"
+        ],
         "additionalProperties": false,
         "properties": {
           "name": {
@@ -81,12 +95,16 @@
           "labels": {
             "type": "object",
             "description": "Additional labels for the PocketIDUser resource",
-            "additionalProperties": { "type": "string" }
+            "additionalProperties": {
+              "type": "string"
+            }
           },
           "annotations": {
             "type": "object",
             "description": "Additional annotations for the PocketIDUser resource",
-            "additionalProperties": { "type": "string" }
+            "additionalProperties": {
+              "type": "string"
+            }
           },
           "spec": {}
         }
@@ -98,7 +116,9 @@
       "default": [],
       "items": {
         "type": "object",
-        "required": ["name"],
+        "required": [
+          "name"
+        ],
         "additionalProperties": false,
         "properties": {
           "name": {
@@ -108,12 +128,16 @@
           "labels": {
             "type": "object",
             "description": "Additional labels for the PocketIDUserGroup resource",
-            "additionalProperties": { "type": "string" }
+            "additionalProperties": {
+              "type": "string"
+            }
           },
           "annotations": {
             "type": "object",
             "description": "Additional annotations for the PocketIDUserGroup resource",
-            "additionalProperties": { "type": "string" }
+            "additionalProperties": {
+              "type": "string"
+            }
           },
           "spec": {}
         }
@@ -147,7 +171,11 @@
             "pullPolicy": {
               "type": "string",
               "description": "Image pull policy",
-              "enum": ["Always", "IfNotPresent", "Never"],
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ],
               "default": "IfNotPresent"
             }
           }
@@ -155,14 +183,34 @@
         "args": {
           "type": "array",
           "description": "Additional arguments for the operator container",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": []
         },
         "env": {
           "type": "array",
           "description": "Additional environment variables for the operator container",
-          "items": { "type": "object" },
+          "items": {
+            "type": "object"
+          },
           "default": []
+        },
+        "labels": {
+          "type": "object",
+          "description": "Additional labels applied to the operator Deployment and its pod template",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {}
+        },
+        "annotations": {
+          "type": "object",
+          "description": "Additional annotations applied to the operator Deployment and its pod template",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {}
         },
         "podSecurityContext": {
           "type": "object",
@@ -236,7 +284,9 @@
             "labels": {
               "type": "object",
               "description": "Additional labels for the PrometheusRule resource",
-              "additionalProperties": { "type": "string" }
+              "additionalProperties": {
+                "type": "string"
+              }
             },
             "rules": {
               "type": "object",
@@ -248,7 +298,10 @@
                   "additionalProperties": false,
                   "description": "Alert when a Pocket-ID instance is not ready for over 5 minutes",
                   "properties": {
-                    "enabled": { "type": "boolean", "default": true }
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    }
                   }
                 },
                 "PocketIDResourceNotReady": {
@@ -256,7 +309,10 @@
                   "additionalProperties": false,
                   "description": "Alert when a managed resource is not ready for over 5 minutes",
                   "properties": {
-                    "enabled": { "type": "boolean", "default": true }
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    }
                   }
                 },
                 "PocketIDAPIHighErrorRate": {
@@ -264,7 +320,10 @@
                   "additionalProperties": false,
                   "description": "Alert when the Pocket-ID API error rate exceeds 50%",
                   "properties": {
-                    "enabled": { "type": "boolean", "default": true }
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    }
                   }
                 },
                 "PocketIDAPISlowRequests": {
@@ -272,7 +331,10 @@
                   "additionalProperties": false,
                   "description": "Alert when the Pocket-ID API p99 latency exceeds 5 seconds",
                   "properties": {
-                    "enabled": { "type": "boolean", "default": true }
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    }
                   }
                 },
                 "PocketIDExternalDeletions": {
@@ -280,7 +342,10 @@
                   "additionalProperties": false,
                   "description": "Alert when resources are deleted outside the operator",
                   "properties": {
-                    "enabled": { "type": "boolean", "default": true }
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    }
                   }
                 },
                 "PocketIDReconcileErrors": {
@@ -288,7 +353,10 @@
                   "additionalProperties": false,
                   "description": "Alert when controller reconciliation errors are sustained over 10 minutes",
                   "properties": {
-                    "enabled": { "type": "boolean", "default": true }
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    }
                   }
                 },
                 "PocketIDWorkQueueBackup": {
@@ -296,7 +364,10 @@
                   "additionalProperties": false,
                   "description": "Alert when the work queue depth grows, indicating the operator is falling behind",
                   "properties": {
-                    "enabled": { "type": "boolean", "default": true }
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    }
                   }
                 },
                 "PocketIDOIDCClientRotationFailing": {
@@ -304,7 +375,10 @@
                   "additionalProperties": false,
                   "description": "Alert when a client-secret rotation failed in the last hour",
                   "properties": {
-                    "enabled": { "type": "boolean", "default": true }
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    }
                   }
                 },
                 "PocketIDOIDCClientRotationOverdue": {
@@ -312,7 +386,10 @@
                   "additionalProperties": false,
                   "description": "Alert when an interval-driven client has been eligible to rotate for over 24h but is blocked",
                   "properties": {
-                    "enabled": { "type": "boolean", "default": true }
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    }
                   }
                 },
                 "PocketIDOIDCClientRotationWindowMissed": {
@@ -320,7 +397,10 @@
                   "additionalProperties": false,
                   "description": "Alert when a window-driven client keeps missing its maintenance window",
                   "properties": {
-                    "enabled": { "type": "boolean", "default": true }
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    }
                   }
                 },
                 "PocketIDOIDCClientRotationDeferrals": {
@@ -328,7 +408,10 @@
                   "additionalProperties": false,
                   "description": "Alert when scheduled rotations are being deferred persistently",
                   "properties": {
-                    "enabled": { "type": "boolean", "default": true }
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    }
                   }
                 }
               }
@@ -336,7 +419,9 @@
             "additionalRules": {
               "type": "array",
               "description": "Additional alerting rules appended to the default set",
-              "items": { "type": "object" }
+              "items": {
+                "type": "object"
+              }
             }
           }
         },
@@ -353,8 +438,12 @@
             "labels": {
               "type": "object",
               "description": "Additional labels for the dashboard ConfigMap for grafana sidecar to import",
-              "additionalProperties": { "type": "string" },
-              "default": { "grafana_dashboard": "1" }
+              "additionalProperties": {
+                "type": "string"
+              },
+              "default": {
+                "grafana_dashboard": "1"
+              }
             },
             "grafanaDashboard": {
               "type": "object",
@@ -379,7 +468,9 @@
                     "matchLabels": {
                       "type": "object",
                       "description": "Labels to match against Grafana instances",
-                      "additionalProperties": { "type": "string" }
+                      "additionalProperties": {
+                        "type": "string"
+                      }
                     }
                   }
                 }
