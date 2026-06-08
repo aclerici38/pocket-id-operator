@@ -7,6 +7,13 @@ lockfile = true
 lockfile_platforms = ["linux-x64", "linux-arm64", "macos-arm64"]
 
 [tools]
+# Go itself: read the version from go.mod's `go` directive so go.mod stays the
+# single source of truth. This forces local dev onto the exact version CI
+# (setup-go via go-version-file) and the Dockerfile base image use. Renovate
+# bumps go.mod (grouped with the golang image), and this follows automatically —
+# there is no literal version here for Renovate to manage.
+go = "{{ exec(command='sed -n \"s/^go //p\" go.mod') }}"
+
 # Kubernetes manifest tooling
 kustomize = "5.8.1"
 "go:sigs.k8s.io/controller-tools/cmd/controller-gen" = "0.21.0"
