@@ -10,7 +10,11 @@ spec:
   allowCrossNamespaceImport: {{ .Values.metrics.dashboard.grafanaDashboard.allowCrossNamespaceImport }}
   instanceSelector:
     matchLabels:
-      {{- toYaml .Values.metrics.dashboard.grafanaDashboard.instanceSelector.matchLabels | nindent 6 }}
+      {{- with .Values.metrics.dashboard.grafanaDashboard.instanceSelector.matchLabels }}
+      {{- toYaml . | nindent 6 }}
+      {{- else }}
+      grafana.internal/instance: grafana
+      {{- end }}
   configMapRef:
     name: pocket-id-operator-dashboard
     key: dashboard.json

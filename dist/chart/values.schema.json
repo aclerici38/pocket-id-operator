@@ -4757,7 +4757,7 @@
                   "properties": {
                     "matchLabels": {
                       "type": "object",
-                      "description": "Labels to match against Grafana instances",
+                      "description": "Labels to match against Grafana instances. Defaults to {grafana.internal/instance: grafana} when left empty; setting your own labels fully replaces the default (they are not merged).",
                       "additionalProperties": {
                         "type": "string"
                       }
