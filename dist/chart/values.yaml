@@ -14,6 +14,10 @@ operator:
     - --zap-log-level=info
   env: []
 
+  # Additional labels and annotations applied to the operator Deployment and its pod template
+  labels: {}
+  annotations: {}
+
   # Auto-generate logo URLs for OIDC clients from templates (set to false to make it opt-in per client)
   autoGenerateLogos: true
 
