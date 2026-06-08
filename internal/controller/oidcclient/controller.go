@@ -905,6 +905,10 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 	var rotatedAt *metav1.Time
 	var scheduledRotation bool
 	if !oidcClient.Spec.IsPublic && oidcClient.Status.ClientID != "" {
+		// Seed the rotation counters at 0 so this client's first rotation of each kind registers
+		// as a visible 0→1 step for increase()/rate() rather than a dropped first sample.
+		metrics.InitOIDCClientRotationCounters(oidcClient.Namespace, oidcClient.Name)
+
 		decision, err := r.secretRegenDecision(ctx, oidcClient, instance, secretName)
 		if err != nil {
 			return err
@@ -1048,7 +1052,7 @@ func (r *Reconciler) recordRotationSchedule(oidcClient *pocketidinternalv1alpha1
 		metrics.DeleteOIDCClientRotationWindow(ns, name)
 		return
 	}
-	open, nextOpen, err := windowState(time.Now(), win.Opens, win.ClosesAfter.Duration)
+	open, nextOpen, nextClose, err := windowState(time.Now(), win.Opens, win.ClosesAfter.Duration)
 	if err != nil {
 		// Invalid window config; the rotationDue path records window_error when due.
 		metrics.DeleteOIDCClientRotationWindow(ns, name)
@@ -1058,7 +1062,11 @@ func (r *Reconciler) recordRotationSchedule(oidcClient *pocketidinternalv1alpha1
 	if !nextOpen.IsZero() {
 		nextOpenUnix = float64(nextOpen.Unix())
 	}
-	metrics.SetOIDCClientRotationWindow(ns, name, open, nextOpenUnix)
+	var nextCloseUnix float64
+	if !nextClose.IsZero() {
+		nextCloseUnix = float64(nextClose.Unix())
+	}
+	metrics.SetOIDCClientRotationWindow(ns, name, open, nextOpenUnix, nextCloseUnix)
 }
 
 // applyRotationStatus mirrors the rotation timestamp onto the oidcclient status after a

@@ -198,13 +198,24 @@ spec:
               {{ $labels.namespace }}/{{ $labels.name }} (trigger {{ $labels.trigger }})
               failed in the last hour.
 
-        # An interval-driven client has been eligible to rotate for over 24h but a gate keeps
-        # blocking it. Keyed off the next-eligible gauge, which only interval-driven clients
-        # export; window-driven clients are covered by PocketIDOIDCClientRotationWindowMissed.
+        # An interval-driven client with NO maintenance window has stayed eligible for longer than
+        # a full extra rotation interval — i.e. it has effectively skipped a whole cycle. The
+        # threshold is read per client from its own rotation_interval_seconds gauge (no hardcoded
+        # interval), capped at 48h via clamp_max so very long intervals still alert within 2 days
+        # rather than waiting a second full interval; the effective threshold is min(interval, 48h).
+        # Clients with a window are excluded (`unless ... window_open`) because waiting for the next
+        # opening is expected — they are covered by RotationWindowMissed (window-driven) or the
+        # min_spacing/window_error reasons in RotationDeferrals.
         - alert: PocketIDOIDCClientRotationOverdue
           expr: |-
-            (pocketid_operator_oidcclient_rotation_enabled == 1)
-            and ((time() - pocketid_operator_oidcclient_next_rotation_timestamp_seconds) > 86400)
+            (
+              (pocketid_operator_oidcclient_rotation_enabled == 1)
+              and (
+                (time() - pocketid_operator_oidcclient_next_rotation_timestamp_seconds)
+                  > on(namespace, name) clamp_max(pocketid_operator_oidcclient_rotation_interval_seconds, 172800)
+              )
+            )
+            unless on(namespace, name) pocketid_operator_oidcclient_rotation_window_open
           for: 1h
           labels:
             severity: warning
@@ -213,9 +224,9 @@ spec:
               Client-secret rotation overdue for {{ $labels.namespace }}/{{ $labels.name }}
             description: >-
               The PocketIDOIDCClient {{ $labels.namespace }}/{{ $labels.name }} has been
-              eligible for interval-driven client-secret rotation for over 24h but has not rotated.
-              A maintenance window misconfiguration or instance-wide min-spacing starvation may be
-              blocking it.
+              eligible for interval-driven client-secret rotation for longer than its interval
+              (capped at 48h) but has not rotated. This client has no maintenance window, so
+              instance-wide min-spacing starvation or a stalled operator is the likely cause.
 
         # A window-driven client (no interval) keeps missing its maintenance window: an opening
         # came and went without rotating, repeatedly, for longer than a typical daily cycle. This
@@ -238,13 +249,14 @@ spec:
               be missing the window (window narrower than the reconcile interval) or instance-wide
               min-spacing may be starving it at every opening.
 
-        # Scheduled rotations are being deferred persistently. Excludes window_missed (its own
-        # warning alert above); the remaining reasons are expected throttling (window_closed — an
-        # interval client waiting for its window; min_spacing) or config errors (window_error).
+        # A due rotation has been blocked by a real problem for hours. Restricted to min_spacing
+        # (instance-wide spacing is starving this client) and window_error (invalid window cron).
+        # The benign reasons are intentionally excluded: window_closed is healthy waiting (an
+        # interval client sitting until its window opens) and window_missed has its own alert.
         - alert: PocketIDOIDCClientRotationDeferrals
           expr: |-
             sum by (namespace, name, reason) (
-              increase(pocketid_operator_oidcclient_rotation_deferred_total{reason!="window_missed"}[1h])
+              increase(pocketid_operator_oidcclient_rotation_deferred_total{reason=~"min_spacing|window_error"}[1h])
             ) > 0
           for: 6h
           labels:
@@ -255,8 +267,8 @@ spec:
             description: >-
               A due client-secret rotation for {{ $labels.namespace }}/{{ $labels.name }}
               has been deferred (reason: {{ $labels.reason }}) continuously for over 6 hours.
-              This is expected for narrow maintenance windows but may indicate min-spacing starvation
-              or, for window_error, an invalid maintenance-window configuration.
+              For min_spacing the instance-wide spacing is starving this client; for window_error the
+              maintenance-window cron is invalid and must be fixed.
 ```
 
 ---
@@ -523,6 +535,20 @@ present for enabled clients that configure a window.
 
 ---
 
+#### `pocketid_operator_oidcclient_rotation_window_next_close_timestamp_seconds`
+
+**Type:** Gauge (Unix seconds)
+**Labels:** `namespace`, `name`
+
+Unix timestamp at which the maintenance window next closes: the close of the currently-open
+window, or — when closed — the close of the next window to open (its opening plus
+`closesAfter`). Render "time until window closes" with
+`pocketid_operator_oidcclient_rotation_window_next_close_timestamp_seconds - time()`. The
+bundled dashboard surfaces it as the **Window Closes (in)** column of the Rotation Schedule
+table. Only present for enabled clients that configure a window.
+
+---
+
 #### `pocketid_operator_oidcclient_secret_rotations_total`
 
 **Type:** Counter
@@ -531,6 +557,12 @@ present for enabled clients that configure a window.
 Counts client-secret rotations that actually reached the Pocket-ID regenerate call,
 partitioned by outcome and what triggered them. Use it to track rotation success/failure
 rates and to alert specifically on failed scheduled rotations.
+
+All six `result`×`trigger` series are seeded at `0` the first time the operator reconciles a
+secret-bearing client, so a client's first rotation of any kind shows up as a `0→1` step. This
+matters because `increase()`/`rate()` cannot measure a step that has no prior sample — without the
+seed, a one-off rotation (e.g. a single `manual` rotation) would be silently dropped from the
+dashboard's event timeline and from the rate-based alerts below.
 
 | Label | Values |
 |-------|--------|

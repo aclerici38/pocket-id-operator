@@ -95,7 +95,7 @@ func TestWithinWindow_InvalidCron(t *testing.T) {
 func TestWindowState_OpenReportsNextOccurrence(t *testing.T) {
 	// 1am daily, 4h window: at 2:30am the window is open and the next open is the following 1am.
 	now := time.Date(2026, 1, 31, 2, 30, 0, 0, time.UTC)
-	open, nextOpen, err := windowState(now, "0 1 * * *", 4*time.Hour)
+	open, nextOpen, nextClose, err := windowState(now, "0 1 * * *", 4*time.Hour)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -106,12 +106,17 @@ func TestWindowState_OpenReportsNextOccurrence(t *testing.T) {
 	if !nextOpen.Equal(want) {
 		t.Errorf("nextOpen = %v, want %v", nextOpen, want)
 	}
+	// The open window started at 1am today and closes 4h later at 5am.
+	wantClose := time.Date(2026, 1, 31, 5, 0, 0, 0, time.UTC)
+	if !nextClose.Equal(wantClose) {
+		t.Errorf("nextClose = %v, want %v", nextClose, wantClose)
+	}
 }
 
 func TestWindowState_ClosedReportsUpcomingOpen(t *testing.T) {
 	// 1am daily, 4h window: at 6am the window is closed and opens again at 1am next day.
 	now := time.Date(2026, 1, 31, 6, 0, 0, 0, time.UTC)
-	open, nextOpen, err := windowState(now, "0 1 * * *", 4*time.Hour)
+	open, nextOpen, nextClose, err := windowState(now, "0 1 * * *", 4*time.Hour)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -122,11 +127,16 @@ func TestWindowState_ClosedReportsUpcomingOpen(t *testing.T) {
 	if !nextOpen.Equal(want) {
 		t.Errorf("nextOpen = %v, want %v", nextOpen, want)
 	}
+	// While closed, nextClose is the close of the next window: opens 1am next day, closes 5am.
+	wantClose := time.Date(2026, 2, 1, 5, 0, 0, 0, time.UTC)
+	if !nextClose.Equal(wantClose) {
+		t.Errorf("nextClose = %v, want %v", nextClose, wantClose)
+	}
 }
 
 func TestWindowState_InvalidCron(t *testing.T) {
 	now := time.Date(2026, 1, 31, 2, 0, 0, 0, time.UTC)
-	if _, _, err := windowState(now, "not a cron", 4*time.Hour); err == nil {
+	if _, _, _, err := windowState(now, "not a cron", 4*time.Hour); err == nil {
 		t.Error("expected error for invalid cron expression")
 	}
 }

@@ -142,13 +142,27 @@ spec:
         {{- end }}
 
         {{- if dig "PocketIDOIDCClientRotationOverdue" "enabled" true $rules }}
-        # -- An interval-driven client has been eligible to rotate for over 24h but a gate keeps
-        # -- blocking it. Keyed off the next-eligible gauge, which only interval-driven clients
-        # -- export; window-driven clients are covered by PocketIDOIDCClientRotationWindowMissed.
+        # -- An interval-driven client with NO maintenance window has stayed eligible for longer
+        # -- than a full extra rotation interval — i.e. it has effectively skipped a whole cycle.
+        # -- The threshold is read per client from its own rotation_interval_seconds gauge (no
+        # -- hardcoded interval), capped at 48h via clamp_max so very long intervals still alert
+        # -- within 2 days rather than waiting a second full interval. So the effective threshold is
+        # -- min(interval, 48h), scaling with each client's configured interval up to the cap.
+        # -- For a windowless client the only legitimate post-eligibility delay is instance-wide
+        # -- min-spacing (normally minutes/hours), so this overdue means a genuine stall. Clients
+        # -- with a window are excluded (`unless ... window_open`) because waiting for the next
+        # -- opening is expected — they are covered by RotationWindowMissed (window-driven) or the
+        # -- min_spacing/window_error reasons in RotationDeferrals.
         - alert: PocketIDOIDCClientRotationOverdue
           expr: |-
-            (pocketid_operator_oidcclient_rotation_enabled == 1)
-            and ((time() - pocketid_operator_oidcclient_next_rotation_timestamp_seconds) > 86400)
+            (
+              (pocketid_operator_oidcclient_rotation_enabled == 1)
+              and (
+                (time() - pocketid_operator_oidcclient_next_rotation_timestamp_seconds)
+                  > on(namespace, name) clamp_max(pocketid_operator_oidcclient_rotation_interval_seconds, 172800)
+              )
+            )
+            unless on(namespace, name) pocketid_operator_oidcclient_rotation_window_open
           for: 1h
           labels:
             severity: warning
@@ -157,9 +171,9 @@ spec:
               Client-secret rotation overdue for {{`{{ $labels.namespace }}`}}/{{`{{ $labels.name }}`}}
             description: >-
               The PocketIDOIDCClient {{`{{ $labels.namespace }}`}}/{{`{{ $labels.name }}`}} has been
-              eligible for interval-driven client-secret rotation for over 24h but has not rotated.
-              A maintenance window misconfiguration or instance-wide min-spacing starvation may be
-              blocking it.
+              eligible for interval-driven client-secret rotation for longer than its interval
+              (capped at 48h) but has not rotated. This client has no maintenance window, so
+              instance-wide min-spacing starvation or a stalled operator is the likely cause.
         {{- end }}
 
         {{- if dig "PocketIDOIDCClientRotationWindowMissed" "enabled" true $rules }}
@@ -186,13 +200,14 @@ spec:
         {{- end }}
 
         {{- if dig "PocketIDOIDCClientRotationDeferrals" "enabled" true $rules }}
-        # -- Scheduled rotations are being deferred persistently. Excludes window_missed (its own
-        # -- warning alert above); the remaining reasons are expected throttling (window_closed —
-        # -- an interval client waiting for its window; min_spacing) or config errors (window_error).
+        # -- A due rotation has been blocked by a real problem for hours. Restricted to min_spacing
+        # -- (instance-wide spacing is starving this client) and window_error (invalid window cron).
+        # -- The benign reasons are intentionally excluded: window_closed is healthy waiting (an
+        # -- interval client sitting until its window opens) and window_missed has its own alert.
         - alert: PocketIDOIDCClientRotationDeferrals
           expr: |-
             sum by (namespace, name, reason) (
-              increase(pocketid_operator_oidcclient_rotation_deferred_total{reason!="window_missed"}[1h])
+              increase(pocketid_operator_oidcclient_rotation_deferred_total{reason=~"min_spacing|window_error"}[1h])
             ) > 0
           for: 6h
           labels:
@@ -203,8 +218,8 @@ spec:
             description: >-
               A due client-secret rotation for {{`{{ $labels.namespace }}`}}/{{`{{ $labels.name }}`}}
               has been deferred (reason: {{`{{ $labels.reason }}`}}) continuously for over 6 hours.
-              This is expected for narrow maintenance windows but may indicate min-spacing starvation
-              or, for window_error, an invalid maintenance-window configuration.
+              For min_spacing the instance-wide spacing is starving this client; for window_error the
+              maintenance-window cron is invalid and must be fixed.
         {{- end }}
 
         {{- with .Values.metrics.prometheusRule.additionalRules }}

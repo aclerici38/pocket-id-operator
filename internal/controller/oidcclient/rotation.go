@@ -76,24 +76,27 @@ func parseWindow(now time.Time, opens string, closesAfter time.Duration) (cron.S
 	return schedule, nil
 }
 
-// windowState reports whether now falls inside a recurring maintenance window and when the
-// window next opens. The window stays open for closesAfter after each cron fire. nextOpen is the
-// next cron fire strictly after now (i.e. the next time the window opens; when currently open,
-// this is the following occurrence).
-func windowState(now time.Time, opens string, closesAfter time.Duration) (open bool, nextOpen time.Time, err error) {
+// windowState reports whether now falls inside a recurring maintenance window and when the window
+// next opens and closes. The window stays open for closesAfter after each cron fire. nextOpen is
+// the next cron fire strictly after now (i.e. the next time the window opens; when currently open,
+// this is the following occurrence). nextClose is when the currently-open window closes, or, when
+// closed, when the next window to open will close.
+func windowState(now time.Time, opens string, closesAfter time.Duration) (open bool, nextOpen, nextClose time.Time, err error) {
 	schedule, err := parseWindow(now, opens, closesAfter)
 	if err != nil {
-		return false, time.Time{}, err
+		return false, time.Time{}, time.Time{}, err
 	}
 	// Next() after (now - closesAfter) gives the most recent window open at or after
 	// that point. If it is <= now, we are inside the open window.
 	windowStart := schedule.Next(now.Add(-closesAfter))
-	return !windowStart.After(now), schedule.Next(now), nil
+	// windowStart opens the current window when open, or the next window when closed (no fire lies
+	// in (now-closesAfter, now] while closed), so its close is always the next close strictly ahead.
+	return !windowStart.After(now), schedule.Next(now), windowStart.Add(closesAfter), nil
 }
 
 // withinWindow reports whether now falls inside a recurring maintenance window.
 func withinWindow(now time.Time, opens string, closesAfter time.Duration) (bool, error) {
-	open, _, err := windowState(now, opens, closesAfter)
+	open, _, _, err := windowState(now, opens, closesAfter)
 	return open, err
 }
 

@@ -57,6 +57,32 @@ func TestDeleteOIDCClientRotationSchedule_KeepsEnabled(t *testing.T) {
 	}
 }
 
+func TestInitOIDCClientRotationCounters_SeedsZeroSeries(t *testing.T) {
+	const ns, name = "test-ns", "rot-init"
+	t.Cleanup(func() { OIDCClientSecretRotations.Reset() })
+
+	InitOIDCClientRotationCounters(ns, name)
+
+	// Every result/trigger combination must exist at 0 so a first rotation is a visible 0→1 step.
+	if c := testutil.CollectAndCount(OIDCClientSecretRotations); c != len(rotationResults)*len(rotationTriggers) {
+		t.Errorf("seeded series = %d, want %d", c, len(rotationResults)*len(rotationTriggers))
+	}
+	for _, result := range rotationResults {
+		for _, trigger := range rotationTriggers {
+			if got := testutil.ToFloat64(OIDCClientSecretRotations.WithLabelValues(ns, name, result, trigger)); got != 0 {
+				t.Errorf("counter[%s/%s] = %v, want 0", result, trigger, got)
+			}
+		}
+	}
+
+	// Re-seeding must not clobber an already-incremented series.
+	OIDCClientSecretRotations.WithLabelValues(ns, name, "success", "manual").Inc()
+	InitOIDCClientRotationCounters(ns, name)
+	if got := testutil.ToFloat64(OIDCClientSecretRotations.WithLabelValues(ns, name, "success", "manual")); got != 1 {
+		t.Errorf("counter after re-init = %v, want 1 (Add(0) must be a no-op)", got)
+	}
+}
+
 func TestDeleteOIDCClientRotationMetrics_ClearsAllGauges(t *testing.T) {
 	const ns, name = "test-ns", "rot-delete"
 
