@@ -30,7 +30,7 @@ zizmor = "1.25.2"
 # Local cluster / cluster CLIs for e2e and chart tests
 kind = "0.32.0"
 kubectl = "1.36.2"
-helm = "4.2.0"
+helm = "4.2.1"
 
 # CRD → JSON schema conversion
 "aqua:sholdee/crd-schema-publisher" = "2026.609.12656"
