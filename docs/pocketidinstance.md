@@ -343,6 +343,36 @@ spec:
         namespace: infra-gateway
 ```
 
+### Freeform Route Spec
+
+`spec.route.template` accepts an arbitrary `HTTPRouteSpec` that is merged with the
+operator-built route, for fields the structured config doesn't cover (additional rules,
+matches, filters, timeouts, etc.). The operator always wins: `parentRefs` and `hostnames`
+come from the structured config, and the default rule routing to the Service on port 1411
+is always injected first. Any `rules` you set in the template are appended after it.
+
+```yaml
+spec:
+  route:
+    enabled: true
+    parentRefs:
+      - name: shared-gateway
+    template:
+      rules:
+        # Appended after the operator's default Service backend rule
+        - matches:
+            - path:
+                type: PathPrefix
+                value: /healthz
+          filters:
+            - type: RequestRedirect
+              requestRedirect:
+                statusCode: 302
+                path:
+                  type: ReplaceFullPath
+                  replaceFullPath: /readyz
+```
+
 ## Metrics and ServiceMonitor
 
 The operator can enable a Prometheus metrics endpoint on the Pocket ID instance.
@@ -459,6 +489,26 @@ spec:
           args:
             - --upstream=http://localhost:1411
             - --http-address=0.0.0.0:4180
+```
+
+## Service Template
+
+`spec.serviceTemplate` accepts an arbitrary `ServiceSpec` that is merged with the
+operator-built Service, for fields the operator doesn't model (e.g. `type: LoadBalancer`,
+`sessionAffinity`, `externalTrafficPolicy`, extra ports). The operator always wins: the
+`selector` and the `http` port (plus the `metrics` port when metrics are enabled) are
+managed by the operator. Extra ports you add under other names pass through; a port you
+define named `http` or `metrics` is overridden by the operator's.
+
+```yaml
+spec:
+  serviceTemplate:
+    type: LoadBalancer
+    sessionAffinity: ClientIP
+    ports:
+      - name: extra
+        port: 8080
+        targetPort: 8080
 ```
 
 ## External Instance

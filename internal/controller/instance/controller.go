@@ -238,15 +238,23 @@ func (r *Reconciler) reconcileWorkload(ctx context.Context, instance *pocketidin
 }
 
 func podTemplateToApplyConfiguration(pt corev1.PodTemplateSpec) (*corev1apply.PodTemplateSpecApplyConfiguration, error) {
-	data, err := json.Marshal(pt)
+	return specToApplyConfig[corev1apply.PodTemplateSpecApplyConfiguration](pt)
+}
+
+// specToApplyConfig converts a typed API object into its server-side-apply
+// configuration by round-tripping through JSON. The two share field json tags, so
+// this lets us build a merged spec as a regular typed struct and then hand it to
+// the apply client.
+func specToApplyConfig[T any](spec any) (*T, error) {
+	data, err := json.Marshal(spec)
 	if err != nil {
 		return nil, err
 	}
-	var result corev1apply.PodTemplateSpecApplyConfiguration
-	if err := json.Unmarshal(data, &result); err != nil {
+	var out T
+	if err := json.Unmarshal(data, &out); err != nil {
 		return nil, err
 	}
-	return &result, nil
+	return &out, nil
 }
 
 func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketIDInstance, staticAPIKeyHash string) corev1.PodTemplateSpec {
@@ -541,39 +549,66 @@ func (r *Reconciler) reconcileService(ctx context.Context, instance *pocketidint
 		return err
 	}
 
-	ports := []*corev1apply.ServicePortApplyConfiguration{
-		corev1apply.ServicePort().
-			WithName("http").
-			WithPort(1411).
-			WithTargetPort(intstr.FromInt(1411)).
-			WithProtocol(corev1.ProtocolTCP),
-	}
-
-	if instance.Spec.Metrics != nil && instance.Spec.Metrics.Enabled {
-		metricsPort := int32(9464)
-		if instance.Spec.Metrics.Port != 0 {
-			metricsPort = instance.Spec.Metrics.Port
-		}
-		ports = append(ports, corev1apply.ServicePort().
-			WithName("metrics").
-			WithPort(metricsPort).
-			WithTargetPort(intstr.FromInt32(metricsPort)).
-			WithProtocol(corev1.ProtocolTCP))
+	specApply, err := specToApplyConfig[corev1apply.ServiceSpecApplyConfiguration](buildServiceSpec(instance))
+	if err != nil {
+		return fmt.Errorf("convert service spec: %w", err)
 	}
 
 	service := corev1apply.Service(instance.Name, instance.Namespace).
 		WithLabels(common.ManagedByLabels(instance.Spec.Labels)).
 		WithAnnotations(instance.Spec.Annotations).
 		WithOwnerReferences(ownerRef).
-		WithSpec(corev1apply.ServiceSpec().
-			WithSelector(map[string]string{
-				"app.kubernetes.io/name":     appName,
-				"app.kubernetes.io/instance": instance.Name,
-			}).
-			WithPorts(ports...),
-		)
+		WithSpec(specApply)
 
 	return r.Apply(ctx, service, client.FieldOwner("pocket-id-operator"))
+}
+
+// buildServiceSpec merges the optional user-provided spec.serviceTemplate with the
+// operator-managed Service fields. The operator's selector and http/metrics ports
+// always take precedence; any other fields and extra named ports the user sets pass
+// through untouched.
+func buildServiceSpec(instance *pocketidinternalv1alpha1.PocketIDInstance) corev1.ServiceSpec {
+	spec := corev1.ServiceSpec{}
+	if instance.Spec.ServiceTemplate != nil {
+		spec = *instance.Spec.ServiceTemplate.DeepCopy()
+	}
+
+	spec.Selector = map[string]string{
+		"app.kubernetes.io/name":     appName,
+		"app.kubernetes.io/instance": instance.Name,
+	}
+
+	setServicePort(&spec.Ports, corev1.ServicePort{
+		Name:       "http",
+		Port:       1411,
+		TargetPort: intstr.FromInt(1411),
+		Protocol:   corev1.ProtocolTCP,
+	})
+
+	if instance.Spec.Metrics != nil && instance.Spec.Metrics.Enabled {
+		metricsPort := int32(9464)
+		if instance.Spec.Metrics.Port != 0 {
+			metricsPort = instance.Spec.Metrics.Port
+		}
+		setServicePort(&spec.Ports, corev1.ServicePort{
+			Name:       "metrics",
+			Port:       metricsPort,
+			TargetPort: intstr.FromInt32(metricsPort),
+			Protocol:   corev1.ProtocolTCP,
+		})
+	}
+
+	return spec
+}
+
+func setServicePort(ports *[]corev1.ServicePort, port corev1.ServicePort) {
+	for i := range *ports {
+		if (*ports)[i].Name == port.Name {
+			(*ports)[i] = port
+			return
+		}
+	}
+	*ports = append(*ports, port)
 }
 
 func (r *Reconciler) reconcileHTTPRoute(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
@@ -618,48 +653,15 @@ func (r *Reconciler) reconcileHTTPRoute(ctx context.Context, instance *pocketidi
 	labels["app.kubernetes.io/name"] = appName
 	labels["app.kubernetes.io/instance"] = instance.Name
 
-	parentRefs := make([]*gatewayv1apply.ParentReferenceApplyConfiguration, 0, len(instance.Spec.Route.ParentRefs))
-	for _, ref := range instance.Spec.Route.ParentRefs {
-		pr := gatewayv1apply.ParentReference().
-			WithName(ref.Name)
-		if ref.Group != nil {
-			pr.WithGroup(*ref.Group)
-		}
-		if ref.Kind != nil {
-			pr.WithKind(*ref.Kind)
-		}
-		if ref.Namespace != nil {
-			pr.WithNamespace(*ref.Namespace)
-		}
-		if ref.SectionName != nil {
-			pr.WithSectionName(*ref.SectionName)
-		}
-		if ref.Port != nil {
-			pr.WithPort(*ref.Port)
-		}
-		parentRefs = append(parentRefs, pr)
-	}
-
-	spec := gatewayv1apply.HTTPRouteSpec().
-		WithParentRefs(parentRefs...).
-		WithRules(gatewayv1apply.HTTPRouteRule().
-			WithBackendRefs(gatewayv1apply.HTTPBackendRef().
-				WithName(gatewayv1.ObjectName(instance.Name)).
-				WithPort(1411)))
-
-	// Set hostnames from route config, or derive from appUrl
-	if len(instance.Spec.Route.Hostnames) > 0 {
-		spec.WithHostnames(instance.Spec.Route.Hostnames...)
-	} else if instance.Spec.AppURL != "" {
-		if u, err := url.Parse(instance.Spec.AppURL); err == nil && u.Host != "" {
-			spec.WithHostnames(gatewayv1.Hostname(u.Hostname()))
-		}
+	specApply, err := specToApplyConfig[gatewayv1apply.HTTPRouteSpecApplyConfiguration](buildHTTPRouteSpec(instance))
+	if err != nil {
+		return fmt.Errorf("convert httproute spec: %w", err)
 	}
 
 	httpRoute := gatewayv1apply.HTTPRoute(routeName, instance.Namespace).
 		WithLabels(labels).
 		WithOwnerReferences(ownerRef).
-		WithSpec(spec)
+		WithSpec(specApply)
 
 	if len(instance.Spec.Route.Annotations) > 0 {
 		httpRoute.WithAnnotations(instance.Spec.Route.Annotations)
@@ -673,6 +675,44 @@ func (r *Reconciler) reconcileHTTPRoute(ctx context.Context, instance *pocketidi
 	}
 
 	return nil
+}
+
+// buildHTTPRouteSpec merges the optional user-provided spec.route.template with the
+// operator-managed HTTPRoute fields. The operator's parentRefs and hostnames always take
+// precedence, and the default backend rule (to the Service on port 1411) is always
+// injected first; any template-supplied rules are appended after it.
+func buildHTTPRouteSpec(instance *pocketidinternalv1alpha1.PocketIDInstance) gatewayv1.HTTPRouteSpec {
+	spec := gatewayv1.HTTPRouteSpec{}
+	if instance.Spec.Route.Template != nil {
+		spec = *instance.Spec.Route.Template.DeepCopy()
+	}
+
+	spec.ParentRefs = instance.Spec.Route.ParentRefs
+
+	// Set hostnames from route config, or derive from appUrl. Any template-provided
+	// hostnames are kept only when neither is set.
+	if len(instance.Spec.Route.Hostnames) > 0 {
+		spec.Hostnames = instance.Spec.Route.Hostnames
+	} else if instance.Spec.AppURL != "" {
+		if u, err := url.Parse(instance.Spec.AppURL); err == nil && u.Host != "" {
+			spec.Hostnames = []gatewayv1.Hostname{gatewayv1.Hostname(u.Hostname())}
+		}
+	}
+
+	port := gatewayv1.PortNumber(1411)
+	defaultRule := gatewayv1.HTTPRouteRule{
+		BackendRefs: []gatewayv1.HTTPBackendRef{{
+			BackendRef: gatewayv1.BackendRef{
+				BackendObjectReference: gatewayv1.BackendObjectReference{
+					Name: gatewayv1.ObjectName(instance.Name),
+					Port: &port,
+				},
+			},
+		}},
+	}
+	spec.Rules = append([]gatewayv1.HTTPRouteRule{defaultRule}, spec.Rules...)
+
+	return spec
 }
 
 func (r *Reconciler) ensureHTTPRouteCRDAvailable(ctx context.Context, namespace string) error {
