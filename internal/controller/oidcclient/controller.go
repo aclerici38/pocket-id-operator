@@ -881,10 +881,15 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 	secretName := r.GetSecretName(oidcClient)
 
 	if !enabled {
-		// Delete the secret if it exists but is now disabled
+		// Delete the secret if it exists but is now disabled. Only delete a
+		// secret the operator manages: a user may point spec.secret.name at a
+		// secret they own, and we must never delete a resource we don't manage.
 		secret := &corev1.Secret{}
 		err := r.Get(ctx, client.ObjectKey{Name: secretName, Namespace: oidcClient.Namespace}, secret)
 		if err == nil {
+			if !common.IsManagedByOperator(secret) {
+				return nil
+			}
 			if err := r.Delete(ctx, secret); err != nil {
 				return fmt.Errorf("failed to delete disabled secret: %w", err)
 			}

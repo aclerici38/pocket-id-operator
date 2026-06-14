@@ -33,6 +33,7 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 )
 
 // Environment variable names used in tests (mirrors instance controller constants)
@@ -330,6 +331,88 @@ var _ = Describe("PocketIDInstance Controller", func() {
 				}, &gatewayv1.HTTPRoute{})
 				return apierrors.IsNotFound(err)
 			}, timeout, interval).Should(BeTrue())
+		})
+	})
+
+	Context("When a user-managed HTTPRoute shares the default route name", func() {
+		var instanceName string
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
+		var secret *corev1.Secret
+		var userRoute *gatewayv1.HTTPRoute
+
+		BeforeEach(func() {
+			instanceName = "test-unmanaged-route-" + time.Now().Format("150405")
+
+			// A user's own HTTPRoute, named like the operator's default
+			// (instance.Name) but NOT carrying the managed-by label.
+			userRoute = &gatewayv1.HTTPRoute{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName,
+					Namespace: namespace,
+				},
+				Spec: gatewayv1.HTTPRouteSpec{
+					Hostnames: []gatewayv1.Hostname{gatewayv1.Hostname("user.example.com")},
+				},
+			}
+			Expect(k8sClient.Create(ctx, userRoute)).To(Succeed())
+
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName + "-secret",
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"encryption-key": []byte("test-encryption-key-value"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			// Instance with the operator-managed route disabled.
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					DeploymentType: "Deployment",
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
+						ValueFrom: &corev1.EnvVarSource{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: secret.Name,
+								},
+								Key: "encryption-key",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if instance != nil {
+				_ = k8sClient.Delete(ctx, instance)
+			}
+			if secret != nil {
+				_ = k8sClient.Delete(ctx, secret)
+			}
+			if userRoute != nil {
+				_ = k8sClient.Delete(ctx, userRoute)
+			}
+		})
+
+		It("Should NOT delete the user-managed HTTPRoute it does not own", func() {
+			route := &gatewayv1.HTTPRoute{}
+			Consistently(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      instanceName,
+					Namespace: namespace,
+				}, route)
+			}, time.Second*2, interval).Should(Succeed())
+
+			Expect(route.Labels).NotTo(HaveKeyWithValue(common.ManagedByLabelKey, common.ManagedByLabelValue))
+			Expect(route.Spec.Hostnames).To(ContainElement(gatewayv1.Hostname("user.example.com")))
 		})
 	})
 

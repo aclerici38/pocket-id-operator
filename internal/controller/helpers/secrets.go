@@ -6,17 +6,20 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 )
 
-// DeleteSecretIfExists deletes a secret, ignoring NotFound errors
-func DeleteSecretIfExists(ctx context.Context, c client.Client, namespace, name string) error {
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
+// DeleteSecretIfManaged deletes a secret by name only if it exists and is
+// managed by the operator
+func DeleteSecretIfManaged(ctx context.Context, c client.Client, namespace, name string) error {
+	secret := &corev1.Secret{}
+	if err := c.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, secret); err != nil {
+		return client.IgnoreNotFound(err)
+	}
+	if !common.IsManagedByOperator(secret) {
+		return nil
 	}
 	if err := c.Delete(ctx, secret); err != nil && !errors.IsNotFound(err) {
 		return fmt.Errorf("delete secret %s: %w", name, err)
@@ -24,10 +27,11 @@ func DeleteSecretIfExists(ctx context.Context, c client.Client, namespace, name 
 	return nil
 }
 
-// DeleteSecretsIfExist deletes multiple secrets, ignoring NotFound errors
-func DeleteSecretsIfExist(ctx context.Context, c client.Client, namespace string, secretNames []string) error {
+// DeleteSecretsIfManaged deletes multiple operator-managed secrets by name,
+// skipping any that the operator does not own. See DeleteSecretIfManaged.
+func DeleteSecretsIfManaged(ctx context.Context, c client.Client, namespace string, secretNames []string) error {
 	for _, name := range secretNames {
-		if err := DeleteSecretIfExists(ctx, c, namespace, name); err != nil {
+		if err := DeleteSecretIfManaged(ctx, c, namespace, name); err != nil {
 			return err
 		}
 	}
