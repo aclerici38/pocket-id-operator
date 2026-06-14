@@ -564,8 +564,18 @@ func (r *Reconciler) reconcileHTTPRoute(ctx context.Context, instance *pocketidi
 
 	if instance.Spec.Route == nil || !instance.Spec.Route.Enabled {
 		existing := &gatewayv1.HTTPRoute{}
-		existing.Name = routeName
-		existing.Namespace = instance.Namespace
+		if err := r.Get(ctx, client.ObjectKey{Namespace: instance.Namespace, Name: routeName}, existing); err != nil {
+			if isHTTPRouteCRDUnavailableError(err) {
+				return nil
+			}
+			return client.IgnoreNotFound(err)
+		}
+		// Only delete the route if the operator created it
+		if !common.IsManagedByOperator(existing) {
+			logf.FromContext(ctx).Info("Skipping deletion of HTTPRoute not managed by operator",
+				"name", routeName, "namespace", instance.Namespace)
+			return nil
+		}
 		err := r.Delete(ctx, existing)
 		if isHTTPRouteCRDUnavailableError(err) {
 			return nil
@@ -673,6 +683,22 @@ func isHTTPRouteCRDUnavailableError(err error) bool {
 	return strings.Contains(err.Error(), "the server could not find the requested resource")
 }
 
+// deleteIfManaged fetches obj and deletes it only if it is managed by the
+// operator. This prevents cleanup logic from removing a same-named resource
+// that a user created and the operator does not own.
+func (r *Reconciler) deleteIfManaged(ctx context.Context, obj client.Object) error {
+	key := client.ObjectKeyFromObject(obj)
+	if err := r.Get(ctx, key, obj); err != nil {
+		return client.IgnoreNotFound(err)
+	}
+	if !common.IsManagedByOperator(obj) {
+		logf.FromContext(ctx).Info("Skipping deletion of resource not managed by operator",
+			"kind", obj.GetObjectKind().GroupVersionKind().Kind, "name", key.Name, "namespace", key.Namespace)
+		return nil
+	}
+	return client.IgnoreNotFound(r.Delete(ctx, obj))
+}
+
 func (r *Reconciler) reconcileVolume(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
 	log := logf.FromContext(ctx)
 	defaultPVCName := instance.Name + "-data"
@@ -690,16 +716,14 @@ func (r *Reconciler) reconcileVolume(ctx context.Context, instance *pocketidinte
 	// Delete PVC if persistence is disabled or using StatefulSet
 	if !instance.Spec.Persistence.Enabled || instance.Spec.DeploymentType == "StatefulSet" {
 		log.V(1).Info("Deleting default PVC (persistence disabled or StatefulSet)", "pvc", defaultPVCName)
-		err := r.Delete(ctx, pvc)
-		return client.IgnoreNotFound(err)
+		return r.deleteIfManaged(ctx, pvc)
 	}
 
 	// If using an existing claim, delete the default PVC ONLY if its name is different from the existing claim
 	if instance.Spec.Persistence.ExistingClaim != "" {
 		if instance.Spec.Persistence.ExistingClaim != defaultPVCName {
 			log.V(1).Info("Deleting default PVC (using different existingClaim)", "pvc", defaultPVCName, "existingClaim", instance.Spec.Persistence.ExistingClaim)
-			err := r.Delete(ctx, pvc)
-			return client.IgnoreNotFound(err)
+			return r.deleteIfManaged(ctx, pvc)
 		}
 		// If they are the same, we need to ensure it's no longer managed by us
 		// to prevent it from being deleted when the instance is deleted (garbage collection)

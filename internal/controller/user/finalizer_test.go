@@ -13,6 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 )
 
 func TestReconcileUserFinalizers_AddsAuthFinalizer(t *testing.T) {
@@ -244,6 +245,65 @@ func TestReconcileDelete_BlocksWhenUserGroupReferences(t *testing.T) {
 	}
 	if !containsFinalizer(updatedUser.Finalizers, UserGroupUserFinalizer) {
 		t.Fatalf("expected user-group finalizer to remain, got %v", updatedUser.Finalizers)
+	}
+}
+
+// TestReconcileDelete_PreservesAdoptedAPIKeySecret verifies that deleting a
+// PocketIDUser removes the API key secrets the operator created but never
+// touches a user-provided secret adopted via secretRef.
+func TestReconcileDelete_PreservesAdoptedAPIKeySecret(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	now := metav1.NewTime(time.Now())
+	user := &pocketidinternalv1alpha1.PocketIDUser{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "secret-cleanup-user",
+			Namespace:         "default",
+			Finalizers:        []string{UserFinalizer},
+			DeletionTimestamp: &now,
+		},
+		Status: pocketidinternalv1alpha1.PocketIDUserStatus{
+			APIKeys: []pocketidinternalv1alpha1.APIKeyStatus{
+				{Name: "generated", SecretName: "generated-key-secret"},
+				{Name: "adopted", SecretName: "user-owned-secret"},
+			},
+		},
+	}
+
+	// Operator-created API key secret (carries the managed-by label).
+	managed := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "generated-key-secret",
+			Namespace: "default",
+			Labels:    map[string]string{common.ManagedByLabelKey: common.ManagedByLabelValue},
+		},
+	}
+	// User-provided secret adopted via secretRef (no managed-by label).
+	adopted := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "user-owned-secret",
+			Namespace: "default",
+		},
+	}
+
+	client := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(user, managed, adopted).
+		WithStatusSubresource(user).
+		Build()
+
+	reconciler := &Reconciler{Client: client, APIReader: client, Scheme: scheme}
+	if _, err := reconciler.ReconcileDelete(context.Background(), user); err != nil {
+		t.Fatalf("ReconcileDelete returned error: %v", err)
+	}
+
+	if err := client.Get(context.Background(), types.NamespacedName{Name: "generated-key-secret", Namespace: "default"}, &corev1.Secret{}); !errors.IsNotFound(err) {
+		t.Fatalf("expected operator-managed API key secret to be deleted, got err=%v", err)
+	}
+	if err := client.Get(context.Background(), types.NamespacedName{Name: "user-owned-secret", Namespace: "default"}, &corev1.Secret{}); err != nil {
+		t.Fatalf("expected adopted user-owned secret to be preserved, got err=%v", err)
 	}
 }
 

@@ -317,7 +317,7 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, user *pocketidinternal
 			secretNames = append(secretNames, keyStatus.SecretName)
 		}
 	}
-	if err := helpers.DeleteSecretsIfExist(ctx, r.Client, user.Namespace, secretNames); err != nil {
+	if err := helpers.DeleteSecretsIfManaged(ctx, r.Client, user.Namespace, secretNames); err != nil {
 		log.Error(err, "Failed to delete secrets")
 	}
 
@@ -558,13 +558,7 @@ func (r *Reconciler) updateUserStatus(ctx context.Context, user *pocketidinterna
 		oldSecretName := latest.Status.UserInfoSecretName
 		secretName := userInfoOutputSecretName(latest.Name)
 		if oldSecretName != "" && oldSecretName != secretName {
-			secret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      oldSecretName,
-					Namespace: latest.Namespace,
-				},
-			}
-			if err := r.Delete(ctx, secret); err != nil && !errors.IsNotFound(err) {
+			if err := helpers.DeleteSecretIfManaged(ctx, r.Client, latest.Namespace, oldSecretName); err != nil {
 				return fmt.Errorf("delete old user info secret %s: %w", oldSecretName, err)
 			}
 		}
@@ -762,7 +756,7 @@ func (r *Reconciler) reconcileAPIKeys(ctx context.Context, user *pocketidinterna
 
 		// Delete secret
 		if keyStatus.SecretName != "" {
-			if err := helpers.DeleteSecretIfExists(ctx, r.Client, user.Namespace, keyStatus.SecretName); err != nil {
+			if err := helpers.DeleteSecretIfManaged(ctx, r.Client, user.Namespace, keyStatus.SecretName); err != nil {
 				log.Error(err, "Failed to delete secret", "name", keyStatus.SecretName)
 			}
 		}

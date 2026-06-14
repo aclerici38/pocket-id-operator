@@ -18,6 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
@@ -315,6 +316,9 @@ func TestReconcileSecret_DeleteWhenDisabled(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-disabled-secret-oidc-credentials",
 			Namespace: testNamespace,
+			// The operator stamps this label on every secret it creates; a
+			// secret it manages must be deleted when the secret is disabled.
+			Labels: map[string]string{common.ManagedByLabelKey: common.ManagedByLabelValue},
 		},
 		Data: map[string][]byte{
 			"client_id": []byte("client-123"),
