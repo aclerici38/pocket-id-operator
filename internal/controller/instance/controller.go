@@ -26,9 +26,11 @@ import (
 	"fmt"
 	"maps"
 	"net/url"
+	"os"
 	"reflect"
 	"strings"
 
+	"github.com/go-logr/logr"
 	"golang.org/x/mod/semver"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -60,6 +62,11 @@ const (
 	// latestTestedPocketIDVersion is the most recent pocket-id upstream version tested.
 	// renovate: datasource=docker depName=ghcr.io/pocket-id/pocket-id
 	latestTestedPocketIDVersion = "v2.8.0"
+
+	// firstUnsupportedPocketIDVersion is the lowest pocket-id version that introduces
+	// breaking changes this operator cannot manage. Detecting this version or newer
+	// on an instance crashloops the operator to prevent unwanted changes via an incompatible api
+	firstUnsupportedPocketIDVersion = "v3.0.0"
 
 	// Environment variable mapping
 	envEncryptionKey      = "ENCRYPTION_KEY"
@@ -195,6 +202,7 @@ func (r *Reconciler) reconcileExternal(ctx context.Context, instance *pocketidin
 		reason = "Ready"
 		message = "Adopted external Pocket-ID"
 		instance.Status.Version = version
+		// Halt below, after the status patch persists the detected version.
 	}
 
 	meta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{
@@ -212,6 +220,8 @@ func (r *Reconciler) reconcileExternal(ctx context.Context, instance *pocketidin
 
 	metrics.RecordReadiness("PocketIDInstance", instance.Namespace, instance.Name, ready == metav1.ConditionTrue)
 	metrics.RecordInstanceInfo(instance.Namespace, instance.Name, instance.Status.Version, instance.Status.Version, "External", instance.Spec.External.URL)
+
+	haltIfUnsupportedVersion(log, instance, instance.Status.Version)
 
 	return common.ApplyResync(ctrl.Result{}), nil
 }
@@ -868,12 +878,7 @@ func (r *Reconciler) reconcileVersion(ctx context.Context, instance *pocketidint
 		return err
 	}
 
-	// golang.org/x/mod/semver requires a "v" prefix.
-	normalizedVersion := version
-	if version != "" && version[0] != 'v' {
-		normalizedVersion = "v" + version
-	}
-
+	normalizedVersion := normalizeVersion(version)
 	if semver.IsValid(normalizedVersion) && semver.Compare(normalizedVersion, latestTestedPocketIDVersion) > 0 {
 		log.Info("Pocket-id version is newer than the latest tested version. This should be fine, but please report any errors at https://github.com/aclerici38/pocket-id-operator",
 			"detectedVersion", version,
@@ -896,7 +901,40 @@ func (r *Reconciler) reconcileVersion(ctx context.Context, instance *pocketidint
 	}
 
 	metrics.RecordInstanceInfo(instance.Namespace, instance.Name, oldVersion, version, deploymentType, instance.Spec.AppURL)
+
+	haltIfUnsupportedVersion(log, instance, version)
+
 	return nil
+}
+
+// normalizeVersion ensures a "v" prefix, as golang.org/x/mod/semver requires one.
+func normalizeVersion(version string) string {
+	if version != "" && version[0] != 'v' {
+		return "v" + version
+	}
+	return version
+}
+
+// isUnsupportedVersion reports whether the given pocket-id version is at or above
+// firstUnsupportedPocketIDVersion. Invalid/empty versions are treated as supported.
+func isUnsupportedVersion(version string) bool {
+	v := normalizeVersion(version)
+	return semver.IsValid(v) && semver.Compare(v, firstUnsupportedPocketIDVersion) >= 0
+}
+
+// haltIfUnsupportedVersion terminates the operator process when an instance reports
+// a pocket-id version the operator cannot manage. Exiting causes the pod to crash loop.
+func haltIfUnsupportedVersion(log logr.Logger, instance *pocketidinternalv1alpha1.PocketIDInstance, version string) {
+	if !isUnsupportedVersion(version) {
+		return
+	}
+	log.Error(nil, "Pocket-id version is unsupported by this operator; halting. Upgrade the operator to a version that supports this pocket-id release: https://github.com/aclerici38/pocket-id-operator",
+		"namespace", instance.Namespace,
+		"name", instance.Name,
+		"detectedVersion", version,
+		"firstUnsupportedVersion", firstUnsupportedPocketIDVersion,
+	)
+	os.Exit(1)
 }
 
 func (r *Reconciler) updateStatus(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
