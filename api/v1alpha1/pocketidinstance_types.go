@@ -396,6 +396,14 @@ type HTTPRouteConfig struct {
 	// Will be automatically set to the hostname from spec.appUrl if not specified
 	// +optional
 	Hostnames []gatewayv1.Hostname `json:"hostnames,omitempty"`
+
+	// Template is merged with the operator-built HTTPRoute spec.
+	// Operator-managed fields (parentRefs, hostnames, and the default backend rule to the
+	// Service) always take precedence.
+	// +optional
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:pruning:PreserveUnknownFields
+	Template *gatewayv1.HTTPRouteSpec `json:"template,omitempty"`
 }
 
 // MetricsConfig configures the Prometheus metrics endpoint for Pocket-ID
@@ -517,6 +525,13 @@ type PocketIDInstanceSpec struct {
 	// Creates an HTTPRoute when enabled. Requires Gateway API CRDs to be installed.
 	// +optional
 	Route *HTTPRouteConfig `json:"route,omitempty"`
+
+	// ServiceTemplate is merged with the operator-built Service spec.
+	// Operator-managed fields (the selector and the http/metrics ports) always take precedence.
+	// +optional
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:pruning:PreserveUnknownFields
+	ServiceTemplate *corev1.ServiceSpec `json:"serviceTemplate,omitempty"`
 
 	// File storage backend
 	// Automatically set to "s3" when s3 config is present

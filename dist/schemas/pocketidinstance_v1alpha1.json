@@ -2842,6 +2842,10 @@
               },
               "minItems": 1,
               "type": "array"
+            },
+            "template": {
+              "description": "Template is merged with the operator-built HTTPRoute spec.\nOperator-managed fields (parentRefs, hostnames, and the default backend rule to the\nService) always take precedence; additional rules from the template are appended.",
+              "x-kubernetes-preserve-unknown-fields": true
             }
           },
           "required": [
@@ -3283,6 +3287,10 @@
             "object",
             "null"
           ]
+        },
+        "serviceTemplate": {
+          "description": "ServiceTemplate is merged with the operator-built Service spec.\nOperator-managed fields (the selector and the http/metrics ports) always take precedence.",
+          "x-kubernetes-preserve-unknown-fields": true
         },
         "smtp": {
           "additionalProperties": false,

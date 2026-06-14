@@ -2235,6 +2235,12 @@ spec:
                       type: object
                     minItems: 1
                     type: array
+                  template:
+                    description: |-
+                      Template is merged with the operator-built HTTPRoute spec.
+                      Operator-managed fields (parentRefs, hostnames, and the default backend rule to the
+                      Service) always take precedence; additional rules from the template are appended.
+                    x-kubernetes-preserve-unknown-fields: true
                 required:
                 - enabled
                 - parentRefs
@@ -2540,6 +2546,11 @@ spec:
                 - region
                 - secretAccessKey
                 type: object
+              serviceTemplate:
+                description: |-
+                  ServiceTemplate is merged with the operator-built Service spec.
+                  Operator-managed fields (the selector and the http/metrics ports) always take precedence.
+                x-kubernetes-preserve-unknown-fields: true
               smtp:
                 description: |-
                   SMTP email transport configuration
