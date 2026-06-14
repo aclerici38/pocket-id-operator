@@ -2896,7 +2896,7 @@
                     "type": "array"
                   },
                   "template": {
-                    "description": "Template is merged with the operator-built HTTPRoute spec.\nOperator-managed fields (parentRefs, hostnames, and the default backend rule to the\nService) always take precedence; additional rules from the template are appended.",
+                    "description": "Template is merged with the operator-built HTTPRoute spec.\nOperator-managed fields (parentRefs, hostnames, and the default backend rule to the\nService) always take precedence.",
                     "x-kubernetes-preserve-unknown-fields": true
                   }
                 },
