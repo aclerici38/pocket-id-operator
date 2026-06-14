@@ -21,7 +21,7 @@ kustomize = "5.8.1"
 # Test tooling
 setup-envtest = "0.24.1"
 # ginkgo stays a go: build so the CLI matches the ginkgo library version
-"go:github.com/onsi/ginkgo/v2/ginkgo" = "v2.30.0"
+"go:github.com/onsi/ginkgo/v2/ginkgo" = "v2.31.0"
 
 # Linting
 golangci-lint = "2.12.2"
