@@ -13,6 +13,10 @@
   ],
   "packageRules": [
     {
+      "matchPackageNames": ["jdx/mise"],
+      "schedule": ["* 0-5 * * 1"]
+    },
+    {
       "matchPackageNames": [
         "ghcr.io/aclerici38/pocket-id-operator",
         "ghcr.io/aclerici38/charts/pocket-id-operator"
