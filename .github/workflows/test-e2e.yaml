@@ -79,7 +79,7 @@ jobs:
         uses: jdx/mise-action@dba19683ed58901619b14f395a24841710cb4925 # v4.1.0
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: "2026.6.6"
+          version: "2026.6.9"
           install_args: "kind kubectl kustomize go:sigs.k8s.io/controller-tools/cmd/controller-gen go:github.com/onsi/ginkgo/v2/ginkgo"
 
       - name: Download image artifact
