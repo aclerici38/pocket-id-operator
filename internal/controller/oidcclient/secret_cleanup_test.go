@@ -59,6 +59,42 @@ func TestReconcileSecret_DisabledDeletesManagedSecret(t *testing.T) {
 	}
 }
 
+func TestReconcileSecret_BackfillsManagedByLabelOnExistingSecret(t *testing.T) {
+	// A public client avoids the client-secret rotation path (which needs an
+	// API client), letting us drive ReconcileSecret straight to the
+	// create-or-update of the managed secret.
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-client", Namespace: testNamespace},
+		Spec:       pocketidinternalv1alpha1.PocketIDOIDCClientSpec{IsPublic: true},
+		Status:     pocketidinternalv1alpha1.PocketIDOIDCClientStatus{ClientID: "abc123"},
+	}
+	instance := &pocketidinternalv1alpha1.PocketIDInstance{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-instance", Namespace: testNamespace},
+	}
+	// A secret the operator created under an older version, before it stamped the
+	// managed-by label. It must be back-filled so it stays eligible for cleanup.
+	unlabelled := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-client-oidc-credentials",
+			Namespace: testNamespace,
+		},
+	}
+
+	r := secretCleanupReconciler(t, oidcClient, instance, unlabelled)
+
+	if err := r.ReconcileSecret(context.Background(), oidcClient, instance, nil); err != nil {
+		t.Fatalf("ReconcileSecret returned error: %v", err)
+	}
+
+	got := &corev1.Secret{}
+	if err := r.Get(context.Background(), types.NamespacedName{Name: unlabelled.Name, Namespace: testNamespace}, got); err != nil {
+		t.Fatalf("expected secret to exist, got err=%v", err)
+	}
+	if !common.IsManagedByOperator(got) {
+		t.Fatalf("expected managed-by label to be back-filled, got labels=%v", got.Labels)
+	}
+}
+
 func TestReconcileSecret_DisabledPreservesUserOwnedSecret(t *testing.T) {
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
 		ObjectMeta: metav1.ObjectMeta{Name: "my-client", Namespace: testNamespace},

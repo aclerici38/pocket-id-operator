@@ -987,11 +987,17 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
 			Namespace: oidcClient.Namespace,
-			Labels:    secretLabels,
 		},
 	}
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, secret, func() error {
+		if secret.Labels == nil {
+			secret.Labels = make(map[string]string, len(secretLabels))
+		}
+		for k, v := range secretLabels {
+			secret.Labels[k] = v
+		}
+
 		secret.Data = secretData
 		secret.Type = corev1.SecretTypeOpaque
 
