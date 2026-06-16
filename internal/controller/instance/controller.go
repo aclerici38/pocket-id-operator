@@ -61,7 +61,7 @@ import (
 const (
 	// latestTestedPocketIDVersion is the most recent pocket-id upstream version tested.
 	// renovate: datasource=docker depName=ghcr.io/pocket-id/pocket-id
-	latestTestedPocketIDVersion = "v2.8.0"
+	latestTestedPocketIDVersion = "v2.9.0"
 
 	// firstUnsupportedPocketIDVersion is the lowest pocket-id version that introduces
 	// breaking changes this operator cannot manage. Detecting this version or newer
