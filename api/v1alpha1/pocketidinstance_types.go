@@ -437,7 +437,7 @@ type PocketIDInstanceSpec struct {
 	DeploymentType string `json:"deploymentType,omitempty"`
 
 	// Container image to run. Defaults to the latest distroless version at time of operator release
-	// +kubebuilder:default="ghcr.io/pocket-id/pocket-id:v2.9.0-distroless@sha256:968866bdb73c67ce7d75baf2b992b9b33db385668822e936625dc5116f372d2c"
+	// +kubebuilder:default="ghcr.io/pocket-id/pocket-id:v2.9.0-distroless@sha256:e21b13437a542080f8226e4c6281ca26c7909123886606bf967f92e620d73f24"
 	Image string `json:"image,omitempty"`
 
 	// Encryption Key
