@@ -11,6 +11,10 @@ on:
         description: Image tag to preload for e2e tests.
         required: false
         type: string
+      pocket_id_image:
+        description: Override the pocket-id image tested against (default is the pinned stable image).
+        required: false
+        type: string
       latest_release:
         description: Run e2e tests against the latest release instead of current code.
         required: false
@@ -24,6 +28,10 @@ on:
         type: string
       image_tag:
         description: Image tag to preload for e2e tests.
+        required: false
+        type: string
+      pocket_id_image:
+        description: Override the pocket-id image tested against (default is the pinned stable image).
         required: false
         type: string
       latest_release:
@@ -113,6 +121,7 @@ jobs:
           LATEST_RELEASE: ${{ inputs.latest_release }}
           RELEASE_IMAGE: ${{ steps.release.outputs.image }}
           IMAGE_TAG: ${{ inputs.image_tag }}
+          POCKET_ID_IMAGE: ${{ inputs.pocket_id_image || env.POCKET_ID_IMAGE }}
         run: |
           if [ "${LATEST_RELEASE}" = "true" ]; then
             IMG="${RELEASE_IMAGE}" mise run test-e2e-only

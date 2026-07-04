@@ -1,0 +1,131 @@
+name: E2E Tests (pocket-id next)
+
+# Compatibility canary: runs the e2e suite with the current operator (published
+# `main` image) against upstream pocket-id's rolling `next-distroless` tag.
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/test-e2e-next.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+  issues: write
+
+concurrency:
+  group: e2e-next-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  POCKET_ID_IMAGE: ghcr.io/pocket-id/pocket-id:next-distroless@sha256:7761b4b193ca8c36b4015e8c6447e027319265bc96649751a21a00e427620600
+  OPERATOR_IMAGE: ghcr.io/aclerici38/pocket-id-operator:main
+  CANARY_LABEL: pocket-id-next-canary
+  CANARY_ASSIGNEE: aclerici38
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+
+jobs:
+  test-e2e-next:
+    name: Run e2e tests (pocket-id next)
+    runs-on: ubuntu-latest
+    # Run in renovate PR or workflow_dispatch
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'pocket-id-next-canary')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Setup mise
+        uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
+        with:
+          # renovate: datasource=github-releases depName=jdx/mise
+          version: "2026.6.14"
+          install_args: "kind kubectl kustomize go:sigs.k8s.io/controller-tools/cmd/controller-gen go:github.com/onsi/ginkgo/v2/ginkgo"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull operator main image
+        run: docker pull "${OPERATOR_IMAGE}"
+
+      - name: Create kind cluster
+        run: mise run setup-test-e2e
+
+      - name: Run e2e tests
+        id: e2e
+        env:
+          SKIP_CLEANUP: "true"
+          IMG: ${{ env.OPERATOR_IMAGE }}
+        run: mise run test-e2e-only
+
+      - name: Update canary dashboard issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          E2E_OUTCOME: ${{ steps.e2e.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          SHORT_SHA="${GITHUB_SHA::7}"
+
+          if [ "${E2E_OUTCOME}" = "success" ]; then
+            STATUS="✅ **PASSING**"
+          else
+            STATUS="❌ **FAILING**"
+          fi
+
+          BODY="$(cat <<EOF
+          ## pocket-id \`next\` compatibility canary
+
+          ${STATUS}
+
+          |          |                              |
+          | -------- | ---------------------------- |
+          | image    | \`${POCKET_ID_IMAGE}\`       |
+          | operator | \`${OPERATOR_IMAGE}\`        |
+          | run      | ${RUN_URL}                   |
+          | checked  | ${NOW} (\`${SHORT_SHA}\`)    |
+
+          ---
+          _Automated by \`.github/workflows/test-e2e-next.yaml\`; this issue is locked, do not edit._
+          _While failing, @${CANARY_ASSIGNEE} is assigned; the assignment clears automatically on the next green run._
+          EOF
+          )"
+
+          NUM="$(gh issue list --label "${CANARY_LABEL}" --state all --limit 1 --json number -q '.[0].number // empty' || true)"
+
+          if [ -z "${NUM}" ]; then
+            gh label create "${CANARY_LABEL}" --color BFD4F2 \
+              --description "pocket-id next e2e canary dashboard" 2>/dev/null || true
+            NUM="$(gh issue create \
+              --title "pocket-id \`next\` compatibility canary" \
+              --label "${CANARY_LABEL}" \
+              --body "${BODY}" | grep -oE '[0-9]+$')"
+            gh issue lock "${NUM}" 2>/dev/null || true
+          else
+            gh issue edit "${NUM}" --body "${BODY}"
+            gh issue reopen "${NUM}" 2>/dev/null || true
+          fi
+
+          if [ "${E2E_OUTCOME}" = "success" ]; then
+            gh issue edit "${NUM}" --remove-assignee "${CANARY_ASSIGNEE}" 2>/dev/null || true
+          else
+            gh issue edit "${NUM}" --add-assignee "${CANARY_ASSIGNEE}"
+          fi
