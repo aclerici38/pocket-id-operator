@@ -110,6 +110,21 @@ jobs:
       image_repo: ${{ needs.meta.outputs.image_repo }}
       image_tag: ${{ needs.meta.outputs.image_tag }}
 
+  e2e-next:
+    name: E2E Tests (pocket-id next)
+    needs:
+      - meta
+      - build
+    permissions:
+      actions: write
+      contents: read
+      packages: read
+    uses: ./.github/workflows/test-e2e.yaml
+    with:
+      image_repo: ${{ needs.meta.outputs.image_repo }}
+      image_tag: ${{ needs.meta.outputs.image_tag }}
+      pocket_id_image: ghcr.io/pocket-id/pocket-id:next-distroless
+
   e2e-latest-release:
     name: E2E Tests (Latest Release)
     if: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'pocket-id-upgrade') }}
@@ -134,4 +149,3 @@ jobs:
     with:
       image_repo: ${{ needs.meta.outputs.image_repo }}
       image_tag: ${{ needs.meta.outputs.image_tag }}
-
