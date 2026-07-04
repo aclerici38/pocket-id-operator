@@ -83,6 +83,11 @@ type Reconciler struct {
 	// skipUpdate gates the update phase of reconciliation
 	// and just fetches the state
 	skipUpdate map[types.NamespacedName]bool
+
+	// pendingInitialMint marks clients created (not adopted) by the operator whose client
+	// secret has not yet been stored. It lets storeClientSecret=false permit the one-time
+	// initial mint for brand-new clients while never regenerating pre-existing credentials.
+	pendingInitialMint map[types.NamespacedName]bool
 }
 
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidoidcclients,verbs=get;list;watch;create;update;patch;delete
@@ -106,6 +111,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			metrics.DeleteReadinessGauge("PocketIDOIDCClient", req.Namespace, req.Name)
 			metrics.DeleteOIDCClientAllowedGroupCount(req.Namespace, req.Name)
 			metrics.DeleteOIDCClientRotationMetrics(req.Namespace, req.Name)
+			delete(r.pendingInitialMint, req.NamespacedName)
 		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -344,6 +350,12 @@ func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *po
 	operation := "adopted"
 	if result.IsNewlyCreated {
 		operation = "created"
+		// A brand-new client has no externally-managed secret to protect, so the initial
+		// mint is allowed even when storeClientSecret is false.
+		if r.pendingInitialMint == nil {
+			r.pendingInitialMint = make(map[types.NamespacedName]bool)
+		}
+		r.pendingInitialMint[client.ObjectKeyFromObject(oidcClient)] = true
 	}
 	metrics.ResourceOperations.WithLabelValues("PocketIDOIDCClient", operation).Inc()
 
@@ -997,6 +1009,8 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 		return fmt.Errorf("failed to create or update secret: %w", err)
 	}
 
+	delete(r.pendingInitialMint, client.ObjectKeyFromObject(oidcClient))
+
 	r.applyRotationStatus(ctx, oidcClient, rotatedAt)
 
 	// Set instance rotation status each reconcile to self-correct
@@ -1129,8 +1143,11 @@ func (r *Reconciler) advanceInstanceRotationStatus(ctx context.Context, instance
 
 // reconcileClientSecretData owns the client_secret key of the credentials Secret: it decides
 // whether the secret must be regenerated, fills secretData accordingly, and maintains the
-// rotation metrics. When storeClientSecret is false the secret is never regenerated and the
-// key is never written. Returns the rotation timestamp (nil when nothing was rotated) and whether the rotation was scheduled.
+// rotation metrics. When storeClientSecret is false the operator never regenerates an existing
+// credential: a previously stored value is carried forward untouched, an adopted client's
+// externally-managed secret is left alone (no client_secret key), and only a client the
+// operator just created may mint and store its initial secret. Returns the rotation timestamp
+// (nil when nothing was rotated) and whether the rotation was scheduled.
 // Extracted to keep ReconcileSecret under the cyclomatic complexity limit.
 func (r *Reconciler) reconcileClientSecretData(
 	ctx context.Context,
@@ -1141,11 +1158,20 @@ func (r *Reconciler) reconcileClientSecretData(
 	keys pocketidinternalv1alpha1.OIDCClientSecretKeys,
 	secretData map[string][]byte,
 ) (rotatedAt *metav1.Time, scheduledRotation bool, err error) {
-	if !storeClientSecret(oidcClient) {
-		// The client secret is never regenerated or stored. Record the rotation schedule
-		// as disabled so gauges from a previously enabled schedule cannot linger when
-		// rotation and storeClientSecret are turned off in the same update.
+	if !storeClientSecret(oidcClient) && !r.pendingInitialMint[client.ObjectKeyFromObject(oidcClient)] {
+		// Record the rotation schedule as disabled so gauges from a previously enabled
+		// schedule cannot linger when rotation and storeClientSecret are turned off in
+		// the same update.
 		r.recordRotationSchedule(oidcClient, rotationEval{})
+
+		// A stored client_secret can only have been minted by the operator (created
+		// client); keep it. Adopted clients never have one.
+		existing := &corev1.Secret{}
+		if err := r.Get(ctx, client.ObjectKey{Name: secretName, Namespace: oidcClient.Namespace}, existing); err == nil {
+			if v, ok := existing.Data[keys.ClientSecret]; ok {
+				secretData[keys.ClientSecret] = v
+			}
+		}
 
 		if helpers.HasAnnotation(oidcClient, regenerateClientSecretAnnotation, "true") {
 			logf.FromContext(ctx).Info("Ignoring regenerate-client-secret annotation: secret.storeClientSecret is false",

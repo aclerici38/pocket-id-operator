@@ -473,32 +473,39 @@ func TestReconcileSecret_CreateForPublicClient(t *testing.T) {
 	}
 }
 
-// TestReconcileSecret_StoreClientSecretDisabled verifies that storeClientSecret=false
-// skips regeneration entirely (a nil apiClient would error if the regenerate branch ran),
-// omits client_secret from the secret, and drops a pre-existing client_secret key. The
-// manual regenerate annotation must also be ignored rather than regenerating a value
-// that would then be discarded.
+// TestReconcileSecret_StoreClientSecretDisabled verifies the storeClientSecret=false
+// semantics: an existing credential is never regenerated (a nil apiClient would error if
+// the regenerate branch ran) — adopted clients get no client_secret key, a previously
+// stored key is carried forward untouched, and the manual regenerate annotation is
+// ignored. Only a client the operator just created (pendingInitialMint) mints and stores
+// its initial secret.
 func TestReconcileSecret_StoreClientSecretDisabled(t *testing.T) {
 	ctx := context.Background()
 	scheme := runtime.NewScheme()
 	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
 	_ = corev1.AddToScheme(scheme)
 
+	existingSecretWithKey := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-no-store-oidc-credentials",
+			Namespace: testNamespace,
+			Labels:    common.ManagedByLabels(nil),
+		},
+		Data: map[string][]byte{"client_id": []byte("client-123"), "client_secret": []byte("minted-earlier")},
+	}
+
 	for _, tc := range []struct {
 		name            string
 		existingSecret  *corev1.Secret
 		regenAnnotation bool
+		pendingMint     bool
+		wantKey         string // expected client_secret value; empty means the key must be absent
+		wantRegenCalls  int
 	}{
-		{name: "new secret omits client_secret"},
-		{name: "existing client_secret key is dropped", existingSecret: &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-no-store-oidc-credentials",
-				Namespace: testNamespace,
-				Labels:    common.ManagedByLabels(nil),
-			},
-			Data: map[string][]byte{"client_id": []byte("client-123"), "client_secret": []byte("old-secret")},
-		}},
-		{name: "manual regenerate annotation is ignored", regenAnnotation: true},
+		{name: "adopted client never mints"},
+		{name: "previously stored key is carried forward", existingSecret: existingSecretWithKey, wantKey: "minted-earlier"},
+		{name: "manual regenerate annotation is ignored", existingSecret: existingSecretWithKey.DeepCopy(), regenAnnotation: true, wantKey: "minted-earlier"},
+		{name: "newly created client mints and stores", pendingMint: true, wantKey: "rotated-secret", wantRegenCalls: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
@@ -546,9 +553,34 @@ func TestReconcileSecret_StoreClientSecretDisabled(t *testing.T) {
 				Scheme: scheme,
 			}
 
-			// nil apiClient: regenerating would fail, proving the branch is skipped.
-			if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, nil); err != nil {
+			key := client.ObjectKeyFromObject(oidcClient)
+			if tc.pendingMint {
+				reconciler.pendingInitialMint = map[types.NamespacedName]bool{key: true}
+			}
+
+			// Only the pending-mint case gets a working API client; the others use nil,
+			// which would error if any regenerate branch ran.
+			var apiClient *pocketid.Client
+			regenCalls := 0
+			if tc.pendingMint {
+				ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					regenCalls++
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = w.Write([]byte(`{"secret":"rotated-secret"}`))
+				}))
+				defer ts.Close()
+				apiClient, _ = pocketid.NewClient(ts.URL, "")
+			}
+
+			if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient); err != nil {
 				t.Fatalf("ReconcileSecret returned error: %v", err)
+			}
+
+			if regenCalls != tc.wantRegenCalls {
+				t.Errorf("expected %d regenerate calls, got %d", tc.wantRegenCalls, regenCalls)
+			}
+			if reconciler.pendingInitialMint[key] {
+				t.Error("expected pendingInitialMint to be cleared after the secret write")
 			}
 
 			secret := &corev1.Secret{}
@@ -559,8 +591,8 @@ func TestReconcileSecret_StoreClientSecretDisabled(t *testing.T) {
 				t.Fatalf("expected secret to exist: %v", err)
 			}
 
-			if _, ok := secret.Data["client_secret"]; ok {
-				t.Error("expected secret to NOT have client_secret key when storeClientSecret is false")
+			if got := string(secret.Data["client_secret"]); got != tc.wantKey {
+				t.Errorf("expected client_secret %q, got %q", tc.wantKey, got)
 			}
 			if _, ok := secret.Data["client_id"]; !ok {
 				t.Error("expected secret to have client_id key")
@@ -625,6 +657,79 @@ func TestReconcileSecret_StoreClientSecretDisabledClearsRotationGauges(t *testin
 	}
 	if metrics.OIDCClientNextRotationTimestamp.DeleteLabelValues(testNamespace, name) {
 		t.Error("expected next rotation timestamp gauge to have been deleted")
+	}
+}
+
+// TestCreateOrAdoptOIDCClient_PendingInitialMint verifies the provenance marker that lets
+// storeClientSecret=false mint the initial secret for brand-new clients only: creating a
+// client sets pendingInitialMint, adopting an existing one does not.
+func TestCreateOrAdoptOIDCClient_PendingInitialMint(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	for _, tc := range []struct {
+		name        string
+		handler     http.HandlerFunc
+		wantPending bool
+	}{
+		{
+			name: "created client is marked for initial mint",
+			handler: func(w http.ResponseWriter, req *http.Request) {
+				switch {
+				case req.Method == http.MethodGet && req.URL.Path == "/api/oidc/clients":
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = w.Write([]byte(`{"data":[]}`))
+				case req.Method == http.MethodPost && req.URL.Path == "/api/oidc/clients":
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusCreated)
+					_, _ = w.Write([]byte(`{"id":"new-id","name":"mint-client","callbackURLs":[],"logoutCallbackURLs":[]}`))
+				default:
+					http.NotFound(w, req)
+				}
+			},
+			wantPending: true,
+		},
+		{
+			name: "adopted client is not marked for initial mint",
+			handler: func(w http.ResponseWriter, req *http.Request) {
+				if req.Method == http.MethodGet && req.URL.Path == "/api/oidc/clients" {
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = w.Write([]byte(`{"data":[{"id":"existing-id","name":"mint-client","callbackURLs":[],"logoutCallbackURLs":[]}]}`))
+					return
+				}
+				http.NotFound(w, req)
+			},
+			wantPending: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{Name: "mint-client", Namespace: testNamespace},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+					CallbackURLs: []string{"https://example.com/cb"},
+				},
+			}
+
+			r := newPushStateOIDCReconciler(scheme, oidcClient)
+
+			ts := httptest.NewServer(tc.handler)
+			defer ts.Close()
+			apiClient, _ := pocketid.NewClient(ts.URL, "")
+
+			requeue, err := r.createOrAdoptOIDCClient(ctx, oidcClient, apiClient)
+			if err != nil {
+				t.Fatalf("createOrAdoptOIDCClient returned error: %v", err)
+			}
+			if !requeue {
+				t.Error("expected requeue after create/adopt")
+			}
+
+			key := client.ObjectKeyFromObject(oidcClient)
+			if got := r.pendingInitialMint[key]; got != tc.wantPending {
+				t.Errorf("pendingInitialMint = %v, want %v", got, tc.wantPending)
+			}
+		})
 	}
 }
 

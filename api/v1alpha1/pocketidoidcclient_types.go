@@ -80,9 +80,11 @@ type OIDCClientSecretSpec struct {
 	// +optional
 	Name string `json:"name,omitempty"`
 
-	// StoreClientSecret controls whether the client secret is stored in the Secret.
-	// When false, the operator never regenerates the client secret and the Secret
-	// omits the client_secret key. Defaults to true
+	// StoreClientSecret controls whether the operator manages the client secret.
+	// When false, the operator never regenerates an existing client secret: a client
+	// created by the operator still gets its initial secret minted and stored, while
+	// an adopted client keeps its externally-managed secret and the Secret omits the
+	// client_secret key. Defaults to true
 	// +kubebuilder:default=true
 	// +optional
 	StoreClientSecret *bool `json:"storeClientSecret,omitempty"`

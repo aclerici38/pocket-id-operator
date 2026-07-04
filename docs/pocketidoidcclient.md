@@ -11,15 +11,15 @@ inconsistent behavior as there is no way for the operator to know whether or not
 it created is up to date with the state of Pocket-ID. 
 
 If the client secret is managed outside the cluster (e.g. pasted into an app's UI), set
-`spec.secret.storeClientSecret: false`. The operator then never regenerates the client secret and
-the Secret omits the `client_secret` key. This is especially useful when adopting an existing
-OIDC client whose secret is already configured in an app, since adoption would otherwise
-regenerate (and invalidate) it.
+`spec.secret.storeClientSecret: false`. The operator then never regenerates an **existing**
+client secret:
 
-- Flipping it to `false` removes the `client_secret` key from the Secret; the value is not
-  recoverable afterward (Pocket-ID only stores a hash). Flipping back to `true` regenerates it.
-- The `pocketid.internal/regenerate-client-secret` annotation is ignored (the regenerated value
-  could not be stored anywhere).
+- When the operator **adopts** an OIDC client that already exists in Pocket-ID, the secret is
+  left alone and the Secret omits the `client_secret` key.
+- When the operator **creates** the OIDC client itself, the initial client secret is still
+  minted and stored. It is never regenerated afterward.
+- The `pocketid.internal/regenerate-client-secret` annotation is ignored. To rotate the
+  secret, flip `storeClientSecret` to `true` first.
 - Enabling `spec.clientSecretRotation` together with `storeClientSecret: false` is rejected at
   admission.
 
@@ -314,8 +314,9 @@ To view the logs add the `--zap-log-level=debug` arg on the operator container.
 ## Generated Secret
 
 - `spec.secret.name`: defaults to `<client>-oidc-credentials`.
-- `spec.secret.storeClientSecret`: set to `false` to omit `client_secret` and never regenerate
-  the client secret (see [Client Secret](#client-secret)). Defaults to `true`.
+- `spec.secret.storeClientSecret`: set to `false` to never regenerate an existing client
+  secret; adopted clients get no `client_secret` key (see [Client Secret](#client-secret)).
+  Defaults to `true`.
 - `spec.secret.keys`: customize secret keys. Defaults are:
   `client_id`, `client_secret`, `issuer_url`, `callback_urls`,
   `logout_callback_urls`, `discovery_url`, `authorization_url`,
@@ -325,7 +326,8 @@ To view the logs add the `--zap-log-level=debug` arg on the operator container.
 
 When enabled, the operator writes a Secret containing:
 - Client ID (always)
-- Client secret (only for non-public clients, unless `storeClientSecret` is `false`)
+- Client secret (only for non-public clients; with `storeClientSecret: false`, only if the
+  operator created the client and minted its initial secret)
 - Issuer URL and discovery endpoints derived from the instance `spec.appUrl`
 - Callback and logout URLs
 
