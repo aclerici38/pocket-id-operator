@@ -4420,7 +4420,7 @@ spec:
         - --zap-log-level=info
         command:
         - /manager
-        image: ghcr.io/aclerici38/pocket-id-operator:v0.8.0@sha256:cac1243337dec156caa78f4f0e37d0851267717559f7ba4b20bf3cc12faa7474
+        image: ghcr.io/aclerici38/pocket-id-operator:v0.9.0@sha256:6369545ce11af997522bfed1e8534120852b7ff7088ce9b85d37ebe93edde905
         livenessProbe:
           httpGet:
             path: /healthz
