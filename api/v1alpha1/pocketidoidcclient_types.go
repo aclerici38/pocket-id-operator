@@ -80,6 +80,13 @@ type OIDCClientSecretSpec struct {
 	// +optional
 	Name string `json:"name,omitempty"`
 
+	// StoreClientSecret controls whether the client secret is stored in the Secret.
+	// When false, the operator never regenerates the client secret and the Secret
+	// omits the client_secret key. Defaults to true
+	// +kubebuilder:default=true
+	// +optional
+	StoreClientSecret *bool `json:"storeClientSecret,omitempty"`
+
 	// Keys allows customization of the secret keys for each credential field.
 	// +optional
 	Keys *OIDCClientSecretKeys `json:"keys,omitempty"`
@@ -203,6 +210,7 @@ type SCIMSpec struct {
 
 // PocketIDOIDCClientSpec defines the desired state of PocketIDOIDCClient
 // +kubebuilder:validation:XValidation:rule="has(self.clientID) == has(oldSelf.clientID) && (!has(self.clientID) || self.clientID == oldSelf.clientID)",message="clientID is immutable"
+// +kubebuilder:validation:XValidation:rule="!has(self.clientSecretRotation) || !self.clientSecretRotation.enabled || !has(self.secret) || !has(self.secret.storeClientSecret) || self.secret.storeClientSecret",message="clientSecretRotation cannot be enabled when secret.storeClientSecret is false"
 type PocketIDOIDCClientSpec struct {
 	// Name of the oidc client to create in Pocket ID.
 	// If omitted, defaults to metadata.name of the oidcclient resource.

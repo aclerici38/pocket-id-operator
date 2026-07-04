@@ -518,6 +518,14 @@
                 "string",
                 "null"
               ]
+            },
+            "storeClientSecret": {
+              "default": true,
+              "description": "StoreClientSecret controls whether the client secret is stored in the Secret.\nWhen false, the operator never regenerates the client secret and the Secret\nomits the client_secret key. Defaults to true",
+              "type": [
+                "boolean",
+                "null"
+              ]
             }
           },
           "type": [
@@ -534,6 +542,10 @@
         {
           "message": "clientID is immutable",
           "rule": "has(self.clientID) == has(oldSelf.clientID) \u0026\u0026 (!has(self.clientID) || self.clientID == oldSelf.clientID)"
+        },
+        {
+          "message": "clientSecretRotation cannot be enabled when secret.storeClientSecret is false",
+          "rule": "!has(self.clientSecretRotation) || !self.clientSecretRotation.enabled || !has(self.secret) || !has(self.secret.storeClientSecret) || self.secret.storeClientSecret"
         }
       ]
     },

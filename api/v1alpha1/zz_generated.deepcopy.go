@@ -389,6 +389,11 @@ func (in *OIDCClientSecretSpec) DeepCopyInto(out *OIDCClientSecretSpec) {
 		*out = new(bool)
 		**out = **in
 	}
+	if in.StoreClientSecret != nil {
+		in, out := &in.StoreClientSecret, &out.StoreClientSecret
+		*out = new(bool)
+		**out = **in
+	}
 	if in.Keys != nil {
 		in, out := &in.Keys, &out.Keys
 		*out = new(OIDCClientSecretKeys)

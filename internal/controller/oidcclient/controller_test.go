@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -19,6 +20,7 @@ import (
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
+	"github.com/aclerici38/pocket-id-operator/internal/metrics"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
@@ -468,6 +470,161 @@ func TestReconcileSecret_CreateForPublicClient(t *testing.T) {
 	}
 	if _, ok := secret.Data["issuer_url"]; !ok {
 		t.Error("expected secret to have issuer_url key")
+	}
+}
+
+// TestReconcileSecret_StoreClientSecretDisabled verifies that storeClientSecret=false
+// skips regeneration entirely (a nil apiClient would error if the regenerate branch ran),
+// omits client_secret from the secret, and drops a pre-existing client_secret key. The
+// manual regenerate annotation must also be ignored rather than regenerating a value
+// that would then be discarded.
+func TestReconcileSecret_StoreClientSecretDisabled(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	for _, tc := range []struct {
+		name            string
+		existingSecret  *corev1.Secret
+		regenAnnotation bool
+	}{
+		{name: "new secret omits client_secret"},
+		{name: "existing client_secret key is dropped", existingSecret: &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-no-store-oidc-credentials",
+				Namespace: testNamespace,
+				Labels:    common.ManagedByLabels(nil),
+			},
+			Data: map[string][]byte{"client_id": []byte("client-123"), "client_secret": []byte("old-secret")},
+		}},
+		{name: "manual regenerate annotation is ignored", regenAnnotation: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-no-store",
+					Namespace: testNamespace,
+					UID:       "test-uid-no-store",
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+					CallbackURLs: []string{"https://example.com/callback"},
+					Secret: &pocketidinternalv1alpha1.OIDCClientSecretSpec{
+						StoreClientSecret: boolPtr(false),
+					},
+				},
+				Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
+					ClientID: "client-123",
+				},
+			}
+			if tc.regenAnnotation {
+				oidcClient.Annotations = map[string]string{"pocketid.internal/regenerate-client-secret": "true"}
+			}
+
+			instance := &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-instance",
+					Namespace: testNamespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					AppURL:        "http://test.example.com",
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{Value: "0123456789abcdef"},
+				},
+			}
+
+			objs := []client.Object{oidcClient, instance}
+			if tc.existingSecret != nil {
+				objs = append(objs, tc.existingSecret)
+			}
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(objs...).
+				Build()
+
+			reconciler := &Reconciler{
+				Client: fakeClient,
+				Scheme: scheme,
+			}
+
+			// nil apiClient: regenerating would fail, proving the branch is skipped.
+			if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, nil); err != nil {
+				t.Fatalf("ReconcileSecret returned error: %v", err)
+			}
+
+			secret := &corev1.Secret{}
+			if err := fakeClient.Get(ctx, client.ObjectKey{
+				Name:      "test-no-store-oidc-credentials",
+				Namespace: testNamespace,
+			}, secret); err != nil {
+				t.Fatalf("expected secret to exist: %v", err)
+			}
+
+			if _, ok := secret.Data["client_secret"]; ok {
+				t.Error("expected secret to NOT have client_secret key when storeClientSecret is false")
+			}
+			if _, ok := secret.Data["client_id"]; !ok {
+				t.Error("expected secret to have client_id key")
+			}
+			if _, ok := secret.Data["issuer_url"]; !ok {
+				t.Error("expected secret to have issuer_url key")
+			}
+		})
+	}
+}
+
+// TestReconcileSecret_StoreClientSecretDisabledClearsRotationGauges guards against stale
+// rotation metrics: when rotation and storeClientSecret are turned off in the same update,
+// the regeneration block is skipped entirely, so the skip path itself must record the
+// schedule as disabled and delete the schedule gauges left by the previously enabled config.
+func TestReconcileSecret_StoreClientSecretDisabledClearsRotationGauges(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	const name = "test-no-store-gauges"
+
+	// Simulate gauges left behind by a previously enabled rotation schedule.
+	metrics.SetOIDCClientRotationEnabled(testNamespace, name, true)
+	metrics.SetOIDCClientRotationSchedule(testNamespace, name, 3600, 1_700_000_000, 1_700_003_600)
+
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace, UID: "test-uid-no-store-gauges"},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			CallbackURLs: []string{"https://example.com/callback"},
+			Secret: &pocketidinternalv1alpha1.OIDCClientSecretSpec{
+				StoreClientSecret: boolPtr(false),
+			},
+		},
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{ClientID: "client-gauges"},
+	}
+	instance := &pocketidinternalv1alpha1.PocketIDInstance{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-instance", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+			AppURL:        "http://test.example.com",
+			EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{Value: "0123456789abcdef"},
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(oidcClient, instance).Build()
+	reconciler := &Reconciler{Client: fakeClient, Scheme: scheme}
+
+	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, nil); err != nil {
+		t.Fatalf("ReconcileSecret returned error: %v", err)
+	}
+
+	if got := testutil.ToFloat64(metrics.OIDCClientRotationEnabled.WithLabelValues(testNamespace, name)); got != 0 {
+		t.Errorf("expected rotation enabled gauge to be 0, got %v", got)
+	}
+	// DeleteLabelValues reports whether the series existed; the schedule gauges must be gone.
+	if metrics.OIDCClientRotationIntervalSeconds.DeleteLabelValues(testNamespace, name) {
+		t.Error("expected rotation interval gauge to have been deleted")
+	}
+	if metrics.OIDCClientLastRotationTimestamp.DeleteLabelValues(testNamespace, name) {
+		t.Error("expected last rotation timestamp gauge to have been deleted")
+	}
+	if metrics.OIDCClientNextRotationTimestamp.DeleteLabelValues(testNamespace, name) {
+		t.Error("expected next rotation timestamp gauge to have been deleted")
 	}
 }
 

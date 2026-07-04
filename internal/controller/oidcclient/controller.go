@@ -206,7 +206,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		log.Error(err, "Failed to remove regenerate-client-secret annotation")
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	} else if removed {
-		log.Info("Removed regenerate-client-secret annotation after secret regeneration")
+		// The annotation is removed even when it was ignored (storeClientSecret false),
+		// so it cannot fire unexpectedly if the flag is later flipped back to true.
+		if storeClientSecret(oidcClient) {
+			log.Info("Removed regenerate-client-secret annotation after secret regeneration")
+		} else {
+			log.Info("Removed regenerate-client-secret annotation without regenerating: secret.storeClientSecret is false")
+		}
 	}
 
 	_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionTrue, "Reconciled", "OIDC client is in sync")
@@ -905,47 +911,15 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 		secretData[keys.ClientID] = []byte(oidcClient.Status.ClientID)
 	}
 
-	// Include client_secret for non-public clients
-	// Only regenerate if the secret doesn't exist yet or if explicitly requested via annotation
+	// Include client_secret for non-public clients that store it.
+	// Only regenerate if the secret doesn't exist yet or if explicitly requested via annotation.
 	var rotatedAt *metav1.Time
 	var scheduledRotation bool
 	if !oidcClient.Spec.IsPublic && oidcClient.Status.ClientID != "" {
-		// Seed the rotation counters at 0 so this client's first rotation of each kind registers
-		// as a visible 0→1 step for increase()/rate() rather than a dropped first sample.
-		metrics.InitOIDCClientRotationCounters(oidcClient.Namespace, oidcClient.Name)
-
-		decision, err := r.secretRegenDecision(ctx, oidcClient, instance, secretName)
+		var err error
+		rotatedAt, scheduledRotation, err = r.reconcileClientSecretData(ctx, oidcClient, instance, apiClient, secretName, keys, secretData)
 		if err != nil {
 			return err
-		}
-		scheduledRotation = decision.scheduled
-
-		// Refresh the schedule gauges from the evaluation so the dashboard reflects the
-		// current state even on reconciles that do not rotate.
-		if decision.evaluated {
-			r.recordRotationSchedule(oidcClient, decision.eval)
-		}
-
-		if decision.regenerate {
-			if apiClient == nil {
-				return fmt.Errorf("apiClient is required to regenerate client secret")
-			}
-
-			logf.FromContext(ctx).Info("Rotating client secret",
-				"name", oidcClient.Name, "clientID", oidcClient.Status.ClientID, "trigger", decision.trigger)
-
-			clientSecret, err := apiClient.RegenerateOIDCClientSecret(ctx, oidcClient.Status.ClientID)
-			if err != nil {
-				metrics.OIDCClientSecretRotations.WithLabelValues(oidcClient.Namespace, oidcClient.Name, "error", decision.trigger).Inc()
-				return fmt.Errorf("failed to get client secret: %w", err)
-			}
-			metrics.OIDCClientSecretRotations.WithLabelValues(oidcClient.Namespace, oidcClient.Name, "success", decision.trigger).Inc()
-			secretData[keys.ClientSecret] = []byte(clientSecret)
-			now := metav1.NewTime(time.Now())
-			rotatedAt = &now
-		} else {
-			// update existing secret
-			secretData[keys.ClientSecret] = decision.existing.Data[keys.ClientSecret]
 		}
 	}
 
@@ -1153,6 +1127,73 @@ func (r *Reconciler) advanceInstanceRotationStatus(ctx context.Context, instance
 	return nil
 }
 
+// reconcileClientSecretData owns the client_secret key of the credentials Secret: it decides
+// whether the secret must be regenerated, fills secretData accordingly, and maintains the
+// rotation metrics. When storeClientSecret is false the secret is never regenerated and the
+// key is never written. Returns the rotation timestamp (nil when nothing was rotated) and whether the rotation was scheduled.
+// Extracted to keep ReconcileSecret under the cyclomatic complexity limit.
+func (r *Reconciler) reconcileClientSecretData(
+	ctx context.Context,
+	oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient,
+	instance *pocketidinternalv1alpha1.PocketIDInstance,
+	apiClient *pocketid.Client,
+	secretName string,
+	keys pocketidinternalv1alpha1.OIDCClientSecretKeys,
+	secretData map[string][]byte,
+) (rotatedAt *metav1.Time, scheduledRotation bool, err error) {
+	if !storeClientSecret(oidcClient) {
+		// The client secret is never regenerated or stored. Record the rotation schedule
+		// as disabled so gauges from a previously enabled schedule cannot linger when
+		// rotation and storeClientSecret are turned off in the same update.
+		r.recordRotationSchedule(oidcClient, rotationEval{})
+
+		if helpers.HasAnnotation(oidcClient, regenerateClientSecretAnnotation, "true") {
+			logf.FromContext(ctx).Info("Ignoring regenerate-client-secret annotation: secret.storeClientSecret is false",
+				"name", oidcClient.Name)
+		}
+		return nil, false, nil
+	}
+
+	// Seed the rotation counters at 0 so this client's first rotation of each kind registers
+	// as a visible 0→1 step for increase()/rate() rather than a dropped first sample.
+	metrics.InitOIDCClientRotationCounters(oidcClient.Namespace, oidcClient.Name)
+
+	decision, err := r.secretRegenDecision(ctx, oidcClient, instance, secretName)
+	if err != nil {
+		return nil, false, err
+	}
+	scheduledRotation = decision.scheduled
+
+	// Refresh the schedule gauges from the evaluation so the dashboard reflects the
+	// current state even on reconciles that do not rotate.
+	if decision.evaluated {
+		r.recordRotationSchedule(oidcClient, decision.eval)
+	}
+
+	if !decision.regenerate {
+		// update existing secret
+		secretData[keys.ClientSecret] = decision.existing.Data[keys.ClientSecret]
+		return nil, scheduledRotation, nil
+	}
+
+	if apiClient == nil {
+		return nil, false, fmt.Errorf("apiClient is required to regenerate client secret")
+	}
+
+	logf.FromContext(ctx).Info("Rotating client secret",
+		"name", oidcClient.Name, "clientID", oidcClient.Status.ClientID, "trigger", decision.trigger)
+
+	clientSecret, err := apiClient.RegenerateOIDCClientSecret(ctx, oidcClient.Status.ClientID)
+	if err != nil {
+		metrics.OIDCClientSecretRotations.WithLabelValues(oidcClient.Namespace, oidcClient.Name, "error", decision.trigger).Inc()
+		return nil, false, fmt.Errorf("failed to get client secret: %w", err)
+	}
+	metrics.OIDCClientSecretRotations.WithLabelValues(oidcClient.Namespace, oidcClient.Name, "success", decision.trigger).Inc()
+	secretData[keys.ClientSecret] = []byte(clientSecret)
+	now := metav1.NewTime(time.Now())
+	return &now, scheduledRotation, nil
+}
+
 // regenDecision is the outcome of secretRegenDecision: whether to regenerate the client
 // secret, what triggered it, whether it was a scheduled rotation (which drives the instance
 // aggregate), the existing secret, and the rotation evaluation when one was performed.
@@ -1318,6 +1359,15 @@ func (r *Reconciler) rotationDue(ctx context.Context, oidcClient *pocketidintern
 
 	eval.due = true
 	return eval, nil
+}
+
+// storeClientSecret reports whether the client secret should be stored in the
+// Secret (and therefore regenerated when needed). Defaults to true.
+func storeClientSecret(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) bool {
+	if oidcClient.Spec.Secret != nil && oidcClient.Spec.Secret.StoreClientSecret != nil {
+		return *oidcClient.Spec.Secret.StoreClientSecret
+	}
+	return true
 }
 
 func (r *Reconciler) GetSecretName(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) string {
