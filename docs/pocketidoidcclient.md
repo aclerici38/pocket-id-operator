@@ -10,6 +10,19 @@ creation/adoption of an OIDC Client in order to store it in a Kubernetes Secret.
 inconsistent behavior as there is no way for the operator to know whether or not the client-secret 
 it created is up to date with the state of Pocket-ID. 
 
+If the client secret is managed outside the cluster (e.g. pasted into an app's UI), set
+`spec.secret.storeClientSecret: false`. The operator then never regenerates an **existing**
+client secret:
+
+- When the operator **adopts** an OIDC client that already exists in Pocket-ID, the secret is
+  left alone and the Secret omits the `client_secret` key.
+- When the operator **creates** the OIDC client itself, the initial client secret is still
+  minted and stored. It is never regenerated afterward.
+- The `pocketid.internal/regenerate-client-secret` annotation is ignored. To rotate the
+  secret, flip `storeClientSecret` to `true` first.
+- Enabling `spec.clientSecretRotation` together with `storeClientSecret: false` is rejected at
+  admission.
+
 ## Regenerating Client Secrets
 
 To regenerate a client-secret set the annotation `pocketid.internal/regenerate-client-secret` to "true". The operator will remove
@@ -301,6 +314,9 @@ To view the logs add the `--zap-log-level=debug` arg on the operator container.
 ## Generated Secret
 
 - `spec.secret.name`: defaults to `<client>-oidc-credentials`.
+- `spec.secret.storeClientSecret`: set to `false` to never regenerate an existing client
+  secret; adopted clients get no `client_secret` key (see [Client Secret](#client-secret)).
+  Defaults to `true`.
 - `spec.secret.keys`: customize secret keys. Defaults are:
   `client_id`, `client_secret`, `issuer_url`, `callback_urls`,
   `logout_callback_urls`, `discovery_url`, `authorization_url`,
@@ -310,7 +326,8 @@ To view the logs add the `--zap-log-level=debug` arg on the operator container.
 
 When enabled, the operator writes a Secret containing:
 - Client ID (always)
-- Client secret (only for non-public clients)
+- Client secret (only for non-public clients; with `storeClientSecret: false`, only if the
+  operator created the client and minted its initial secret)
 - Issuer URL and discovery endpoints derived from the instance `spec.appUrl`
 - Callback and logout URLs
 

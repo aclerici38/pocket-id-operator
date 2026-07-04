@@ -3287,12 +3287,25 @@ spec:
                       Name is the name of the secret to create.
                       Defaults to metadata.name + "-oidc-credentials"
                     type: string
+                  storeClientSecret:
+                    default: true
+                    description: |-
+                      StoreClientSecret controls whether the operator manages the client secret.
+                      When false, the operator never regenerates an existing client secret: a client
+                      created by the operator still gets its initial secret minted and stored, while
+                      an adopted client keeps its externally-managed secret and the Secret omits the
+                      client_secret key. Defaults to true
+                    type: boolean
                 type: object
             type: object
             x-kubernetes-validations:
             - message: clientID is immutable
               rule: has(self.clientID) == has(oldSelf.clientID) && (!has(self.clientID)
                 || self.clientID == oldSelf.clientID)
+            - message: clientSecretRotation cannot be enabled when secret.storeClientSecret
+                is false
+              rule: '!has(self.clientSecretRotation) || !self.clientSecretRotation.enabled
+                || !has(self.secret) || !has(self.secret.storeClientSecret) || self.secret.storeClientSecret'
           status:
             description: status defines the observed state of PocketIDOIDCClient
             properties:
