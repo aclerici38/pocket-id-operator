@@ -1,7 +1,7 @@
 github.com/Masterminds/semver/v3 v3.5.0 h1:kQceYJfbupGfZOKZQg0kou0DgAKhzDg2NZPAwZ/2OOE=
 github.com/Masterminds/semver/v3 v3.5.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
-github.com/aclerici38/pocket-id-go-client/v2 v2.9.0 h1:yFGfUB34OROC4lCgAWF3Z5xBkwkFf13PI/CQAYxhp1o=
-github.com/aclerici38/pocket-id-go-client/v2 v2.9.0/go.mod h1:DwIyyU95WNpFMxcppXWQuojTGLxQ3ZPNls4DRWQ3rjY=
+github.com/aclerici38/pocket-id-go-client/v2 v2.10.0 h1:XvSk+8b+HjJ/bIPrCmdDIfpfk+htH24DUtE+cMUskhU=
+github.com/aclerici38/pocket-id-go-client/v2 v2.10.0/go.mod h1:h5okaJ7qjZPZ6cR6xRsOcUBJusiKpkF2nlb9TlrdIIU=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
@@ -45,8 +45,8 @@ github.com/go-openapi/loads v0.24.0 h1:4LLorXRPTzIN9V6ngMUZbAscsBOUBk3Oa8cClu/bF
 github.com/go-openapi/loads v0.24.0/go.mod h1:xQMgX+hw5xRAhGrcDXxeMw78IFqUpIzhleu3HqPhyF4=
 github.com/go-openapi/runtime v0.32.4 h1:8ElGj/3goG0itt0nBPP6Cm57ehcYyuHoI3O20nxgvkw=
 github.com/go-openapi/runtime v0.32.4/go.mod h1:Bz6keOZw1NX4T6f+m42OoT1MBPDt6Re13dbccHyGH/4=
-github.com/go-openapi/runtime/server-middleware v0.32.1 h1:HCtsghA5YuJEJwne3wQj8agMkEgg1iWbJjZw7Qdvu8g=
-github.com/go-openapi/runtime/server-middleware v0.32.1/go.mod h1:fYPep4GdTwg/XqZUjR40uIM/8C12Ba5M+MrGCiwpTHo=
+github.com/go-openapi/runtime/server-middleware v0.32.4 h1:AU6eLMq9CXwh8f6kC1pivtkz+7lfo3TmakMBbUisKME=
+github.com/go-openapi/runtime/server-middleware v0.32.4/go.mod h1:fYPep4GdTwg/XqZUjR40uIM/8C12Ba5M+MrGCiwpTHo=
 github.com/go-openapi/spec v0.22.6 h1:Tyy1pLaNCM8GBCFLoGYLonjJi6zykqyLCjXLc19ZPic=
 github.com/go-openapi/spec v0.22.6/go.mod h1:HZvTHat+iH0PALQRWhrqIHtU/PEqxqd89fu0MxGlMeM=
 github.com/go-openapi/strfmt v0.26.4 h1:yI6IAEfcWow459BD5UzFY430KUwXZwBHrYusPFkhWlc=
@@ -69,8 +69,8 @@ github.com/go-openapi/swag/loading v0.26.1 h1:E9K4wqXeROlhjFQ13K9zMz6ojFGXIggGe+
 github.com/go-openapi/swag/loading v0.26.1/go.mod h1:3qvRIlWzWdq1HvmldwmuJ2ohpcAryN6xVt2OTKd0/7E=
 github.com/go-openapi/swag/mangling v0.26.1 h1:gpYI4WuPKFJJVjV5cDLGlDVJhFIxYjQc7yN5eEb4CqM=
 github.com/go-openapi/swag/mangling v0.26.1/go.mod h1:POETDH01hqAdASXfw7ISEd9bCOE6xBHOt8NHmGZRmYM=
-github.com/go-openapi/swag/netutils v0.26.0 h1:CmZp+ZT7HrmFwrC3GdGsXBq2+42T1bjKBapcqVpIs3c=
-github.com/go-openapi/swag/netutils v0.26.0/go.mod h1:5iK+Ok3ZohWWex1C50BFTPexi03UaPwjW4Oj8kgrpwo=
+github.com/go-openapi/swag/netutils v0.26.1 h1:BNctoc39WTAUMxyAs355fExOPzMZtPbZ0ZZ1Am2FR5M=
+github.com/go-openapi/swag/netutils v0.26.1/go.mod h1:y02vByhZhQPAVwOX+0KipXFZ/hUbk6G/Enhf5rGaOkQ=
 github.com/go-openapi/swag/stringutils v0.26.1 h1:f88uYyTso7TnHrKM/bUBsQ5e2wKf37cpgo6pvbzd9yU=
 github.com/go-openapi/swag/stringutils v0.26.1/go.mod h1:Sc6d3bU8fgk5AyZR8/8jEQ+Is/Ald+TD/IIggPN8UJk=
 github.com/go-openapi/swag/typeutils v0.26.1 h1:yg42FgMzRR6PVQ3M3qHz1s+Y6/P4HoJ3cBarXa3OVnU=
