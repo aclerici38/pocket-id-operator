@@ -551,6 +551,37 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 			Expect(updated.Status.AllowedUserGroupIDs).To(Equal([]string{"group-1"}))
 			Expect(updated.Status.PKCESupported).To(HaveValue(BeTrue()))
 		})
+
+		It("should not flag PKCESupported when PKCE is already enabled", func() {
+			const enabledName = "test-oidc-status-pkce-enabled"
+			resource := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      enabledName,
+					Namespace: namespace,
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, resource) })
+
+			reconciler := &PocketIDOIDCClientReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+			// Pocket-ID leaves PKCESupported set once a client has used PKCE, even
+			// after PKCE is enabled, so this must not be surfaced as "can enable".
+			current := &pocketid.OIDCClient{
+				ID:            "client-id",
+				Name:          "Test OIDC Client",
+				PKCESupported: true,
+				PKCEEnabled:   true,
+			}
+			Expect(reconciler.UpdateOIDCClientStatus(ctx, resource, current)).To(Succeed())
+
+			updated := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: enabledName, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.PKCESupported).To(HaveValue(BeFalse()))
+		})
 	})
 
 	Context("Logo status reachability", func() {
