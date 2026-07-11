@@ -4678,6 +4678,17 @@
                     }
                   }
                 },
+                "PocketIDOIDCClientPKCESupported": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Alert when a client is observed using PKCE while spec.pkceEnabled is false",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    }
+                  }
+                },
                 "PocketIDOIDCClientRotationFailing": {
                   "type": "object",
                   "additionalProperties": false,
