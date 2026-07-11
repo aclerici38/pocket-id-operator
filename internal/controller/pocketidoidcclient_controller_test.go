@@ -541,6 +541,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 				ID:                  "client-id",
 				Name:                "Test OIDC Client",
 				AllowedUserGroupIDs: []string{"group-1"},
+				PKCESupported:       true,
 			}
 			Expect(reconciler.UpdateOIDCClientStatus(ctx, resource, current)).To(Succeed())
 
@@ -548,6 +549,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: clientName, Namespace: namespace}, updated)).To(Succeed())
 			Expect(updated.Status.ClientID).To(Equal("client-id"))
 			Expect(updated.Status.AllowedUserGroupIDs).To(Equal([]string{"group-1"}))
+			Expect(updated.Status.PKCESupported).To(HaveValue(BeTrue()))
 		})
 	})
 

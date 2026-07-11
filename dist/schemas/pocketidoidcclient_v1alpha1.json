@@ -722,6 +722,13 @@
             "null"
           ]
         },
+        "pkceSupported": {
+          "description": "PKCESupported indicates Pocket-ID observed the client using PKCE during an\nauthorization flow while spec.pkceEnabled is false, signalling PKCE can be enabled.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "scimProviderID": {
           "description": "SCIMProviderID is the pocket-id ID of the SCIM service provider for this client, if configured.",
           "type": [

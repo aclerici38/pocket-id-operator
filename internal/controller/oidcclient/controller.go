@@ -110,6 +110,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		if client.IgnoreNotFound(err) == nil {
 			metrics.DeleteReadinessGauge("PocketIDOIDCClient", req.Namespace, req.Name)
 			metrics.DeleteOIDCClientAllowedGroupCount(req.Namespace, req.Name)
+			metrics.DeleteOIDCClientPKCESupported(req.Namespace, req.Name)
 			metrics.DeleteOIDCClientRotationMetrics(req.Namespace, req.Name)
 			delete(r.pendingInitialMint, req.NamespacedName)
 		}
@@ -794,6 +795,8 @@ func (r *Reconciler) UpdateOIDCClientStatus(ctx context.Context, oidcClient *poc
 	oidcClient.Status.CallbackURLs = current.CallbackURLs
 	oidcClient.Status.LogoutCallbackURLs = current.LogoutCallbackURLs
 	oidcClient.Status.AllowedUserGroupIDs = current.AllowedUserGroupIDs
+	oidcClient.Status.PKCESupported = &current.PKCESupported
+	metrics.SetOIDCClientPKCESupported(oidcClient.Namespace, oidcClient.Name, current.PKCESupported)
 	return r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
 }
 
@@ -887,6 +890,7 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, oidcClient *pocketidin
 	if err == nil && result == (ctrl.Result{}) {
 		metrics.DeleteReadinessGauge("PocketIDOIDCClient", oidcClient.Namespace, oidcClient.Name)
 		metrics.DeleteOIDCClientAllowedGroupCount(oidcClient.Namespace, oidcClient.Name)
+		metrics.DeleteOIDCClientPKCESupported(oidcClient.Namespace, oidcClient.Name)
 		metrics.DeleteOIDCClientRotationMetrics(oidcClient.Namespace, oidcClient.Name)
 	}
 	return result, err

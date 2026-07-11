@@ -375,6 +375,11 @@ type PocketIDOIDCClientStatus struct {
 	// +optional
 	AllowedUserGroupIDs []string `json:"allowedUserGroupIDs,omitempty"`
 
+	// PKCESupported indicates Pocket-ID observed the client using PKCE during an
+	// authorization flow while spec.pkceEnabled is false, signalling PKCE can be enabled.
+	// +optional
+	PKCESupported *bool `json:"pkceSupported,omitempty"`
+
 	// LogoURL is the last resolved light logo URL that was applied to Pocket-ID.
 	// +optional
 	LogoURL string `json:"logoUrl,omitempty"`

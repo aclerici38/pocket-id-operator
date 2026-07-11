@@ -445,6 +445,25 @@ after each successful reconcile. The gauge is removed when the group is deleted.
 
 ---
 
+### OIDC Clients
+
+#### `pocketid_operator_oidcclient_pkce_supported`
+
+**Type:** Gauge (`0`/`1`)
+**Labels:** `namespace`, `name`
+
+Whether Pocket-ID observed a client using PKCE during an authorization flow while
+`spec.pkceEnabled` is `false`, mirrored from `status.pkceSupported`. `1` signals PKCE can
+be enabled for the client; `0` otherwise. Use `sum(pocketid_operator_oidcclient_pkce_supported)`
+for the count of clients that should enable PKCE. The gauge is removed when the client is deleted.
+
+| Label | Values |
+|-------|--------|
+| `namespace` | Kubernetes namespace of the `PocketIDOIDCClient` |
+| `name` | Kubernetes name of the `PocketIDOIDCClient` |
+
+---
+
 ### Secret Rotation
 
 These metrics track per-client scheduled OIDC **client-secret rotation** (configured via

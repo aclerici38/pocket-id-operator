@@ -524,6 +524,11 @@ spec:
               name:
                 description: Name is the resolved name from Pocket-ID
                 type: string
+              pkceSupported:
+                description: |-
+                  PKCESupported indicates Pocket-ID observed the client using PKCE during an
+                  authorization flow while spec.pkceEnabled is false, signalling PKCE can be enabled.
+                type: boolean
               scimProviderID:
                 description: SCIMProviderID is the pocket-id ID of the SCIM service
                   provider for this client, if configured.
