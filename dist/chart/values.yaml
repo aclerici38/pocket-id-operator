@@ -82,6 +82,8 @@ metrics:
         enabled: true
       PocketIDWorkQueueBackup:
         enabled: true
+      PocketIDOIDCClientPKCESupported:
+        enabled: true
       PocketIDOIDCClientRotationFailing:
         enabled: true
       PocketIDOIDCClientRotationOverdue:

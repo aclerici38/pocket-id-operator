@@ -185,6 +185,19 @@ spec:
               The {{ $labels.name }} work queue has had more than 10 pending items
               for over 10 minutes, indicating the operator may be falling behind due to errors.
 
+        # A client supports PKCE but has spec.pkceEnabled set to false
+        - alert: PocketIDOIDCClientPKCESupported
+          expr: pocketid_operator_oidcclient_pkce_supported == 1
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: >-
+              PKCE supported but not enabled for {{ $labels.namespace }}/{{ $labels.name }}
+            description: >-
+              The PocketIDOIDCClient {{ $labels.namespace }}/{{ $labels.name }} supports PKCE
+              but has it disabled. Set spec.pkceEnabled: true to enable it.
+
         # A client-secret rotation failed in the last hour
         - alert: PocketIDOIDCClientRotationFailing
           expr: increase(pocketid_operator_oidcclient_secret_rotations_total{result="error"}[1h]) > 0
@@ -442,6 +455,25 @@ after each successful reconcile. The gauge is removed when the group is deleted.
 |-------|--------|
 | `namespace` | Kubernetes namespace of the `PocketIDUserGroup` |
 | `name` | Kubernetes name of the `PocketIDUserGroup` |
+
+---
+
+### OIDC Clients
+
+#### `pocketid_operator_oidcclient_pkce_supported`
+
+**Type:** Gauge (`0`/`1`)
+**Labels:** `namespace`, `name`
+
+Whether Pocket-ID observed a client using PKCE during an authorization flow while
+`spec.pkceEnabled` is `false`, mirrored from `status.pkceSupported`. `1` signals PKCE can
+be enabled for the client; `0` otherwise. Use `sum(pocketid_operator_oidcclient_pkce_supported)`
+for the count of clients that should enable PKCE. The gauge is removed when the client is deleted.
+
+| Label | Values |
+|-------|--------|
+| `namespace` | Kubernetes namespace of the `PocketIDOIDCClient` |
+| `name` | Kubernetes name of the `PocketIDOIDCClient` |
 
 ---
 

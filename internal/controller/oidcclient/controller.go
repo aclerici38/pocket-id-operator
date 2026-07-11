@@ -110,6 +110,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		if client.IgnoreNotFound(err) == nil {
 			metrics.DeleteReadinessGauge("PocketIDOIDCClient", req.Namespace, req.Name)
 			metrics.DeleteOIDCClientAllowedGroupCount(req.Namespace, req.Name)
+			metrics.DeleteOIDCClientPKCESupported(req.Namespace, req.Name)
 			metrics.DeleteOIDCClientRotationMetrics(req.Namespace, req.Name)
 			delete(r.pendingInitialMint, req.NamespacedName)
 		}
@@ -794,6 +795,11 @@ func (r *Reconciler) UpdateOIDCClientStatus(ctx context.Context, oidcClient *poc
 	oidcClient.Status.CallbackURLs = current.CallbackURLs
 	oidcClient.Status.LogoutCallbackURLs = current.LogoutCallbackURLs
 	oidcClient.Status.AllowedUserGroupIDs = current.AllowedUserGroupIDs
+	// Pocket-ID keeps PKCESupported set even after PKCE is enabled, so gate on
+	// PKCEEnabled to mean "PKCE can be enabled"
+	pkceRecommended := current.PKCESupported && !current.PKCEEnabled
+	oidcClient.Status.PKCESupported = &pkceRecommended
+	metrics.SetOIDCClientPKCESupported(oidcClient.Namespace, oidcClient.Name, pkceRecommended)
 	return r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
 }
 
@@ -887,6 +893,7 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, oidcClient *pocketidin
 	if err == nil && result == (ctrl.Result{}) {
 		metrics.DeleteReadinessGauge("PocketIDOIDCClient", oidcClient.Namespace, oidcClient.Name)
 		metrics.DeleteOIDCClientAllowedGroupCount(oidcClient.Namespace, oidcClient.Name)
+		metrics.DeleteOIDCClientPKCESupported(oidcClient.Namespace, oidcClient.Name)
 		metrics.DeleteOIDCClientRotationMetrics(oidcClient.Namespace, oidcClient.Name)
 	}
 	return result, err

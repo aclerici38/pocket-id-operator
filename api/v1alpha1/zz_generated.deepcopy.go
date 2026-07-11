@@ -821,6 +821,11 @@ func (in *PocketIDOIDCClientStatus) DeepCopyInto(out *PocketIDOIDCClientStatus) 
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.PKCESupported != nil {
+		in, out := &in.PKCESupported, &out.PKCESupported
+		*out = new(bool)
+		**out = **in
+	}
 	if in.LogoReachable != nil {
 		in, out := &in.LogoReachable, &out.LogoReachable
 		*out = new(bool)

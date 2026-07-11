@@ -126,6 +126,21 @@ spec:
               for over 10 minutes, indicating the operator may be falling behind.
         {{- end }}
 
+        {{- if dig "PocketIDOIDCClientPKCESupported" "enabled" true $rules }}
+        # -- A client supports PKCE but has spec.pkceEnabled set to false
+        - alert: PocketIDOIDCClientPKCESupported
+          expr: pocketid_operator_oidcclient_pkce_supported == 1
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: >-
+              PKCE supported but not enabled for {{`{{ $labels.namespace }}`}}/{{`{{ $labels.name }}`}}
+            description: >-
+              The PocketIDOIDCClient {{`{{ $labels.namespace }}`}}/{{`{{ $labels.name }}`}} supports
+              PKCE but has it disabled. Set spec.pkceEnabled: true to enable it.
+        {{- end }}
+
         {{- if dig "PocketIDOIDCClientRotationFailing" "enabled" true $rules }}
         # -- A client-secret rotation failed in the last hour
         - alert: PocketIDOIDCClientRotationFailing

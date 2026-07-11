@@ -136,6 +136,20 @@ var (
 		[]string{"namespace", "name"},
 	)
 
+	// OIDCClientPKCESupported tracks whether Pocket-ID has flagged an OIDC client as using PKCE
+	// while spec.pkceEnabled is false. Value is 1 when PKCE can be enabled, 0 otherwise.
+	// Labels:
+	//
+	//	namespace - Kubernetes namespace of the PocketIDOIDCClient
+	//	name      - Kubernetes name of the PocketIDOIDCClient
+	OIDCClientPKCESupported = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "pocketid_operator_oidcclient_pkce_supported",
+			Help: "Whether Pocket-ID observed a PocketIDOIDCClient using PKCE while pkceEnabled is false (1) or not (0).",
+		},
+		[]string{"namespace", "name"},
+	)
+
 	// OIDCClientRotationEnabled tracks whether scheduled client-secret rotation is enabled
 	// for each OIDC client. Value is 1 when spec.clientSecretRotation.enabled is true, 0 otherwise.
 	// Labels:
@@ -284,6 +298,7 @@ func init() {
 		InstanceInfo,
 		UserGroupMemberCount,
 		OIDCClientAllowedGroupCount,
+		OIDCClientPKCESupported,
 		OIDCClientRotationEnabled,
 		OIDCClientRotationIntervalSeconds,
 		OIDCClientLastRotationTimestamp,
@@ -343,6 +358,21 @@ func DeleteUserGroupMemberCount(namespace, name string) {
 // Call this when a PocketIDOIDCClient is deleted.
 func DeleteOIDCClientAllowedGroupCount(namespace, name string) {
 	OIDCClientAllowedGroupCount.DeleteLabelValues(namespace, name)
+}
+
+// SetOIDCClientPKCESupported records whether Pocket-ID has flagged the client as PKCE-supported.
+func SetOIDCClientPKCESupported(namespace, name string, supported bool) {
+	val := 0.0
+	if supported {
+		val = 1.0
+	}
+	OIDCClientPKCESupported.WithLabelValues(namespace, name).Set(val)
+}
+
+// DeleteOIDCClientPKCESupported removes the OIDCClientPKCESupported gauge entry for a client.
+// Call this when a PocketIDOIDCClient is deleted.
+func DeleteOIDCClientPKCESupported(namespace, name string) {
+	OIDCClientPKCESupported.DeleteLabelValues(namespace, name)
 }
 
 // rotationResults and rotationTriggers enumerate the label values of the secret-rotation counter

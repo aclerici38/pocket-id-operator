@@ -73,6 +73,7 @@ type OIDCClient struct {
 	IsPublic                 bool
 	IsGroupRestricted        bool
 	PKCEEnabled              bool
+	PKCESupported            bool
 	RequiresReauthentication bool
 	SkipConsent              bool
 	AllowedUserGroupIDs      []string
@@ -83,6 +84,7 @@ type OIDCClient struct {
 // LogoURL and DarkLogoURL are write-only (not returned by the API); logo presence is
 // tracked via HasLogo/HasDarkLogo instead.
 // AllowedUserGroupIDs is managed separately and excluded from the input.
+// PKCESupported is read-only (set by Pocket-ID, never pushed) and excluded from the input.
 func (c *OIDCClient) ToInput() OIDCClientInput {
 	return OIDCClientInput{
 		Name:                     c.Name,
@@ -1010,6 +1012,7 @@ func oidcClientFromListDTO(dto *models.GithubComPocketIDPocketIDBackendInternalD
 		IsPublic:                 dto.IsPublic,
 		IsGroupRestricted:        dto.IsGroupRestricted,
 		PKCEEnabled:              dto.PkceEnabled,
+		PKCESupported:            dto.PkceSupported,
 		RequiresReauthentication: dto.RequiresReauthentication,
 		SkipConsent:              dto.SkipConsent,
 		AllowedUserGroupIDs:      []string{},
@@ -1039,6 +1042,7 @@ func oidcClientFromAllowedGroupsDTO(dto *models.GithubComPocketIDPocketIDBackend
 		IsPublic:                 dto.IsPublic,
 		IsGroupRestricted:        dto.IsGroupRestricted,
 		PKCEEnabled:              dto.PkceEnabled,
+		PKCESupported:            dto.PkceSupported,
 		RequiresReauthentication: dto.RequiresReauthentication,
 		SkipConsent:              dto.SkipConsent,
 		AllowedUserGroupIDs:      groupIDs,
