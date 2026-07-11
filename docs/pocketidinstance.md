@@ -213,13 +213,14 @@ spec:
 ## Tracing
 
 When the `tracing` block is present, the operator sets `OTEL_TRACES_EXPORTER=otlp`.
-Set `endpoint` to configure `OTEL_EXPORTER_OTLP_ENDPOINT`; configure any other
-exporter-specific `OTEL_*` variables via the `env` escape hatch.
+Set `endpoint` to configure `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (include the full
+path); configure any other exporter-specific `OTEL_*` variables via the `env`
+escape hatch.
 
 ```yaml
 spec:
   tracing:
-    endpoint: "http://otel-collector:4318"
+    endpoint: "http://otel-collector:4318/v1/traces"
 ```
 
 ## GeoIP

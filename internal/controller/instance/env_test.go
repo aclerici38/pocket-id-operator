@@ -386,16 +386,16 @@ func TestBuildEnvVars_Tracing(t *testing.T) {
 
 	env := buildEnvVars(inst)
 	requireEnv(t, env, "OTEL_TRACES_EXPORTER", "otlp")
-	requireEnvAbsent(t, env, "OTEL_EXPORTER_OTLP_ENDPOINT")
+	requireEnvAbsent(t, env, "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
 }
 
 func TestBuildEnvVars_TracingEndpoint(t *testing.T) {
 	inst := minimalInstance()
-	inst.Spec.Tracing = &pocketidinternalv1alpha1.TracingConfig{Endpoint: "http://otel-collector:4318"}
+	inst.Spec.Tracing = &pocketidinternalv1alpha1.TracingConfig{Endpoint: "http://otel-collector:4318/v1/traces"}
 
 	env := buildEnvVars(inst)
 	requireEnv(t, env, "OTEL_TRACES_EXPORTER", "otlp")
-	requireEnv(t, env, "OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4318")
+	requireEnv(t, env, "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "http://otel-collector:4318/v1/traces")
 }
 
 func TestBuildEnvVars_TracingAbsent(t *testing.T) {

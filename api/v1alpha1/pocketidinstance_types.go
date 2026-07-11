@@ -263,7 +263,8 @@ type LoggingConfig struct {
 // When present, tracing is automatically enabled.
 // Configure additional exporter-specific OTEL_* variables via the env escape hatch.
 type TracingConfig struct {
-	// OTLP exporter endpoint (sets OTEL_EXPORTER_OTLP_ENDPOINT)
+	// OTLP traces endpoint including path, e.g. http://collector:4318/v1/traces
+	// (sets OTEL_EXPORTER_OTLP_TRACES_ENDPOINT)
 	// +optional
 	Endpoint string `json:"endpoint,omitempty"`
 }

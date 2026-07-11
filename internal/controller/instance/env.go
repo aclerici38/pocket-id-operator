@@ -270,7 +270,7 @@ func buildTracingEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []core
 		{Name: "OTEL_TRACES_EXPORTER", Value: "otlp"},
 	}
 	if instance.Spec.Tracing.Endpoint != "" {
-		env = append(env, corev1.EnvVar{Name: "OTEL_EXPORTER_OTLP_ENDPOINT", Value: instance.Spec.Tracing.Endpoint})
+		env = append(env, corev1.EnvVar{Name: "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", Value: instance.Spec.Tracing.Endpoint})
 	}
 	return env
 }
