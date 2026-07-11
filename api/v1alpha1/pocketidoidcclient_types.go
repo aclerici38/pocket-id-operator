@@ -218,6 +218,11 @@ type PocketIDOIDCClientSpec struct {
 	// If omitted, defaults to metadata.name of the oidcclient resource.
 	Name string `json:"name,omitempty"`
 
+	// Description is an optional description for the client
+	// +kubebuilder:validation:MaxLength=150
+	// +optional
+	Description string `json:"description,omitempty"`
+
 	// InstanceSelector selects the PocketIDInstance to reconcile against.
 	// If omitted, the controller expects exactly one instance in the cluster.
 	// +optional

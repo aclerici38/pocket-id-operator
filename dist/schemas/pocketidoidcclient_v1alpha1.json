@@ -148,6 +148,14 @@
             "null"
           ]
         },
+        "description": {
+          "description": "Description is an optional description for the client",
+          "maxLength": 150,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "federatedIdentities": {
           "description": "FederatedIdentities configures JWT assertion identities",
           "items": {

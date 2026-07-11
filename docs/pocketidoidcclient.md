@@ -171,6 +171,7 @@ metadata:
   name: internal-dashboard
   namespace: pocket-id
 spec:
+  description: "Internal admin dashboard"
   callbackUrls:
     - "https://internal.example.com/oidc/callback"
   logoutCallbackUrls:

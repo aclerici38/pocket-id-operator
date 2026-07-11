@@ -34,6 +34,7 @@ func TestOidcClientInput(t *testing.T) {
 		},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			ClientID:                 "client-id",
+			Description:              "a test client",
 			CallbackURLs:             []string{"https://example.com/callback"},
 			LogoutCallbackURLs:       []string{"https://example.com/logout"},
 			LaunchURL:                "https://example.com",
@@ -60,6 +61,9 @@ func TestOidcClientInput(t *testing.T) {
 	input := reconciler.OidcClientInput(oidc, nil, "https://example.com/logo.png", "https://example.com/logo-dark.png")
 	if input.Name != "fallback-name" {
 		t.Errorf("expected Name %q, got %q", "fallback-name", input.Name)
+	}
+	if input.Description != "a test client" {
+		t.Errorf("expected Description %q, got %q", "a test client", input.Description)
 	}
 	if !input.HasLogo {
 		t.Error("expected HasLogo to be true")

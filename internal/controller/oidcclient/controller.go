@@ -536,6 +536,7 @@ func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.Pocket
 	return pocketid.OIDCClientInput{
 		ID:                       clientID,
 		Name:                     name,
+		Description:              oidcClient.Spec.Description,
 		CallbackURLs:             callbackURLs,
 		LogoutCallbackURLs:       logoutCallbackURLs,
 		LaunchURL:                oidcClient.Spec.LaunchURL,
