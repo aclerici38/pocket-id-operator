@@ -796,9 +796,14 @@ func (r *Reconciler) UpdateOIDCClientStatus(ctx context.Context, oidcClient *poc
 	oidcClient.Status.LogoutCallbackURLs = current.LogoutCallbackURLs
 	oidcClient.Status.AllowedUserGroupIDs = current.AllowedUserGroupIDs
 	// Pocket-ID keeps PKCESupported set even after PKCE is enabled, so gate on
-	// PKCEEnabled to mean "PKCE can be enabled"
+	// PKCEEnabled to mean "PKCE can be enabled". Only surface the status field when
+	// the recommendation is active.
 	pkceRecommended := current.PKCESupported && !current.PKCEEnabled
-	oidcClient.Status.PKCESupported = &pkceRecommended
+	if pkceRecommended {
+		oidcClient.Status.PKCESupported = &pkceRecommended
+	} else {
+		oidcClient.Status.PKCESupported = nil
+	}
 	metrics.SetOIDCClientPKCESupported(oidcClient.Namespace, oidcClient.Name, pkceRecommended)
 	return r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
 }
