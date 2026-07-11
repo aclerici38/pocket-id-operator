@@ -231,7 +231,6 @@ type PocketIDOIDCClientSpec struct {
 	ClientID string `json:"clientID,omitempty"`
 
 	// Callback URLs for the client
-	// Note: a feature of pocket-id is to autosave the callback URL based on the url params passed by the client.
 	// +optional
 	CallbackURLs []string `json:"callbackUrls,omitempty"`
 
