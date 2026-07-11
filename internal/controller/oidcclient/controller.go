@@ -522,8 +522,8 @@ func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.Pocket
 		credentials = &pocketid.OIDCClientCredentials{FederatedIdentities: identities}
 	}
 
-	// When callback URLs are not in the spec, preserve the server-side values.
-	// This prevents overwriting pocket-id's TOFU auto-detected URLs.
+	// When callback URLs are not in the spec, preserve the server-side values
+	// so out-of-band changes made in pocket-id are not overwritten.
 	callbackURLs := oidcClient.Spec.CallbackURLs
 	if len(callbackURLs) == 0 && current != nil {
 		callbackURLs = current.CallbackURLs

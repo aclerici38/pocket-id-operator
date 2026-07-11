@@ -131,6 +131,21 @@ minimum spacing. For example, if `spec.OIDCClientRotation.minSpacing` is set to 
 have elapsed since the last auto-rotation, setting the annotation will NOT delay the auto-rotation
 but it WILL reset the rotation anchor on the manually-rotated OIDC client.
 
+## Callback URLs
+
+List every redirect URI your client uses under `spec.callbackUrls`, and any
+post-logout redirect URIs under `spec.logoutCallbackUrls`. Pocket-ID only allows
+redirects to URLs that are registered on the client, so an authorization request
+whose `redirect_uri` is not listed here will be rejected. Wildcards are supported.
+
+```yaml
+spec:
+  callbackUrls:
+    - "https://app.example.com/auth/callback"
+  logoutCallbackUrls:
+    - "https://app.example.com/logout"
+```
+
 ## Minimal Public Client
 
 ```yaml

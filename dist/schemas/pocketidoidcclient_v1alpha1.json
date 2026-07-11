@@ -54,7 +54,7 @@
           ]
         },
         "callbackUrls": {
-          "description": "Callback URLs for the client\nNote: a feature of pocket-id is to autosave the callback URL based on the url params passed by the client.",
+          "description": "Callback URLs for the client",
           "items": {
             "type": "string"
           },

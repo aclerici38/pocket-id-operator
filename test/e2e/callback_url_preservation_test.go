@@ -13,9 +13,8 @@ import (
 
 var _ = Describe("Callback URL Preservation", Ordered, func() {
 	// These tests verify that the operator does not overwrite callback URLs
-	// in pocket-id when spec.callbackUrls is empty. This is critical for
-	// pocket-id's TOFU (Trust On First Use) auto-detect feature, where the
-	// first redirect URI used by a client is automatically saved.
+	// in pocket-id when spec.callbackUrls is empty, preserving any values set
+	// out-of-band via the pocket-id UI or API.
 
 	Context("Spec callback URLs are preserved across reconciles", func() {
 		const clientName = "test-callback-preserve"
@@ -58,10 +57,10 @@ var _ = Describe("Callback URL Preservation", Ordered, func() {
 		})
 	})
 
-	Context("TOFU callback URLs are preserved when spec has no callbackUrls", func() {
-		const clientName = "test-tofu-preserve"
+	Context("Out-of-band callback URLs are preserved when spec has no callbackUrls", func() {
+		const clientName = "test-oob-preserve"
 
-		It("should not overwrite pocket-id TOFU callback URLs on reconcile", func() {
+		It("should not overwrite out-of-band callback URLs on reconcile", func() {
 			By("creating an OIDC client without any callbackUrls in the spec")
 			applyYAML(fmt.Sprintf(`apiVersion: pocketid.internal/v1alpha1
 kind: PocketIDOIDCClient
@@ -73,28 +72,28 @@ spec: {}`, clientName, userNS))
 			waitForReady("pocketidoidcclient", clientName, userNS)
 			clientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
 
-			By("simulating TOFU: setting a callback URL directly in pocket-id via API")
-			setOIDCClientCallbackURLsInPocketID("tofu-set-pod", userNS, clientID, clientName,
-				[]string{"https://tofu-detected.example.com/callback"})
+			By("setting a callback URL directly in pocket-id via API")
+			setOIDCClientCallbackURLsInPocketID("oob-set-pod", userNS, clientID, clientName,
+				[]string{"https://oob-set.example.com/callback"})
 
 			By("triggering a reconcile via annotation change")
 			err := kubectlAnnotate("pocketidoidcclient", clientName, userNS, "test/trigger=reconcile")
 			Expect(err).NotTo(HaveOccurred())
 
-			By("verifying the TOFU callback URL appears in status after reconcile")
+			By("verifying the out-of-band callback URL appears in status after reconcile")
 			Eventually(func(g Gomega) {
 				urls := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
 					"-o", "jsonpath={.status.callbackUrls}")
-				g.Expect(urls).To(ContainSubstring("https://tofu-detected.example.com/callback"),
-					"TOFU callback URL must survive operator reconcile when spec has no callbackUrls")
+				g.Expect(urls).To(ContainSubstring("https://oob-set.example.com/callback"),
+					"out-of-band callback URL must survive operator reconcile when spec has no callbackUrls")
 			}, time.Minute, 5*time.Second).Should(Succeed())
 
-			By("verifying the TOFU callback URL persists across multiple reconciles")
+			By("verifying the out-of-band callback URL persists across multiple reconciles")
 			Consistently(func(g Gomega) {
 				urls := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
 					"-o", "jsonpath={.status.callbackUrls}")
-				g.Expect(urls).To(ContainSubstring("https://tofu-detected.example.com/callback"),
-					"TOFU callback URL must not be wiped by subsequent reconciles")
+				g.Expect(urls).To(ContainSubstring("https://oob-set.example.com/callback"),
+					"out-of-band callback URL must not be wiped by subsequent reconciles")
 			}, 20*time.Second, 5*time.Second).Should(Succeed())
 		})
 
