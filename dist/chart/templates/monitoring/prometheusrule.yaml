@@ -130,7 +130,7 @@ spec:
         # -- A client supports PKCE but has spec.pkceEnabled set to false
         - alert: PocketIDOIDCClientPKCESupported
           expr: pocketid_operator_oidcclient_pkce_supported == 1
-          for: 15m
+          for: 1m
           labels:
             severity: warning
           annotations:
