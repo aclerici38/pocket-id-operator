@@ -90,7 +90,6 @@ func buildMetricsEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []core
 		metricsPort = instance.Spec.Metrics.Port
 	}
 	return []corev1.EnvVar{
-		{Name: "METRICS_ENABLED", Value: "true"},
 		{Name: "OTEL_METRICS_EXPORTER", Value: "prometheus"},
 		{Name: "OTEL_EXPORTER_PROMETHEUS_HOST", Value: "0.0.0.0"},
 		{Name: "OTEL_EXPORTER_PROMETHEUS_PORT", Value: fmt.Sprintf("%d", metricsPort)},
@@ -267,9 +266,13 @@ func buildTracingEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []core
 	if instance.Spec.Tracing == nil {
 		return nil
 	}
-	return []corev1.EnvVar{
-		{Name: "TRACING_ENABLED", Value: "true"},
+	env := []corev1.EnvVar{
+		{Name: "OTEL_TRACES_EXPORTER", Value: "otlp"},
 	}
+	if instance.Spec.Tracing.Endpoint != "" {
+		env = append(env, corev1.EnvVar{Name: "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", Value: instance.Spec.Tracing.Endpoint})
+	}
+	return env
 }
 
 func buildUIEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.EnvVar {

@@ -3551,7 +3551,17 @@
           ]
         },
         "tracing": {
-          "description": "OpenTelemetry tracing configuration\nWhen present, tracing is automatically enabled\nConfigure exporter-specific OTEL_* variables via the env escape hatch",
+          "additionalProperties": false,
+          "description": "OpenTelemetry tracing configuration\nWhen present, tracing is automatically enabled\nConfigure additional exporter-specific OTEL_* variables via the env escape hatch",
+          "properties": {
+            "endpoint": {
+              "description": "OTLP traces endpoint including path, e.g. http://collector:4318/v1/traces\n(sets OTEL_EXPORTER_OTLP_TRACES_ENDPOINT)",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
           "type": [
             "object",
             "null"

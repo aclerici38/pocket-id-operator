@@ -2731,7 +2731,13 @@ spec:
                 description: |-
                   OpenTelemetry tracing configuration
                   When present, tracing is automatically enabled
-                  Configure exporter-specific OTEL_* variables via the env escape hatch
+                  Configure additional exporter-specific OTEL_* variables via the env escape hatch
+                properties:
+                  endpoint:
+                    description: |-
+                      OTLP traces endpoint including path, e.g. http://collector:4318/v1/traces
+                      (sets OTEL_EXPORTER_OTLP_TRACES_ENDPOINT)
+                    type: string
                 type: object
               ui:
                 description: |-
