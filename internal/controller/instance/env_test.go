@@ -385,13 +385,23 @@ func TestBuildEnvVars_Tracing(t *testing.T) {
 	inst.Spec.Tracing = &pocketidinternalv1alpha1.TracingConfig{}
 
 	env := buildEnvVars(inst)
-	requireEnv(t, env, "TRACING_ENABLED", "true")
+	requireEnv(t, env, "OTEL_TRACES_EXPORTER", "otlp")
+	requireEnvAbsent(t, env, "OTEL_EXPORTER_OTLP_ENDPOINT")
+}
+
+func TestBuildEnvVars_TracingEndpoint(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.Tracing = &pocketidinternalv1alpha1.TracingConfig{Endpoint: "http://otel-collector:4318"}
+
+	env := buildEnvVars(inst)
+	requireEnv(t, env, "OTEL_TRACES_EXPORTER", "otlp")
+	requireEnv(t, env, "OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4318")
 }
 
 func TestBuildEnvVars_TracingAbsent(t *testing.T) {
 	inst := minimalInstance()
 	env := buildEnvVars(inst)
-	requireEnvAbsent(t, env, "TRACING_ENABLED")
+	requireEnvAbsent(t, env, "OTEL_TRACES_EXPORTER")
 }
 
 func TestBuildEnvVars_Metrics(t *testing.T) {
@@ -402,7 +412,6 @@ func TestBuildEnvVars_Metrics(t *testing.T) {
 	}
 
 	env := buildEnvVars(inst)
-	requireEnv(t, env, "METRICS_ENABLED", "true")
 	requireEnv(t, env, "OTEL_METRICS_EXPORTER", "prometheus")
 	requireEnv(t, env, "OTEL_EXPORTER_PROMETHEUS_HOST", "0.0.0.0")
 	requireEnv(t, env, "OTEL_EXPORTER_PROMETHEUS_PORT", "9999")
@@ -421,7 +430,7 @@ func TestBuildEnvVars_MetricsDisabled(t *testing.T) {
 	inst.Spec.Metrics = &pocketidinternalv1alpha1.MetricsConfig{Enabled: false}
 
 	env := buildEnvVars(inst)
-	requireEnvAbsent(t, env, "METRICS_ENABLED")
+	requireEnvAbsent(t, env, "OTEL_METRICS_EXPORTER")
 }
 
 func TestBuildEnvVars_UI(t *testing.T) {

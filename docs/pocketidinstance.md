@@ -212,15 +212,14 @@ spec:
 
 ## Tracing
 
-When the `tracing` block is present, the operator sets `TRACING_ENABLED=true`.
-Configure exporter-specific `OTEL_*` variables via the `env` escape hatch.
+When the `tracing` block is present, the operator sets `OTEL_TRACES_EXPORTER=otlp`.
+Set `endpoint` to configure `OTEL_EXPORTER_OTLP_ENDPOINT`; configure any other
+exporter-specific `OTEL_*` variables via the `env` escape hatch.
 
 ```yaml
 spec:
-  tracing: {}
-  env:
-    - name: OTEL_EXPORTER_OTLP_ENDPOINT
-      value: "http://otel-collector:4318"
+  tracing:
+    endpoint: "http://otel-collector:4318"
 ```
 
 ## GeoIP
@@ -562,8 +561,8 @@ spec:
   - `EMAIL_*_ENABLED` (from `spec.emailNotifications`)
   - `LDAP_ENABLED=true` + `LDAP_*` (from `spec.ldap`)
   - `LOG_LEVEL`, `LOG_JSON` (from `spec.logging`)
-  - `TRACING_ENABLED=true` (from `spec.tracing`)
-  - `METRICS_ENABLED=true` + `OTEL_*` (from `spec.metrics`)
+  - `OTEL_TRACES_EXPORTER=otlp` (from `spec.tracing`)
+  - `OTEL_METRICS_EXPORTER=prometheus` + `OTEL_*` (from `spec.metrics`)
   - `APP_NAME`, `SESSION_DURATION`, `HOME_PAGE_URL`, `DISABLE_ANIMATIONS`, `ACCENT_COLOR` (from `spec.ui`)
   - `EMAILS_VERIFIED`, `ALLOW_OWN_ACCOUNT_EDIT`, `ALLOW_USER_SIGNUPS`, `SIGNUP_DEFAULT_*` (from `spec.userManagement`)
   - `MAXMIND_LICENSE_KEY`, `GEOLITE_DB_PATH`, `GEOLITE_DB_URL` (from `spec.geoip`)

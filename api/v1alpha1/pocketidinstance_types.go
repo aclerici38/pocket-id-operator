@@ -261,8 +261,11 @@ type LoggingConfig struct {
 
 // TracingConfig enables OpenTelemetry tracing.
 // When present, tracing is automatically enabled.
-// Configure exporter-specific OTEL_* variables via the env escape hatch.
+// Configure additional exporter-specific OTEL_* variables via the env escape hatch.
 type TracingConfig struct {
+	// OTLP exporter endpoint (sets OTEL_EXPORTER_OTLP_ENDPOINT)
+	// +optional
+	Endpoint string `json:"endpoint,omitempty"`
 }
 
 // UIConfig configures Pocket-ID UI settings.
@@ -565,7 +568,7 @@ type PocketIDInstanceSpec struct {
 
 	// OpenTelemetry tracing configuration
 	// When present, tracing is automatically enabled
-	// Configure exporter-specific OTEL_* variables via the env escape hatch
+	// Configure additional exporter-specific OTEL_* variables via the env escape hatch
 	// +optional
 	Tracing *TracingConfig `json:"tracing,omitempty"`
 
