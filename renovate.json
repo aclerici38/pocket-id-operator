@@ -49,9 +49,10 @@
       "rangeStrategy": "bump"
     },
     {
+      "description": "Go version across the project",
       "matchPackageNames": ["go", "docker.io/library/golang"],
       "groupName": "golang",
-      "minimumGroupSize": 2
+      "minimumGroupSize": 3
     },
     {
       "matchPackageNames": ["kubernetes/kubernetes", "/^k8s\\.io//", "/^sigs\\.k8s\\.io//"],
