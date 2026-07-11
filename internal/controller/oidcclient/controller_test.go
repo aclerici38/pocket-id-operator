@@ -42,6 +42,7 @@ func TestOidcClientInput(t *testing.T) {
 			IsPublic:                 true,
 			PKCEEnabled:              true,
 			RequiresReauthentication: true,
+			SkipConsent:              true,
 			FederatedIdentities: []pocketidinternalv1alpha1.OIDCClientFederatedIdentity{
 				{
 					Issuer:   "https://issuer.example.com",
@@ -68,6 +69,9 @@ func TestOidcClientInput(t *testing.T) {
 	}
 	if !input.IsGroupRestricted {
 		t.Error("expected IsGroupRestricted to be true")
+	}
+	if !input.SkipConsent {
+		t.Error("expected SkipConsent to be true")
 	}
 	if input.Credentials == nil {
 		t.Fatal("expected Credentials to not be nil")

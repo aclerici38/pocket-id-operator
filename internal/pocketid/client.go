@@ -73,6 +73,7 @@ type OIDCClient struct {
 	IsGroupRestricted        bool
 	PKCEEnabled              bool
 	RequiresReauthentication bool
+	SkipConsent              bool
 	AllowedUserGroupIDs      []string
 }
 
@@ -93,6 +94,7 @@ func (c *OIDCClient) ToInput() OIDCClientInput {
 		IsGroupRestricted:        c.IsGroupRestricted,
 		PKCEEnabled:              c.PKCEEnabled,
 		RequiresReauthentication: c.RequiresReauthentication,
+		SkipConsent:              c.SkipConsent,
 	}
 }
 
@@ -124,6 +126,7 @@ type OIDCClientInput struct {
 	IsGroupRestricted        bool
 	PKCEEnabled              bool
 	RequiresReauthentication bool
+	SkipConsent              bool
 	Credentials              *OIDCClientCredentials
 }
 
@@ -139,7 +142,8 @@ func (i OIDCClientInput) Equal(other OIDCClientInput) bool {
 		i.IsPublic != other.IsPublic ||
 		i.IsGroupRestricted != other.IsGroupRestricted ||
 		i.PKCEEnabled != other.PKCEEnabled ||
-		i.RequiresReauthentication != other.RequiresReauthentication {
+		i.RequiresReauthentication != other.RequiresReauthentication ||
+		i.SkipConsent != other.SkipConsent {
 		return false
 	}
 	if !orderedEqual(i.CallbackURLs, other.CallbackURLs) {
@@ -527,6 +531,7 @@ func (c *Client) CreateOIDCClient(ctx context.Context, input OIDCClientInput) (*
 		IsGroupRestricted:        input.IsGroupRestricted,
 		PkceEnabled:              input.PKCEEnabled,
 		RequiresReauthentication: input.RequiresReauthentication,
+		SkipConsent:              input.SkipConsent,
 		Credentials:              oidcCredentialsToDTO(input.Credentials),
 	}
 
@@ -564,6 +569,7 @@ func (c *Client) UpdateOIDCClient(ctx context.Context, id string, input OIDCClie
 			IsGroupRestricted:        input.IsGroupRestricted,
 			PkceEnabled:              input.PKCEEnabled,
 			RequiresReauthentication: input.RequiresReauthentication,
+			SkipConsent:              input.SkipConsent,
 			Credentials:              oidcCredentialsToDTO(input.Credentials),
 		})
 
@@ -998,6 +1004,7 @@ func oidcClientFromListDTO(dto *models.GithubComPocketIDPocketIDBackendInternalD
 		IsGroupRestricted:        dto.IsGroupRestricted,
 		PKCEEnabled:              dto.PkceEnabled,
 		RequiresReauthentication: dto.RequiresReauthentication,
+		SkipConsent:              dto.SkipConsent,
 		AllowedUserGroupIDs:      []string{},
 	}
 }
@@ -1025,6 +1032,7 @@ func oidcClientFromAllowedGroupsDTO(dto *models.GithubComPocketIDPocketIDBackend
 		IsGroupRestricted:        dto.IsGroupRestricted,
 		PKCEEnabled:              dto.PkceEnabled,
 		RequiresReauthentication: dto.RequiresReauthentication,
+		SkipConsent:              dto.SkipConsent,
 		AllowedUserGroupIDs:      groupIDs,
 	}
 }

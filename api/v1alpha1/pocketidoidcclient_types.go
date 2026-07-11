@@ -271,6 +271,11 @@ type PocketIDOIDCClientSpec struct {
 	// +optional
 	RequiresReauthentication bool `json:"requiresReauthentication,omitempty"`
 
+	// Skips the consent screen on initial authorization for this client
+	// +kubebuilder:default=false
+	// +optional
+	SkipConsent bool `json:"skipConsent,omitempty"`
+
 	// FederatedIdentities configures JWT assertion identities
 	// +optional
 	FederatedIdentities []OIDCClientFederatedIdentity `json:"federatedIdentities,omitempty"`

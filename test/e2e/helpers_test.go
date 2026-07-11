@@ -312,6 +312,7 @@ type OIDCClientOptions struct {
 	CallbackURLs       []string
 	LogoutCallbackURLs []string
 	IsPublic           bool
+	SkipConsent        bool
 	AllowedUserGroups  []string
 	Logo               *OIDCLogoConfig
 	Secret             *OIDCSecretConfig
@@ -380,6 +381,10 @@ func buildOIDCClientYAML(opts OIDCClientOptions) string {
 
 	if opts.IsPublic {
 		spec.WriteString("  isPublic: true\n")
+	}
+
+	if opts.SkipConsent {
+		spec.WriteString("  skipConsent: true\n")
 	}
 
 	spec.WriteString("  callbackUrls:\n")

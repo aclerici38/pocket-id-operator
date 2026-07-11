@@ -177,6 +177,7 @@ spec:
     - "https://internal.example.com/logout"
   pkceEnabled: true
   requiresReauthentication: true
+  skipConsent: true
   allowedUserGroups:
     - name: platform-admins
       namespace: pocket-id

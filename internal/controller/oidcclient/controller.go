@@ -547,6 +547,7 @@ func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.Pocket
 		IsGroupRestricted:        len(oidcClient.Spec.AllowedUserGroups) > 0,
 		PKCEEnabled:              oidcClient.Spec.PKCEEnabled,
 		RequiresReauthentication: oidcClient.Spec.RequiresReauthentication,
+		SkipConsent:              oidcClient.Spec.SkipConsent,
 		Credentials:              credentials,
 	}
 }

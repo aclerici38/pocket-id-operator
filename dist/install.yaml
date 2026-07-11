@@ -3301,6 +3301,11 @@ spec:
                       client_secret key. Defaults to true
                     type: boolean
                 type: object
+              skipConsent:
+                default: false
+                description: Skips the consent screen on initial authorization for
+                  this client
+                type: boolean
             type: object
             x-kubernetes-validations:
             - message: clientID is immutable
