@@ -580,7 +580,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 
 			updated := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: enabledName, Namespace: namespace}, updated)).To(Succeed())
-			Expect(updated.Status.PKCESupported).To(HaveValue(BeFalse()))
+			Expect(updated.Status.PKCESupported).To(BeNil())
 		})
 	})
 
