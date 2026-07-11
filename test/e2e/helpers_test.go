@@ -308,6 +308,7 @@ type OIDCClientOptions struct {
 	Name               string
 	Namespace          string
 	SpecName           string // spec.name: Pocket-ID display name (defaults to metadata.name when empty)
+	Description        string
 	ClientID           string // Custom client ID (defaults to Name if empty)
 	CallbackURLs       []string
 	LogoutCallbackURLs []string
@@ -377,6 +378,10 @@ func buildOIDCClientYAML(opts OIDCClientOptions) string {
 
 	if opts.ClientID != "" {
 		spec.WriteString(fmt.Sprintf("  clientID: %s\n", opts.ClientID))
+	}
+
+	if opts.Description != "" {
+		spec.WriteString(fmt.Sprintf("  description: %s\n", opts.Description))
 	}
 
 	if opts.IsPublic {

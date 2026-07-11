@@ -64,6 +64,7 @@ type APIKeyWithToken struct {
 type OIDCClient struct {
 	ID                       string
 	Name                     string
+	Description              string
 	CallbackURLs             []string
 	LogoutCallbackURLs       []string
 	LaunchURL                string
@@ -85,6 +86,7 @@ type OIDCClient struct {
 func (c *OIDCClient) ToInput() OIDCClientInput {
 	return OIDCClientInput{
 		Name:                     c.Name,
+		Description:              c.Description,
 		CallbackURLs:             c.CallbackURLs,
 		LogoutCallbackURLs:       c.LogoutCallbackURLs,
 		LaunchURL:                c.LaunchURL,
@@ -115,6 +117,7 @@ type OIDCClientCredentials struct {
 type OIDCClientInput struct {
 	ID                       *string // nil means let Pocket-ID autogenerate
 	Name                     string
+	Description              string
 	CallbackURLs             []string
 	LogoutCallbackURLs       []string
 	LaunchURL                string
@@ -136,6 +139,7 @@ type OIDCClientInput struct {
 // logo presence is compared via HasLogo/HasDarkLogo instead).
 func (i OIDCClientInput) Equal(other OIDCClientInput) bool {
 	if i.Name != other.Name ||
+		i.Description != other.Description ||
 		i.LaunchURL != other.LaunchURL ||
 		i.HasLogo != other.HasLogo ||
 		i.HasDarkLogo != other.HasDarkLogo ||
@@ -520,6 +524,7 @@ func (c *Client) ListOIDCClients(ctx context.Context, search string) ([]*OIDCCli
 func (c *Client) CreateOIDCClient(ctx context.Context, input OIDCClientInput) (*OIDCClient, error) {
 	dto := &models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientCreateDto{
 		Name:                     &input.Name,
+		Description:              input.Description,
 		CallbackURLs:             input.CallbackURLs,
 		LogoutCallbackURLs:       input.LogoutCallbackURLs,
 		LaunchURL:                input.LaunchURL,
@@ -558,6 +563,7 @@ func (c *Client) UpdateOIDCClient(ctx context.Context, id string, input OIDCClie
 		WithID(id).
 		WithClient(&models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientUpdateDto{
 			Name:                     &input.Name,
+			Description:              input.Description,
 			CallbackURLs:             input.CallbackURLs,
 			LogoutCallbackURLs:       input.LogoutCallbackURLs,
 			LaunchURL:                input.LaunchURL,
@@ -995,6 +1001,7 @@ func oidcClientFromListDTO(dto *models.GithubComPocketIDPocketIDBackendInternalD
 	return &OIDCClient{
 		ID:                       dto.ID,
 		Name:                     dto.Name,
+		Description:              dto.Description,
 		CallbackURLs:             dto.CallbackURLs,
 		LogoutCallbackURLs:       dto.LogoutCallbackURLs,
 		LaunchURL:                dto.LaunchURL,
@@ -1023,6 +1030,7 @@ func oidcClientFromAllowedGroupsDTO(dto *models.GithubComPocketIDPocketIDBackend
 	return &OIDCClient{
 		ID:                       dto.ID,
 		Name:                     dto.Name,
+		Description:              dto.Description,
 		CallbackURLs:             dto.CallbackURLs,
 		LogoutCallbackURLs:       dto.LogoutCallbackURLs,
 		LaunchURL:                dto.LaunchURL,

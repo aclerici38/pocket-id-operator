@@ -3033,6 +3033,10 @@ spec:
                   Dark logo URL for the client
                   Deprecated: Use spec.logo.darkLogoUrl instead.
                 type: string
+              description:
+                description: Description is an optional description for the client
+                maxLength: 150
+                type: string
               federatedIdentities:
                 description: FederatedIdentities configures JWT assertion identities
                 items:
