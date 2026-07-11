@@ -48,7 +48,10 @@ func buildCoreEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.
 		env = append(env, corev1.EnvVar{Name: envAppURL, Value: instance.Spec.AppURL})
 	}
 
-	env = append(env, corev1.EnvVar{Name: "DISABLE_RATE_LIMITING", Value: "true"})
+	// Rate limiting is off by default; opt in via spec.rateLimiting.
+	if !instance.Spec.RateLimiting {
+		env = append(env, corev1.EnvVar{Name: "DISABLE_RATE_LIMITING", Value: "true"})
+	}
 	if needsUIConfigDisabled(instance) {
 		env = append(env, corev1.EnvVar{Name: "UI_CONFIG_DISABLED", Value: "true"})
 	}

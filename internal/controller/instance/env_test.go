@@ -77,6 +77,14 @@ func TestBuildEnvVars_CoreAlwaysSet(t *testing.T) {
 	requireEnvFromSecret(t, env, "STATIC_API_KEY", "test-instance-static-api-key", "token")
 }
 
+func TestBuildEnvVars_RateLimitingEnabled(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.RateLimiting = true
+
+	env := buildEnvVars(inst)
+	requireEnvAbsent(t, env, "DISABLE_RATE_LIMITING")
+}
+
 func TestBuildEnvVars_EncryptionKeyAbsentWhenNil(t *testing.T) {
 	inst := minimalInstance()
 	inst.Spec.EncryptionKey = nil

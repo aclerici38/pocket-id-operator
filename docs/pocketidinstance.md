@@ -549,7 +549,6 @@ spec:
 - Environment variables always set by the operator (managed instances only):
   - `ENCRYPTION_KEY` (from `spec.encryptionKey`)
   - `TRUST_PROXY=true`
-  - `DISABLE_RATE_LIMITING=true`
   - `STATIC_API_KEY` (secret reference)
 - Conditionally set from spec fields:
   - `UI_CONFIG_DISABLED=true` (when `spec.ui`, `spec.userManagement`, `spec.smtp`, `spec.emailNotifications`, or `spec.ldap` is configured)
@@ -571,6 +570,7 @@ spec:
   - `LOCAL_IPV6_RANGES` (from `spec.localIPv6Ranges`)
   - `S3_DISABLE_DEFAULT_INTEGRITY_CHECKS` (from `spec.s3.disableDefaultIntegrityChecks`)
   - `AUDIT_LOG_RETENTION_DAYS`, `ANALYTICS_DISABLED`, `VERSION_CHECK_DISABLED`
+  - `DISABLE_RATE_LIMITING=true` (set unless `spec.rateLimiting` is enabled)
   - Any additional values from `spec.env` (applied last, can override anything above)
 
 *Note:* For all options and an up-to-date spec `kubectl explain PocketIDInstance`

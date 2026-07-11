@@ -2431,6 +2431,14 @@
           "description": "Pod template to merge with the operator-built pod spec.\nOperator-managed fields including the pocket-id container always take precedence.",
           "x-kubernetes-preserve-unknown-fields": true
         },
+        "rateLimiting": {
+          "default": false,
+          "description": "Enable Pocket-ID's built-in rate limiting. Disabled by default.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "readinessProbe": {
           "additionalProperties": false,
           "description": "Readiness probe configuration",
