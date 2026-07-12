@@ -600,10 +600,10 @@ type PocketIDInstanceSpec struct {
 	// +optional
 	VersionCheckDisabled bool `json:"versionCheckDisabled,omitempty"`
 
-	// Enable Pocket-ID's built-in rate limiting. Disabled by default.
+	// Disable Pocket-ID's built-in rate limiting. Enabled by default.
 	// +kubebuilder:default=false
 	// +optional
-	RateLimiting bool `json:"rateLimiting,omitempty"`
+	RateLimitingDisabled bool `json:"rateLimitingDisabled,omitempty"`
 
 	// Internal base URL for OIDC .well-known endpoints (for split-horizon DNS)
 	// +optional
