@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  POCKET_ID_IMAGE: ghcr.io/pocket-id/pocket-id:next-distroless@sha256:7761b4b193ca8c36b4015e8c6447e027319265bc96649751a21a00e427620600
+  POCKET_ID_IMAGE: ghcr.io/pocket-id/pocket-id:next-distroless@sha256:bf7a7ce6564a34600693d2678e77ecc0b1ed074c124648fc105c241feac0e567
   OPERATOR_IMAGE: ghcr.io/aclerici38/pocket-id-operator:main
   CANARY_LABEL: pocket-id-next-canary
   CANARY_ASSIGNEE: aclerici38
