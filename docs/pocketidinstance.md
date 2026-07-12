@@ -518,7 +518,7 @@ and instead manages OIDC clients, users, and groups on an existing Pocket-ID via
 All workload configuration (`spec.encryptionKey`, `spec.smtp`, `spec.persistence`, etc.) is
 ignored in this mode. `spec.external` and `spec.encryptionKey` are mutually exclusive. To migrate from an external instance to an internal one or vice versa, the instance must be recreated.
 
-It is recommended to set `DISABLE_RATE_LIMITING=true` on an external instance. Without it the operator may hit rate limits on startup or when many resources are synced at once. Managed instances have this set automatically.
+Recent Pocket-ID versions ship a much more permissive rate limiter (100 req/s per IP, burst 300), so the operator no longer trips it during normal syncs. If you run an older Pocket-ID or manage a very large number of resources on an external instance, you can set `DISABLE_RATE_LIMITING=true` on it to be safe. Managed instances keep rate limiting on by default; opt out with `spec.rateLimitingDisabled: true`.
 
 ```yaml
 apiVersion: v1
@@ -570,7 +570,7 @@ spec:
   - `LOCAL_IPV6_RANGES` (from `spec.localIPv6Ranges`)
   - `S3_DISABLE_DEFAULT_INTEGRITY_CHECKS` (from `spec.s3.disableDefaultIntegrityChecks`)
   - `AUDIT_LOG_RETENTION_DAYS`, `ANALYTICS_DISABLED`, `VERSION_CHECK_DISABLED`
-  - `DISABLE_RATE_LIMITING=true` (set unless `spec.rateLimiting` is enabled)
+  - `DISABLE_RATE_LIMITING=true` (set only when `spec.rateLimitingDisabled` is enabled)
   - Any additional values from `spec.env` (applied last, can override anything above)
 
 *Note:* For all options and an up-to-date spec `kubectl explain PocketIDInstance`

@@ -72,17 +72,17 @@ func TestBuildEnvVars_CoreAlwaysSet(t *testing.T) {
 
 	requireEnv(t, env, "ENCRYPTION_KEY", "test-encryption-key-32chars!!!!!")
 	requireEnv(t, env, "TRUST_PROXY", "true")
-	requireEnv(t, env, "DISABLE_RATE_LIMITING", "true")
+	requireEnvAbsent(t, env, "DISABLE_RATE_LIMITING")
 	requireEnv(t, env, "APP_URL", "https://id.example.com")
 	requireEnvFromSecret(t, env, "STATIC_API_KEY", "test-instance-static-api-key", "token")
 }
 
-func TestBuildEnvVars_RateLimitingEnabled(t *testing.T) {
+func TestBuildEnvVars_RateLimitingDisabled(t *testing.T) {
 	inst := minimalInstance()
-	inst.Spec.RateLimiting = true
+	inst.Spec.RateLimitingDisabled = true
 
 	env := buildEnvVars(inst)
-	requireEnvAbsent(t, env, "DISABLE_RATE_LIMITING")
+	requireEnv(t, env, "DISABLE_RATE_LIMITING", "true")
 }
 
 func TestBuildEnvVars_EncryptionKeyAbsentWhenNil(t *testing.T) {

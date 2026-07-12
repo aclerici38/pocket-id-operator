@@ -86,14 +86,6 @@ var _ = Describe("PocketIDInstance", Serial, Ordered, func() {
 				g.Expect(controller).To(Equal("true"))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 		})
-
-		It("should set DISABLE_RATE_LIMITING env var (shared instance has it disabled)", func() {
-			Eventually(func(g Gomega) {
-				output := kubectlGet("deployment", instanceName, "-n", instanceNS,
-					"-o", "jsonpath={.spec.template.spec.containers[0].env[?(@.name=='DISABLE_RATE_LIMITING')].value}")
-				g.Expect(output).To(Equal("true"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
-		})
 	})
 
 	Context("Static API Key Secret Lifecycle", func() {
