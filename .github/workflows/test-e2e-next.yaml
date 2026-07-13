@@ -1,38 +1,102 @@
 name: E2E Tests (pocket-id next)
 
-# Compatibility canary: runs the e2e suite with the current operator (published
-# `main` image) against upstream pocket-id's rolling `next-distroless` tag.
+# Compatibility canary: hourly, resolves upstream pocket-id's rolling
+# `next-distroless` digest and — only when it has changed since the last tested
+# run — runs the e2e suite with the published `main` operator against it.
+# Results and a per-hour liveness heartbeat land on a locked dashboard issue.
 
 on:
-  pull_request:
-    paths:
-      - ".github/workflows/test-e2e-next.yaml"
+  schedule:
+    - cron: "17 * * * *"
   workflow_dispatch:
+    inputs:
+      force:
+        description: Run the e2e suite even if the digest is unchanged.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
-  packages: read
-  issues: write
 
 concurrency:
-  group: e2e-next-${{ github.ref }}
-  cancel-in-progress: true
+  group: e2e-next
+  cancel-in-progress: false
 
 env:
-  POCKET_ID_IMAGE: ghcr.io/pocket-id/pocket-id:next-distroless@sha256:7761b4b193ca8c36b4015e8c6447e027319265bc96649751a21a00e427620600
-  OPERATOR_IMAGE: ghcr.io/aclerici38/pocket-id-operator:main
   CANARY_LABEL: pocket-id-next-canary
   CANARY_ASSIGNEE: aclerici38
+  OPERATOR_IMAGE: ghcr.io/aclerici38/pocket-id-operator:main
   MISE_TASK_RUN_AUTO_INSTALL: "false"
 
 jobs:
+  resolve:
+    name: Resolve next-distroless digest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+      image: ${{ steps.check.outputs.image }}
+      digest: ${{ steps.check.outputs.digest }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Resolve digest and compare
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ github.event.inputs.force }}
+        run: |
+          set -euo pipefail
+          REF=ghcr.io/pocket-id/pocket-id:next-distroless
+
+          # --format '{{.Digest}}' yields the multi-arch index digest (what an
+          # `@sha256:` pin references) regardless of which instance is selected;
+          # the platform overrides just keep the lookup off the runner's own arch.
+          DIGEST="$(skopeo inspect --retry-times 3 --no-tags \
+            --override-os linux --override-arch amd64 \
+            --format '{{.Digest}}' "docker://${REF}")"
+          test -n "$DIGEST"
+
+          {
+            echo "digest=${DIGEST}"
+            echo "image=${REF}@${DIGEST}"
+          } >>"$GITHUB_OUTPUT"
+
+          NUM="$(gh issue list --label "$CANARY_LABEL" --state all --limit 1 --json number -q '.[0].number // empty' || true)"
+          LAST=""
+          if [ -n "$NUM" ]; then
+            LAST="$(gh issue view "$NUM" --json body -q .body \
+              | grep -oE 'state:tested-digest=sha256:[a-f0-9]+' | head -1 | cut -d= -f2- || true)"
+          fi
+
+          if [ "${FORCE:-false}" = "true" ] || [ "$DIGEST" != "$LAST" ]; then
+            echo "changed=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Heartbeat dashboard issue
+        if: steps.check.outputs.changed == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: CHECKED_AT_NEW="$(date -u +%Y-%m-%dT%H:%M:%SZ)" ./.github/scripts/update-next-canary-issue.sh
+
   test-e2e-next:
     name: Run e2e tests (pocket-id next)
+    needs: resolve
+    if: needs.resolve.outputs.changed == 'true'
     runs-on: ubuntu-latest
-    # Run in renovate PR or workflow_dispatch
-    if: >-
-      github.event_name != 'pull_request' ||
-      contains(github.event.pull_request.labels.*.name, 'pocket-id-next-canary')
+    permissions:
+      contents: read
+      packages: read
+      issues: write
+    env:
+      POCKET_ID_IMAGE: ${{ needs.resolve.outputs.image }}
     steps:
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -78,54 +142,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           E2E_OUTCOME: ${{ steps.e2e.outcome }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TESTED_DIGEST_NEW: ${{ needs.resolve.outputs.digest }}
+          TESTED_RUN_NEW: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-
+          if [ "${E2E_OUTCOME}" = "success" ]; then
+            export STATUS_NEW=passing
+          else
+            export STATUS_NEW=failing
+          fi
           NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          SHORT_SHA="${GITHUB_SHA::7}"
-
-          if [ "${E2E_OUTCOME}" = "success" ]; then
-            STATUS="✅ **PASSING**"
-          else
-            STATUS="❌ **FAILING**"
-          fi
-
-          BODY="$(cat <<EOF
-          ## pocket-id \`next\` compatibility canary
-
-          ${STATUS}
-
-          |          |                              |
-          | -------- | ---------------------------- |
-          | image    | \`${POCKET_ID_IMAGE}\`       |
-          | operator | \`${OPERATOR_IMAGE}\`        |
-          | run      | ${RUN_URL}                   |
-          | checked  | ${NOW} (\`${SHORT_SHA}\`)    |
-
-          ---
-          _Automated by \`.github/workflows/test-e2e-next.yaml\`; this issue is locked, do not edit._
-          _While failing, @${CANARY_ASSIGNEE} is assigned; the assignment clears automatically on the next green run._
-          EOF
-          )"
-
-          NUM="$(gh issue list --label "${CANARY_LABEL}" --state all --limit 1 --json number -q '.[0].number // empty' || true)"
-
-          if [ -z "${NUM}" ]; then
-            gh label create "${CANARY_LABEL}" --color BFD4F2 \
-              --description "pocket-id next e2e canary dashboard" 2>/dev/null || true
-            NUM="$(gh issue create \
-              --title "pocket-id \`next\` compatibility canary" \
-              --label "${CANARY_LABEL}" \
-              --body "${BODY}" | grep -oE '[0-9]+$')"
-            gh issue lock "${NUM}" 2>/dev/null || true
-          else
-            gh issue edit "${NUM}" --body "${BODY}"
-            gh issue reopen "${NUM}" 2>/dev/null || true
-          fi
-
-          if [ "${E2E_OUTCOME}" = "success" ]; then
-            gh issue edit "${NUM}" --remove-assignee "${CANARY_ASSIGNEE}" 2>/dev/null || true
-          else
-            gh issue edit "${NUM}" --add-assignee "${CANARY_ASSIGNEE}"
-          fi
+          TESTED_AT_NEW="$NOW" CHECKED_AT_NEW="$NOW" ./.github/scripts/update-next-canary-issue.sh
