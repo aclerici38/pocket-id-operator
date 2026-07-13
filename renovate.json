@@ -33,18 +33,6 @@
       "labels": ["pocket-id-upgrade"]
     },
     {
-      "description": "pocket-id `next` compatibility canary: keep the next-distroless digest current so test-e2e-next.yaml reruns on every upstream build; auto-merge a green digest bump once a month, leave a red one open as a signal.",
-      "matchPackageNames": ["ghcr.io/pocket-id/pocket-id"],
-      "matchCurrentValue": "/^next/",
-      "groupName": "pocket-id-next",
-      "labels": ["pocket-id-next-canary"],
-      "pinDigests": false,
-      "automerge": true,
-      "platformAutomerge": false,
-      "automergeSchedule": ["* 0-5 1 * *"],
-      "rebaseWhen": "behind-base-branch"
-    },
-    {
       "matchDatasources": ["golang-version"],
       "rangeStrategy": "bump"
     },
