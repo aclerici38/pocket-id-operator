@@ -9,11 +9,11 @@ gen=(
   api/v1alpha1/zz_generated.deepcopy.go
   config/crd/bases
   config/rbac/role.yaml
-  dist/chart/templates/rbac/manager-role.yaml
-  dist/chart/crds
+  charts/pocket-id-operator/templates/rbac/manager-role.yaml
+  charts/pocket-id-operator/crds
   dist/install.yaml
   dist/schemas
-  dist/chart/values.schema.json
+  charts/pocket-id-operator/values.schema.json
 )
 
 if ! git diff --quiet -- "${gen[@]}"; then

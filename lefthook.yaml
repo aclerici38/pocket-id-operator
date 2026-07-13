@@ -25,10 +25,10 @@ pre-push:
     # Derived files (CRDs, deepcopy, install.yaml, schemas) must
     # match the API types. Fails if `regen` changes any committed generated file
     generated-up-to-date:
-      glob: "{api,config,internal,dist,hack}/**"
+      glob: "{api,config,internal,dist,hack,charts}/**"
       run: mise run verify-generated
     lint-chart:
-      glob: "dist/chart/**"
+      glob: "charts/pocket-id-operator/**"
       run: mise run lint-chart
 
 # Keep derived files reconciled after pulling or rebasing in upstream changes,
