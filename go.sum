@@ -1,7 +1,7 @@
 github.com/Masterminds/semver/v3 v3.5.0 h1:kQceYJfbupGfZOKZQg0kou0DgAKhzDg2NZPAwZ/2OOE=
 github.com/Masterminds/semver/v3 v3.5.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
-github.com/aclerici38/pocket-id-go-client/v2 v2.10.0 h1:XvSk+8b+HjJ/bIPrCmdDIfpfk+htH24DUtE+cMUskhU=
-github.com/aclerici38/pocket-id-go-client/v2 v2.10.0/go.mod h1:h5okaJ7qjZPZ6cR6xRsOcUBJusiKpkF2nlb9TlrdIIU=
+github.com/aclerici38/pocket-id-go-client/v2 v2.11.0 h1:pXOKfYYDgt9ePkkwTO2obQJkG3/2Ov+h6MRnPiS3ZB4=
+github.com/aclerici38/pocket-id-go-client/v2 v2.11.0/go.mod h1:h5okaJ7qjZPZ6cR6xRsOcUBJusiKpkF2nlb9TlrdIIU=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
