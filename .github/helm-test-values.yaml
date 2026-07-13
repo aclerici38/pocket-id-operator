@@ -1,5 +1,5 @@
 ---
-# yaml-language-server: $schema=../dist/chart/values.schema.json
+# yaml-language-server: $schema=../charts/pocket-id-operator/values.schema.json
 operator:
   timezone: "America/New_York"
 

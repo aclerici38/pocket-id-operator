@@ -44,7 +44,7 @@ https://raw.githubusercontent.com/aclerici38/pocket-id-operator/main/dist/schema
 https://raw.githubusercontent.com/aclerici38/pocket-id-operator/<version>/dist/schemas/pocketidinstance_v1alpha1.json
 ```
 
-Note: the Helm values schema is at `dist/chart/values.schema.json` instead of `dist/schemas/`.
+Note: the Helm values schema is at `charts/pocket-id-operator/values.schema.json` instead of `dist/schemas/`.
 
 **From my k8s-versioned-schemas project (latest):**
 ```

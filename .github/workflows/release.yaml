@@ -203,4 +203,4 @@ jobs:
             --notes-file /tmp/changelog.md \
             dist/install.yaml \
             dist/schemas/*.json \
-            dist/chart/values.schema.json
+            charts/pocket-id-operator/values.schema.json

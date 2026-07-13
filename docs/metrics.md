@@ -52,7 +52,7 @@ metrics service (port `8080`, HTTP):
 
 ## Grafana Dashboard
 
-A pre-built dashboard is included in the chart at `dist/chart/files/grafana-dashboard.json`.
+A pre-built dashboard is included in the chart at `charts/pocket-id-operator/files/grafana-dashboard.json`.
 
 **Helm (ConfigMap):** set `metrics.dashboard.enabled: true` — the chart creates a ConfigMap
 with the label `grafana_dashboard: "1"` that Grafana's sidecar will pick up automatically.
@@ -64,7 +64,7 @@ ConfigMap. The `instanceSelector` labels can be overridden via
 `metrics.dashboard.grafanaDashboard.instanceSelector.matchLabels`.
 
 **Manual import:** in Grafana go to Dashboards → Import → Upload JSON file, and select
-`dist/chart/files/grafana-dashboard.json` from the repository.
+`charts/pocket-id-operator/files/grafana-dashboard.json` from the repository.
 
 ---
 
