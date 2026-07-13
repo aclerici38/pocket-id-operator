@@ -62,11 +62,6 @@ jobs:
             --format '{{.Digest}}' "docker://${REF}")"
           test -n "$DIGEST"
 
-          {
-            echo "digest=${DIGEST}"
-            echo "image=${REF}@${DIGEST}"
-          } >>"$GITHUB_OUTPUT"
-
           NUM="$(gh issue list --label "$CANARY_LABEL" --state all --limit 1 --json number -q '.[0].number // empty' || true)"
           LAST=""
           if [ -n "$NUM" ]; then
@@ -74,11 +69,32 @@ jobs:
               | grep -oE 'state:tested-digest=sha256:[a-f0-9]+' | head -1 | cut -d= -f2- || true)"
           fi
 
-          if [ "${FORCE:-false}" = "true" ] || [ "$DIGEST" != "$LAST" ]; then
-            echo "changed=true" >>"$GITHUB_OUTPUT"
+          if [ "${FORCE:-false}" = "true" ]; then
+            CHANGED=true;  REASON="forced via workflow_dispatch"
+          elif [ -z "$LAST" ]; then
+            CHANGED=true;  REASON="no previously tested digest on record"
+          elif [ "$DIGEST" != "$LAST" ]; then
+            CHANGED=true;  REASON="digest changed since last tested run"
           else
-            echo "changed=false" >>"$GITHUB_OUTPUT"
+            CHANGED=false; REASON="digest unchanged since last tested run"
           fi
+
+          {
+            echo "digest=${DIGEST}"
+            echo "image=${REF}@${DIGEST}"
+            echo "changed=${CHANGED}"
+          } >>"$GITHUB_OUTPUT"
+
+          {
+            echo "### pocket-id \`next\` digest check"
+            echo "|            |                 |"
+            echo "| ---------- | --------------- |"
+            echo "| resolved    | \`${DIGEST}\` |"
+            echo "| last tested | \`${LAST:-none}\` |"
+            echo "| decision    | **${CHANGED}** — ${REASON} |"
+          } >>"$GITHUB_STEP_SUMMARY"
+
+          echo "::notice title=next-distroless digest check::changed=${CHANGED} (${REASON}) resolved=${DIGEST} last=${LAST:-none}"
 
       - name: Heartbeat dashboard issue
         if: steps.check.outputs.changed == 'false'
@@ -138,7 +154,7 @@ jobs:
         run: mise run test-e2e-only
 
       - name: Update canary dashboard issue
-        if: always()
+        if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
           E2E_OUTCOME: ${{ steps.e2e.outcome }}

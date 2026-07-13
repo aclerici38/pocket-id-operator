@@ -60,6 +60,8 @@ _While failing, @${CANARY_ASSIGNEE} is assigned; the assignment clears on the ne
 EOF
 )"
 
+echo "canary issue #${NUM:-<new>}: status=${STATUS:-unknown} tested-digest=${TDIGEST:-none} checked-at=${CAT:-never}"
+
 if [ -z "$NUM" ]; then
   gh label create "$CANARY_LABEL" --color BFD4F2 \
     --description "pocket-id next e2e canary dashboard" 2>/dev/null || true
