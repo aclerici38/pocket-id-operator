@@ -14,21 +14,15 @@ instance:
   enabled: true
 
   # Name of the PocketIDInstance resource. Defaults to the chart name
-  # (pocket-id-instance) when left empty. Also used as the default
-  # selectorLabels value that users/groups/clients bind to.
+  # (pocket-id-instance) when left empty. Users/groups/clients in this release
+  # auto-bind to it via a pocketid.internal/instance: <name> label selector, so
+  # deploying the chart multiple times with different names keeps instances
+  # isolated. A resource that sets its own spec.instanceSelector overrides this.
   name: ""
 
   # Extra labels/annotations for the PocketIDInstance resource.
   labels: {}
   annotations: {}
-
-  # Label(s) placed on the PocketIDInstance and referenced by every
-  # user/group/client's spec.instanceSelector, so this release's resources bind
-  # to this release's instance. Deploy the chart multiple times with different
-  # instance.name values to run isolated instances side by side. Leave empty to
-  # use the default {pocketid.internal/instance: <instance.name>}. No selector is
-  # injected onto resources when instance.enabled is false.
-  selectorLabels: {}
 
   # Optional ServiceMonitor for the instance. Created automatically when the
   # Prometheus Operator's ServiceMonitor CRD is present; set enabled: false to

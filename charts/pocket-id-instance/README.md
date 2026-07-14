@@ -29,7 +29,6 @@ This deploys a Pocket ID instance with persistence enabled. You must supply an
 | --- | --- | --- |
 | `instance.enabled` | Render a `PocketIDInstance` | `true` |
 | `instance.name` | Name of the instance resource | chart name (`pocket-id-instance`) |
-| `instance.selectorLabels` | Labels on the instance that child resources select on (see below) | `{pocketid.internal/instance: <name>}` |
 | `instance.serviceMonitor.enabled` | Create a `ServiceMonitor` when the CRD is present | `true` |
 | `instance.spec` | Passed through to the `PocketIDInstance` CRD | see `values.yaml` |
 | `users` | List of `{name, spec, labels?, annotations?}` → `PocketIDUser` | `[]` |
@@ -74,19 +73,18 @@ the CRD).
 
 Each `PocketIDUser`, `PocketIDUserGroup`, and `PocketIDOIDCClient` binds to an
 instance via `spec.instanceSelector`. This chart wires that up automatically: it
-labels the `PocketIDInstance` with `instance.selectorLabels` (default
-`{pocketid.internal/instance: <instance.name>}`) and stamps a matching
-`instanceSelector` onto every child resource.
+labels the `PocketIDInstance` with `pocketid.internal/instance: <instance.name>`
+and stamps a matching `instanceSelector` onto every child resource.
 
 That means you can deploy this chart multiple times with different
 `instance.name` values and each release's users/groups/clients stay bound to
-their own instance without manually managing the labelSelectors. 
-Notes:
+their own instance without manually managing the label selectors. Notes:
 
-- A resource that sets its own `spec.instanceSelector` is left untouched.
+- A resource that sets its own `spec.instanceSelector` is left untouched. To
+  bind on a different label, add it via `instance.labels` and set the matching
+  `spec.instanceSelector` on the resource.
 - When `instance.enabled: false`, no selector is injected (the operator then
   expects exactly one instance in the cluster, or you set selectors yourself).
-- Override `instance.selectorLabels` to match a pre-existing label scheme.
 
 ## Adopting an external instance
 

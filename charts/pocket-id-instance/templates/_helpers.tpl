@@ -20,18 +20,16 @@ Resolved name of the PocketIDInstance.
 {{- end }}
 
 {{/*
-Selector labels placed on the PocketIDInstance and referenced by each
+Selector label placed on the PocketIDInstance and auto-stamped onto each
 user/group/client's spec.instanceSelector, so this release's resources bind to
-this release's instance (multiple instance releases with different names stay
-isolated). Override with instance.selectorLabels; defaults to a single label
-keyed by the instance name. Returns YAML (parse with fromYaml for a dict).
+this release's instance. Keyed by the instance name, so deploying the chart
+multiple times with different instance.name values keeps instances isolated.
+A resource that sets its own spec.instanceSelector overrides this; to bind on a
+different label, set it via instance.labels and match it there. Returns YAML
+(parse with fromYaml for a dict).
 */}}
 {{- define "pocket-id-instance.selectorLabels" -}}
-{{- if .Values.instance.selectorLabels -}}
-{{- toYaml .Values.instance.selectorLabels -}}
-{{- else -}}
 pocketid.internal/instance: {{ include "pocket-id-instance.instanceName" . }}
-{{- end -}}
 {{- end }}
 
 {{/*
