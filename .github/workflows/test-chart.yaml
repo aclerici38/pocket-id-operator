@@ -88,6 +88,17 @@ jobs:
           IMAGE_TAG: ${{ inputs.image_tag }}
         run: kind load docker-image "${IMAGE_REPO}:${IMAGE_TAG}" --name chart-testing
 
+      - name: Fetch released chart values
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          gh api "repos/${REPOSITORY}/contents/.github/helm-test-values.yaml?ref=${RELEASE_TAG}" \
+            --jq '.content' | base64 -d > /tmp/released-values.yaml
+          echo "Released chart values (${RELEASE_TAG}):"
+          cat /tmp/released-values.yaml
+
       - name: Install released chart
         id: install-released
         continue-on-error: true
@@ -101,7 +112,7 @@ jobs:
             --version "${CHART_VERSION}" \
             --create-namespace \
             --namespace pocket-id-operator-system \
-            --values .github/helm-test-values.yaml \
+            --values /tmp/released-values.yaml \
             --set "operator.image.repository=${IMAGE_REPO}" \
             --set "operator.image.tag=${RELEASE_TAG}" \
             --wait \

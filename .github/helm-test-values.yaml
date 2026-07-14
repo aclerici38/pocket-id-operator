@@ -4,20 +4,23 @@ operator:
   timezone: "America/New_York"
 
 instance:
-  spec:
-    encryptionKey:
-      value: "test-key-16chars"
+  enabled: false
 
-users:
-  - name: test-user-1
-  - name: test-user-2
+pocket-id-instance:
+  instance:
+    enabled: true
     spec:
-      admin: true
-
-userGroups:
-  - name: test-group
-    spec:
-      users:
-        userRefs:
-          - name: test-user-1
-          - name: test-user-2
+      encryptionKey:
+        value: "test-key-16chars"
+  users:
+    - name: test-user-1
+    - name: test-user-2
+      spec:
+        admin: true
+  userGroups:
+    - name: test-group
+      spec:
+        users:
+          userRefs:
+            - name: test-user-1
+            - name: test-user-2
