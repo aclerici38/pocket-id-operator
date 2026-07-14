@@ -96,12 +96,13 @@ jobs:
           CHART_VERSION: ${{ steps.release.outputs.chart_version }}
           IMAGE_REPO: ${{ inputs.image_repo }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           helm install test-release "${CHART}" \
             --version "${CHART_VERSION}" \
             --create-namespace \
             --namespace pocket-id-operator-system \
-            --values .github/helm-test-values.yaml \
+            --values "https://raw.githubusercontent.com/${REPOSITORY}/${RELEASE_TAG}/.github/helm-test-values.yaml" \
             --set "operator.image.repository=${IMAGE_REPO}" \
             --set "operator.image.tag=${RELEASE_TAG}" \
             --wait \
@@ -154,6 +155,51 @@ jobs:
           kubectl get pocketiduser test-user-1 -n pocket-id-operator-system
           kubectl get pocketiduser test-user-2 -n pocket-id-operator-system
           kubectl get pocketidusergroup test-group -n pocket-id-operator-system
+
+      - name: Package instance chart
+        run: |
+          mkdir -p charts/pocket-id-instance-packages
+          helm package charts/pocket-id-instance \
+            --version "0.0.0" \
+            --app-version "0.0.0" \
+            --destination charts/pocket-id-instance-packages
+
+      - name: Install instance chart
+        run: |
+          helm install test-instance charts/pocket-id-instance-packages/*.tgz \
+            --create-namespace \
+            --namespace pocket-id-instance-test \
+            --values .github/helm-test-values-instance.yaml \
+            --set "instance.spec.appUrl=http://pocket-id-instance.pocket-id-instance-test.svc.cluster.local:1411" \
+            --wait \
+            --timeout 2m
+
+      - name: Verify instance chart reconciles
+        run: |
+          echo "=== Custom resources created by the instance chart ==="
+          kubectl get pocketidinstance pocket-id-instance -n pocket-id-instance-test
+          kubectl get pocketiduser test-user-1 test-user-2 -n pocket-id-instance-test
+          kubectl get pocketidusergroup test-group -n pocket-id-instance-test
+          kubectl get pocketidoidcclient test-client -n pocket-id-instance-test
+          echo "=== Waiting for the operator to reconcile the instance to Ready ==="
+          kubectl wait --for=condition=Ready pocketidinstance/pocket-id-instance \
+            -n pocket-id-instance-test --timeout=5m
+
+      - name: Debug instance chart on failure
+        if: failure()
+        run: |
+          echo "=== Instance-chart namespace ==="
+          kubectl get all -n pocket-id-instance-test || true
+          echo "=== PocketID custom resources ==="
+          kubectl get pocketidinstance,pocketiduser,pocketidusergroup,pocketidoidcclient \
+            -n pocket-id-instance-test -o yaml || true
+          echo "=== Pocket-ID pod logs ==="
+          kubectl logs -n pocket-id-instance-test -l app.kubernetes.io/name=pocket-id --tail=100 || true
+
+      - name: Uninstall instance chart
+        if: always()
+        run: |
+          helm uninstall test-instance --namespace pocket-id-instance-test || true
 
       - name: Uninstall test chart
         if: always()

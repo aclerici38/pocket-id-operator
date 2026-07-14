@@ -15,6 +15,12 @@ permissions:
 jobs:
   resign:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        chart:
+          - pocket-id-operator
+          - pocket-id-instance
     steps:
       - name: Set metadata
         id: meta
@@ -22,7 +28,7 @@ jobs:
           REPO_OWNER: ${{ github.repository_owner }}
         run: |
           REPO_OWNER=$(echo "${REPO_OWNER}" | tr '[:upper:]' '[:lower:]')
-          echo "chart_ref=ghcr.io/${REPO_OWNER}/charts/pocket-id-operator" >> "$GITHUB_OUTPUT"
+          echo "chart_ref=ghcr.io/${REPO_OWNER}/charts/${{ matrix.chart }}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0

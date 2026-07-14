@@ -1,0 +1,103 @@
+# yaml-language-server: $schema=./values.schema.json
+
+# pocket-id-instance
+#
+# Packages the custom resources reconciled by pocket-id-operator. Install the
+# operator and CRDs first, then use this chart to declare a
+# Pocket ID instance and the users, groups, and OIDC clients on it.
+#
+# Every `spec:` below is passed straight through to the matching CRD, so any
+# field the operator understands can be set here even if it is not shown.
+
+# -- A single PocketIDInstance.
+instance:
+  # Set to false to manage only users/groups/clients (e.g. the instance lives
+  # in another release or namespace).
+  enabled: true
+
+  # Name of the PocketIDInstance resource. Defaults to the chart name
+  # (pocket-id-instance) when left empty. Users/groups/clients in this release
+  # auto-bind to it via a pocketid.internal/instance: <name> label selector, so
+  # deploying the chart multiple times with different names keeps instances
+  # isolated. A resource that sets its own spec.instanceSelector overrides this.
+  name: ""
+
+  # Extra labels/annotations for the PocketIDInstance resource.
+  labels: {}
+  annotations: {}
+
+  # ServiceMonitor for the instance. Off unless the instance is deployed here
+  # with spec.metrics.enabled=true and the Prometheus Operator's ServiceMonitor
+  # CRD is present, in which case it is created automatically. Set enabled: false
+  # to hard-disable it even when metrics are on.
+  # NOTE: pocket-id does not expose many meaningful metrics
+  serviceMonitor:
+    enabled: true
+    labels: {}
+    interval: ""
+
+  # PocketIDInstance spec. See docs/pocketidinstance.md for the full field list.
+  spec:
+    # REQUIRED
+    encryptionKey:
+      # valueFrom:
+      #   secretKeyRef:
+      #     name: pocket-id-encryption-key
+      #     key: encryptionKey
+      # value: "your-encryption-key-here-min-16-chars"
+
+    # Common extras
+    # appUrl: https://auth.example.com
+    # 
+    # databaseUrl: /app/data/pocket-id.db
+    # OR
+    # databaseUrl: "postgres://localhost/pocket-id"
+    #
+    # persistence:
+    #   existingClaim: pocket-id
+    # 
+    # Expose via Gateway API:
+    # route:
+    #   enabled: true
+    #   parentRefs:
+    #     - name: my-gateway
+    #       namespace: gateway-system
+    #
+    # smtp:
+    #   host: smtp.example.com
+    #   port: 587
+    #   from: no-reply@example.com
+    #   tls: starttls
+    #
+    # metrics:
+    #   enabled: true
+
+# -- PocketIDUser resources. Each entry: name, optional labels/annotations, and
+# a spec passed through to the PocketIDUser CRD.
+users: []
+  # - name: admin
+  #   spec:
+  #     admin: true
+  #     email:
+  #       value: admin@example.com
+  #     firstName:
+  #       value: Admin
+
+# -- PocketIDUserGroup resources.
+userGroups: []
+  # - name: admins
+  #   spec:
+  #     friendlyName: Admins
+  #     users:
+  #       userRefs:
+  #         - name: admin
+
+# -- PocketIDOIDCClient resources.
+oidcClients: []
+  # - name: grafana
+  #   spec:
+  #     callbackUrls:
+  #       - https://grafana.example.com/login/generic_oauth
+  #     pkceEnabled: true
+  #     allowedUserGroups:
+  #       - name: admins

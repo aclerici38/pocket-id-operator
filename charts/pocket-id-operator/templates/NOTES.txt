@@ -1,0 +1,20 @@
+pocket-id-operator has been {{ .Release.IsInstall | ternary "installed" "upgraded" }} in namespace {{ .Release.Namespace }}.
+{{- if or .Values.instance.enabled .Values.users .Values.userGroups }}
+
+⚠️  DEPRECATION NOTICE
+{{- $kinds := list }}
+{{- if .Values.instance.enabled }}{{ $kinds = append $kinds "a PocketIDInstance" }}{{ end }}
+{{- if .Values.users }}{{ $kinds = append $kinds (printf "%d PocketIDUser(s)" (len .Values.users)) }}{{ end }}
+{{- if .Values.userGroups }}{{ $kinds = append $kinds (printf "%d PocketIDUserGroup(s)" (len .Values.userGroups)) }}{{ end }}
+
+This release manages Pocket ID resources ({{ join ", " $kinds }}) via the deprecated
+instance/users/userGroups values, which will be removed in a future release. Migrate with
+one of:
+
+  1. In place (recommended, no resource recreation): set instance.enabled=false and move
+     your config under the pocket-id-instance key in this same release.
+  2. Separate release: install the standalone pocket-id-instance chart, or apply the
+     PocketID* resources directly.
+
+Guide: https://github.com/aclerici38/pocket-id-operator/tree/main/charts/pocket-id-instance
+{{- end }}

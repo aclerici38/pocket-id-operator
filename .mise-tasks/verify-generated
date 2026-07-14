@@ -14,6 +14,7 @@ gen=(
   dist/install.yaml
   dist/schemas
   charts/pocket-id-operator/values.schema.json
+  charts/pocket-id-instance/values.schema.json
 )
 
 if ! git diff --quiet -- "${gen[@]}"; then

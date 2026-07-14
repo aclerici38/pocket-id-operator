@@ -1,0 +1,183 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "global": {},
+    "instance": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A single PocketIDInstance",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Create a PocketIDInstance custom resource. Set to false to manage only users/groups/clients (e.g. the instance lives in another release or namespace).",
+          "default": true
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the PocketIDInstance resource. Defaults to the chart name (pocket-id-instance) when left empty.",
+          "default": ""
+        },
+        "labels": {
+          "type": "object",
+          "description": "Additional labels for the PocketIDInstance resource",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {}
+        },
+        "annotations": {
+          "type": "object",
+          "description": "Additional annotations for the PocketIDInstance resource",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {}
+        },
+        "spec": {},
+        "serviceMonitor": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "ServiceMonitor for the PocketIDInstance. Created automatically when the instance is deployed here with spec.metrics.enabled and the ServiceMonitor CRD is present. Set enabled: false to hard-disable it even when metrics are on.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Create a ServiceMonitor for the PocketIDInstance",
+              "default": true
+            },
+            "interval": {
+              "type": "string",
+              "description": "Scrape interval (e.g. 30s, 1m)",
+              "default": ""
+            },
+            "labels": {
+              "type": "object",
+              "description": "Additional labels for the ServiceMonitor",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "default": {}
+            }
+          }
+        }
+      },
+      "if": {
+        "not": {
+          "properties": {
+            "enabled": {
+              "const": false
+            }
+          },
+          "required": [
+            "enabled"
+          ]
+        }
+      },
+      "then": {
+        "properties": {
+          "spec": {}
+        }
+      }
+    },
+    "users": {
+      "type": "array",
+      "description": "List of PocketIDUser custom resources to create",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the PocketIDUser resource"
+          },
+          "labels": {
+            "type": "object",
+            "description": "Additional labels for the PocketIDUser resource",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "annotations": {
+            "type": "object",
+            "description": "Additional annotations for the PocketIDUser resource",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "spec": {}
+        }
+      }
+    },
+    "userGroups": {
+      "type": "array",
+      "description": "List of PocketIDUserGroup custom resources to create",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the PocketIDUserGroup resource"
+          },
+          "labels": {
+            "type": "object",
+            "description": "Additional labels for the PocketIDUserGroup resource",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "annotations": {
+            "type": "object",
+            "description": "Additional annotations for the PocketIDUserGroup resource",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "spec": {}
+        }
+      }
+    },
+    "oidcClients": {
+      "type": "array",
+      "description": "List of PocketIDOIDCClient custom resources to create",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the PocketIDOIDCClient resource"
+          },
+          "labels": {
+            "type": "object",
+            "description": "Additional labels for the PocketIDOIDCClient resource",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "annotations": {
+            "type": "object",
+            "description": "Additional annotations for the PocketIDOIDCClient resource",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "spec": {}
+        }
+      }
+    }
+  }
+}

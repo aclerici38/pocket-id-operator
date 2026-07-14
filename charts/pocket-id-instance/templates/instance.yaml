@@ -1,0 +1,23 @@
+{{- $inst := .Values.instance -}}
+{{- if $inst.enabled -}}
+{{- $name := include "pocket-id-instance.instanceName" . -}}
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDInstance
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: pocket-id
+    {{- include "pocket-id-instance.labels" (dict "root" . "component" "instance") | nindent 4 }}
+    {{- /* Selector target for this release's users/groups/clients */}}
+    {{- include "pocket-id-instance.selectorLabels" . | nindent 4 }}
+    {{- with $inst.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with $inst.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- toYaml ($inst.spec | default dict) | nindent 2 }}
+{{- end -}}

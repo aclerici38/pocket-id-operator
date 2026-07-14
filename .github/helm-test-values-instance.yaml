@@ -1,0 +1,27 @@
+---
+# yaml-language-server: $schema=../charts/pocket-id-instance/values.schema.json
+instance:
+  spec:
+    encryptionKey:
+      value: "test-key-16chars"
+
+users:
+  - name: test-user-1
+  - name: test-user-2
+    spec:
+      admin: true
+
+userGroups:
+  - name: test-group
+    spec:
+      users:
+        userRefs:
+          - name: test-user-1
+          - name: test-user-2
+
+oidcClients:
+  - name: test-client
+    spec:
+      callbackUrls:
+        - https://example.com/callback
+      pkceEnabled: true

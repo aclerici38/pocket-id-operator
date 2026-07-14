@@ -18,3 +18,4 @@ mise.lock                                     linguist-generated=true
 # crd-schema-publisher + jq splice (mise run generate-schemas)
 dist/schemas/*.json                           linguist-generated=true
 charts/pocket-id-operator/values.schema.json                 linguist-generated=true
+charts/pocket-id-instance/values.schema.json                 linguist-generated=true

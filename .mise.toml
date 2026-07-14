@@ -95,11 +95,28 @@ run = "golangci-lint run --fix"
 description = "Verify golangci-lint configuration"
 run = "golangci-lint config verify"
 
+[tasks.helm-deps]
+description = "Vendor the pocket-id-instance subchart into pocket-id-operator/charts as an unpacked directory. The dependency is declared in Chart.yaml (Helm 3.4+ lints for it), but helm v4 will not load a local file:// dependency from the .tgz that `helm dependency update` produces. `helm package` respects .helmignore and gives canonical content; we unpack it to the directory form helm v4 loads. Do not run `helm dependency update` here."
+run = '''
+set -e
+dest=charts/pocket-id-operator/charts
+tmp=$(mktemp -d)
+rm -rf "$dest"
+mkdir -p "$dest"
+helm package charts/pocket-id-instance --destination "$tmp" >/dev/null
+tar -xzf "$tmp"/pocket-id-instance-*.tgz -C "$dest"
+rm -rf "$tmp"
+'''
+
 [tasks.lint-chart]
-description = "Strictly lint the Helm chart, with and without a managed instance (--strict promotes warnings to failures)"
+description = "Strictly lint the Helm charts, with and without a managed instance (--strict promotes warnings to failures)"
+depends = ["helm-deps"]
 run = [
   "helm lint --strict charts/pocket-id-operator --values .github/helm-test-values.yaml",
+  "helm lint --strict charts/pocket-id-operator --values .github/helm-test-values-deprecated.yaml",
   "helm lint --strict charts/pocket-id-operator --set instance.enabled=false",
+  "helm lint --strict charts/pocket-id-instance --values .github/helm-test-values-instance.yaml",
+  "helm lint --strict charts/pocket-id-instance --set instance.enabled=false",
 ]
 
 [tasks.setup-test-e2e]
