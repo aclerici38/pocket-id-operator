@@ -1,4 +1,7 @@
-{{- if .Values.instance.enabled }}
+{{- /* Don't render the root instance when the subchart's instance is enabled */}}
+{{- $sub := (index .Values "pocket-id-instance") | default dict -}}
+{{- $subInstance := $sub.instance | default dict -}}
+{{- if and .Values.instance.enabled (not $subInstance.enabled) }}
 apiVersion: pocketid.internal/v1alpha1
 kind: PocketIDInstance
 metadata:

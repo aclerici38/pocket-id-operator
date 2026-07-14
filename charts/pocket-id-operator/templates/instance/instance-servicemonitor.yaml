@@ -1,4 +1,6 @@
-{{- if and .Values.instance.enabled .Values.instance.serviceMonitor.enabled }}
+{{- $sub := (index .Values "pocket-id-instance") | default dict -}}
+{{- $subInstance := $sub.instance | default dict -}}
+{{- if and .Values.instance.enabled .Values.instance.serviceMonitor.enabled (not $subInstance.enabled) }}
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
