@@ -111,7 +111,7 @@ metrics:
 
 # pocket-id-instance subchart
 # Instance is disabled by default to maintain compatibility with the deprecated values above.
-# For new installs or to migrate, place, set `instance.enabled: false` above and configure everything here.
+# For new installs or to migrate, place, set `instance.enabled: false` and configure everything here.
 # Full schema: charts/pocket-id-instance/values.yaml
 pocket-id-instance:
   # A single PocketIDInstance.
