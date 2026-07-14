@@ -109,11 +109,87 @@ metrics:
         # Defaults to {grafana.internal/instance: grafana} when left empty.
         matchLabels: {}
 
-# DEPRECATED: the `instance`, `users`, and `userGroups` keys below will be
-# removed in a future release. Two migration options:
+# pocket-id-instance subchart
+# Instance is disabled by default to maintain compatibility with the deprecated values above.
+# For new installs or to migrate, place, set `instance.enabled: false` above and configure everything here.
+# Full schema: charts/pocket-id-instance/values.yaml
+pocket-id-instance:
+  # A single PocketIDInstance.
+  instance:
+    # Set to false to manage only users/groups/clients (e.g. the instance lives
+    # in another release or namespace).
+    enabled: false
+
+    # Name of the PocketIDInstance resource. Users/groups/clients in this release
+    # auto-bind to it via a pocketid.internal/instance: <name> label selector.
+    name: pocket-id
+
+    labels: {}
+    annotations: {}
+
+    # ServiceMonitor for the instance (requires the instance's spec.metrics.enabled
+    # and the Prometheus Operator's ServiceMonitor CRD).
+    serviceMonitor:
+      enabled: true
+
+    # PocketIDInstance spec. See docs/pocketidinstance.md for the full field list.
+    spec:
+      # REQUIRED
+      encryptionKey:
+        # valueFrom:
+        #   secretKeyRef:
+        #     name: pocket-id-encryption-key
+        #     key: encryptionKey
+        # value: "your-encryption-key-here-min-16-chars"
+
+      # Common extras
+      # appUrl: https://auth.example.com
+      # databaseUrl: /app/data/pocket-id.db   # or postgres://localhost/pocket-id
+      # persistence:
+      #   existingClaim: pocket-id
+      # smtp:
+      #   host: smtp.example.com
+      #   port: 587
+      #   from: no-reply@example.com
+      #   tls: starttls
+      # metrics:
+      #   enabled: true
+
+  # PocketIDUser resources.
+  users: []
+    # - name: admin
+    #   spec:
+    #     admin: true
+    #     email:
+    #       value: admin@example.com
+    #     firstName:
+    #       value: Admin
+
+  # PocketIDUserGroup resources.
+  userGroups: []
+    # - name: admins
+    #   spec:
+    #     friendlyName: Admins
+    #     users:
+    #       userRefs:
+    #         - name: admin
+
+  # PocketIDOIDCClient resources.
+  oidcClients: []
+    # - name: grafana
+    #   spec:
+    #     callbackUrls:
+    #       - https://grafana.example.com/login/generic_oauth
+    #     pkceEnabled: true
+    #     allowedUserGroups:
+    #       - name: admins
+
+# DEPRECATED: the `instance`, `users`, and `userGroups` keys below are
+# deprecated and will be removed in a future release. Configure your Pocket ID
+# resources under the `pocket-id-instance` subchart key at the bottom of this
+# file instead — that is where the examples now live. Two migration options:
 #   1. In place, no resource recreation: set `instance.enabled: false` here and
-#      move your config under the `pocket-id-instance` key at the bottom of this
-#      file.
+#      move your config under the `pocket-id-instance` key below.
 #   2. Separate release: use the standalone pocket-id-instance chart, or apply
 #      the PocketID* resources directly.
 # https://github.com/aclerici38/pocket-id-operator/tree/main/charts/pocket-id-instance
@@ -122,52 +198,14 @@ instance:
   name: pocket-id
   labels: {}
   annotations: {}
-  # ServiceMonitor for the PocketIDInstance (requires metrics.enabled)
-  # Nothing useful exposed by pocket-id right now
-  # https://github.com/pocket-id/pocket-id/issues/1318
   serviceMonitor:
     enabled: false
-
-  # PocketIDInstance spec — all fields from the CRD are supported here
-  # See docs for all available options (SMTP, LDAP, S3, UI, user management, etc.)
+  # PocketIDInstance spec. See the `pocket-id-instance` block below for examples.
   spec:
     encryptionKey:
-      # value: "your-encryption-key-here-min-16-bytes"
-      # valueFrom:
-      #   secretKeyRef:
-      #     name: pocket-id-encryption-key
-      #     key: encryption-key
 
-    # appUrl: "https://auth.example.com"
-
-# PocketIDUser configuration
-# DEPRECATED: use the pocket-id-instance chart (see the note above `instance`).
-# Full documentation: https://github.com/aclerici38/pocket-id-operator/blob/main/docs/pocketiduser.md
+# DEPRECATED: configure users under `pocket-id-instance.users` below instead.
 users: []
-  # - name: admin-user
-  #   spec:
-  #     admin: true
-  #     email:
-  #       value: "admin@example.com"
-  #     firstName:
-  #       value: "Admin"
 
-# PocketIDUserGroup configuration
-# DEPRECATED: use the pocket-id-instance chart (see the note above `instance`).
-# Full documentation: https://github.com/aclerici38/pocket-id-operator/blob/main/docs/pocketidusergroup.md
+# DEPRECATED: configure groups under `pocket-id-instance.userGroups` below instead.
 userGroups: []
-  # - name: admins
-  #   spec:
-  #     friendlyName: "Admins"
-  #     users:
-  #       userRefs:
-  #         - name: admin-user
-
-# Bundled pocket-id-instance subchart — the replacement for the deprecated
-# instance/users/userGroups keys above. Disabled by default. To migrate in
-# place, set instance.enabled=false above, then enable and configure it here.
-# See the pocket-id-instance chart values for the full schema.
-pocket-id-instance:
-  instance:
-    enabled: false
-    name: pocket-id
