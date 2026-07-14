@@ -72,6 +72,8 @@ var _ = Describe("HTTPRoute", Serial, Ordered, func() {
 		setSharedInstanceRoute(false, nil)
 		waitForResourceDeleted("httproute", routeName, instanceNS)
 		uninstallGatewayHTTPRouteCRD()
+		// Toggling the route mutates TRUST_PROXY on the Deployment, which rolls the pod.
+		waitForReady("pocketidinstance", instanceName, instanceNS)
 	})
 
 	It("should log an error when route is enabled without Gateway API CRDs", func() {

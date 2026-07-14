@@ -41,9 +41,9 @@ var _ = Describe("PocketIDInstance", Serial, Ordered, func() {
 		})
 
 		It("should be Ready", func() {
-			output := kubectlGet("pocketidinstance", instanceName, "-n", instanceNS,
-				"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
-			Expect(output).To(Equal("True"))
+			// The shared instance can be briefly rolling (e.g. after the HTTPRoute
+			// suite toggles its route), so poll rather than asserting once.
+			waitForReady("pocketidinstance", instanceName, instanceNS)
 		})
 
 		It("should create static API key secret automatically", func() {
