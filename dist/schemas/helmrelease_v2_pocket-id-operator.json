@@ -912,6 +912,7 @@
             "instance": {
               "type": "object",
               "additionalProperties": false,
+              "description": "DEPRECATED: declaring the PocketIDInstance in the operator chart is deprecated and will be removed in a future release. Use the pocket-id-instance chart or apply the PocketIDInstance custom resource directly.",
               "properties": {
                 "enabled": {
                   "type": "boolean",
@@ -4699,7 +4700,7 @@
             },
             "users": {
               "type": "array",
-              "description": "List of PocketIDUser custom resources to create",
+              "description": "DEPRECATED: use the pocket-id-instance chart. List of PocketIDUser custom resources to create.",
               "default": [],
               "items": {
                 "type": "object",
@@ -5163,7 +5164,7 @@
             },
             "userGroups": {
               "type": "array",
-              "description": "List of PocketIDUserGroup custom resources to create",
+              "description": "DEPRECATED: use the pocket-id-instance chart. List of PocketIDUserGroup custom resources to create.",
               "default": [],
               "items": {
                 "type": "object",

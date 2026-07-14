@@ -1,5 +1,16 @@
 # Helm Chart
 
+## Deprecations
+
+Declaring Pocket ID resources (`instance`, `users`, `userGroups`) in this chart is
+**deprecated** and will be removed in a future release. The operator chart will then
+manage only the controller, CRDs, and monitoring.
+
+Migrate those resources to the dedicated
+[`pocket-id-instance`](../pocket-id-instance) chart, or apply the `PocketID*` custom
+resources directly. Set `instance.enabled=false` (and clear `users`/`userGroups`) once
+migrated.
+
 ## Values Schema
 
 `values.schema.json` is **generated** — do not edit it directly. Changes will be overwritten.
