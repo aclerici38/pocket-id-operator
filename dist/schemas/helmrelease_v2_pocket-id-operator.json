@@ -4534,7 +4534,7 @@
                       },
                       "trustedProxies": {
                         "additionalProperties": false,
-                        "description": "TrustedProxies configures which proxies Pocket-ID trusts for X-Forwarded-* headers\n(sets TRUST_PROXY). When unset, the operator trusts the private/loopback ranges if\nspec.route.enabled is set (the operator provisions a Gateway in front of this\ninstance), and otherwise leaves TRUST_PROXY unset so Pocket-ID's own default\n(trust nothing) applies.",
+                        "description": "TrustedProxies configures which proxies Pocket-ID trusts for X-Forwarded-* headers\n(sets TRUST_PROXY). When unset, the operator trusts the private/loopback ranges if\nspec.route.enabled is set.",
                         "properties": {
                           "cidrs": {
                             "description": "CIDRs is the list of trusted proxy IPs/CIDRs. Only used when enabled is true.\nWhen empty, the operator trusts the private/loopback ranges\n(10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 127.0.0.1/32, ::1/128, fd00::/8).\nTo trust all sources, set this to [\"0.0.0.0/0\", \"::/0\"].",
@@ -4548,7 +4548,7 @@
                           },
                           "enabled": {
                             "default": false,
-                            "description": "Enabled turns on trust of X-Forwarded-* headers.\nWhen false, TRUST_PROXY is set to \"false\" (only the immediate peer's IP is used),\noverriding any route-derived default.",
+                            "description": "Enabled turns on trust of X-Forwarded-* headers.\nWhen false, TRUST_PROXY is set to \"false\"",
                             "type": "boolean"
                           }
                         },

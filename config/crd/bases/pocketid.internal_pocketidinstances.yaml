@@ -2748,9 +2748,7 @@ spec:
                 description: |-
                   TrustedProxies configures which proxies Pocket-ID trusts for X-Forwarded-* headers
                   (sets TRUST_PROXY). When unset, the operator trusts the private/loopback ranges if
-                  spec.route.enabled is set (the operator provisions a Gateway in front of this
-                  instance), and otherwise leaves TRUST_PROXY unset so Pocket-ID's own default
-                  (trust nothing) applies.
+                  spec.route.enabled is set.
                 properties:
                   cidrs:
                     description: |-
@@ -2765,8 +2763,7 @@ spec:
                     default: false
                     description: |-
                       Enabled turns on trust of X-Forwarded-* headers.
-                      When false, TRUST_PROXY is set to "false" (only the immediate peer's IP is used),
-                      overriding any route-derived default.
+                      When false, TRUST_PROXY is set to "false"
                     type: boolean
                 required:
                 - enabled
