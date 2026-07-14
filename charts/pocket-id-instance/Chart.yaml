@@ -1,0 +1,49 @@
+apiVersion: v2
+name: pocket-id-instance
+description: A Helm chart that packages the Pocket ID custom resources (instance, users, groups, and OIDC clients) managed by pocket-id-operator
+type: application
+version: 0.0.0
+appVersion: 0.0.0
+home: https://github.com/aclerici38/pocket-id-operator
+sources:
+  - https://github.com/aclerici38/pocket-id-operator
+  - https://pocket-id.org/
+maintainers:
+  - name: Anthony Clerici
+    email: anthony@clerici.me
+keywords:
+  - pocket-id
+  - oidc
+  - oauth
+  - oauth2
+annotations:
+  category: Infrastructure
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/links: |
+    - name: Source
+      url: https://github.com/aclerici38/pocket-id-operator
+    - name: Pocket ID
+      url: https://pocket-id.org/
+  # This chart only renders custom resources. The CRDs and the controller that
+  # reconciles them are installed separately by the pocket-id-operator chart.
+  artifacthub.io/crds: |
+    - kind: PocketIDInstance
+      version: v1alpha1
+      name: pocketidinstances.pocketid.internal
+      displayName: PocketID Instance
+      description: Deploys and manages a Pocket ID instance
+    - kind: PocketIDUser
+      version: v1alpha1
+      name: pocketidusers.pocketid.internal
+      displayName: PocketID User
+      description: Manages a user in a Pocket ID instance
+    - kind: PocketIDUserGroup
+      version: v1alpha1
+      name: pocketidusergroups.pocketid.internal
+      displayName: PocketID User Group
+      description: Manages a user group in a Pocket ID instance
+    - kind: PocketIDOIDCClient
+      version: v1alpha1
+      name: pocketidoidcclients.pocketid.internal
+      displayName: PocketID OIDC Client
+      description: Manages an OIDC client in a Pocket ID instance

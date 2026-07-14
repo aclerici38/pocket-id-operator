@@ -1,0 +1,107 @@
+# pocket-id-instance
+#
+# Packages the custom resources reconciled by pocket-id-operator. Install the
+# operator and CRDs first, then use this chart to declare a
+# Pocket ID instance and the users, groups, and OIDC clients on it.
+#
+# Every `spec:` below is passed straight through to the matching CRD, so any
+# field the operator understands can be set here even if it is not shown.
+
+# -- A single PocketIDInstance.
+instance:
+  # Set to false to manage only users/groups/clients (e.g. the instance lives
+  # in another release or namespace).
+  enabled: true
+
+  # Name of the PocketIDInstance resource. Defaults to the chart name
+  # (pocket-id-instance) when left empty. Also used as the default
+  # selectorLabels value that users/groups/clients bind to.
+  name: ""
+
+  # Extra labels/annotations for the PocketIDInstance resource.
+  labels: {}
+  annotations: {}
+
+  # Label(s) placed on the PocketIDInstance and referenced by every
+  # user/group/client's spec.instanceSelector, so this release's resources bind
+  # to this release's instance. Deploy the chart multiple times with different
+  # instance.name values to run isolated instances side by side. Leave empty to
+  # use the default {pocketid.internal/instance: <instance.name>}. No selector is
+  # injected onto resources when instance.enabled is false.
+  selectorLabels: {}
+
+  # Optional ServiceMonitor for the instance. Created automatically when the
+  # Prometheus Operator's ServiceMonitor CRD is present; set enabled: false to
+  # opt out.
+  serviceMonitor:
+    enabled: true
+    labels: {}
+    interval: ""
+
+  # PocketIDInstance spec. See docs/pocketidinstance.md for the full field list.
+  spec:
+    # appUrl: https://auth.example.com
+
+    # REQUIRED 
+    # encryptionKey:
+    #   valueFrom:
+    #     secretKeyRef:
+    #       name: pocket-id-encryption-key
+    #       key: encryptionKey
+    #   # value: "your-encryption-key-here-min-16-chars"
+
+    # Persist Pocket ID data across pod restarts. Requires a default (or named)
+    # StorageClass on the cluster. Disable to fall back to an emptyDir.
+    persistence:
+      enabled: true
+      size: 1Gi
+      # storageClass: ""
+      # accessModes: ["ReadWriteOnce"]
+
+    # Common extras
+    #
+    # Expose via Gateway API:
+    # route:
+    #   enabled: true
+    #   parentRefs:
+    #     - name: my-gateway
+    #       namespace: gateway-system
+    #
+    # smtp:
+    #   host: smtp.example.com
+    #   port: 587
+    #   from: no-reply@example.com
+    #   tls: starttls
+    #
+    # metrics:
+    #   enabled: true
+
+# -- PocketIDUser resources. Each entry: name, optional labels/annotations, and
+# a spec passed through to the PocketIDUser CRD.
+users: []
+  # - name: admin
+  #   spec:
+  #     admin: true
+  #     email:
+  #       value: admin@example.com
+  #     firstName:
+  #       value: Admin
+
+# -- PocketIDUserGroup resources.
+userGroups: []
+  # - name: admins
+  #   spec:
+  #     friendlyName: Admins
+  #     users:
+  #       userRefs:
+  #         - name: admin
+
+# -- PocketIDOIDCClient resources.
+oidcClients: []
+  # - name: grafana
+  #   spec:
+  #     callbackUrls:
+  #       - https://grafana.example.com/login/generic_oauth
+  #     pkceEnabled: true
+  #     allowedUserGroups:
+  #       - name: admins

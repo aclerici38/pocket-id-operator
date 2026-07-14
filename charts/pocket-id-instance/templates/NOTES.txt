@@ -1,0 +1,32 @@
+{{ .Chart.Name }} {{ .Chart.Version }} has been {{ .Release.IsInstall | ternary "installed" "upgraded" }} in namespace {{ .Release.Namespace }}.
+
+{{ if .Values.instance.enabled -}}
+PocketIDInstance: {{ include "pocket-id-instance.instanceName" . }}
+{{- $spec := .Values.instance.spec | default dict }}
+{{- if hasKey $spec "external" }}
+  Mode: adopting external instance ({{ (get $spec "external").url }})
+{{- else }}
+  Mode: deployed
+  {{- $ek := (get $spec "encryptionKey") | default dict }}
+  {{- if not (or (get $ek "value") (get $ek "valueFrom")) }}
+  WARNING: spec.encryptionKey is not set. A deployed Pocket ID v2 instance
+           requires a 16+ char ENCRYPTION_KEY. Create the Secret yourself and
+           reference it via instance.spec.encryptionKey — the CRD will reject
+           this instance until you do.
+  {{- end }}
+{{- end }}
+  Selector: {{ include "pocket-id-instance.selectorLabels" . | fromYaml | toJson }}
+{{- else }}
+PocketIDInstance: disabled (managing users/groups/clients only).
+{{- end }}
+
+Rendered resources:
+  Users:        {{ len .Values.users }}
+  User groups:  {{ len .Values.userGroups }}
+  OIDC clients: {{ len .Values.oidcClients }}
+
+Check reconciliation status with:
+  kubectl -n {{ .Release.Namespace }} get pocketidinstances,pocketidusers,pocketidusergroups,pocketidoidcclients
+
+Reminder: the CRDs and controller are provided by the pocket-id-operator chart,
+which must be installed for these resources to be reconciled.

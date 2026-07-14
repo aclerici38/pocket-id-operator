@@ -1,0 +1,31 @@
+{{- $inst := .Values.instance -}}
+{{/* Rendered when the instance is enabled and the ServiceMonitor CRD is present,
+     unless serviceMonitor.enabled is explicitly set to false. */}}
+{{- if and $inst.enabled (ne $inst.serviceMonitor.enabled false) (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1") -}}
+{{- $name := include "pocket-id-instance.instanceName" . -}}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: pocket-id
+    {{- include "pocket-id-instance.labels" (dict "root" . "component" "instance") | nindent 4 }}
+    {{- with $inst.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  endpoints:
+    - port: metrics
+      path: /metrics
+      {{- with $inst.serviceMonitor.interval }}
+      interval: {{ . }}
+      {{- end }}
+  selector:
+    {{- /* Targets the Service the operator creates for the instance, which is
+           labeled by the operator with name=pocket-id + instance=<instance name>
+           (the PocketIDInstance name, NOT the Helm release name). */}}
+    matchLabels:
+      app.kubernetes.io/name: pocket-id
+      app.kubernetes.io/instance: {{ $name }}
+{{- end -}}
