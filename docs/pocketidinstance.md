@@ -319,6 +319,7 @@ Behavior:
 - If `spec.route.hostnames` is omitted, the operator derives hostname from `spec.appUrl`.
 - If Gateway API CRDs are missing and route is enabled, reconcile logs an error and does not create the route.
 - Created HTTPRoute defaults to the name of the PocketIDInstance
+- Enabling the route also sets a sensible `TRUST_PROXY` default (see [Trusted Proxies](#trusted-proxies)).
 
 ```yaml
 apiVersion: pocketid.internal/v1alpha1
@@ -372,6 +373,43 @@ spec:
                   type: ReplaceFullPath
                   replaceFullPath: /readyz
 ```
+
+## Trusted Proxies
+
+`spec.trustedProxies` controls which upstream proxies Pocket-ID trusts for
+`X-Forwarded-*` headers (the `TRUST_PROXY` environment variable). This governs the
+client IP Pocket-ID sees, which feeds rate limiting, audit-log IPs, and GeoIP.
+
+| Spec | Resulting `TRUST_PROXY` |
+|---|---|
+| unset, `spec.route.enabled: true` | private/loopback ranges (see below) |
+| unset, no managed route | *unset* — Pocket-ID's default (trust nothing) |
+| `{enabled: false}` | `false` (overrides the route-derived default) |
+| `{enabled: true}` | private/loopback ranges |
+| `{enabled: true, cidrs: [...]}` | the listed CIDRs |
+| `{enabled: true, cidrs: ["0.0.0.0/0", "::/0"]}` | trust all sources |
+
+The private/loopback default is
+`10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 127.0.0.1/32, ::1/128, fd00::/8`.
+An in-cluster Gateway forwards from a private pod IP, so its headers are honored,
+while a client reaching the pod directly over a public path cannot spoof them.
+
+Note that `enabled: true` on its own trusts the private ranges, **not** every source —
+trusting all sources is deliberate and requires listing `0.0.0.0/0` (and `::/0`) explicitly.
+
+```yaml
+spec:
+  # Trust a specific upstream proxy CIDR instead of the private-range default
+  trustedProxies:
+    enabled: true
+    cidrs:
+      - "10.42.0.0/16"
+```
+
+> **Behavior change:** older operator releases always set `TRUST_PROXY=true`. If you run
+> behind a proxy the operator does not manage (your own Ingress, an externally-managed
+> HTTPRoute, etc.) and do **not** use `spec.route`, set `spec.trustedProxies`
+> explicitly so client-IP-derived features keep working.
 
 ## Metrics and ServiceMonitor
 
@@ -548,7 +586,6 @@ spec:
 - Static API key Secret: `<instance>-static-api-key`, key `token`.
 - Environment variables always set by the operator (managed instances only):
   - `ENCRYPTION_KEY` (from `spec.encryptionKey`)
-  - `TRUST_PROXY=true`
   - `STATIC_API_KEY` (secret reference)
 - Conditionally set from spec fields:
   - `UI_CONFIG_DISABLED=true` (when `spec.ui`, `spec.userManagement`, `spec.smtp`, `spec.emailNotifications`, or `spec.ldap` is configured)
@@ -568,6 +605,7 @@ spec:
   - `MAXMIND_LICENSE_KEY`, `GEOLITE_DB_PATH`, `GEOLITE_DB_URL` (from `spec.geoip`)
   - `TZ` (from `spec.timezone`)
   - `LOCAL_IPV6_RANGES` (from `spec.localIPv6Ranges`)
+  - `TRUST_PROXY` (from `spec.trustedProxies`; when unset, defaults to the private/loopback ranges if `spec.route.enabled` is set, otherwise left unset)
   - `S3_DISABLE_DEFAULT_INTEGRITY_CHECKS` (from `spec.s3.disableDefaultIntegrityChecks`)
   - `AUDIT_LOG_RETENTION_DAYS`, `ANALYTICS_DISABLED`, `VERSION_CHECK_DISABLED`
   - `DISABLE_RATE_LIMITING=true` (set only when `spec.rateLimitingDisabled` is enabled)
