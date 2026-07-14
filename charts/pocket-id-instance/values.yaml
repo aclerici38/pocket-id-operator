@@ -34,8 +34,6 @@ instance:
 
   # PocketIDInstance spec. See docs/pocketidinstance.md for the full field list.
   spec:
-    # appUrl: https://auth.example.com
-
     # REQUIRED 
     # encryptionKey:
     #   valueFrom:
@@ -45,6 +43,11 @@ instance:
     #   # value: "your-encryption-key-here-min-16-chars"
 
     # Common extras
+    # appUrl: https://auth.example.com
+    # 
+    # databaseUrl: /app/data/pocket-id.db
+    # OR
+    # databaseUrl: "postgres://localhost/pocket-id"
     #
     # persistence:
     #   existingClaim: pocket-id
