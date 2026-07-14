@@ -1,3 +1,5 @@
+# yaml-language-server: $schema=./values.schema.json
+
 # pocket-id-instance
 #
 # Packages the custom resources reconciled by pocket-id-operator. Install the
@@ -36,13 +38,13 @@ instance:
 
   # PocketIDInstance spec. See docs/pocketidinstance.md for the full field list.
   spec:
-    # REQUIRED 
-    # encryptionKey:
-    #   valueFrom:
-    #     secretKeyRef:
-    #       name: pocket-id-encryption-key
-    #       key: encryptionKey
-    #   # value: "your-encryption-key-here-min-16-chars"
+    # REQUIRED
+    encryptionKey:
+      # valueFrom:
+      #   secretKeyRef:
+      #     name: pocket-id-encryption-key
+      #     key: encryptionKey
+      # value: "your-encryption-key-here-min-16-chars"
 
     # Common extras
     # appUrl: https://auth.example.com
