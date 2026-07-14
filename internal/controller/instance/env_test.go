@@ -71,10 +71,75 @@ func TestBuildEnvVars_CoreAlwaysSet(t *testing.T) {
 	env := buildEnvVars(inst)
 
 	requireEnv(t, env, "ENCRYPTION_KEY", "test-encryption-key-32chars!!!!!")
-	requireEnv(t, env, "TRUST_PROXY", "true")
+	// TRUST_PROXY is not set unless the instance is behind an operator-managed route
+	// or explicitly configured via spec.trustedProxies.
+	requireEnvAbsent(t, env, "TRUST_PROXY")
 	requireEnvAbsent(t, env, "DISABLE_RATE_LIMITING")
 	requireEnv(t, env, "APP_URL", "https://id.example.com")
 	requireEnvFromSecret(t, env, "STATIC_API_KEY", "test-instance-static-api-key", "token")
+}
+
+func TestBuildEnvVars_TrustProxyDefaultsToPrivateRangesWithRoute(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.Route = &pocketidinternalv1alpha1.HTTPRouteConfig{Enabled: true}
+
+	env := buildEnvVars(inst)
+	requireEnv(t, env, "TRUST_PROXY", defaultTrustProxyRanges)
+}
+
+func TestBuildEnvVars_TrustProxyAbsentWhenRouteDisabled(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.Route = &pocketidinternalv1alpha1.HTTPRouteConfig{Enabled: false}
+
+	env := buildEnvVars(inst)
+	requireEnvAbsent(t, env, "TRUST_PROXY")
+}
+
+func TestBuildEnvVars_TrustProxyAbsentByDefault(t *testing.T) {
+	inst := minimalInstance()
+
+	env := buildEnvVars(inst)
+	requireEnvAbsent(t, env, "TRUST_PROXY")
+}
+
+func TestBuildEnvVars_TrustProxyDisabledOverridesRoute(t *testing.T) {
+	inst := minimalInstance()
+	// Explicit disable wins even when a route is managed.
+	inst.Spec.Route = &pocketidinternalv1alpha1.HTTPRouteConfig{Enabled: true}
+	inst.Spec.TrustedProxies = &pocketidinternalv1alpha1.TrustedProxiesConfig{Enabled: false}
+
+	env := buildEnvVars(inst)
+	requireEnv(t, env, "TRUST_PROXY", "false")
+}
+
+func TestBuildEnvVars_TrustProxyEnabledNoCIDRs(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.TrustedProxies = &pocketidinternalv1alpha1.TrustedProxiesConfig{Enabled: true}
+
+	env := buildEnvVars(inst)
+	requireEnv(t, env, "TRUST_PROXY", defaultTrustProxyRanges)
+}
+
+func TestBuildEnvVars_TrustProxyEnabledWithCIDRs(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.TrustedProxies = &pocketidinternalv1alpha1.TrustedProxiesConfig{
+		Enabled: true,
+		CIDRs:   []string{"10.1.2.0/24", "192.168.1.10"},
+	}
+
+	env := buildEnvVars(inst)
+	requireEnv(t, env, "TRUST_PROXY", "10.1.2.0/24,192.168.1.10")
+}
+
+func TestBuildEnvVars_TrustProxyTrustAll(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.TrustedProxies = &pocketidinternalv1alpha1.TrustedProxiesConfig{
+		Enabled: true,
+		CIDRs:   []string{"0.0.0.0/0", "::/0"},
+	}
+
+	env := buildEnvVars(inst)
+	requireEnv(t, env, "TRUST_PROXY", "0.0.0.0/0,::/0")
 }
 
 func TestBuildEnvVars_RateLimitingDisabled(t *testing.T) {

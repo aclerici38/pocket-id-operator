@@ -410,6 +410,23 @@ type HTTPRouteConfig struct {
 	Template *gatewayv1.HTTPRouteSpec `json:"template,omitempty"`
 }
 
+// TrustedProxiesConfig configures which upstream proxies Pocket-ID trusts for
+// X-Forwarded-* headers (the TRUST_PROXY environment variable). This determines the
+// client IP Pocket-ID sees, which feeds rate limiting, audit-log IPs, and GeoIP.
+type TrustedProxiesConfig struct {
+	// Enabled turns on trust of X-Forwarded-* headers.
+	// When false, TRUST_PROXY is set to "false"
+	// +kubebuilder:default=false
+	Enabled bool `json:"enabled"`
+
+	// CIDRs is the list of trusted proxy IPs/CIDRs. Only used when enabled is true.
+	// When empty, the operator trusts the private/loopback ranges
+	// (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 127.0.0.1/32, ::1/128, fd00::/8).
+	// To trust all sources, set this to ["0.0.0.0/0", "::/0"].
+	// +optional
+	CIDRs []string `json:"cidrs,omitempty"`
+}
+
 // MetricsConfig configures the Prometheus metrics endpoint for Pocket-ID
 type MetricsConfig struct {
 	// Enables the Prometheus metrics endpoint
@@ -612,6 +629,12 @@ type PocketIDInstanceSpec struct {
 	// Custom local IPv6 ranges for audit log IP classification (comma-separated CIDRs)
 	// +optional
 	LocalIPv6Ranges string `json:"localIPv6Ranges,omitempty"`
+
+	// TrustedProxies configures which proxies Pocket-ID trusts for X-Forwarded-* headers
+	// (sets TRUST_PROXY). When unset, the operator trusts the private/loopback ranges if
+	// spec.route.enabled is set.
+	// +optional
+	TrustedProxies *TrustedProxiesConfig `json:"trustedProxies,omitempty"`
 
 	// Timezone for the Pocket-ID instance (e.g. "America/New_York")
 	// Sets the TZ environment variable

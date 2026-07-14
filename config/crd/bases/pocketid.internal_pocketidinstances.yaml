@@ -2744,6 +2744,30 @@ spec:
                       (sets OTEL_EXPORTER_OTLP_TRACES_ENDPOINT)
                     type: string
                 type: object
+              trustedProxies:
+                description: |-
+                  TrustedProxies configures which proxies Pocket-ID trusts for X-Forwarded-* headers
+                  (sets TRUST_PROXY). When unset, the operator trusts the private/loopback ranges if
+                  spec.route.enabled is set.
+                properties:
+                  cidrs:
+                    description: |-
+                      CIDRs is the list of trusted proxy IPs/CIDRs. Only used when enabled is true.
+                      When empty, the operator trusts the private/loopback ranges
+                      (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 127.0.0.1/32, ::1/128, fd00::/8).
+                      To trust all sources, set this to ["0.0.0.0/0", "::/0"].
+                    items:
+                      type: string
+                    type: array
+                  enabled:
+                    default: false
+                    description: |-
+                      Enabled turns on trust of X-Forwarded-* headers.
+                      When false, TRUST_PROXY is set to "false"
+                    type: boolean
+                required:
+                - enabled
+                type: object
               ui:
                 description: |-
                   UI configuration
