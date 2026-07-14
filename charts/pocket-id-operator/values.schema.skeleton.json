@@ -4,6 +4,7 @@
   "additionalProperties": false,
   "properties": {
     "global": {},
+    "pocket-id-instance": {},
     "instance": {
       "type": "object",
       "additionalProperties": false,

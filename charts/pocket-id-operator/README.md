@@ -2,14 +2,16 @@
 
 ## Deprecations
 
-Declaring Pocket ID resources (`instance`, `users`, `userGroups`) in this chart is
-**deprecated** and will be removed in a future release. The operator chart will then
-manage only the controller, CRDs, and monitoring.
+Declaring Pocket ID resources via the top-level `instance`, `users`, and `userGroups`
+keys is **deprecated** and will be removed in a future release. Two migration options:
 
-Migrate those resources to the dedicated
-[`pocket-id-instance`](../pocket-id-instance) chart, or apply the `PocketID*` custom
-resources directly. Set `instance.enabled=false` (and clear `users`/`userGroups`) once
-migrated.
+1. **In place (recommended, no resource recreation).** Set `instance.enabled: false` and
+   move your config under the bundled [`pocket-id-instance`](../pocket-id-instance)
+   subchart's `pocket-id-instance` key. The resources stay in the same release, so they
+   are patched in place rather than recreated.
+2. **Separate release.** Install the standalone [`pocket-id-instance`](../pocket-id-instance)
+   chart, or apply the `PocketID*` custom resources directly. Take care to avoid
+   recreating an existing instance (Helm ownership moves to the new release).
 
 ## Values Schema
 

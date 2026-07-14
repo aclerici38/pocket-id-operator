@@ -23,3 +23,6 @@
 
 # Helm chart artifacts
 *.tgz
+
+# Build-time schema source (values.schema.json is generated from it)
+values.schema.skeleton.json

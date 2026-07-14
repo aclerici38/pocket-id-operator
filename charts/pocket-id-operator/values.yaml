@@ -109,16 +109,14 @@ metrics:
         # Defaults to {grafana.internal/instance: grafana} when left empty.
         matchLabels: {}
 
-# DEPRECATED: declaring Pocket ID resources (instance, users, userGroups) in the
-# operator chart is deprecated and will be removed in a future release; the
-# operator chart will then manage only the controller, CRDs, and monitoring.
-# Migrate to the dedicated pocket-id-instance chart, or apply the PocketID*
-# custom resources directly:
+# DEPRECATED: the `instance`, `users`, and `userGroups` keys below will be
+# removed in a future release. Two migration options:
+#   1. In place, no resource recreation: set `instance.enabled: false` here and
+#      move your config under the `pocket-id-instance` key at the bottom of this
+#      file.
+#   2. Separate release: use the standalone pocket-id-instance chart, or apply
+#      the PocketID* resources directly.
 # https://github.com/aclerici38/pocket-id-operator/tree/main/charts/pocket-id-instance
-
-# PocketIDInstance configuration
-# Creates a PocketIDInstance custom resource when enabled
-# Full documentation: https://github.com/aclerici38/pocket-id-operator/blob/main/docs/pocketidinstance.md
 instance:
   enabled: true
   name: pocket-id
@@ -164,3 +162,12 @@ userGroups: []
   #     users:
   #       userRefs:
   #         - name: admin-user
+
+# Bundled pocket-id-instance subchart — the replacement for the deprecated
+# instance/users/userGroups keys above. Disabled by default. To migrate in
+# place, set instance.enabled=false above, then enable and configure it here.
+# See the pocket-id-instance chart values for the full schema.
+pocket-id-instance:
+  instance:
+    enabled: false
+    name: pocket-id

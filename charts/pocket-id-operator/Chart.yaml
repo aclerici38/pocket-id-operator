@@ -4,6 +4,10 @@ description: A Helm chart to distribute the project pocket-id-operator
 type: application
 version: 0.0.0
 appVersion: 0.0.0
+dependencies:
+  - name: pocket-id-instance
+    version: 0.0.0
+    repository: file://../pocket-id-instance
 home: https://github.com/aclerici38/pocket-id-operator
 sources:
   - https://github.com/aclerici38/pocket-id-operator

@@ -95,6 +95,10 @@ jobs:
         run: |
           yq -i '.annotations."artifacthub.io/changes" = strenv(CHANGELOG)' "charts/${{ matrix.chart }}/Chart.yaml"
 
+      - name: Vendor subchart dependency
+        if: matrix.chart == 'pocket-id-operator'
+        run: mise run helm-deps
+
       - name: Package chart
         env:
           CHART_VERSION: ${{ inputs.chart_version }}
