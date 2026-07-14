@@ -20,7 +20,7 @@ setup-envtest = "0.24.1"
 
 # Linting
 golangci-lint = "2.12.2"
-zizmor = "1.26.1"
+zizmor = "1.27.0"
 
 # Local cluster / cluster CLIs for e2e and chart tests
 kind = "0.32.0"
