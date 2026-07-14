@@ -1,7 +1,9 @@
 {{- $inst := .Values.instance -}}
-{{/* Rendered when the instance is enabled and the ServiceMonitor CRD is present,
-     unless serviceMonitor.enabled is explicitly set to false. */}}
-{{- if and $inst.enabled (ne $inst.serviceMonitor.enabled false) (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1") -}}
+{{/* Off by default. Auto-created when the instance is deployed here with metrics
+     enabled (instance.enabled and spec.metrics.enabled) and the ServiceMonitor
+     CRD is present. serviceMonitor.enabled: false is a hard opt-out that
+     overrides all of the above. */}}
+{{- if and $inst.enabled (ne $inst.serviceMonitor.enabled false) (dig "metrics" "enabled" false ($inst.spec | default dict)) (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1") -}}
 {{- $name := include "pocket-id-instance.instanceName" . -}}
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor

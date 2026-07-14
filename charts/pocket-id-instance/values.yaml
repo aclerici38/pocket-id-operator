@@ -24,9 +24,11 @@ instance:
   labels: {}
   annotations: {}
 
-  # Optional ServiceMonitor for the instance. Created automatically when the
-  # Prometheus Operator's ServiceMonitor CRD is present; set enabled: false to
-  # opt out.
+  # ServiceMonitor for the instance. Off unless the instance is deployed here
+  # with spec.metrics.enabled=true and the Prometheus Operator's ServiceMonitor
+  # CRD is present, in which case it is created automatically. Set enabled: false
+  # to hard-disable it even when metrics are on.
+  # NOTE: pocket-id does not expose many meaningful metrics
   serviceMonitor:
     enabled: true
     labels: {}
