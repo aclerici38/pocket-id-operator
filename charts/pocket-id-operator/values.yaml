@@ -110,8 +110,9 @@ metrics:
         matchLabels: {}
 
 # pocket-id-instance subchart
-# Instance is disabled by default to maintain compatibility with the deprecated values above.
-# For new installs or to migrate, place, set `instance.enabled: false` and configure everything here.
+# Instance is disabled by default to maintain compatibility with the deprecated values below.
+# For new installs, or to migrate in place, set the deprecated `instance.enabled: false`
+# below and configure everything here.
 # Full schema: charts/pocket-id-instance/values.yaml
 pocket-id-instance:
   # A single PocketIDInstance.
@@ -186,10 +187,10 @@ pocket-id-instance:
 
 # DEPRECATED: the `instance`, `users`, and `userGroups` keys below are
 # deprecated and will be removed in a future release. Configure your Pocket ID
-# resources under the `pocket-id-instance` subchart key at the bottom of this
+# resources under the `pocket-id-instance` subchart key at the top of this
 # file instead — that is where the examples now live. Two migration options:
 #   1. In place, no resource recreation: set `instance.enabled: false` here and
-#      move your config under the `pocket-id-instance` key below.
+#      move your config under the `pocket-id-instance` key above.
 #   2. Separate release: use the standalone pocket-id-instance chart, or apply
 #      the PocketID* resources directly.
 # https://github.com/aclerici38/pocket-id-operator/tree/main/charts/pocket-id-instance
@@ -200,12 +201,12 @@ instance:
   annotations: {}
   serviceMonitor:
     enabled: false
-  # PocketIDInstance spec. See the `pocket-id-instance` block below for examples.
+  # PocketIDInstance spec. See the `pocket-id-instance` block above for examples.
   spec:
     encryptionKey:
 
-# DEPRECATED: configure users under `pocket-id-instance.users` below instead.
+# DEPRECATED: configure users under `pocket-id-instance.users` above instead.
 users: []
 
-# DEPRECATED: configure groups under `pocket-id-instance.userGroups` below instead.
+# DEPRECATED: configure groups under `pocket-id-instance.userGroups` above instead.
 userGroups: []
