@@ -44,16 +44,11 @@ instance:
     #       key: encryptionKey
     #   # value: "your-encryption-key-here-min-16-chars"
 
-    # Persist Pocket ID data across pod restarts. Requires a default (or named)
-    # StorageClass on the cluster. Disable to fall back to an emptyDir.
-    persistence:
-      enabled: true
-      size: 1Gi
-      # storageClass: ""
-      # accessModes: ["ReadWriteOnce"]
-
     # Common extras
     #
+    # persistence:
+    #   existingClaim: pocket-id
+    # 
     # Expose via Gateway API:
     # route:
     #   enabled: true
