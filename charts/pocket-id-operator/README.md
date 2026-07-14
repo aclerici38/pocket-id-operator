@@ -5,10 +5,11 @@
 Declaring Pocket ID resources via the top-level `instance`, `users`, and `userGroups`
 keys is **deprecated** and will be removed in a future release. Two migration options:
 
-1. **In place (recommended, no resource recreation).** Set `instance.enabled: false` and
-   move your config under the bundled [`pocket-id-instance`](../pocket-id-instance)
-   subchart's `pocket-id-instance` key. The resources stay in the same release, so they
-   are patched in place rather than recreated.
+1. **In place (recommended, no resource recreation).** Move your config under the bundled
+   [`pocket-id-instance`](../pocket-id-instance) subchart's `pocket-id-instance` key and set
+   its `instance.enabled: true`. The deprecated top-level block then steps aside
+   automatically, so resources stay in the same release and are patched in place rather than
+   recreated.
 2. **Separate release.** Install the standalone [`pocket-id-instance`](../pocket-id-instance)
    chart, or apply the `PocketID*` custom resources directly. Take care to avoid
    recreating an existing instance (Helm ownership moves to the new release).

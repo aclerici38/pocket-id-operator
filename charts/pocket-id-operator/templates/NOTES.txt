@@ -11,8 +11,8 @@ This release manages Pocket ID resources ({{ join ", " $kinds }}) via the deprec
 instance/users/userGroups values, which will be removed in a future release. Migrate with
 one of:
 
-  1. In place (recommended, no resource recreation): set instance.enabled=false and move
-     your config under the pocket-id-instance key in this same release.
+  1. In place (recommended, no resource recreation): move your config under the
+     pocket-id-instance key in this same release and set its instance.enabled: true.
   2. Separate release: install the standalone pocket-id-instance chart, or apply the
      PocketID* resources directly.
 
