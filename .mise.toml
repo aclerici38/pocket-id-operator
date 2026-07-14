@@ -113,6 +113,7 @@ description = "Strictly lint the Helm charts, with and without a managed instanc
 depends = ["helm-deps"]
 run = [
   "helm lint --strict charts/pocket-id-operator --values .github/helm-test-values.yaml",
+  "helm lint --strict charts/pocket-id-operator --values .github/helm-test-values-deprecated.yaml",
   "helm lint --strict charts/pocket-id-operator --set instance.enabled=false",
   "helm lint --strict charts/pocket-id-instance --values .github/helm-test-values-instance.yaml",
   "helm lint --strict charts/pocket-id-instance --set instance.enabled=false",

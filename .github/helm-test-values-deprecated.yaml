@@ -1,0 +1,28 @@
+---
+# yaml-language-server: $schema=../charts/pocket-id-operator/values.schema.json
+operator:
+  timezone: "America/New_York"
+
+pocket-id-instance:
+  instance:
+    enabled: false
+
+instance:
+  enabled: true
+  spec:
+    encryptionKey:
+      value: "test-key-16chars"
+
+users:
+  - name: test-user-1
+  - name: test-user-2
+    spec:
+      admin: true
+
+userGroups:
+  - name: test-group
+    spec:
+      users:
+        userRefs:
+          - name: test-user-1
+          - name: test-user-2
