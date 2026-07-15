@@ -4966,6 +4966,16 @@
                     "additionalProperties": false,
                     "description": "Secret defines how OIDC client credentials should be stored in a Kubernetes Secret.",
                     "properties": {
+                      "additionalAnnotations": {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "description": "AdditionalAnnotations allows setting custom annotations on the secret created by the\nPocketIDOIDCClient custom resource. Operator-managed annotations take precedence and\ncannot be overridden.",
+                        "type": [
+                          "object",
+                          "null"
+                        ]
+                      },
                       "additionalLabels": {
                         "additionalProperties": {
                           "type": "string"

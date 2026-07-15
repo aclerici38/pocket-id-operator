@@ -128,6 +128,12 @@ type OIDCClientSecretSpec struct {
 	// custom resource
 	// +optional
 	AdditionalLabels map[string]string `json:"additionalLabels,omitempty"`
+
+	// AdditionalAnnotations allows setting custom annotations on the secret created by the
+	// PocketIDOIDCClient custom resource. Operator-managed annotations take precedence and
+	// cannot be overridden.
+	// +optional
+	AdditionalAnnotations map[string]string `json:"additionalAnnotations,omitempty"`
 }
 
 // OIDCClientSecretKeys defines customizable keys for secret data fields.

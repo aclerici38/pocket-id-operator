@@ -186,6 +186,9 @@ spec:
     name: internal-dashboard-oidc
     additionalLabels:
       label1: value1
+    additionalAnnotations:
+      reflector.v1.k8s.emberstack.com/reflection-allowed: "true"
+      reflector.v1.k8s.emberstack.com/reflection-allowed-namespaces: "dashboard"
     keys:
       clientID: client_id
       clientSecret: client_secret
@@ -364,6 +367,10 @@ To view the logs add the `--zap-log-level=debug` arg on the operator container.
   `client_id`, `client_secret`, `issuer_url`, `callback_urls`,
   `logout_callback_urls`, `discovery_url`, `authorization_url`,
   `token_url`, `userinfo_url`, `jwks_url`, `end_session_url`.
+- `spec.secret.additionalLabels`: extra labels to set on the Secret.
+- `spec.secret.additionalAnnotations`: extra annotations to set on the Secret. Operator-managed
+  annotations take precedence and cannot be overridden. Useful for tools that copy the Secret to
+  other namespaces (e.g. [reflector](https://github.com/emberstack/kubernetes-reflector)).
 
 ## Secret Contents
 
