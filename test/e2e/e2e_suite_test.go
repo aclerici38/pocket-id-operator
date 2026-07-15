@@ -173,7 +173,7 @@ func deleteNamespace(ns string) {
 }
 
 func cleanupAllResources() {
-	resources := []string{"pocketidusers", "pocketidusergroups", "pocketidoidcclients", "pocketidinstances"}
+	resources := []string{"pocketidusers", "pocketidusergroups", "pocketidoidcclients", "pocketidapis", "pocketidinstances"}
 
 	// Remove finalizers from all resources
 	for _, resource := range resources {
