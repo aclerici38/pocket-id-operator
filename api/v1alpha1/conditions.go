@@ -39,3 +39,8 @@ func (c *PocketIDOIDCClient) GetConditions() *[]metav1.Condition {
 func (i *PocketIDInstance) GetConditions() *[]metav1.Condition {
 	return &i.Status.Conditions
 }
+
+// GetConditions returns a pointer to the Conditions slice for PocketIDAPI
+func (a *PocketIDAPI) GetConditions() *[]metav1.Condition {
+	return &a.Status.Conditions
+}

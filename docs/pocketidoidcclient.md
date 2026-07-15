@@ -209,6 +209,32 @@ spec:
       jwks: "https://www.googleapis.com/oauth2/v3/certs"
 ```
 
+## API Access
+
+A client can be granted scoped access to one or more [`PocketIDAPI`](pocketidapi.md)
+resources via `spec.apiAccess`. Each grant references an API and lists permission keys
+for the user-delegated flow and/or the client-credentials (M2M) flow:
+
+```yaml
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDOIDCClient
+metadata:
+  name: orders-frontend
+  namespace: pocket-id
+spec:
+  apiAccess:
+    - apiRef:
+        name: orders-api
+      delegatedPermissions:
+        - read:orders
+      clientPermissions:
+        - sync:orders
+```
+
+`clientPermissions` require a confidential client (`isPublic: false`). The client is the
+sole owner of its API access in Pocket-ID; see [PocketIDAPI](pocketidapi.md#granting-client-access)
+for the full semantics.
+
 ## Logo Auto-Generation
 
 The operator can automatically set logo URLs for OIDC clients using a configurable URL template.

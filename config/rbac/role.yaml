@@ -46,6 +46,7 @@ rules:
 - apiGroups:
   - pocketid.internal
   resources:
+  - pocketidapis
   - pocketidinstances
   - pocketidoidcclients
   - pocketidusergroups
@@ -61,6 +62,7 @@ rules:
 - apiGroups:
   - pocketid.internal
   resources:
+  - pocketidapis/finalizers
   - pocketidinstances/finalizers
   - pocketidoidcclients/finalizers
   - pocketidusergroups/finalizers
@@ -70,6 +72,7 @@ rules:
 - apiGroups:
   - pocketid.internal
   resources:
+  - pocketidapis/status
   - pocketidinstances/status
   - pocketidoidcclients/status
   - pocketidusergroups/status

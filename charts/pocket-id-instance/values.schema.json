@@ -4551,6 +4551,64 @@
                   "null"
                 ]
               },
+              "apiAccess": {
+                "description": "APIAccess grants this client permission to request scoped access on the\nreferenced PocketIDAPIs. The client is the sole owner of its API access in\nPocket-ID: while this field is set the operator keeps the access in sync and\nclears it if the field is later emptied. When never set, existing API access\nconfigured out-of-band is left untouched.",
+                "items": {
+                  "additionalProperties": false,
+                  "description": "OIDCClientAPIAccess grants a client scoped permissions on a referenced PocketIDAPI.\nPermissions are referenced by their key; the controller resolves them to Pocket-ID\npermission IDs via the PocketIDAPI status.",
+                  "properties": {
+                    "apiRef": {
+                      "additionalProperties": false,
+                      "description": "APIRef references the PocketIDAPI granting access.",
+                      "properties": {
+                        "name": {
+                          "description": "Name is the name of the PocketIDAPI CR",
+                          "type": "string"
+                        },
+                        "namespace": {
+                          "description": "Namespace is the namespace of the PocketIDAPI CR\nDefaults to the referencing resource's namespace",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "clientPermissions": {
+                      "description": "ClientPermissions are permission keys granted for the client-credentials\n(machine-to-machine) flow. These require a confidential client.",
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "delegatedPermissions": {
+                      "description": "DelegatedPermissions are permission keys granted for the user-delegated\n(authorization code) flow, where the client acts on behalf of a user.",
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "apiRef"
+                  ],
+                  "type": "object"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
               "callbackUrls": {
                 "description": "Callback URLs for the client",
                 "items": {
@@ -5060,6 +5118,177 @@
               {
                 "message": "clientSecretRotation cannot be enabled when secret.storeClientSecret is false",
                 "rule": "!has(self.clientSecretRotation) || !self.clientSecretRotation.enabled || !has(self.secret) || !has(self.secret.storeClientSecret) || self.secret.storeClientSecret"
+              },
+              {
+                "message": "clientPermissions require a confidential client (isPublic must be false)",
+                "rule": "!self.isPublic || !has(self.apiAccess) || self.apiAccess.all(a, !has(a.clientPermissions) || size(a.clientPermissions) == 0)"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "apis": {
+      "type": "array",
+      "description": "List of PocketIDAPI custom resources to create",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the PocketIDAPI resource"
+          },
+          "labels": {
+            "type": "object",
+            "description": "Additional labels for the PocketIDAPI resource",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "annotations": {
+            "type": "object",
+            "description": "Additional annotations for the PocketIDAPI resource",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "spec": {
+            "additionalProperties": false,
+            "description": "spec defines the desired state of PocketIDAPI",
+            "properties": {
+              "instanceSelector": {
+                "additionalProperties": false,
+                "description": "InstanceSelector selects the PocketIDInstance to reconcile against.\nIf omitted, the controller expects exactly one instance in the cluster.",
+                "properties": {
+                  "matchExpressions": {
+                    "description": "matchExpressions is a list of label selector requirements. The requirements are ANDed.",
+                    "items": {
+                      "additionalProperties": false,
+                      "description": "A label selector requirement is a selector that contains values, a key, and an operator that\nrelates the key and values.",
+                      "properties": {
+                        "key": {
+                          "description": "key is the label key that the selector applies to.",
+                          "type": "string"
+                        },
+                        "operator": {
+                          "description": "operator represents a key's relationship to a set of values.\nValid operators are In, NotIn, Exists and DoesNotExist.",
+                          "type": "string"
+                        },
+                        "values": {
+                          "description": "values is an array of string values. If the operator is In or NotIn,\nthe values array must be non-empty. If the operator is Exists or DoesNotExist,\nthe values array must be empty. This array is replaced during a strategic\nmerge patch.",
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": [
+                            "array",
+                            "null"
+                          ],
+                          "x-kubernetes-list-type": "atomic"
+                        }
+                      },
+                      "required": [
+                        "key",
+                        "operator"
+                      ],
+                      "type": "object"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "x-kubernetes-list-type": "atomic"
+                  },
+                  "matchLabels": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "description": "matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels\nmap is equivalent to an element of matchExpressions, whose key field is \"key\", the\noperator is \"In\", and the values array contains only \"value\". The requirements are ANDed.",
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  }
+                },
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "x-kubernetes-map-type": "atomic"
+              },
+              "name": {
+                "description": "Name of the API to create in Pocket ID.\nIf omitted, defaults to metadata.name of the API resource.",
+                "maxLength": 255,
+                "minLength": 2,
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "permissions": {
+                "description": "Permissions are the scoped permissions offered by this API. The operator is\nthe sole owner of the API: the permission set in Pocket-ID is reconciled to\nexactly this list, so permissions added out-of-band are removed.",
+                "items": {
+                  "additionalProperties": false,
+                  "description": "APIPermission defines a single scoped permission offered by an API.",
+                  "properties": {
+                    "description": {
+                      "description": "Description optionally explains what the permission grants.",
+                      "maxLength": 500,
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "key": {
+                      "description": "Key is the permission identifier requested as a token scope, e.g. \"read:orders\".",
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "name": {
+                      "description": "Name is a human-friendly label for the permission.",
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "x-kubernetes-list-map-keys": [
+                  "key"
+                ],
+                "x-kubernetes-list-type": "map"
+              },
+              "resource": {
+                "description": "Resource is the audience identifier for tokens issued against this API\n(typically a URI). It is the permanent identifier used to adopt an existing\nAPI and is immutable once set.",
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "resource"
+            ],
+            "type": [
+              "object",
+              "null"
+            ],
+            "x-kubernetes-validations": [
+              {
+                "message": "resource is immutable",
+                "rule": "self.resource == oldSelf.resource"
               }
             ]
           }

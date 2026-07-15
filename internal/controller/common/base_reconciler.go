@@ -48,6 +48,8 @@ func resourceKind(obj client.Object) string {
 		return "PocketIDOIDCClient"
 	case *pocketidv1alpha1.PocketIDInstance:
 		return "PocketIDInstance"
+	case *pocketidv1alpha1.PocketIDAPI:
+		return "PocketIDAPI"
 	default:
 		return obj.GetObjectKind().GroupVersionKind().Kind
 	}

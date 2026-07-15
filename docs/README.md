@@ -21,6 +21,7 @@ Add to the top of any YAML file:
 | PocketIDUser | `pocketiduser_v1alpha1.json` |
 | PocketIDUserGroup | `pocketidusergroup_v1alpha1.json` |
 | PocketIDOIDCClient | `pocketidoidcclient_v1alpha1.json` |
+| PocketIDAPI | `pocketidapi_v1alpha1.json` |
 | Helm values | `values.schema.json` |
 | FluxCD HelmRelease | `helmrelease_v2_pocket-id-operator.json` |
 
@@ -78,6 +79,10 @@ On creation a PocketIDUserGroup is matched to existing user groups by `spec.name
 On creation a PocketIDOIDCClient is matched to existing user groups by `spec.clientId` if it's specified, otherwise falling back to the resource's name. 
 
 *IMPORTANT*: When an OIDC client is adopted the operator will generate a new client secret and store it in a k8s secret. This is due to the design of Pocket-ID, which prevents retrieval of the client secret after it is generated.
+
+**PocketIDAPI**
+
+On creation a PocketIDAPI is matched to an existing API in pocket-id by `spec.resource`, its permanent audience identifier. See [PocketIDAPI](pocketidapi.md) for more details.
 
 # Starting Fresh
 If installing Pocket-ID for the first time with this operator the procedure should be straightforward. The only difference in features are with the `PocketIDUser` custom resources, when initialized through the operator a one-time passcode will be generated and stored in the status of the custom resource for 15 minutes.

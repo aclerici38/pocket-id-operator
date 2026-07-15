@@ -34,6 +34,7 @@ This deploys a Pocket ID instance with persistence enabled. You must supply an
 | `users` | List of `{name, spec, labels?, annotations?}` → `PocketIDUser` | `[]` |
 | `userGroups` | List of `{name, spec, labels?, annotations?}` → `PocketIDUserGroup` | `[]` |
 | `oidcClients` | List of `{name, spec, labels?, annotations?}` → `PocketIDOIDCClient` | `[]` |
+| `apis` | List of `{name, spec, labels?, annotations?}` → `PocketIDAPI` | `[]` |
 
 Every `spec` maps 1:1 to the corresponding CRD, so any operator field is
 settable even if not listed above. See the per-resource docs:
@@ -42,6 +43,7 @@ settable even if not listed above. See the per-resource docs:
 - [PocketIDUser](https://github.com/aclerici38/pocket-id-operator/blob/main/docs/pocketiduser.md)
 - [PocketIDUserGroup](https://github.com/aclerici38/pocket-id-operator/blob/main/docs/pocketidusergroup.md)
 - [PocketIDOIDCClient](https://github.com/aclerici38/pocket-id-operator/blob/main/docs/pocketidoidcclient.md)
+- [PocketIDAPI](https://github.com/aclerici38/pocket-id-operator/blob/main/docs/pocketidapi.md)
 
 ## Encryption key
 
@@ -137,4 +139,12 @@ oidcClients:
       pkceEnabled: true
       allowedUserGroups:
         - name: admins
+
+apis:
+  - name: orders-api
+    spec:
+      resource: https://orders.example.com
+      permissions:
+        - key: read:orders
+          name: Read orders
 ```

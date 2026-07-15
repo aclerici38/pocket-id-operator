@@ -53,6 +53,64 @@
             "null"
           ]
         },
+        "apiAccess": {
+          "description": "APIAccess grants this client permission to request scoped access on the\nreferenced PocketIDAPIs. The client is the sole owner of its API access in\nPocket-ID: while this field is set the operator keeps the access in sync and\nclears it if the field is later emptied. When never set, existing API access\nconfigured out-of-band is left untouched.",
+          "items": {
+            "additionalProperties": false,
+            "description": "OIDCClientAPIAccess grants a client scoped permissions on a referenced PocketIDAPI.\nPermissions are referenced by their key; the controller resolves them to Pocket-ID\npermission IDs via the PocketIDAPI status.",
+            "properties": {
+              "apiRef": {
+                "additionalProperties": false,
+                "description": "APIRef references the PocketIDAPI granting access.",
+                "properties": {
+                  "name": {
+                    "description": "Name is the name of the PocketIDAPI CR",
+                    "type": "string"
+                  },
+                  "namespace": {
+                    "description": "Namespace is the namespace of the PocketIDAPI CR\nDefaults to the referencing resource's namespace",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              },
+              "clientPermissions": {
+                "description": "ClientPermissions are permission keys granted for the client-credentials\n(machine-to-machine) flow. These require a confidential client.",
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "delegatedPermissions": {
+                "description": "DelegatedPermissions are permission keys granted for the user-delegated\n(authorization code) flow, where the client acts on behalf of a user.",
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "apiRef"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "callbackUrls": {
           "description": "Callback URLs for the client",
           "items": {
@@ -562,6 +620,10 @@
         {
           "message": "clientSecretRotation cannot be enabled when secret.storeClientSecret is false",
           "rule": "!has(self.clientSecretRotation) || !self.clientSecretRotation.enabled || !has(self.secret) || !has(self.secret.storeClientSecret) || self.secret.storeClientSecret"
+        },
+        {
+          "message": "clientPermissions require a confidential client (isPublic must be false)",
+          "rule": "!self.isPublic || !has(self.apiAccess) || self.apiAccess.all(a, !has(a.clientPermissions) || size(a.clientPermissions) == 0)"
         }
       ]
     },
@@ -707,6 +769,16 @@
         },
         "logoutCallbackUrls": {
           "description": "LogoutCallbackURLs are the current logout callback URLs from Pocket-ID",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "managedAPIPermissionIDs": {
+          "description": "ManagedAPIPermissionIDs are the Pocket-ID API permission IDs the operator last\npushed as this client's API access (both delegated and client-credentials).\nUsed to detect when spec.apiAccess is emptied so the access can be cleared.",
           "items": {
             "type": "string"
           },

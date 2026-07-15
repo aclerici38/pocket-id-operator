@@ -17,6 +17,9 @@ const (
 
 	// UserGroupAllowedOIDCClientIndexKey is the index key for user group allowed OIDC clients
 	UserGroupAllowedOIDCClientIndexKey = "pocketidusergroup.allowedOIDCClient"
+
+	// OIDCClientAPIAccessIndexKey is the index key for OIDC clients that reference a PocketIDAPI
+	OIDCClientAPIAccessIndexKey = "pocketidoidcclient.apiAccess"
 )
 
 var (

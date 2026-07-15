@@ -14,6 +14,7 @@ import (
 
 	apiclient "github.com/aclerici38/pocket-id-go-client/v2/client"
 	"github.com/aclerici38/pocket-id-go-client/v2/client/api_keys"
+	"github.com/aclerici38/pocket-id-go-client/v2/client/apis"
 	custom_claims "github.com/aclerici38/pocket-id-go-client/v2/client/custom_claims"
 	oidc "github.com/aclerici38/pocket-id-go-client/v2/client/o_id_c"
 	scim "github.com/aclerici38/pocket-id-go-client/v2/client/s_c_i_m"
@@ -754,6 +755,182 @@ func (c *Client) DeleteSCIMServiceProvider(ctx context.Context, id string) error
 	return nil
 }
 
+// --- API Operations ---
+
+// API represents a Pocket-ID API (a protected resource / token audience).
+type API struct {
+	ID          string
+	Name        string
+	Resource    string
+	CreatedAt   string
+	Permissions []APIPermission
+}
+
+// APIPermission represents a scoped permission offered by an API.
+type APIPermission struct {
+	ID          string
+	Key         string
+	Name        string
+	Description string
+}
+
+// APIInput contains the fields for creating an API.
+type APIInput struct {
+	Name     string
+	Resource string
+}
+
+// APIPermissionInput contains the fields for creating or updating an API permission.
+type APIPermissionInput struct {
+	Key         string
+	Name        string
+	Description string
+}
+
+// ClientAPIAccess represents the API permissions granted to an OIDC client,
+// split by the flow they apply to.
+type ClientAPIAccess struct {
+	ClientPermissionIDs        []string
+	UserDelegatedPermissionIDs []string
+}
+
+// ListAPIs returns a list of APIs matching the search term (matched against name
+// or resource). If search is empty, all APIs are returned.
+func (c *Client) ListAPIs(ctx context.Context, search string) ([]*API, error) {
+	params := apis.NewGetAPIApisParams()
+	if search != "" {
+		params = params.WithSearch(&search)
+	}
+
+	start := time.Now()
+	resp, err := c.raw.Apis.GetAPIApisContext(ctx, params)
+	recordCall("list_apis", err, time.Since(start))
+	if err != nil {
+		return nil, fmt.Errorf("list APIs failed: %w", err)
+	}
+
+	apiList := make([]*API, 0, len(resp.Payload.Data))
+	for _, dto := range resp.Payload.Data {
+		apiList = append(apiList, apiFromDTO(dto))
+	}
+	return apiList, nil
+}
+
+// GetAPI returns a single API by ID, including its permissions.
+func (c *Client) GetAPI(ctx context.Context, id string) (*API, error) {
+	params := apis.NewGetAPIApisIDParams().WithID(id)
+
+	start := time.Now()
+	resp, err := c.raw.Apis.GetAPIApisIDContext(ctx, params)
+	recordCall("get_api", err, time.Since(start))
+	if err != nil {
+		return nil, fmt.Errorf("get API failed: %w", err)
+	}
+	return apiFromDTO(resp.Payload), nil
+}
+
+// CreateAPI creates a new API with the given name and resource.
+func (c *Client) CreateAPI(ctx context.Context, input APIInput) (*API, error) {
+	params := apis.NewPostAPIApisParams().
+		WithAPI(&models.APIAPICreateDto{
+			Name:     &input.Name,
+			Resource: &input.Resource,
+		})
+
+	start := time.Now()
+	resp, err := c.raw.Apis.PostAPIApisContext(ctx, params)
+	recordCall("create_api", err, time.Since(start))
+	if err != nil {
+		return nil, fmt.Errorf("create API failed: %w", err)
+	}
+	return apiFromDTO(resp.Payload), nil
+}
+
+// UpdateAPI updates an API's name. The resource is immutable in Pocket-ID.
+func (c *Client) UpdateAPI(ctx context.Context, id, name string) (*API, error) {
+	params := apis.NewPutAPIApisIDParams().
+		WithID(id).
+		WithAPI(&models.APIAPIUpdateDto{Name: &name})
+
+	start := time.Now()
+	resp, err := c.raw.Apis.PutAPIApisIDContext(ctx, params)
+	recordCall("update_api", err, time.Since(start))
+	if err != nil {
+		return nil, fmt.Errorf("update API failed: %w", err)
+	}
+	return apiFromDTO(resp.Payload), nil
+}
+
+// DeleteAPI deletes an API by ID.
+func (c *Client) DeleteAPI(ctx context.Context, id string) error {
+	params := apis.NewDeleteAPIApisIDParams().WithID(id)
+
+	start := time.Now()
+	_, err := c.raw.Apis.DeleteAPIApisIDContext(ctx, params)
+	recordCall("delete_api", err, time.Since(start))
+	if err != nil {
+		return fmt.Errorf("delete API failed: %w", err)
+	}
+	return nil
+}
+
+// UpdateAPIPermissions replaces the full permission set for an API and returns
+// the updated API (permissions with their assigned IDs).
+func (c *Client) UpdateAPIPermissions(ctx context.Context, id string, permissions []APIPermissionInput) (*API, error) {
+	payload := make([]*models.APIAPIPermissionInputDto, 0, len(permissions))
+	for i := range permissions {
+		p := permissions[i]
+		payload = append(payload, &models.APIAPIPermissionInputDto{
+			Key:         &p.Key,
+			Name:        &p.Name,
+			Description: p.Description,
+		})
+	}
+
+	params := apis.NewPutAPIApisIDPermissionsParams().
+		WithID(id).
+		WithPermissions(&models.APIAPIPermissionsUpdateDto{Permissions: payload})
+
+	start := time.Now()
+	resp, err := c.raw.Apis.PutAPIApisIDPermissionsContext(ctx, params)
+	recordCall("update_api_permissions", err, time.Since(start))
+	if err != nil {
+		return nil, fmt.Errorf("update API permissions failed: %w", err)
+	}
+	return apiFromDTO(resp.Payload), nil
+}
+
+// GetClientAPIAccess returns the API permissions currently granted to an OIDC client.
+func (c *Client) GetClientAPIAccess(ctx context.Context, clientID string) (*ClientAPIAccess, error) {
+	params := apis.NewGetAPIAPIAccessClientIDParams().WithClientID(clientID)
+
+	start := time.Now()
+	resp, err := c.raw.Apis.GetAPIAPIAccessClientIDContext(ctx, params)
+	recordCall("get_client_api_access", err, time.Since(start))
+	if err != nil {
+		return nil, fmt.Errorf("get client API access failed: %w", err)
+	}
+	return clientAPIAccessFromDTO(resp.Payload.ClientPermissionIds, resp.Payload.UserDelegatedPermissionIds), nil
+}
+
+// UpdateClientAPIAccess replaces the full set of API permissions granted to an OIDC client.
+func (c *Client) UpdateClientAPIAccess(ctx context.Context, clientID string, access ClientAPIAccess) (*ClientAPIAccess, error) {
+	params := apis.NewPutAPIAPIAccessClientIDParams().
+		WithClientID(clientID).
+		WithAccess(&models.APIClientAPIAccessUpdateDto{
+			ClientPermissionIds:        access.ClientPermissionIDs,
+			UserDelegatedPermissionIds: access.UserDelegatedPermissionIDs,
+		})
+
+	start := time.Now()
+	resp, err := c.raw.Apis.PutAPIAPIAccessClientIDContext(ctx, params)
+	recordCall("update_client_api_access", err, time.Since(start))
+	if err != nil {
+		return nil, fmt.Errorf("update client API access failed: %w", err)
+	}
+	return clientAPIAccessFromDTO(resp.Payload.ClientPermissionIds, resp.Payload.UserDelegatedPermissionIds), nil
+}
+
 // --- User Group Operations ---
 
 // ListUserGroups returns a list of user groups matching the search term.
@@ -1090,6 +1267,38 @@ func userGroupFromDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoUse
 		UserIDs:              userIds,
 		CustomClaims:         customClaimsFromDTO(dto.CustomClaims),
 		AllowedOIDCClientIDs: clientIDs,
+	}
+}
+
+func apiFromDTO(dto *models.APIAPIResponseDto) *API {
+	if dto == nil {
+		return nil
+	}
+	permissions := make([]APIPermission, 0, len(dto.Permissions))
+	for _, p := range dto.Permissions {
+		if p == nil {
+			continue
+		}
+		permissions = append(permissions, APIPermission{
+			ID:          p.ID,
+			Key:         p.Key,
+			Name:        p.Name,
+			Description: p.Description,
+		})
+	}
+	return &API{
+		ID:          dto.ID,
+		Name:        dto.Name,
+		Resource:    dto.Resource,
+		CreatedAt:   dto.CreatedAt,
+		Permissions: permissions,
+	}
+}
+
+func clientAPIAccessFromDTO(clientPermissionIDs, userDelegatedPermissionIDs []string) *ClientAPIAccess {
+	return &ClientAPIAccess{
+		ClientPermissionIDs:        clientPermissionIDs,
+		UserDelegatedPermissionIDs: userDelegatedPermissionIDs,
 	}
 }
 

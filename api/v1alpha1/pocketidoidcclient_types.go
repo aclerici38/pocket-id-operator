@@ -48,6 +48,37 @@ type NamespacedOIDCClientReference struct {
 	Namespace string `json:"namespace,omitempty"`
 }
 
+// NamespacedAPIReference references a PocketIDAPI by name and namespace.
+type NamespacedAPIReference struct {
+	// Name is the name of the PocketIDAPI CR
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+
+	// Namespace is the namespace of the PocketIDAPI CR
+	// Defaults to the referencing resource's namespace
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+}
+
+// OIDCClientAPIAccess grants a client scoped permissions on a referenced PocketIDAPI.
+// Permissions are referenced by their key; the controller resolves them to Pocket-ID
+// permission IDs via the PocketIDAPI status.
+type OIDCClientAPIAccess struct {
+	// APIRef references the PocketIDAPI granting access.
+	// +kubebuilder:validation:Required
+	APIRef NamespacedAPIReference `json:"apiRef"`
+
+	// DelegatedPermissions are permission keys granted for the user-delegated
+	// (authorization code) flow, where the client acts on behalf of a user.
+	// +optional
+	DelegatedPermissions []string `json:"delegatedPermissions,omitempty"`
+
+	// ClientPermissions are permission keys granted for the client-credentials
+	// (machine-to-machine) flow. These require a confidential client.
+	// +optional
+	ClientPermissions []string `json:"clientPermissions,omitempty"`
+}
+
 // OIDCClientFederatedIdentity defines a federated identity for OIDC client credentials.
 type OIDCClientFederatedIdentity struct {
 	// Issuer is the OIDC issuer for the identity
@@ -213,6 +244,7 @@ type SCIMSpec struct {
 // PocketIDOIDCClientSpec defines the desired state of PocketIDOIDCClient
 // +kubebuilder:validation:XValidation:rule="has(self.clientID) == has(oldSelf.clientID) && (!has(self.clientID) || self.clientID == oldSelf.clientID)",message="clientID is immutable"
 // +kubebuilder:validation:XValidation:rule="!has(self.clientSecretRotation) || !self.clientSecretRotation.enabled || !has(self.secret) || !has(self.secret.storeClientSecret) || self.secret.storeClientSecret",message="clientSecretRotation cannot be enabled when secret.storeClientSecret is false"
+// +kubebuilder:validation:XValidation:rule="!self.isPublic || !has(self.apiAccess) || self.apiAccess.all(a, !has(a.clientPermissions) || size(a.clientPermissions) == 0)",message="clientPermissions require a confidential client (isPublic must be false)"
 type PocketIDOIDCClientSpec struct {
 	// Name of the oidc client to create in Pocket ID.
 	// If omitted, defaults to metadata.name of the oidcclient resource.
@@ -288,6 +320,14 @@ type PocketIDOIDCClientSpec struct {
 	// AllowedUserGroups restricts access to the listed PocketIDUserGroups
 	// +optional
 	AllowedUserGroups []NamespacedUserGroupReference `json:"allowedUserGroups,omitempty"`
+
+	// APIAccess grants this client permission to request scoped access on the
+	// referenced PocketIDAPIs. The client is the sole owner of its API access in
+	// Pocket-ID: while this field is set the operator keeps the access in sync and
+	// clears it if the field is later emptied. When never set, existing API access
+	// configured out-of-band is left untouched.
+	// +optional
+	APIAccess []OIDCClientAPIAccess `json:"apiAccess,omitempty"`
 
 	// Secret defines how OIDC client credentials should be stored in a Kubernetes Secret.
 	// +optional
@@ -374,6 +414,12 @@ type PocketIDOIDCClientStatus struct {
 	// AllowedUserGroupIDs are the resolved group IDs assigned to the client
 	// +optional
 	AllowedUserGroupIDs []string `json:"allowedUserGroupIDs,omitempty"`
+
+	// ManagedAPIPermissionIDs are the Pocket-ID API permission IDs the operator last
+	// pushed as this client's API access (both delegated and client-credentials).
+	// Used to detect when spec.apiAccess is emptied so the access can be cleared.
+	// +optional
+	ManagedAPIPermissionIDs []string `json:"managedAPIPermissionIDs,omitempty"`
 
 	// PKCESupported indicates Pocket-ID observed the client using PKCE during an
 	// authorization flow while spec.pkceEnabled is false, signalling PKCE can be enabled.

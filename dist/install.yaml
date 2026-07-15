@@ -2994,6 +2994,51 @@ spec:
                       type: string
                   type: object
                 type: array
+              apiAccess:
+                description: |-
+                  APIAccess grants this client permission to request scoped access on the
+                  referenced PocketIDAPIs. The client is the sole owner of its API access in
+                  Pocket-ID: while this field is set the operator keeps the access in sync and
+                  clears it if the field is later emptied. When never set, existing API access
+                  configured out-of-band is left untouched.
+                items:
+                  description: |-
+                    OIDCClientAPIAccess grants a client scoped permissions on a referenced PocketIDAPI.
+                    Permissions are referenced by their key; the controller resolves them to Pocket-ID
+                    permission IDs via the PocketIDAPI status.
+                  properties:
+                    apiRef:
+                      description: APIRef references the PocketIDAPI granting access.
+                      properties:
+                        name:
+                          description: Name is the name of the PocketIDAPI CR
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace is the namespace of the PocketIDAPI CR
+                            Defaults to the referencing resource's namespace
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    clientPermissions:
+                      description: |-
+                        ClientPermissions are permission keys granted for the client-credentials
+                        (machine-to-machine) flow. These require a confidential client.
+                      items:
+                        type: string
+                      type: array
+                    delegatedPermissions:
+                      description: |-
+                        DelegatedPermissions are permission keys granted for the user-delegated
+                        (authorization code) flow, where the client acts on behalf of a user.
+                      items:
+                        type: string
+                      type: array
+                  required:
+                  - apiRef
+                  type: object
+                type: array
               callbackUrls:
                 description: Callback URLs for the client
                 items:
@@ -3348,6 +3393,10 @@ spec:
                 is false
               rule: '!has(self.clientSecretRotation) || !self.clientSecretRotation.enabled
                 || !has(self.secret) || !has(self.secret.storeClientSecret) || self.secret.storeClientSecret'
+            - message: clientPermissions require a confidential client (isPublic must
+                be false)
+              rule: '!self.isPublic || !has(self.apiAccess) || self.apiAccess.all(a,
+                !has(a.clientPermissions) || size(a.clientPermissions) == 0)'
           status:
             description: status defines the observed state of PocketIDOIDCClient
             properties:
@@ -3454,6 +3503,14 @@ spec:
               logoutCallbackUrls:
                 description: LogoutCallbackURLs are the current logout callback URLs
                   from Pocket-ID
+                items:
+                  type: string
+                type: array
+              managedAPIPermissionIDs:
+                description: |-
+                  ManagedAPIPermissionIDs are the Pocket-ID API permission IDs the operator last
+                  pushed as this client's API access (both delegated and client-credentials).
+                  Used to detect when spec.apiAccess is emptied so the access can be cleared.
                 items:
                   type: string
                 type: array
@@ -4337,6 +4394,7 @@ rules:
 - apiGroups:
   - pocketid.internal
   resources:
+  - pocketidapis
   - pocketidinstances
   - pocketidoidcclients
   - pocketidusergroups
@@ -4352,6 +4410,7 @@ rules:
 - apiGroups:
   - pocketid.internal
   resources:
+  - pocketidapis/finalizers
   - pocketidinstances/finalizers
   - pocketidoidcclients/finalizers
   - pocketidusergroups/finalizers
@@ -4361,6 +4420,7 @@ rules:
 - apiGroups:
   - pocketid.internal
   resources:
+  - pocketidapis/status
   - pocketidinstances/status
   - pocketidoidcclients/status
   - pocketidusergroups/status
