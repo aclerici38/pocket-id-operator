@@ -16,11 +16,16 @@ import (
 // networks fall within.
 const defaultTrustProxyRanges = "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10,127.0.0.1/32,::1/128,fd00::/8"
 
-// effectiveTrustProxy resolves the TRUST_PROXY value from spec.trustedProxies:
-//   - unset: private-range default when the operator manages the route, else unset
-//     (Pocket-ID's own default of trusting nothing applies)
-//   - enabled=false: "false" (explicit off, overrides any route-derived default)
-//   - enabled=true, no CIDRs: the private-range default
+// effectiveTrustProxy resolves the TRUST_PROXY value from spec.trustedProxies.
+// The operator defaults to "false" (Pocket-ID's own default of trusting no proxy
+// headers), with one exception:
+// When the operator manages the route, the pod's immediate upstream is the in-cluster
+// gateway, so it defaults to the private ranges. Explicit spec.trustedProxies
+// always wins:
+//   - unset, operator-managed route: the private-range default
+//   - unset, no managed route: "false"
+//   - enabled=false: "false"
+//   - enabled=true, no CIDRs: "true" (trust all upstreams)
 //   - enabled=true, with CIDRs: the CIDRs joined by comma
 func effectiveTrustProxy(instance *pocketidinternalv1alpha1.PocketIDInstance) string {
 	tp := instance.Spec.TrustedProxies
@@ -28,13 +33,13 @@ func effectiveTrustProxy(instance *pocketidinternalv1alpha1.PocketIDInstance) st
 		if instance.Spec.Route != nil && instance.Spec.Route.Enabled {
 			return defaultTrustProxyRanges
 		}
-		return ""
+		return "false"
 	}
 	if !tp.Enabled {
 		return "false"
 	}
 	if len(tp.CIDRs) == 0 {
-		return defaultTrustProxyRanges
+		return "true"
 	}
 	return strings.Join(tp.CIDRs, ",")
 }
@@ -67,9 +72,7 @@ func buildCoreEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.
 	if instance.Spec.EncryptionKey != nil {
 		env = append(env, sensitiveValueToEnvVar(envEncryptionKey, instance.Spec.EncryptionKey))
 	}
-	if tp := effectiveTrustProxy(instance); tp != "" {
-		env = append(env, corev1.EnvVar{Name: envTrustProxy, Value: tp})
-	}
+	env = append(env, corev1.EnvVar{Name: envTrustProxy, Value: effectiveTrustProxy(instance)})
 
 	if instance.Spec.DatabaseUrl != nil {
 		env = append(env, sensitiveValueToEnvVar(envDBConnectionString, instance.Spec.DatabaseUrl))

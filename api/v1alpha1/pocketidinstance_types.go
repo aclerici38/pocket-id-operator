@@ -413,16 +413,19 @@ type HTTPRouteConfig struct {
 // TrustedProxiesConfig configures which upstream proxies Pocket-ID trusts for
 // X-Forwarded-* headers (the TRUST_PROXY environment variable). This determines the
 // client IP Pocket-ID sees, which feeds rate limiting, audit-log IPs, and GeoIP.
+//
+// When this section is omitted, the operator sets TRUST_PROXY=false unless it manages the instance's route (spec.route.enabled),
+// in which case it trusts the private/loopback ranges where a Gateway's ip would be.
 type TrustedProxiesConfig struct {
 	// Enabled turns on trust of X-Forwarded-* headers.
-	// When false, TRUST_PROXY is set to "false"
+	// When false, TRUST_PROXY is set to "false".
 	// +kubebuilder:default=false
 	Enabled bool `json:"enabled"`
 
 	// CIDRs is the list of trusted proxy IPs/CIDRs. Only used when enabled is true.
-	// When empty, the operator trusts the private/loopback ranges
-	// (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 127.0.0.1/32, ::1/128, fd00::/8).
-	// To trust all sources, set this to ["0.0.0.0/0", "::/0"].
+	// When empty, TRUST_PROXY is set to "true", trusting all upstream sources
+	// To restrict trust, list explicit ranges: e.g. the in-cluster gateway network, or a CDN's
+	// published ranges when it connects directly to the pod.
 	// +optional
 	CIDRs []string `json:"cidrs,omitempty"`
 }

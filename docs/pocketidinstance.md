@@ -383,27 +383,29 @@ client IP Pocket-ID sees, which feeds rate limiting, audit-log IPs, and GeoIP.
 | Spec | Resulting `TRUST_PROXY` |
 |---|---|
 | unset, `spec.route.enabled: true` | private/loopback ranges (see below) |
-| unset, no managed route | *unset* — Pocket-ID's default (trust nothing) |
+| unset, no managed route | `false` — Pocket-ID's default (trust nothing) |
 | `{enabled: false}` | `false` (overrides the route-derived default) |
-| `{enabled: true}` | private/loopback ranges |
+| `{enabled: true}` | `true` — trust every upstream (matches Pocket-ID's own `TRUST_PROXY=true`) |
 | `{enabled: true, cidrs: [...]}` | the listed CIDRs |
-| `{enabled: true, cidrs: ["0.0.0.0/0", "::/0"]}` | trust all sources |
 
-The private/loopback default is
+`enabled: true` maps to `TRUST_PROXY=true`. To restrict trust, list explicit `cidrs`.
+
+When the operator manages the route (`spec.route.enabled: true`) and you leave
+`trustedProxies` unset, it defaults to the private/loopback ranges
 `10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 127.0.0.1/32, ::1/128, fd00::/8`.
-An in-cluster Gateway forwards from a private pod IP, so its headers are honored,
-while a client reaching the pod directly over a public path cannot spoof them.
-
-Note that `enabled: true` on its own trusts the private ranges, **not** every source —
-trusting all sources is deliberate and requires listing `0.0.0.0/0` (and `::/0`) explicitly.
+The pod's immediate upstream is then the in-cluster Gateway, which always forwards
+from a private pod IP, so its headers are honored while a client reaching the pod
+directly over a public path cannot spoof them.
 
 ```yaml
 spec:
-  # Trust a specific upstream proxy CIDR instead of the private-range default
+  # Pod is exposed directly to Cloudflare (no operator-managed gateway in front)
   trustedProxies:
     enabled: true
     cidrs:
-      - "10.42.0.0/16"
+      - "173.245.48.0/20"
+      - "103.21.244.0/22"
+      # ... rest of https://www.cloudflare.com/ips/
 ```
 
 > **Behavior change:** older operator releases always set `TRUST_PROXY=true`. If you run
