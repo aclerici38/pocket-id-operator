@@ -276,6 +276,13 @@ jobs:
           if [ "${PRERELEASE}" = "true" ]; then
             RELEASE_FLAG="--prerelease"
           fi
+
+          mkdir -p /tmp/release-assets
+          cp charts/pocket-id-operator/values.schema.json \
+            /tmp/release-assets/pocket-id-operator.values.schema.json
+          cp charts/pocket-id-instance/values.schema.json \
+            /tmp/release-assets/pocket-id-instance.values.schema.json
+
           gh release create "${VERSION}" \
             --target "${TARGET_SHA}" \
             --title "${VERSION}" \
@@ -283,5 +290,5 @@ jobs:
             "${RELEASE_FLAG}" \
             dist/install.yaml \
             dist/schemas/*.json \
-            charts/pocket-id-operator/values.schema.json \
-            charts/pocket-id-instance/values.schema.json
+            /tmp/release-assets/pocket-id-operator.values.schema.json \
+            /tmp/release-assets/pocket-id-instance.values.schema.json
