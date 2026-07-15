@@ -7,6 +7,15 @@ on:
         description: "Release version (e.g., v1.0.0)"
         required: true
         type: string
+      prerelease:
+        description: "Create a prerelease to inspect/edit first (skips image retag & chart publish). Re-run with this unchecked to promote it."
+        required: false
+        type: boolean
+        default: false
+      highlights:
+        description: "Optional release highlights / breaking-change notes (markdown)"
+        required: false
+        type: string
 
 env:
   # install_args installs this job's tool subset; don't let `mise run`
@@ -16,18 +25,34 @@ env:
 jobs:
   validate:
     name: Validate version
-    permissions: {}
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.validate.outputs.version }}
       helm_version: ${{ steps.validate.outputs.helm_version }}
       image_repo: ${{ steps.validate.outputs.image_repo }}
+      # Commit the release is cut from
+      target_sha: ${{ steps.validate.outputs.target_sha }}
+      # Per-commit image tag published by CI (<short-sha>-main)
+      image_build_tag: ${{ steps.validate.outputs.image_build_tag }}
+      # "true" when an existing prerelease should be promoted rather than created.
+      promote: ${{ steps.validate.outputs.promote }}
     steps:
-      - name: Validate version format
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate version and resolve target
         id: validate
         env:
           VERSION: ${{ inputs.version }}
+          PRERELEASE: ${{ inputs.prerelease }}
           REPO_OWNER: ${{ github.repository_owner }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           # Ensure version starts with 'v'
           if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9] ]]; then
@@ -38,12 +63,51 @@ jobs:
           HELM_VERSION="${VERSION#v}"
           REPO_OWNER=$(echo "${REPO_OWNER}" | tr '[:upper:]' '[:lower:]')
 
+          # Does a release for this version already exist?
+          if RELEASE_STATE=$(gh release view "$VERSION" --json isPrerelease --jq .isPrerelease 2>/dev/null); then
+            RELEASE_EXISTS=true
+          else
+            RELEASE_EXISTS=false
+          fi
+
+          PROMOTE=false
+          if [ "$PRERELEASE" = "true" ]; then
+            # Creating a prerelease: refuse if anything already exists for this version.
+            if [ "$RELEASE_EXISTS" = "true" ]; then
+              echo "::error::Release ${VERSION} already exists; re-run with 'prerelease' unchecked to promote it, or delete it first."
+              exit 1
+            fi
+            TARGET_SHA=$(git rev-parse HEAD)
+          else
+            if [ "$RELEASE_EXISTS" = "true" ]; then
+              # A release exists: only a prerelease may be promoted.
+              if [ "$RELEASE_STATE" != "true" ]; then
+                echo "::error::Release ${VERSION} is already published."
+                exit 1
+              fi
+              PROMOTE=true
+              # Build/retag from the commit the prerelease was cut from.
+              TARGET_SHA=$(git rev-parse "${VERSION}^{commit}")
+            else
+              # Fresh full release with no prior prerelease.
+              TARGET_SHA=$(git rev-parse HEAD)
+            fi
+          fi
+
+          SHORT_SHA=$(git rev-parse --short "$TARGET_SHA")
+
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "helm_version=${HELM_VERSION}" >> "$GITHUB_OUTPUT"
           echo "image_repo=ghcr.io/${REPO_OWNER}/pocket-id-operator" >> "$GITHUB_OUTPUT"
+          echo "target_sha=${TARGET_SHA}" >> "$GITHUB_OUTPUT"
+          echo "image_build_tag=${SHORT_SHA}-main" >> "$GITHUB_OUTPUT"
+          echo "promote=${PROMOTE}" >> "$GITHUB_OUTPUT"
 
+  # Registry-publishing jobs (retag-image, generate-changelog, publish-chart)
+  # are skipped for a prerelease..
   generate-changelog:
     name: Generate Artifact Hub changelog
+    if: ${{ !inputs.prerelease }}
     permissions:
       contents: read
     needs:
@@ -55,7 +119,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          ref: main
+          ref: ${{ needs.validate.outputs.target_sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -65,13 +129,14 @@ jobs:
         with:
           config: cliff-artifacthub.toml
           args: --unreleased --strip header
+
   retag-image:
     name: Retag Docker image
+    if: ${{ !inputs.prerelease }}
     permissions:
       packages: write
     needs:
       - validate
-      - generate-changelog
     runs-on: ubuntu-latest
     steps:
       - name: Setup Docker Buildx
@@ -84,17 +149,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Retag :main image as release version
+      - name: Retag release commit image as release version
         env:
           IMAGE_REPO: ${{ needs.validate.outputs.image_repo }}
           VERSION: ${{ needs.validate.outputs.version }}
+          BUILD_TAG: ${{ needs.validate.outputs.image_build_tag }}
         run: |
           docker buildx imagetools create \
             -t "${IMAGE_REPO}:${VERSION}" \
-            "${IMAGE_REPO}:main"
+            "${IMAGE_REPO}:${BUILD_TAG}"
 
   publish-chart:
     name: Publish Helm chart
+    if: ${{ !inputs.prerelease }}
     permissions:
       actions: write
       contents: read
@@ -108,78 +175,81 @@ jobs:
       chart_version: ${{ needs.validate.outputs.helm_version }}
       app_version: ${{ needs.validate.outputs.version }}
       changelog: ${{ needs.generate-changelog.outputs.changelog }}
+      ref: ${{ needs.validate.outputs.target_sha }}
 
-  tag:
-    name: Create Git tag
+  release:
+    name: Publish GitHub Release
     permissions:
       contents: write
     needs:
       - validate
+      - generate-changelog
       - retag-image
       - publish-chart
+    # Runs for a prerelease (registry jobs skipped) or once the registry jobs
+    # have succeeded for a full release / promotion.
+    if: >-
+      ${{ !cancelled()
+          && needs.validate.result == 'success'
+          && (inputs.prerelease
+              || (needs.retag-image.result == 'success'
+                  && needs.publish-chart.result == 'success')) }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          ref: main
+          ref: ${{ needs.validate.outputs.target_sha }}
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Configure git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Check if tag exists
+      # --- Promotion path: flip the existing prerelease to a full release,
+      #     preserving any notes edited during inspection. ---
+      - name: Promote prerelease
+        if: ${{ needs.validate.outputs.promote == 'true' }}
         env:
-          VERSION: ${{ needs.validate.outputs.version }}
-        run: |
-          if git rev-parse "${VERSION}" >/dev/null 2>&1; then
-            echo "::error::Tag ${VERSION} already exists"
-            exit 1
-          fi
-
-      - name: Create and push tag
-        env:
-          VERSION: ${{ needs.validate.outputs.version }}
           GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
+          VERSION: ${{ needs.validate.outputs.version }}
         run: |
-          git tag -a "${VERSION}" -m "Release ${VERSION}"
-          git push "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "${VERSION}"
+          gh release edit "${VERSION}" \
+            --draft=false \
+            --prerelease=false \
+            --latest
 
-  create-release:
-    name: Create GitHub Release
-    permissions:
-      contents: write
-    needs:
-      - validate
-      - tag
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          ref: ${{ needs.validate.outputs.version }}
-          fetch-depth: 0
-          persist-credentials: false
-
+      # --- Create path: build notes + assets and create the release. Used for a
+      #     new prerelease and for a fresh full release without a prior one. ---
       - name: Generate changelog
+        if: ${{ needs.validate.outputs.promote != 'true' }}
         uses: orhun/git-cliff-action@f50e11560dce63f7c33227798f90b924471a88b5 # v4.8.0
         with:
           config: cliff.toml
-          args: --latest --strip header
+          args: --unreleased --strip header
         env:
           OUTPUT: /tmp/changelog.md
 
+      - name: Prepend highlights
+        if: ${{ needs.validate.outputs.promote != 'true' && inputs.highlights != '' }}
+        env:
+          HIGHLIGHTS: ${{ inputs.highlights }}
+        run: |
+          {
+            echo "> [!WARNING]"
+            echo "> ### Upgrade notes"
+            printf '%s\n' "$HIGHLIGHTS" | sed 's/^/> /'
+            echo
+            cat /tmp/changelog.md
+          } > /tmp/changelog.final.md
+          mv /tmp/changelog.final.md /tmp/changelog.md
+
       - name: Set up Go
+        if: ${{ needs.validate.outputs.promote != 'true' }}
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
           cache: false
 
       - name: Setup mise
+        if: ${{ needs.validate.outputs.promote != 'true' }}
         uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
         with:
           # renovate: datasource=github-releases depName=jdx/mise
@@ -187,6 +257,7 @@ jobs:
           install_args: "go:sigs.k8s.io/controller-tools/cmd/controller-gen kustomize"
 
       - name: Generate install manifest
+        if: ${{ needs.validate.outputs.promote != 'true' }}
         env:
           IMAGE_REPO: ${{ needs.validate.outputs.image_repo }}
           VERSION: ${{ needs.validate.outputs.version }}
@@ -194,13 +265,22 @@ jobs:
           IMG="${IMAGE_REPO}:${VERSION}" mise run build-installer
 
       - name: Create GitHub release
+        if: ${{ needs.validate.outputs.promote != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.validate.outputs.version }}
+          TARGET_SHA: ${{ needs.validate.outputs.target_sha }}
+          PRERELEASE: ${{ inputs.prerelease }}
         run: |
+          RELEASE_FLAG="--latest"
+          if [ "${PRERELEASE}" = "true" ]; then
+            RELEASE_FLAG="--prerelease"
+          fi
           gh release create "${VERSION}" \
+            --target "${TARGET_SHA}" \
             --title "${VERSION}" \
             --notes-file /tmp/changelog.md \
+            "${RELEASE_FLAG}" \
             dist/install.yaml \
             dist/schemas/*.json \
             charts/pocket-id-operator/values.schema.json \
