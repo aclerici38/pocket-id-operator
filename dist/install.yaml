@@ -3021,9 +3021,9 @@ spec:
                   cidrs:
                     description: |-
                       CIDRs is the list of trusted proxy IPs/CIDRs. Only used when enabled is true.
-                      When empty, the operator trusts the private/loopback ranges
-                      (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 127.0.0.1/32, ::1/128, fd00::/8).
-                      To trust all sources, set this to ["0.0.0.0/0", "::/0"].
+                      When empty, TRUST_PROXY is set to "true", trusting all upstream sources
+                      To restrict trust, list explicit ranges: e.g. the in-cluster gateway network, or a CDN's
+                      published ranges when it connects directly to the pod.
                     items:
                       type: string
                     type: array
@@ -3031,7 +3031,7 @@ spec:
                     default: false
                     description: |-
                       Enabled turns on trust of X-Forwarded-* headers.
-                      When false, TRUST_PROXY is set to "false"
+                      When false, TRUST_PROXY is set to "false".
                     type: boolean
                 required:
                 - enabled

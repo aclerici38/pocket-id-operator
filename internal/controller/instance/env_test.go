@@ -71,9 +71,10 @@ func TestBuildEnvVars_CoreAlwaysSet(t *testing.T) {
 	env := buildEnvVars(inst)
 
 	requireEnv(t, env, "ENCRYPTION_KEY", "test-encryption-key-32chars!!!!!")
-	// TRUST_PROXY is not set unless the instance is behind an operator-managed route
-	// or explicitly configured via spec.trustedProxies.
-	requireEnvAbsent(t, env, "TRUST_PROXY")
+	// TRUST_PROXY defaults to "false" (Pocket-ID's own default) unless the instance
+	// is behind an operator-managed route or explicitly configured via
+	// spec.trustedProxies.
+	requireEnv(t, env, "TRUST_PROXY", "false")
 	requireEnvAbsent(t, env, "DISABLE_RATE_LIMITING")
 	requireEnv(t, env, "APP_URL", "https://id.example.com")
 	requireEnvFromSecret(t, env, "STATIC_API_KEY", "test-instance-static-api-key", "token")
@@ -87,19 +88,19 @@ func TestBuildEnvVars_TrustProxyDefaultsToPrivateRangesWithRoute(t *testing.T) {
 	requireEnv(t, env, "TRUST_PROXY", defaultTrustProxyRanges)
 }
 
-func TestBuildEnvVars_TrustProxyAbsentWhenRouteDisabled(t *testing.T) {
+func TestBuildEnvVars_TrustProxyFalseWhenRouteDisabled(t *testing.T) {
 	inst := minimalInstance()
 	inst.Spec.Route = &pocketidinternalv1alpha1.HTTPRouteConfig{Enabled: false}
 
 	env := buildEnvVars(inst)
-	requireEnvAbsent(t, env, "TRUST_PROXY")
+	requireEnv(t, env, "TRUST_PROXY", "false")
 }
 
-func TestBuildEnvVars_TrustProxyAbsentByDefault(t *testing.T) {
+func TestBuildEnvVars_TrustProxyFalseByDefault(t *testing.T) {
 	inst := minimalInstance()
 
 	env := buildEnvVars(inst)
-	requireEnvAbsent(t, env, "TRUST_PROXY")
+	requireEnv(t, env, "TRUST_PROXY", "false")
 }
 
 func TestBuildEnvVars_TrustProxyDisabledOverridesRoute(t *testing.T) {
@@ -116,8 +117,10 @@ func TestBuildEnvVars_TrustProxyEnabledNoCIDRs(t *testing.T) {
 	inst := minimalInstance()
 	inst.Spec.TrustedProxies = &pocketidinternalv1alpha1.TrustedProxiesConfig{Enabled: true}
 
+	// enabled=true with no CIDRs maps to "true", matching upstream's trust-all
+	// TRUST_PROXY=true semantics.
 	env := buildEnvVars(inst)
-	requireEnv(t, env, "TRUST_PROXY", defaultTrustProxyRanges)
+	requireEnv(t, env, "TRUST_PROXY", "true")
 }
 
 func TestBuildEnvVars_TrustProxyEnabledWithCIDRs(t *testing.T) {
