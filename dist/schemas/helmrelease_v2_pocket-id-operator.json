@@ -6155,9 +6155,10 @@
                                   ]
                                 },
                                 "key": {
-                                  "description": "Key is the permission identifier requested as a token scope, e.g. \"read:orders\".",
+                                  "description": "Key is the permission identifier requested as a token scope, e.g. \"read:orders\".\nIt must be a valid RFC 6749 scope token: printable ASCII with no space, double\nquote, or backslash. Reserved OIDC scope/claim names are rejected at the spec level.",
                                   "maxLength": 255,
                                   "minLength": 1,
+                                  "pattern": "^[\\x21\\x23-\\x5B\\x5D-\\x7E]+$",
                                   "type": "string"
                                 },
                                 "name": {
@@ -6173,6 +6174,7 @@
                               ],
                               "type": "object"
                             },
+                            "maxItems": 100,
                             "type": [
                               "array",
                               "null"
@@ -6200,6 +6202,10 @@
                           {
                             "message": "resource is immutable",
                             "rule": "self.resource == oldSelf.resource"
+                          },
+                          {
+                            "message": "permission key is reserved by Pocket ID",
+                            "rule": "!has(self.permissions) || self.permissions.all(p, !(p.key.lowerAscii() in ['openid','profile','email','email_verified','groups','offline_access']))"
                           }
                         ]
                       }

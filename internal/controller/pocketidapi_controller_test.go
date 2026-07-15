@@ -94,6 +94,36 @@ var _ = Describe("PocketIDAPI Controller", func() {
 			Expect(err.Error()).To(ContainSubstring("resource is immutable"))
 		})
 
+		It("should reject a permission key that reuses a reserved OIDC scope", func() {
+			resource := &pocketidinternalv1alpha1.PocketIDAPI{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-api-reserved-key", Namespace: namespace},
+				Spec: pocketidinternalv1alpha1.PocketIDAPISpec{
+					Resource: "https://reserved.example.com",
+					Permissions: []pocketidinternalv1alpha1.APIPermission{
+						{Key: "openid", Name: "Bad"},
+					},
+				},
+			}
+			err := k8sClient.Create(ctx, resource)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("reserved by Pocket ID"))
+		})
+
+		It("should reject a permission key with invalid scope-token characters", func() {
+			resource := &pocketidinternalv1alpha1.PocketIDAPI{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-api-invalid-key", Namespace: namespace},
+				Spec: pocketidinternalv1alpha1.PocketIDAPISpec{
+					Resource: "https://invalid.example.com",
+					Permissions: []pocketidinternalv1alpha1.APIPermission{
+						{Key: "read orders", Name: "Bad"},
+					},
+				},
+			}
+			err := k8sClient.Create(ctx, resource)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("should match"))
+		})
+
 		It("should reject clientPermissions on a public OIDC client", func() {
 			oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-public-client-m2m", Namespace: namespace},

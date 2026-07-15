@@ -26,8 +26,11 @@ import (
 // APIPermission defines a single scoped permission offered by an API.
 type APIPermission struct {
 	// Key is the permission identifier requested as a token scope, e.g. "read:orders".
+	// It must be a valid RFC 6749 scope token: printable ASCII with no space, double
+	// quote, or backslash. Reserved OIDC scope/claim names are rejected at the spec level.
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=255
+	// +kubebuilder:validation:Pattern=`^[\x21\x23-\x5B\x5D-\x7E]+$`
 	Key string `json:"key"`
 
 	// Name is a human-friendly label for the permission.
@@ -43,6 +46,7 @@ type APIPermission struct {
 
 // PocketIDAPISpec defines the desired state of PocketIDAPI
 // +kubebuilder:validation:XValidation:rule="self.resource == oldSelf.resource",message="resource is immutable"
+// +kubebuilder:validation:XValidation:rule="!has(self.permissions) || self.permissions.all(p, !(p.key.lowerAscii() in ['openid','profile','email','email_verified','groups','offline_access']))",message="permission key is reserved by Pocket ID"
 type PocketIDAPISpec struct {
 	// InstanceSelector selects the PocketIDInstance to reconcile against.
 	// If omitted, the controller expects exactly one instance in the cluster.
@@ -68,6 +72,7 @@ type PocketIDAPISpec struct {
 	// exactly this list, so permissions added out-of-band are removed.
 	// +listType=map
 	// +listMapKey=key
+	// +kubebuilder:validation:MaxItems=100
 	// +optional
 	Permissions []APIPermission `json:"permissions,omitempty"`
 }

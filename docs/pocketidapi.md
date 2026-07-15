@@ -49,7 +49,7 @@ spec:
 |-------|-------------|
 | `spec.name` | Friendly name in Pocket-ID. Defaults to `metadata.name`. |
 | `spec.resource` | The audience identifier for issued tokens (typically a URI). **Immutable** and used to adopt an existing API. |
-| `spec.permissions[].key` | Permission identifier requested as a token scope, e.g. `read:orders`. |
+| `spec.permissions[].key` | Permission identifier requested as a token scope, e.g. `read:orders`. Must be a valid RFC 6749 scope token (printable ASCII, no space/quote/backslash) and must not reuse a reserved OIDC scope/claim (`openid`, `profile`, `email`, `email_verified`, `groups`, `offline_access`). Up to 100 permissions per API. |
 | `spec.permissions[].name` | Human-friendly label for the permission. |
 | `spec.permissions[].description` | Optional description. |
 | `spec.instanceSelector` | Selects the `PocketIDInstance` to reconcile against. Optional when exactly one instance exists. |

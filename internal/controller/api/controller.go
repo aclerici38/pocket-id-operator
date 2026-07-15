@@ -28,6 +28,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -400,16 +401,20 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, api *pocketidinternalv
 	return result, err
 }
 
-// requestsForOIDCClient enqueues the APIs referenced by an OIDC client's apiAccess so
-// their reference finalizer is re-evaluated when the client's grants change.
-func (r *Reconciler) requestsForOIDCClient(_ context.Context, obj client.Object) []reconcile.Request {
+// requestsForOIDCClient enqueues the APIs whose reference finalizer may need to change
+// when an OIDC client's grants change. This covers two cases:
+//   - APIs the client references now, so the reference finalizer is added.
+//   - APIs that still carry the reference finalizer, so it can be removed once the client
+//     drops the grant. The mapping function only sees the client's new spec, so a dropped
+//     grant is invisible here; without enqueuing finalizer-carrying APIs, a blocked,
+//     mid-deletion API would stay stuck until the next resync.
+func (r *Reconciler) requestsForOIDCClient(ctx context.Context, obj client.Object) []reconcile.Request {
 	oidcClient, ok := obj.(*pocketidinternalv1alpha1.PocketIDOIDCClient)
 	if !ok {
 		return nil
 	}
 
 	seen := make(map[client.ObjectKey]struct{})
-	var requests []reconcile.Request
 	for _, grant := range oidcClient.Spec.APIAccess {
 		if grant.APIRef.Name == "" {
 			continue
@@ -418,11 +423,22 @@ func (r *Reconciler) requestsForOIDCClient(_ context.Context, obj client.Object)
 		if namespace == "" {
 			namespace = oidcClient.Namespace
 		}
-		key := client.ObjectKey{Namespace: namespace, Name: grant.APIRef.Name}
-		if _, ok := seen[key]; ok {
-			continue
+		seen[client.ObjectKey{Namespace: namespace, Name: grant.APIRef.Name}] = struct{}{}
+	}
+
+	apiList := &pocketidinternalv1alpha1.PocketIDAPIList{}
+	if err := r.List(ctx, apiList); err != nil {
+		logf.FromContext(ctx).Error(err, "Failed to list PocketIDAPIs for OIDC client mapping")
+	} else {
+		for i := range apiList.Items {
+			if controllerutil.ContainsFinalizer(&apiList.Items[i], OIDCClientAPIFinalizer) {
+				seen[client.ObjectKeyFromObject(&apiList.Items[i])] = struct{}{}
+			}
 		}
-		seen[key] = struct{}{}
+	}
+
+	requests := make([]reconcile.Request, 0, len(seen))
+	for key := range seen {
 		requests = append(requests, reconcile.Request{NamespacedName: key})
 	}
 	return requests
@@ -438,5 +454,6 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
 		).
 		Named("pocketidapi").
+		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
 		Complete(r)
 }

@@ -213,6 +213,55 @@ func TestPushAPIState_InSyncNoUpdate(t *testing.T) {
 	}
 }
 
+func TestRequestsForOIDCClient_EnqueuesReferencedAndFinalizerCarryingAPIs(t *testing.T) {
+	// referenced is named in the client's current apiAccess (finalizer must be added).
+	referenced := &pocketidinternalv1alpha1.PocketIDAPI{
+		ObjectMeta: metav1.ObjectMeta{Name: "orders", Namespace: "default"},
+		Spec:       pocketidinternalv1alpha1.PocketIDAPISpec{Resource: "https://orders.example.com"},
+	}
+	// dropped is no longer in the client's spec but still carries the reference finalizer:
+	// the client just removed the grant, so it must be enqueued to drop the finalizer.
+	dropped := &pocketidinternalv1alpha1.PocketIDAPI{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "billing",
+			Namespace:  "default",
+			Finalizers: []string{OIDCClientAPIFinalizer},
+		},
+		Spec: pocketidinternalv1alpha1.PocketIDAPISpec{Resource: "https://billing.example.com"},
+	}
+	// unrelated has no finalizer and is not referenced: it must not be enqueued.
+	unrelated := &pocketidinternalv1alpha1.PocketIDAPI{
+		ObjectMeta: metav1.ObjectMeta{Name: "unrelated", Namespace: "default"},
+		Spec:       pocketidinternalv1alpha1.PocketIDAPISpec{Resource: "https://unrelated.example.com"},
+	}
+
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "app", Namespace: "default"},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			APIAccess: []pocketidinternalv1alpha1.OIDCClientAPIAccess{{
+				APIRef: pocketidinternalv1alpha1.NamespacedAPIReference{Name: "orders"},
+			}},
+		},
+	}
+
+	r := newReconciler(t, referenced, dropped, unrelated, oidcClient)
+	requests := r.requestsForOIDCClient(context.Background(), oidcClient)
+
+	got := make(map[string]bool, len(requests))
+	for _, req := range requests {
+		got[req.Name] = true
+	}
+	if !got["orders"] {
+		t.Errorf("expected referenced API 'orders' to be enqueued, got %v", got)
+	}
+	if !got["billing"] {
+		t.Errorf("expected finalizer-carrying API 'billing' to be enqueued, got %v", got)
+	}
+	if got["unrelated"] {
+		t.Errorf("did not expect unrelated API to be enqueued, got %v", got)
+	}
+}
+
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)

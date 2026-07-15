@@ -111,10 +111,13 @@ spec:
                       maxLength: 500
                       type: string
                     key:
-                      description: Key is the permission identifier requested as a
-                        token scope, e.g. "read:orders".
+                      description: |-
+                        Key is the permission identifier requested as a token scope, e.g. "read:orders".
+                        It must be a valid RFC 6749 scope token: printable ASCII with no space, double
+                        quote, or backslash. Reserved OIDC scope/claim names are rejected at the spec level.
                       maxLength: 255
                       minLength: 1
+                      pattern: ^[\x21\x23-\x5B\x5D-\x7E]+$
                       type: string
                     name:
                       description: Name is a human-friendly label for the permission.
@@ -125,6 +128,7 @@ spec:
                   - key
                   - name
                   type: object
+                maxItems: 100
                 type: array
                 x-kubernetes-list-map-keys:
                 - key
@@ -143,6 +147,9 @@ spec:
             x-kubernetes-validations:
             - message: resource is immutable
               rule: self.resource == oldSelf.resource
+            - message: permission key is reserved by Pocket ID
+              rule: '!has(self.permissions) || self.permissions.all(p, !(p.key.lowerAscii()
+                in [''openid'',''profile'',''email'',''email_verified'',''groups'',''offline_access'']))'
           status:
             description: status defines the observed state of PocketIDAPI
             properties:

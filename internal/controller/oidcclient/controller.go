@@ -1634,10 +1634,13 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 			handler.EnqueueRequestsFromMapFunc(r.requestsForUserGroup),
 			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
 		).
+		// No GenerationChangedPredicate here: clients resolve permission keys to IDs from
+		// the API's status.permissions, which changes without a spec/generation bump (e.g.
+		// after the API is externally recreated with new permission IDs). Watching all
+		// changes gives clients an instant re-resolve instead of waiting for a resync.
 		Watches(
 			&pocketidinternalv1alpha1.PocketIDAPI{},
 			handler.EnqueueRequestsFromMapFunc(r.requestsForAPI),
-			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
 		).
 		Named("pocketidoidcclient").
 		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
