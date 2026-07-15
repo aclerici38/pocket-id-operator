@@ -6,6 +6,7 @@ resources:
   - bases/pocketid.internal_pocketidusers.yaml
   - bases/pocketid.internal_pocketidoidcclients.yaml
   - bases/pocketid.internal_pocketidusergroups.yaml
+  - bases/pocketid.internal_pocketidapis.yaml
   # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

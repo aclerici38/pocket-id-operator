@@ -315,9 +315,18 @@ type OIDCClientOptions struct {
 	IsPublic           bool
 	SkipConsent        bool
 	AllowedUserGroups  []string
+	APIAccess          []APIAccessGrant
 	Logo               *OIDCLogoConfig
 	Secret             *OIDCSecretConfig
 	SCIM               *SCIMConfig
+}
+
+// APIAccessGrant configures a spec.apiAccess entry granting permissions on a PocketIDAPI.
+type APIAccessGrant struct {
+	APIRefName           string
+	APIRefNamespace      string
+	DelegatedPermissions []string
+	ClientPermissions    []string
 }
 
 // OIDCLogoConfig configures the logo spec for an OIDCClient.
@@ -411,6 +420,28 @@ func buildOIDCClientYAML(opts OIDCClientOptions) string {
 		}
 	}
 
+	if len(opts.APIAccess) > 0 {
+		spec.WriteString("  apiAccess:\n")
+		for _, grant := range opts.APIAccess {
+			spec.WriteString(fmt.Sprintf("  - apiRef:\n      name: %s\n", grant.APIRefName))
+			if grant.APIRefNamespace != "" {
+				spec.WriteString(fmt.Sprintf("      namespace: %s\n", grant.APIRefNamespace))
+			}
+			if len(grant.DelegatedPermissions) > 0 {
+				spec.WriteString("    delegatedPermissions:\n")
+				for _, key := range grant.DelegatedPermissions {
+					spec.WriteString(fmt.Sprintf("    - %s\n", key))
+				}
+			}
+			if len(grant.ClientPermissions) > 0 {
+				spec.WriteString("    clientPermissions:\n")
+				for _, key := range grant.ClientPermissions {
+					spec.WriteString(fmt.Sprintf("    - %s\n", key))
+				}
+			}
+		}
+	}
+
 	if opts.Logo != nil {
 		spec.WriteString("  logo:\n")
 		if opts.Logo.AutoGenerate != nil {
@@ -467,6 +498,71 @@ func buildOIDCClientYAML(opts OIDCClientOptions) string {
 
 	return fmt.Sprintf(`apiVersion: pocketid.internal/v1alpha1
 kind: PocketIDOIDCClient
+metadata:
+  name: %s
+  namespace: %s
+spec:
+%s`, opts.Name, opts.Namespace, spec.String())
+}
+
+// APIOptions configures a PocketIDAPI YAML.
+type APIOptions struct {
+	Name             string // metadata.name
+	Namespace        string
+	SpecName         string // spec.name: Pocket-ID display name (defaults to metadata.name when empty)
+	Resource         string // audience identifier (immutable); defaults from Name when empty
+	Permissions      []APIPermissionOption
+	InstanceSelector map[string]string
+}
+
+// APIPermissionOption configures a spec.permissions entry.
+type APIPermissionOption struct {
+	Key         string
+	Name        string
+	Description string
+}
+
+func (o APIOptions) withDefaults() APIOptions {
+	if o.Name == "" {
+		o.Name = "test-api"
+	}
+	if o.Namespace == "" {
+		o.Namespace = userNS
+	}
+	if o.Resource == "" {
+		o.Resource = fmt.Sprintf("https://%s.example.com", o.Name)
+	}
+	return o
+}
+
+func buildAPIYAML(opts APIOptions) string {
+	opts = opts.withDefaults()
+
+	var spec strings.Builder
+	if opts.SpecName != "" {
+		spec.WriteString(fmt.Sprintf("  name: %s\n", opts.SpecName))
+	}
+	spec.WriteString(fmt.Sprintf("  resource: %s\n", opts.Resource))
+
+	if len(opts.InstanceSelector) > 0 {
+		spec.WriteString("  instanceSelector:\n    matchLabels:\n")
+		for k, v := range opts.InstanceSelector {
+			spec.WriteString(fmt.Sprintf("      %s: %s\n", k, v))
+		}
+	}
+
+	if len(opts.Permissions) > 0 {
+		spec.WriteString("  permissions:\n")
+		for _, p := range opts.Permissions {
+			spec.WriteString(fmt.Sprintf("  - key: %s\n    name: %s\n", p.Key, p.Name))
+			if p.Description != "" {
+				spec.WriteString(fmt.Sprintf("    description: %s\n", p.Description))
+			}
+		}
+	}
+
+	return fmt.Sprintf(`apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDAPI
 metadata:
   name: %s
   namespace: %s
@@ -532,7 +628,7 @@ func kubectlPatch(resource, name, namespace, patch string) error {
 
 func removeFinalizers(namespace string) {
 	cmd := exec.Command("bash", "-c",
-		fmt.Sprintf("kubectl get pocketiduser,pocketidusergroup,pocketidoidcclient,pocketidinstance -n %s -o name 2>/dev/null | xargs -I {} kubectl patch {} -n %s --type=merge -p '{\"metadata\":{\"finalizers\":null}}' 2>/dev/null || true",
+		fmt.Sprintf("kubectl get pocketiduser,pocketidusergroup,pocketidoidcclient,pocketidapi,pocketidinstance -n %s -o name 2>/dev/null | xargs -I {} kubectl patch {} -n %s --type=merge -p '{\"metadata\":{\"finalizers\":null}}' 2>/dev/null || true",
 			namespace, namespace))
 	_, _ = utils.Run(cmd)
 }
@@ -582,6 +678,23 @@ func waitForSecretKey(secretName, namespace, key string) string {
 		g.Expect(result).NotTo(BeEmpty())
 	}, time.Minute, 2*time.Second).Should(Succeed())
 	return result
+}
+
+// waitForReconciled waits until the resource's Ready condition is True and its
+// observedGeneration has caught up to metadata.generation, i.e. the operator has fully
+// reconciled the latest spec. Use this after updating a spec whose effect is not visible
+// in a pollable status field, before asserting directly against Pocket-ID.
+func waitForReconciled(resource, name, namespace string) {
+	gen := kubectlGet(resource, name, "-n", namespace, "-o", "jsonpath={.metadata.generation}")
+	Expect(gen).NotTo(BeEmpty())
+	Eventually(func(g Gomega) {
+		observed := kubectlGet(resource, name, "-n", namespace,
+			"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].observedGeneration}")
+		status := kubectlGet(resource, name, "-n", namespace,
+			"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+		g.Expect(observed).To(Equal(gen), "observedGeneration should catch up to spec generation")
+		g.Expect(status).To(Equal("True"))
+	}, 2*time.Minute, 2*time.Second).Should(Succeed())
 }
 
 func waitForResourceDeleted(resource, name, namespace string) {
@@ -640,6 +753,16 @@ func createUserGroupAndWaitReady(opts UserGroupOptions) {
 	opts = opts.withDefaults()
 	createUserGroup(opts)
 	waitForReady("pocketidusergroup", opts.Name, opts.Namespace)
+}
+
+func createAPI(opts APIOptions) {
+	applyYAML(buildAPIYAML(opts))
+}
+
+func createAPIAndWaitReady(opts APIOptions) {
+	opts = opts.withDefaults()
+	createAPI(opts)
+	waitForReady("pocketidapi", opts.Name, opts.Namespace)
 }
 
 func createOIDCClient(opts OIDCClientOptions) {
@@ -801,6 +924,44 @@ echo "User added to group successfully"`,
 
 	applyYAML(createCurlPodYAML(podName, namespace, script))
 	waitForPodSucceeded(podName, namespace)
+}
+
+// getFromPocketID performs a GET against the Pocket-ID API using the instance's static
+// API key and returns the raw response body. Used to assert that operator-managed state
+// is actually reflected in Pocket-ID's database. Each call needs a unique podName.
+func getFromPocketID(podName, namespace, apiPath string) string {
+	staticSecretName := instanceName + "-static-api-key"
+
+	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
+		"-o", "jsonpath={.data.token}")
+	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
+
+	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
+curl -sf -H "X-API-KEY: $API_KEY" %s%s`,
+		apiKeyBase64, formatInstanceURL(), apiPath)
+
+	applyYAML(createCurlPodYAML(podName, namespace, script))
+	return getPodLogs(podName, namespace)
+}
+
+// createAPIInPocketID creates an API directly via the Pocket-ID API (bypassing the
+// operator, simulating creation through the UI) and returns the new API's ID. Used to
+// test adoption of a pre-existing API by resource.
+func createAPIInPocketID(podName, namespace, name, resource string) string {
+	staticSecretName := instanceName + "-static-api-key"
+
+	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
+		"-o", "jsonpath={.data.token}")
+	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
+
+	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
+BODY=$(curl -sf -X POST -H "X-API-KEY: $API_KEY" -H "Content-Type: application/json" \
+  -d '{"name":"%s","resource":"%s"}' %s/api/apis)
+echo "$BODY" | grep -o '"id":"[^"]*"' | head -1 | sed 's/"id":"//;s/"//'`,
+		apiKeyBase64, name, resource, formatInstanceURL())
+
+	applyYAML(createCurlPodYAML(podName, namespace, script))
+	return getPodLogs(podName, namespace)
 }
 
 // getGroupMembersFromPocketID returns the space-separated user IDs of a group

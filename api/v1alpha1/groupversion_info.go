@@ -36,6 +36,7 @@ var (
 			&PocketIDUser{}, &PocketIDUserList{},
 			&PocketIDUserGroup{}, &PocketIDUserGroupList{},
 			&PocketIDOIDCClient{}, &PocketIDOIDCClientList{},
+			&PocketIDAPI{}, &PocketIDAPIList{},
 		)
 		metav1.AddToGroupVersion(s, GroupVersion)
 		return nil

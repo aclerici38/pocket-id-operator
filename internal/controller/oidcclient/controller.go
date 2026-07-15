@@ -97,6 +97,7 @@ type Reconciler struct {
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidinstances/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidusergroups,verbs=get;list;watch
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidusers,verbs=get;list;watch
+// +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidapis,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -200,6 +201,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err := r.ReconcileSCIM(ctx, oidcClient, apiClient); err != nil {
 		log.Error(err, "Failed to reconcile SCIM service provider")
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "SCIMReconcileError", err.Error())
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+	}
+
+	if err := r.ReconcileAPIAccess(ctx, oidcClient, apiClient); err != nil {
+		log.Error(err, "Failed to reconcile API access")
+		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "APIAccessReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
@@ -1542,6 +1549,29 @@ func oidcClientPredicate() predicate.Predicate {
 	return predicate.Or(predicate.GenerationChangedPredicate{}, predicate.AnnotationChangedPredicate{})
 }
 
+// requestsForAPI enqueues OIDC clients whose spec.apiAccess references the given API,
+// so they re-resolve permission IDs when the API's spec changes.
+func (r *Reconciler) requestsForAPI(ctx context.Context, obj client.Object) []reconcile.Request {
+	api, ok := obj.(*pocketidinternalv1alpha1.PocketIDAPI)
+	if !ok {
+		return nil
+	}
+
+	clients := &pocketidinternalv1alpha1.PocketIDOIDCClientList{}
+	if err := r.List(ctx, clients, client.MatchingFields{
+		common.OIDCClientAPIAccessIndexKey: client.ObjectKeyFromObject(api).String(),
+	}); err != nil {
+		logf.FromContext(ctx).Error(err, "Failed to list OIDC clients for API", "api", client.ObjectKeyFromObject(api))
+		return nil
+	}
+
+	requests := make([]reconcile.Request, 0, len(clients.Items))
+	for i := range clients.Items {
+		requests = append(requests, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&clients.Items[i])})
+	}
+	return requests
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	ctx := context.Background()
@@ -1571,12 +1601,46 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &pocketidinternalv1alpha1.PocketIDOIDCClient{}, common.OIDCClientAPIAccessIndexKey, func(raw client.Object) []string {
+		oidcClient, ok := raw.(*pocketidinternalv1alpha1.PocketIDOIDCClient)
+		if !ok {
+			return nil
+		}
+
+		if len(oidcClient.Spec.APIAccess) == 0 {
+			return nil
+		}
+
+		keys := make([]string, 0, len(oidcClient.Spec.APIAccess))
+		for _, grant := range oidcClient.Spec.APIAccess {
+			if grant.APIRef.Name == "" {
+				continue
+			}
+			namespace := grant.APIRef.Namespace
+			if namespace == "" {
+				namespace = oidcClient.Namespace
+			}
+			keys = append(keys, fmt.Sprintf("%s/%s", namespace, grant.APIRef.Name))
+		}
+		return keys
+	}); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&pocketidinternalv1alpha1.PocketIDOIDCClient{}, builder.WithPredicates(oidcClientPredicate())).
 		Watches(
 			&pocketidinternalv1alpha1.PocketIDUserGroup{},
 			handler.EnqueueRequestsFromMapFunc(r.requestsForUserGroup),
 			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
+		).
+		// No GenerationChangedPredicate here: clients resolve permission keys to IDs from
+		// the API's status.permissions, which changes without a spec/generation bump (e.g.
+		// after the API is externally recreated with new permission IDs). Watching all
+		// changes gives clients an instant re-resolve instead of waiting for a resync.
+		Watches(
+			&pocketidinternalv1alpha1.PocketIDAPI{},
+			handler.EnqueueRequestsFromMapFunc(r.requestsForAPI),
 		).
 		Named("pocketidoidcclient").
 		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).

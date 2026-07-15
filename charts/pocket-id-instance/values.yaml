@@ -101,3 +101,14 @@ oidcClients: []
   #     pkceEnabled: true
   #     allowedUserGroups:
   #       - name: admins
+
+# -- PocketIDAPI resources.
+apis: []
+  # - name: orders-api
+  #   spec:
+  #     resource: https://orders.example.com
+  #     permissions:
+  #       - key: read:orders
+  #         name: Read orders
+  #       - key: write:orders
+  #         name: Write orders

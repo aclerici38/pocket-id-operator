@@ -40,6 +40,7 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
+	pocketidapi "github.com/aclerici38/pocket-id-operator/internal/controller/api"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/instance"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/oidcclient"
@@ -151,6 +152,14 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	err = (&usergroup.Reconciler{
+		Client:         k8sManager.GetClient(),
+		BaseReconciler: common.BaseReconciler{Client: k8sManager.GetClient(), APIReader: k8sManager.GetAPIReader()},
+		APIReader:      k8sManager.GetAPIReader(),
+		Scheme:         k8sManager.GetScheme(),
+	}).SetupWithManager(k8sManager)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = (&pocketidapi.Reconciler{
 		Client:         k8sManager.GetClient(),
 		BaseReconciler: common.BaseReconciler{Client: k8sManager.GetClient(), APIReader: k8sManager.GetAPIReader()},
 		APIReader:      k8sManager.GetAPIReader(),

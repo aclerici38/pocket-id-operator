@@ -12,6 +12,266 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.21.0
+  name: pocketidapis.pocketid.internal
+spec:
+  group: pocketid.internal
+  names:
+    kind: PocketIDAPI
+    listKind: PocketIDAPIList
+    plural: pocketidapis
+    shortNames:
+    - pidapi
+    singular: pocketidapi
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: PocketIDAPI is the Schema for the pocketidapis API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of PocketIDAPI
+            properties:
+              instanceSelector:
+                description: |-
+                  InstanceSelector selects the PocketIDInstance to reconcile against.
+                  If omitted, the controller expects exactly one instance in the cluster.
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    type: object
+                type: object
+                x-kubernetes-map-type: atomic
+              name:
+                description: |-
+                  Name of the API to create in Pocket ID.
+                  If omitted, defaults to metadata.name of the API resource.
+                maxLength: 255
+                minLength: 2
+                type: string
+              permissions:
+                description: |-
+                  Permissions are the scoped permissions offered by this API. The operator is
+                  the sole owner of the API: the permission set in Pocket-ID is reconciled to
+                  exactly this list, so permissions added out-of-band are removed.
+                items:
+                  description: APIPermission defines a single scoped permission offered
+                    by an API.
+                  properties:
+                    description:
+                      description: Description optionally explains what the permission
+                        grants.
+                      maxLength: 500
+                      type: string
+                    key:
+                      description: |-
+                        Key is the permission identifier requested as a token scope, e.g. "read:orders".
+                        It must be a valid RFC 6749 scope token: printable ASCII with no space, double
+                        quote, or backslash. Reserved OIDC scope/claim names are rejected at the spec level.
+                      maxLength: 255
+                      minLength: 1
+                      pattern: ^[\x21\x23-\x5B\x5D-\x7E]+$
+                      type: string
+                    name:
+                      description: Name is a human-friendly label for the permission.
+                      maxLength: 255
+                      minLength: 1
+                      type: string
+                  required:
+                  - key
+                  - name
+                  type: object
+                maxItems: 100
+                type: array
+                x-kubernetes-list-map-keys:
+                - key
+                x-kubernetes-list-type: map
+              resource:
+                description: |-
+                  Resource is the audience identifier for tokens issued against this API
+                  (typically a URI). It is the permanent identifier used to adopt an existing
+                  API and is immutable once set.
+                maxLength: 255
+                minLength: 1
+                type: string
+            required:
+            - resource
+            type: object
+            x-kubernetes-validations:
+            - message: resource is immutable
+              rule: self.resource == oldSelf.resource
+            - message: permission key is reserved by Pocket ID
+              rule: '!has(self.permissions) || self.permissions.all(p, !(p.key.lowerAscii()
+                in [''openid'',''profile'',''email'',''email_verified'',''groups'',''offline_access'']))'
+          status:
+            description: status defines the observed state of PocketIDAPI
+            properties:
+              apiID:
+                description: APIID is the ID assigned by Pocket-ID.
+                type: string
+              conditions:
+                description: Conditions represent the current state of the PocketIDAPI
+                  resource.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              createdAt:
+                description: CreatedAt is the creation timestamp from Pocket-ID.
+                type: string
+              name:
+                description: Name is the resolved name from Pocket-ID.
+                type: string
+              permissions:
+                description: |-
+                  Permissions are the permissions resolved from Pocket-ID, including their IDs.
+                  This is the lookup table PocketIDOIDCClients use to resolve permission keys.
+                items:
+                  description: ObservedAPIPermission is a permission resolved from
+                    Pocket-ID, including its ID.
+                  properties:
+                    id:
+                      description: ID is the Pocket-ID identifier for the permission.
+                      type: string
+                    key:
+                      description: Key is the permission identifier requested as a
+                        token scope.
+                      type: string
+                    name:
+                      description: Name is the human-friendly label from Pocket-ID.
+                      type: string
+                  required:
+                  - id
+                  - key
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - key
+                x-kubernetes-list-type: map
+              resource:
+                description: Resource is the resolved audience identifier from Pocket-ID.
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: pocketidinstances.pocketid.internal
 spec:
   group: pocketid.internal
@@ -2994,6 +3254,51 @@ spec:
                       type: string
                   type: object
                 type: array
+              apiAccess:
+                description: |-
+                  APIAccess grants this client permission to request scoped access on the
+                  referenced PocketIDAPIs. The client is the sole owner of its API access in
+                  Pocket-ID: while this field is set the operator keeps the access in sync and
+                  clears it if the field is later emptied. When never set, existing API access
+                  configured out-of-band is left untouched.
+                items:
+                  description: |-
+                    OIDCClientAPIAccess grants a client scoped permissions on a referenced PocketIDAPI.
+                    Permissions are referenced by their key; the controller resolves them to Pocket-ID
+                    permission IDs via the PocketIDAPI status.
+                  properties:
+                    apiRef:
+                      description: APIRef references the PocketIDAPI granting access.
+                      properties:
+                        name:
+                          description: Name is the name of the PocketIDAPI CR
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace is the namespace of the PocketIDAPI CR
+                            Defaults to the referencing resource's namespace
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    clientPermissions:
+                      description: |-
+                        ClientPermissions are permission keys granted for the client-credentials
+                        (machine-to-machine) flow. These require a confidential client.
+                      items:
+                        type: string
+                      type: array
+                    delegatedPermissions:
+                      description: |-
+                        DelegatedPermissions are permission keys granted for the user-delegated
+                        (authorization code) flow, where the client acts on behalf of a user.
+                      items:
+                        type: string
+                      type: array
+                  required:
+                  - apiRef
+                  type: object
+                type: array
               callbackUrls:
                 description: Callback URLs for the client
                 items:
@@ -3348,6 +3653,10 @@ spec:
                 is false
               rule: '!has(self.clientSecretRotation) || !self.clientSecretRotation.enabled
                 || !has(self.secret) || !has(self.secret.storeClientSecret) || self.secret.storeClientSecret'
+            - message: clientPermissions require a confidential client (isPublic must
+                be false)
+              rule: '!self.isPublic || !has(self.apiAccess) || self.apiAccess.all(a,
+                !has(a.clientPermissions) || size(a.clientPermissions) == 0)'
           status:
             description: status defines the observed state of PocketIDOIDCClient
             properties:
@@ -3454,6 +3763,14 @@ spec:
               logoutCallbackUrls:
                 description: LogoutCallbackURLs are the current logout callback URLs
                   from Pocket-ID
+                items:
+                  type: string
+                type: array
+              managedAPIPermissionIDs:
+                description: |-
+                  ManagedAPIPermissionIDs are the Pocket-ID API permission IDs the operator last
+                  pushed as this client's API access (both delegated and client-credentials).
+                  Used to detect when spec.apiAccess is emptied so the access can be cleared.
                 items:
                   type: string
                 type: array
@@ -4337,6 +4654,7 @@ rules:
 - apiGroups:
   - pocketid.internal
   resources:
+  - pocketidapis
   - pocketidinstances
   - pocketidoidcclients
   - pocketidusergroups
@@ -4352,6 +4670,7 @@ rules:
 - apiGroups:
   - pocketid.internal
   resources:
+  - pocketidapis/finalizers
   - pocketidinstances/finalizers
   - pocketidoidcclients/finalizers
   - pocketidusergroups/finalizers
@@ -4361,6 +4680,7 @@ rules:
 - apiGroups:
   - pocketid.internal
   resources:
+  - pocketidapis/status
   - pocketidinstances/status
   - pocketidoidcclients/status
   - pocketidusergroups/status

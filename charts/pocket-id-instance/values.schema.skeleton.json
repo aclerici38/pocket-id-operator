@@ -178,6 +178,39 @@
           "spec": {}
         }
       }
+    },
+    "apis": {
+      "type": "array",
+      "description": "List of PocketIDAPI custom resources to create",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the PocketIDAPI resource"
+          },
+          "labels": {
+            "type": "object",
+            "description": "Additional labels for the PocketIDAPI resource",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "annotations": {
+            "type": "object",
+            "description": "Additional annotations for the PocketIDAPI resource",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "spec": {}
+        }
+      }
     }
   }
 }

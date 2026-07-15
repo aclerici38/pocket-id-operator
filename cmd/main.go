@@ -47,6 +47,7 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
+	pocketidapi "github.com/aclerici38/pocket-id-operator/internal/controller/api"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/instance"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/oidcclient"
@@ -214,6 +215,15 @@ func main() {
 		Scheme:         mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PocketIDUserGroup")
+		os.Exit(1)
+	}
+	if err := (&pocketidapi.Reconciler{
+		Client:         mgr.GetClient(),
+		BaseReconciler: common.BaseReconciler{Client: mgr.GetClient(), APIReader: mgr.GetAPIReader()},
+		APIReader:      mgr.GetAPIReader(),
+		Scheme:         mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "PocketIDAPI")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
