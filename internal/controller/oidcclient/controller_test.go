@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 
@@ -271,6 +272,306 @@ func TestGetSecretAdditionalLabels(t *testing.T) {
 		if labels["label-2"] != "value2" {
 			t.Errorf("expected label %q to have value %q", "label-2", "value2")
 		}
+	}
+}
+
+func TestGetSecretAnnotations(t *testing.T) {
+	reconciler := &Reconciler{}
+
+	testAnnotations := map[string]string{
+		"reflector.v1.k8s.emberstack.com/reflection-allowed":            "true",
+		"reflector.v1.k8s.emberstack.com/reflection-allowed-namespaces": "vikunja",
+	}
+
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-client"},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			Secret: &pocketidinternalv1alpha1.OIDCClientSecretSpec{
+				AdditionalAnnotations: testAnnotations,
+			},
+		},
+	}
+
+	annotations := reconciler.GetSecretAnnotations(oidcClient)
+	if len(annotations) != len(testAnnotations) {
+		t.Fatalf("expected %d annotations, got %d", len(testAnnotations), len(annotations))
+	}
+	for k, want := range testAnnotations {
+		if got := annotations[k]; got != want {
+			t.Errorf("expected annotation %q to have value %q, got %q", k, want, got)
+		}
+	}
+}
+
+func TestGetSecretAnnotations_NilWhenUnset(t *testing.T) {
+	reconciler := &Reconciler{}
+
+	if got := reconciler.GetSecretAnnotations(&pocketidinternalv1alpha1.PocketIDOIDCClient{}); got != nil {
+		t.Errorf("expected nil annotations when secret is unset, got %v", got)
+	}
+
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			Secret: &pocketidinternalv1alpha1.OIDCClientSecretSpec{},
+		},
+	}
+	if got := reconciler.GetSecretAnnotations(oidcClient); got != nil {
+		t.Errorf("expected nil annotations when additionalAnnotations is unset, got %v", got)
+	}
+}
+
+func TestReconcileSecretAnnotations(t *testing.T) {
+	tests := []struct {
+		name     string
+		existing map[string]string
+		desired  map[string]string
+		want     map[string]string
+	}{
+		{
+			name:    "sets desired annotations",
+			desired: map[string]string{"a": "1", "b": "2"},
+			want:    map[string]string{"a": "1", "b": "2"},
+		},
+		{
+			name:     "drops annotations removed from spec",
+			existing: map[string]string{"a": "1", "stale": "x"},
+			desired:  map[string]string{"a": "1"},
+			want:     map[string]string{"a": "1"},
+		},
+		{
+			name:     "preserves operator-managed annotations",
+			existing: map[string]string{lastRotatedAtAnnotation: "t1", "stale": "x"},
+			desired:  map[string]string{"a": "1"},
+			want:     map[string]string{"a": "1", lastRotatedAtAnnotation: "t1"},
+		},
+		{
+			name:     "operator-managed annotations cannot be overridden",
+			existing: map[string]string{lastRotatedAtAnnotation: "t1"},
+			desired:  map[string]string{lastRotatedAtAnnotation: "spoof", "a": "1"},
+			want:     map[string]string{"a": "1", lastRotatedAtAnnotation: "t1"},
+		},
+		{
+			name:     "clears annotations when nothing desired or managed",
+			existing: map[string]string{"stale": "x"},
+			desired:  nil,
+			want:     nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Annotations: tt.existing}}
+			reconcileSecretAnnotations(secret, tt.desired)
+
+			if tt.want == nil {
+				if secret.Annotations != nil {
+					t.Errorf("expected nil annotations, got %v", secret.Annotations)
+				}
+				return
+			}
+			if !reflect.DeepEqual(secret.Annotations, tt.want) {
+				t.Errorf("expected annotations %v, got %v", tt.want, secret.Annotations)
+			}
+		})
+	}
+}
+
+// TestReconcileSecretAnnotations_OperatorAnnotationsImmutable is an exhaustive guarantee that no
+// user-supplied annotation can ever add, edit, or remove an operator-managed annotation. It drives
+// every operator-managed key through both states (present with a sentinel / absent) against a
+// hostile desired set that tries to spoof, blank, and collide with every managed key at once. The
+// invariant asserted for each key is absolute: the output value must equal exactly what existed
+// before (or stay absent), never what the user asked for. Iterating operatorManagedSecretAnnotations
+// means any key added to that set in the future is covered automatically.
+func TestReconcileSecretAnnotations_OperatorAnnotationsImmutable(t *testing.T) {
+	const sentinel = "operator-owned-value"
+
+	// hostileDesired tries every trick a user could pull: spoofed managed keys with various
+	// payloads, plus benign user keys that must always pass through untouched.
+	hostileValues := []string{"HACKED", "", sentinel + "-tampered", "true"}
+
+	for managedKey := range operatorManagedSecretAnnotations {
+		for _, present := range []bool{true, false} {
+			for _, hostileVal := range hostileValues {
+				name := fmt.Sprintf("%s/present=%v/val=%q", managedKey, present, hostileVal)
+				t.Run(name, func(t *testing.T) {
+					existing := map[string]string{}
+					if present {
+						existing[managedKey] = sentinel
+					}
+					// Spoof every managed key, not just the one under test, and add user keys.
+					desired := map[string]string{"user-a": "1", "user-b": "2"}
+					for k := range operatorManagedSecretAnnotations {
+						desired[k] = hostileVal
+					}
+
+					secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Annotations: existing}}
+					reconcileSecretAnnotations(secret, desired)
+
+					// The managed key is exactly as it was before — never the user's value.
+					got, ok := secret.Annotations[managedKey]
+					if present {
+						if !ok || got != sentinel {
+							t.Fatalf("operator key %q was altered: got %q (present=%v), want %q", managedKey, got, ok, sentinel)
+						}
+					} else if ok {
+						t.Fatalf("operator key %q was created from user input: got %q, want absent", managedKey, got)
+					}
+
+					// User keys always pass through verbatim.
+					if secret.Annotations["user-a"] != "1" || secret.Annotations["user-b"] != "2" {
+						t.Errorf("user annotations must pass through, got %v", secret.Annotations)
+					}
+				})
+			}
+		}
+	}
+}
+
+// TestReconcileSecret_UserAnnotationLifecycleNeverAltersManaged is the end-to-end proof, driven
+// through the full ReconcileSecret path, that operator-managed annotations survive the entire
+// user-annotation lifecycle: adding, editing, and removing user annotations — while the user
+// simultaneously tries to spoof the managed keys on every reconcile. The pre-seeded rotation
+// timestamps (the interval anchor and the instance-aggregate anchor) must emerge byte-for-byte
+// identical after every phase, or scheduled rotation would silently break. A nil apiClient ensures
+// the not-due path never attempts a rotation.
+func TestReconcileSecret_UserAnnotationLifecycleNeverAltersManaged(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	// Last rotation 1h ago against a 24h interval → not due, so no rotation occurs.
+	origRotatedAt := time.Now().Add(-1 * time.Hour).UTC().Format(time.RFC3339)
+	origScheduledAt := time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339)
+
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "lifecycle-client", Namespace: testNamespace, UID: "lifecycle-uid"},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			CallbackURLs: []string{"https://example.com/cb"},
+			ClientSecretRotation: &pocketidinternalv1alpha1.ClientSecretRotation{
+				Enabled:  true,
+				Interval: &metav1.Duration{Duration: 24 * time.Hour},
+			},
+			Secret: &pocketidinternalv1alpha1.OIDCClientSecretSpec{},
+		},
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{ClientID: "lifecycle-id"},
+	}
+
+	existingSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "lifecycle-client-oidc-credentials",
+			Namespace: testNamespace,
+			Annotations: map[string]string{
+				lastRotatedAtAnnotation:           origRotatedAt,
+				lastScheduledRotationAtAnnotation: origScheduledAt,
+			},
+		},
+		Data: map[string][]byte{
+			"client_id":     []byte("lifecycle-id"),
+			"client_secret": []byte("old-secret"),
+		},
+	}
+
+	instance := &pocketidinternalv1alpha1.PocketIDInstance{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-instance", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+			AppURL:        "http://test.example.com",
+			EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{Value: "0123456789abcdef"},
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(oidcClient, existingSecret, instance).
+		WithStatusSubresource(oidcClient, instance).
+		Build()
+
+	reconciler := &Reconciler{Client: fakeClient, APIReader: fakeClient, Scheme: scheme}
+
+	// spoofManaged returns a user annotation set that always tries to hijack the managed keys.
+	spoofManaged := func(userAnnotations map[string]string) map[string]string {
+		out := map[string]string{}
+		for k, v := range userAnnotations {
+			out[k] = v
+		}
+		for k := range operatorManagedSecretAnnotations {
+			out[k] = "USER-HIJACK-ATTEMPT"
+		}
+		return out
+	}
+
+	// runPhase mutates the user annotations, reconciles, and asserts the managed anchors are intact
+	// and the user annotations match exactly what the user set (minus any managed-key spoof).
+	runPhase := func(phase string, userAnnotations map[string]string) {
+		t.Helper()
+
+		oidcClient.Spec.Secret.AdditionalAnnotations = spoofManaged(userAnnotations)
+		if err := fakeClient.Update(ctx, oidcClient); err != nil {
+			t.Fatalf("[%s] update client: %v", phase, err)
+		}
+		if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, nil); err != nil {
+			t.Fatalf("[%s] ReconcileSecret: %v", phase, err)
+		}
+
+		got := &corev1.Secret{}
+		if err := fakeClient.Get(ctx, client.ObjectKey{Name: existingSecret.Name, Namespace: testNamespace}, got); err != nil {
+			t.Fatalf("[%s] get secret: %v", phase, err)
+		}
+
+		// Managed anchors are byte-for-byte identical to the originals.
+		if v := got.Annotations[lastRotatedAtAnnotation]; v != origRotatedAt {
+			t.Errorf("[%s] lastRotatedAtAnnotation altered: got %q, want %q", phase, v, origRotatedAt)
+		}
+		if v := got.Annotations[lastScheduledRotationAtAnnotation]; v != origScheduledAt {
+			t.Errorf("[%s] lastScheduledRotationAtAnnotation altered: got %q, want %q", phase, v, origScheduledAt)
+		}
+		// The client secret must not have rotated on the not-due path.
+		if v := string(got.Data["client_secret"]); v != "old-secret" {
+			t.Errorf("[%s] client_secret unexpectedly changed: got %q", phase, v)
+		}
+		// Exactly the user's annotations are present; managed keys never carry the spoofed value.
+		for k, want := range userAnnotations {
+			if v := got.Annotations[k]; v != want {
+				t.Errorf("[%s] user annotation %q: got %q, want %q", phase, k, v, want)
+			}
+		}
+	}
+
+	// Add: introduce user annotations for the first time.
+	runPhase("add", map[string]string{
+		"reflector.v1.k8s.emberstack.com/reflection-allowed": "true",
+		"team": "platform",
+	})
+	// Edit: change values and add a key.
+	runPhase("edit", map[string]string{
+		"reflector.v1.k8s.emberstack.com/reflection-allowed": "false",
+		"team":  "security",
+		"added": "yes",
+	})
+	// Remove: drop back to a single user annotation; the removed ones must be gone.
+	runPhase("remove", map[string]string{"team": "security"})
+
+	// Clear: remove all user annotations. The managed anchors must still survive on their own.
+	oidcClient.Spec.Secret.AdditionalAnnotations = nil
+	if err := fakeClient.Update(ctx, oidcClient); err != nil {
+		t.Fatalf("[clear] update client: %v", err)
+	}
+	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, nil); err != nil {
+		t.Fatalf("[clear] ReconcileSecret: %v", err)
+	}
+	got := &corev1.Secret{}
+	if err := fakeClient.Get(ctx, client.ObjectKey{Name: existingSecret.Name, Namespace: testNamespace}, got); err != nil {
+		t.Fatalf("[clear] get secret: %v", err)
+	}
+	if v := got.Annotations[lastRotatedAtAnnotation]; v != origRotatedAt {
+		t.Errorf("[clear] lastRotatedAtAnnotation altered: got %q, want %q", v, origRotatedAt)
+	}
+	if v := got.Annotations[lastScheduledRotationAtAnnotation]; v != origScheduledAt {
+		t.Errorf("[clear] lastScheduledRotationAtAnnotation altered: got %q, want %q", v, origScheduledAt)
+	}
+	if _, ok := got.Annotations["team"]; ok {
+		t.Error("[clear] user annotation must be removed once cleared from spec")
 	}
 }
 

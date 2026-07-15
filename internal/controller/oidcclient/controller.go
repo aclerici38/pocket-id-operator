@@ -988,6 +988,7 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 	}
 
 	secretLabels := r.GetSecretLabels(oidcClient)
+	secretAnnotations := r.GetSecretAnnotations(oidcClient)
 
 	// Create or update the secret
 	secret := &corev1.Secret{
@@ -1004,6 +1005,9 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 		for k, v := range secretLabels {
 			secret.Labels[k] = v
 		}
+
+		// Add user annotations
+		reconcileSecretAnnotations(secret, secretAnnotations)
 
 		secret.Data = secretData
 		secret.Type = corev1.SecretTypeOpaque
@@ -1438,6 +1442,57 @@ func (r *Reconciler) GetSecretLabels(oidcClient *pocketidinternalv1alpha1.Pocket
 		}
 	}
 	return secretLabels
+}
+
+// GetSecretAnnotations returns the user-defined annotations to apply to the managed
+// secret. Operator-managed annotations are applied separately and take precedence.
+func (r *Reconciler) GetSecretAnnotations(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) map[string]string {
+	if oidcClient.Spec.Secret == nil || oidcClient.Spec.Secret.AdditionalAnnotations == nil {
+		return nil
+	}
+
+	annotations := make(map[string]string, len(oidcClient.Spec.Secret.AdditionalAnnotations))
+	for k, v := range oidcClient.Spec.Secret.AdditionalAnnotations {
+		annotations[k] = v
+	}
+	return annotations
+}
+
+// operatorManagedSecretAnnotations are annotations the operator writes on the
+// managed secret. They cannot be overridden by AdditionalAnnotations.
+var operatorManagedSecretAnnotations = map[string]struct{}{
+	lastRotatedAtAnnotation:           {},
+	lastScheduledRotationAtAnnotation: {},
+}
+
+// reconcileSecretAnnotations sets the secret's annotations to the desired
+// user-defined set while retaining any operator-managed annotations already
+// present. This drops annotations removed from the spec without disturbing
+// operator-owned ones.
+func reconcileSecretAnnotations(secret *corev1.Secret, desired map[string]string) {
+	preserved := make(map[string]string)
+	for key := range operatorManagedSecretAnnotations {
+		if v, ok := secret.Annotations[key]; ok {
+			preserved[key] = v
+		}
+	}
+
+	if len(desired) == 0 && len(preserved) == 0 {
+		secret.Annotations = nil
+		return
+	}
+
+	annotations := make(map[string]string, len(desired)+len(preserved))
+	for k, v := range desired {
+		if _, managed := operatorManagedSecretAnnotations[k]; managed {
+			continue
+		}
+		annotations[k] = v
+	}
+	for k, v := range preserved {
+		annotations[k] = v
+	}
+	secret.Annotations = annotations
 }
 
 func (r *Reconciler) GetSecretKeys(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) pocketidinternalv1alpha1.OIDCClientSecretKeys {
