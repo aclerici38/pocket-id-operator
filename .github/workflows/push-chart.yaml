@@ -21,6 +21,11 @@ on:
         required: false
         type: string
         default: ""
+      ref:
+        description: Git ref/SHA to build the chart from. Empty uses the triggering ref.
+        required: false
+        type: string
+        default: ""
   workflow_dispatch:
     inputs:
       chart_version:
@@ -38,6 +43,11 @@ on:
         default: ""
       changelog:
         description: Artifact Hub changelog annotation.
+        required: false
+        type: string
+        default: ""
+      ref:
+        description: Git ref/SHA to build the chart from. Empty uses the triggering ref.
         required: false
         type: string
         default: ""
@@ -62,6 +72,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          ref: ${{ inputs.ref }}
           persist-credentials: false
 
       - name: Set metadata
