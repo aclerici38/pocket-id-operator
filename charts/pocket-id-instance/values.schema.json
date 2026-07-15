@@ -3635,7 +3635,7 @@
                 "description": "TrustedProxies configures which proxies Pocket-ID trusts for X-Forwarded-* headers\n(sets TRUST_PROXY). When unset, the operator trusts the private/loopback ranges if\nspec.route.enabled is set.",
                 "properties": {
                   "cidrs": {
-                    "description": "CIDRs is the list of trusted proxy IPs/CIDRs. Only used when enabled is true.\nWhen empty, TRUST_PROXY is set to \"true\", trusting all upstream sources\n(matching Pocket-ID's own TRUST_PROXY=true semantics). To restrict trust,\nlist explicit ranges — e.g. the in-cluster gateway network, or a CDN's\npublished ranges when it connects directly to the pod.",
+                    "description": "CIDRs is the list of trusted proxy IPs/CIDRs. Only used when enabled is true.\nWhen empty, TRUST_PROXY is set to \"true\", trusting all upstream sources\nTo restrict trust, list explicit ranges: e.g. the in-cluster gateway network, or a CDN's\npublished ranges when it connects directly to the pod.",
                     "items": {
                       "type": "string"
                     },

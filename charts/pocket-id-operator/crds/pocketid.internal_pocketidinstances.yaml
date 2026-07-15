@@ -2754,8 +2754,7 @@ spec:
                     description: |-
                       CIDRs is the list of trusted proxy IPs/CIDRs. Only used when enabled is true.
                       When empty, TRUST_PROXY is set to "true", trusting all upstream sources
-                      (matching Pocket-ID's own TRUST_PROXY=true semantics). To restrict trust,
-                      list explicit ranges — e.g. the in-cluster gateway network, or a CDN's
+                      To restrict trust, list explicit ranges: e.g. the in-cluster gateway network, or a CDN's
                       published ranges when it connects directly to the pod.
                     items:
                       type: string
