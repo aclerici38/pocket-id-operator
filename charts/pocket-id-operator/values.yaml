@@ -135,8 +135,8 @@ pocket-id-instance:
 
     # PocketIDInstance spec. See docs/pocketidinstance.md for the full field list.
     spec:
-      # REQUIRED
-      encryptionKey:
+      # REQUIRED for a deployed instance; omit for external instances.
+      # encryptionKey:
         # valueFrom:
         #   secretKeyRef:
         #     name: pocket-id-encryption-key
@@ -198,8 +198,7 @@ instance:
   serviceMonitor:
     enabled: false
   # PocketIDInstance spec. See the `pocket-id-instance` block above for examples.
-  spec:
-    encryptionKey:
+  spec: {}
 
 # DEPRECATED: configure users under `pocket-id-instance.users` above instead.
 users: []
