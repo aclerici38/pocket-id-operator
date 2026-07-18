@@ -756,7 +756,7 @@ func isHTTPRouteCRDUnavailableError(err error) bool {
 // deleteIfManaged fetches obj and deletes it only if it is managed by the
 // operator. This prevents cleanup logic from removing a same-named resource
 // that a user created and the operator does not own.
-func (r *Reconciler) deleteIfManaged(ctx context.Context, obj client.Object) error {
+func (r *Reconciler) deleteIfManaged(ctx context.Context, obj client.Object, reason string, keysAndValues ...any) error {
 	key := client.ObjectKeyFromObject(obj)
 	if err := r.Get(ctx, key, obj); err != nil {
 		return client.IgnoreNotFound(err)
@@ -766,6 +766,7 @@ func (r *Reconciler) deleteIfManaged(ctx context.Context, obj client.Object) err
 			"kind", obj.GetObjectKind().GroupVersionKind().Kind, "name", key.Name, "namespace", key.Namespace)
 		return nil
 	}
+	logf.FromContext(ctx).V(1).Info(reason, keysAndValues...)
 	return client.IgnoreNotFound(r.Delete(ctx, obj))
 }
 
@@ -785,21 +786,18 @@ func (r *Reconciler) reconcileVolume(ctx context.Context, instance *pocketidinte
 
 	// Delete PVC if persistence is disabled or using StatefulSet
 	if !instance.Spec.Persistence.Enabled || instance.Spec.DeploymentType == "StatefulSet" {
-		log.V(1).Info("Deleting default PVC (persistence disabled or StatefulSet)", "pvc", defaultPVCName)
-		return r.deleteIfManaged(ctx, pvc)
+		return r.deleteIfManaged(ctx, pvc, "Deleting default PVC (persistence disabled or StatefulSet)", "pvc", defaultPVCName)
 	}
 
 	// If using an existing claim, delete the default PVC ONLY if its name is different from the existing claim
 	if instance.Spec.Persistence.ExistingClaim != "" {
 		if instance.Spec.Persistence.ExistingClaim != defaultPVCName {
-			log.V(1).Info("Deleting default PVC (using different existingClaim)", "pvc", defaultPVCName, "existingClaim", instance.Spec.Persistence.ExistingClaim)
-			return r.deleteIfManaged(ctx, pvc)
+			return r.deleteIfManaged(ctx, pvc, "Deleting default PVC (using different existingClaim)", "pvc", defaultPVCName, "existingClaim", instance.Spec.Persistence.ExistingClaim)
 		}
 		// If they are the same, we need to ensure it's no longer managed by us
 		// to prevent it from being deleted when the instance is deleted (garbage collection)
 		existing := &corev1.PersistentVolumeClaim{}
 		if err := r.Get(ctx, client.ObjectKeyFromObject(pvc), existing); err == nil {
-			log.V(1).Info("Removing management labels and ownerReference from default PVC (used as existingClaim)", "pvc", defaultPVCName)
 			original := existing.DeepCopy()
 			existing.OwnerReferences = nil
 
@@ -807,6 +805,7 @@ func (r *Reconciler) reconcileVolume(ctx context.Context, instance *pocketidinte
 			delete(existing.Labels, common.ManagedByLabelKey)
 
 			if !reflect.DeepEqual(original, existing) {
+				log.V(1).Info("Removing management labels and ownerReference from default PVC (used as existingClaim)", "pvc", defaultPVCName)
 				return r.Update(ctx, existing)
 			}
 		}

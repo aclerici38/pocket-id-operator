@@ -66,7 +66,7 @@ func TestDeleteIfManaged_DeletesManagedObject(t *testing.T) {
 	pvc := dataPVC(true)
 	r := volumeTestReconciler(t, pvc)
 
-	if err := r.deleteIfManaged(context.Background(), pvc.DeepCopy()); err != nil {
+	if err := r.deleteIfManaged(context.Background(), pvc.DeepCopy(), "deleting test PVC"); err != nil {
 		t.Fatalf("deleteIfManaged returned error: %v", err)
 	}
 	if pvcExists(t, r) {
@@ -78,7 +78,7 @@ func TestDeleteIfManaged_PreservesUnmanagedObject(t *testing.T) {
 	pvc := dataPVC(false)
 	r := volumeTestReconciler(t, pvc)
 
-	if err := r.deleteIfManaged(context.Background(), pvc.DeepCopy()); err != nil {
+	if err := r.deleteIfManaged(context.Background(), pvc.DeepCopy(), "deleting test PVC"); err != nil {
 		t.Fatalf("deleteIfManaged returned error: %v", err)
 	}
 	if !pvcExists(t, r) {
@@ -88,7 +88,7 @@ func TestDeleteIfManaged_PreservesUnmanagedObject(t *testing.T) {
 
 func TestDeleteIfManaged_MissingObjectIsNoOp(t *testing.T) {
 	r := volumeTestReconciler(t)
-	if err := r.deleteIfManaged(context.Background(), dataPVC(true)); err != nil {
+	if err := r.deleteIfManaged(context.Background(), dataPVC(true), "deleting test PVC"); err != nil {
 		t.Fatalf("deleteIfManaged returned error for missing object: %v", err)
 	}
 }
