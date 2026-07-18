@@ -38,8 +38,8 @@ instance:
 
   # PocketIDInstance spec. See docs/pocketidinstance.md for the full field list.
   spec:
-    # REQUIRED
-    encryptionKey:
+    # REQUIRED for a deployed instance; omit for external instances.
+    # encryptionKey:
       # valueFrom:
       #   secretKeyRef:
       #     name: pocket-id-encryption-key
