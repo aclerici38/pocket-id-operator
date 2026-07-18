@@ -70,9 +70,9 @@ mise run test-e2e   # full suite against a local Kind cluster (needs Docker)
 
 ### Generated files
 
-CRDs, DeepCopy methods, `dist/install.yaml`, the chart's CRDs, and the JSON
-schemas are all derived from the Go API types in `api/` and must be committed
-and current. Regenerate everything with one task:
+CRDs, DeepCopy methods, `dist/install.yaml`, `dist/crds.yaml`, the chart's CRDs,
+and the JSON schemas are all derived from the Go API types in `api/` and must be
+committed and current. Regenerate everything with one task:
 
 ```sh
 mise run regen

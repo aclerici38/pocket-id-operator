@@ -11,6 +11,7 @@ charts/pocket-id-operator/crds/*.yaml                        linguist-generated=
 
 # kustomize bundle (mise run build-installer)
 dist/install.yaml                             linguist-generated=true
+dist/crds.yaml                                linguist-generated=true
 
 # tool-managed lockfile (mise install)
 mise.lock                                     linguist-generated=true

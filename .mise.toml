@@ -150,9 +150,13 @@ description = "Push the manager image"
 run = '$CONTAINER_TOOL push "${IMG:-$DEFAULT_IMG}"'
 
 [tasks.build-installer]
-description = "Generate a consolidated install.yaml with CRDs and deployment"
+description = "Generate a consolidated install.yaml (CRDs + deployment) and a standalone crds.yaml"
 depends = ["manifests", "generate"]
-run = ["mkdir -p dist", "kustomize build config/default > dist/install.yaml"]
+run = [
+  "mkdir -p dist",
+  "kustomize build config/default > dist/install.yaml",
+  "kustomize build config/crd > dist/crds.yaml",
+]
 
 ## ── Deployment ───────────────────────────────────────────────────────────
 [tasks.install]

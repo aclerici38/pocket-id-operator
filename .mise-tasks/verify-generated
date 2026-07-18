@@ -12,6 +12,7 @@ gen=(
   charts/pocket-id-operator/templates/rbac/manager-role.yaml
   charts/pocket-id-operator/crds
   dist/install.yaml
+  dist/crds.yaml
   dist/schemas
   charts/pocket-id-operator/values.schema.json
   charts/pocket-id-instance/values.schema.json
