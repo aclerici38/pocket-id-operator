@@ -22,8 +22,10 @@ Add to the top of any YAML file:
 | PocketIDUserGroup | `pocketidusergroup_v1alpha1.json` |
 | PocketIDOIDCClient | `pocketidoidcclient_v1alpha1.json` |
 | PocketIDAPI | `pocketidapi_v1alpha1.json` |
-| Helm values | `values.schema.json` |
-| FluxCD HelmRelease | `helmrelease_v2_pocket-id-operator.json` |
+| Helm values (operator chart) | `charts/pocket-id-operator/values.schema.json` |
+| Helm values (instance chart) | `charts/pocket-id-instance/values.schema.json` |
+| FluxCD HelmRelease (operator chart) | `helmrelease_v2_pocket-id-operator.json` |
+| FluxCD HelmRelease (instance chart) | `helmrelease_v2_pocket-id-instance.json` |
 
 **From a release (recommended):**
 To always fetch the latest schemas:
@@ -45,7 +47,7 @@ https://raw.githubusercontent.com/aclerici38/pocket-id-operator/main/dist/schema
 https://raw.githubusercontent.com/aclerici38/pocket-id-operator/<version>/dist/schemas/pocketidinstance_v1alpha1.json
 ```
 
-Note: the Helm values schema is at `charts/pocket-id-operator/values.schema.json` instead of `dist/schemas/`.
+Note: the Helm values schemas live next to their charts (`charts/<chart>/values.schema.json`) instead of `dist/schemas/`; the HelmRelease schemas are in `dist/schemas/`.
 
 **From my k8s-versioned-schemas project (latest):**
 ```

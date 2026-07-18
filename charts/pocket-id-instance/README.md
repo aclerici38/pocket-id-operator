@@ -45,6 +45,22 @@ settable even if not listed above. See the per-resource docs:
 - [PocketIDOIDCClient](https://github.com/aclerici38/pocket-id-operator/blob/main/docs/pocketidoidcclient.md)
 - [PocketIDAPI](https://github.com/aclerici38/pocket-id-operator/blob/main/docs/pocketidapi.md)
 
+## Values Schema
+
+`values.schema.json` is **generated** — do not edit it directly. Changes will be overwritten.
+
+To modify the schema, edit `values.schema.skeleton.json` (the base structure with
+placeholder entries that get resolved to the full CRD schemas), then run:
+
+```sh
+mise run generate-schemas
+```
+
+This also emits a FluxCD HelmRelease schema with this chart's values embedded
+(`dist/schemas/helmrelease_v2_pocket-id-instance.json`). See the
+[schemas docs](https://github.com/aclerici38/pocket-id-operator/blob/main/docs/README.md#json-schemas)
+for how to wire them into `yaml-language-server`.
+
 ## Encryption key
 
 Pocket ID v2 requires a 16+ character `ENCRYPTION_KEY` for a deployed instance.
