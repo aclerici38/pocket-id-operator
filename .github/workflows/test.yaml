@@ -34,7 +34,7 @@ jobs:
         uses: jdx/mise-action@dad1bfd3df957f44999b559dd69dc1671cb4e9ea # v4.2.1
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: "2026.7.5"
+          version: "2026.7.7"
           install_args: setup-envtest
 
       - name: Run tests
