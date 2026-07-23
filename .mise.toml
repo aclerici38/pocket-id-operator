@@ -24,7 +24,7 @@ zizmor = "1.28.0"
 
 # Local cluster / cluster CLIs for e2e and chart tests
 kind = "0.32.0"
-kubectl = "1.36.2"
+kubectl = "1.36.3"
 helm = "4.2.3"
 
 # CRD → JSON schema conversion
