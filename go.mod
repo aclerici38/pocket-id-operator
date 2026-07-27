@@ -5,7 +5,7 @@ go 1.26.5
 require (
 	github.com/aclerici38/pocket-id-go-client/v2 v2.11.0
 	github.com/go-logr/logr v1.4.4
-	github.com/go-openapi/runtime v0.32.6
+	github.com/go-openapi/runtime v0.33.0
 	github.com/go-openapi/strfmt v0.27.0
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.42.1
