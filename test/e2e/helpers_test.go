@@ -972,6 +972,29 @@ echo "$BODY" | grep -o '"id":"[^"]*"' | head -1 | sed 's/"id":"//;s/"//'`,
 	return getPodLogs(podName, namespace)
 }
 
+// deleteUserGroupInPocketID deletes a user group directly via the Pocket-ID API,
+// simulating a group removed out-of-band (another cluster, or the UI).
+func deleteUserGroupInPocketID(podName, namespace, groupID string) {
+	staticSecretName := instanceName + "-static-api-key"
+
+	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
+		"-o", "jsonpath={.data.token}")
+	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
+
+	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
+HTTP_CODE=$(curl -s -o /dev/null -w '%%{http_code}' -X DELETE \
+  -H "X-API-KEY: $API_KEY" %s/api/user-groups/%s)
+if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "204" ]; then
+  echo "Failed to delete user group: HTTP $HTTP_CODE" >&2
+  exit 1
+fi
+echo "User group deleted"`,
+		apiKeyBase64, formatInstanceURL(), groupID)
+
+	applyYAML(createCurlPodYAML(podName, namespace, script))
+	waitForPodSucceeded(podName, namespace)
+}
+
 // getGroupMembersFromPocketID returns the space-separated user IDs of a group
 // by querying the Pocket-ID API directly.
 func getGroupMembersFromPocketID(podName, namespace, groupID string) string {

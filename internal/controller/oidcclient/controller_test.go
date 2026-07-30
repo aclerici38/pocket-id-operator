@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	openapiruntime "github.com/go-openapi/runtime"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -2248,6 +2249,15 @@ func (s staticUserGroupLookup) ListUserGroups(_ context.Context, search string) 
 		}
 	}
 	return nil, nil
+}
+
+func (s staticUserGroupLookup) GetUserGroup(_ context.Context, id string) (*pocketid.UserGroup, error) {
+	for _, group := range s.groups {
+		if group.ID == id {
+			return group, nil
+		}
+	}
+	return nil, openapiruntime.NewAPIError("getUserGroup", nil, http.StatusNotFound)
 }
 
 func TestAggregateAllowedUserGroupIDs_ExternalGroupNeedsNoCR(t *testing.T) {

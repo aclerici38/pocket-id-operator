@@ -1054,10 +1054,10 @@ var _ = Describe("OIDCClient attaching groups that have no PocketIDUserGroup CR"
 			AllowedGroupIDs: []string{nonexistentGroupID},
 		})
 
-		// A groupID is handed to Pocket-ID unverified, so unlike groupName the failure
-		// comes from the allowed-groups write and carries reason ReconcileError.
+		// Pocket-ID accepts unknown group IDs silently, so the operator detects this by
+		// re-reading the client after the push rather than from the write failing.
 		waitForCondition("pocketidoidcclient", badIDClient, userNS, "Ready", "False")
-		waitForConditionReason("pocketidoidcclient", badIDClient, userNS, "Ready", "ReconcileError")
+		waitForConditionReason("pocketidoidcclient", badIDClient, userNS, "Ready", "UserGroupNotFound")
 
 		By("verifying it stays not Ready across resyncs")
 		Consistently(func(g Gomega) {
@@ -1218,5 +1218,69 @@ var _ = Describe("OIDCClient mixing CR, name, and ID group references", Ordered,
 				"-o", "jsonpath={.metadata.finalizers}")
 			g.Expect(finalizers).NotTo(ContainSubstring("pocketid.internal/oidc-client-finalizer"))
 		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+	})
+})
+
+var _ = Describe("OIDCClient referencing a group deleted upstream", Ordered, func() {
+	const (
+		doomedGroup = "doomed-external-group"
+		byIDClient  = "doomed-by-group-id"
+		byNameClnt  = "doomed-by-group-name"
+	)
+
+	var doomedGroupID string
+
+	BeforeAll(func() {
+		By("creating a group directly in Pocket-ID, with no CR in this cluster")
+		doomedGroupID = createUserGroupInPocketID("create-doomed-group", userNS, doomedGroup, "Doomed Group")
+		Expect(doomedGroupID).NotTo(BeEmpty())
+
+		By("attaching two clients, one by groupID and one by groupName")
+		createOIDCClient(OIDCClientOptions{
+			Name:            byIDClient,
+			CallbackURLs:    []string{"https://doomed-id.example.com/callback"},
+			AllowedGroupIDs: []string{doomedGroupID},
+		})
+		createOIDCClient(OIDCClientOptions{
+			Name:              byNameClnt,
+			CallbackURLs:      []string{"https://doomed-name.example.com/callback"},
+			AllowedGroupNames: []string{doomedGroup},
+		})
+	})
+
+	It("should start Ready with the group attached", func() {
+		for _, name := range []string{byIDClient, byNameClnt} {
+			waitForReady("pocketidoidcclient", name, userNS)
+			waitForStatusField("pocketidoidcclient", name, userNS,
+				".status.allowedUserGroupIDs[0]", doomedGroupID)
+		}
+	})
+
+	It("should go not Ready after the group is deleted in Pocket-ID", func() {
+		By("deleting the group out-of-band")
+		deleteUserGroupInPocketID("delete-doomed-group", userNS, doomedGroupID)
+
+		// Nothing in the cluster changed, so this is only caught because references
+		// are re-resolved against Pocket-ID on every reconcile.
+		By("verifying both clients report UserGroupNotFound without any spec edit")
+		for _, name := range []string{byIDClient, byNameClnt} {
+			waitForCondition("pocketidoidcclient", name, userNS, "Ready", "False")
+			waitForConditionReason("pocketidoidcclient", name, userNS, "Ready", "UserGroupNotFound")
+		}
+	})
+
+	It("should recover a groupName reference when the group is recreated", func() {
+		// A name can be re-resolved to whatever group now holds it; a groupID cannot,
+		// since a recreated group gets a new ID.
+		newID := createUserGroupInPocketID("recreate-doomed-group", userNS, doomedGroup, "Doomed Group")
+		Expect(newID).NotTo(BeEmpty())
+		Expect(newID).NotTo(Equal(doomedGroupID))
+
+		waitForReady("pocketidoidcclient", byNameClnt, userNS)
+		waitForStatusField("pocketidoidcclient", byNameClnt, userNS,
+			".status.allowedUserGroupIDs[0]", newID)
+
+		By("verifying the stale groupID reference stays not Ready")
+		waitForConditionReason("pocketidoidcclient", byIDClient, userNS, "Ready", "UserGroupNotFound")
 	})
 })

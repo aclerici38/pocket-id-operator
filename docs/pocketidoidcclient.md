@@ -164,6 +164,13 @@ spec:
 **not** managed by a `PocketIDUserGroup` in this cluster. The operator resolves the
 group only to grant this client access; it never creates, modifies, or deletes it.
 
+Every reference is resolved against Pocket-ID on each reconcile. If a referenced group
+does not exist, the client's `Ready` condition reports reason `UserGroupNotFound` and
+reconciliation retries until it appears. This applies equally to a group that is later
+deleted in Pocket-ID. Pocket-ID accepts unknown group IDs without complaint, so without
+this check a stale `groupID` would leave the client group-restricted with nothing
+attached — locking every user out — while the resource still reported `Ready`.
+
 Groups can also be attached from the other direction, using `spec.allowedOIDCClients`
 on a `PocketIDUserGroup`; the final set is the union of both. That direction always
 requires the oidcclient to reference a `PocketIDOIDCClient` in the same cluster.

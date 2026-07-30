@@ -3,9 +3,11 @@ package helpers
 import (
 	"context"
 	stderrors "errors"
+	"net/http"
 	"strings"
 	"testing"
 
+	openapiruntime "github.com/go-openapi/runtime"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -34,6 +36,15 @@ func (f *fakeUserGroupLookup) ListUserGroups(_ context.Context, search string) (
 		}
 	}
 	return matches, nil
+}
+
+func (f *fakeUserGroupLookup) GetUserGroup(_ context.Context, id string) (*pocketid.UserGroup, error) {
+	for _, group := range f.groups {
+		if group.ID == id {
+			return group, nil
+		}
+	}
+	return nil, openapiruntime.NewAPIError("getUserGroup", nil, http.StatusNotFound)
 }
 
 func readyConditions() []metav1.Condition {
@@ -288,13 +299,11 @@ func TestResolveUserGroupReferences_ByGroupNameListError(t *testing.T) {
 	}
 }
 
-func TestResolveUserGroupReferences_ByGroupIDIsPassedThrough(t *testing.T) {
+func TestResolveUserGroupReferences_ByGroupID(t *testing.T) {
 	ctx := context.Background()
 	fc := fake.NewClientBuilder().WithScheme(newScheme(t)).Build()
-	lookup := &fakeUserGroupLookup{}
+	lookup := &fakeUserGroupLookup{groups: []*pocketid.UserGroup{{ID: "gid-dev", Name: "developers"}}}
 
-	// An ID needs no resolution: it is handed to Pocket-ID as-is, which rejects it
-	// on the allowed-groups write if it does not exist.
 	ids, err := ResolveUserGroupReferences(ctx, fc, lookup,
 		[]pocketidv1alpha1.NamespacedUserGroupReference{{GroupID: "gid-dev"}}, "default")
 	if err != nil {
@@ -304,7 +313,34 @@ func TestResolveUserGroupReferences_ByGroupIDIsPassedThrough(t *testing.T) {
 		t.Errorf("expected [gid-dev], got %v", ids)
 	}
 	if lookup.listCall != 0 {
-		t.Errorf("expected no API calls when resolving by ID, got %d", lookup.listCall)
+		t.Errorf("expected an ID to be fetched directly, not searched, got %d searches", lookup.listCall)
+	}
+}
+
+func TestResolveUserGroupReferences_ByGroupIDNotFound(t *testing.T) {
+	ctx := context.Background()
+	fc := fake.NewClientBuilder().WithScheme(newScheme(t)).Build()
+
+	// Pocket-ID accepts unknown IDs on the allowed-groups write, so this check is the
+	// only thing standing between a typo and a client restricted to no groups at all.
+	_, err := ResolveUserGroupReferences(ctx, fc, &fakeUserGroupLookup{},
+		[]pocketidv1alpha1.NamespacedUserGroupReference{{GroupID: "gid-missing"}}, "default")
+	if !stderrors.Is(err, ErrUserGroupNotFound) {
+		t.Fatalf("expected ErrUserGroupNotFound, got %v", err)
+	}
+}
+
+func TestResolveUserGroupReferences_ByGroupIDWithoutLookup(t *testing.T) {
+	ctx := context.Background()
+	fc := fake.NewClientBuilder().WithScheme(newScheme(t)).Build()
+
+	_, err := ResolveUserGroupReferences(ctx, fc, nil,
+		[]pocketidv1alpha1.NamespacedUserGroupReference{{GroupID: "gid-dev"}}, "default")
+	if err == nil {
+		t.Fatal("expected error when resolving by ID with no lookup")
+	}
+	if stderrors.Is(err, ErrUserGroupNotFound) {
+		t.Error("expected a non-ErrUserGroupNotFound error for a nil lookup")
 	}
 }
 
