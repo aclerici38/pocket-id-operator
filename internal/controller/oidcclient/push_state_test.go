@@ -574,7 +574,7 @@ func TestAggregateAllowedUserGroupIDs_OutputIsSorted(t *testing.T) {
 	fc := newAggregationFakeClient(scheme, groupC, groupA, groupB, oidcClient)
 	reconciler := &Reconciler{Client: fc, Scheme: scheme}
 
-	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient)
+	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

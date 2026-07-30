@@ -3,6 +3,15 @@
 #MISE depends=["setup-test-e2e"]
 set -euo pipefail
 
+# Ensure run on correct context (don't ask)
+expected="kind-${KIND_CLUSTER}"
+current="$(kubectl config current-context 2>/dev/null || true)"
+if [ "$current" != "$expected" ]; then
+  echo "refusing to run: kubectl context is '${current:-<none>}', expected '$expected'" >&2
+  echo "run 'kubectl config use-context $expected' first" >&2
+  exit 1
+fi
+
 # IMG and KIND_CLUSTER are read from the environment by the suite.
 # E2E_FOCUS_FILE optionally scopes the run, e.g.
 #   E2E_FOCUS_FILE=test/e2e/httproute_test.go mise run test-e2e-only

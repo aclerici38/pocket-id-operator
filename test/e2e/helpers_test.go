@@ -314,7 +314,9 @@ type OIDCClientOptions struct {
 	LogoutCallbackURLs []string
 	IsPublic           bool
 	SkipConsent        bool
-	AllowedUserGroups  []string
+	AllowedUserGroups  []string // spec.allowedUserGroups[].name: PocketIDUserGroup CRs
+	AllowedGroupNames  []string // spec.allowedUserGroups[].groupName: Pocket-ID groups with no CR
+	AllowedGroupIDs    []string // spec.allowedUserGroups[].groupID: Pocket-ID groups with no CR
 	APIAccess          []APIAccessGrant
 	Logo               *OIDCLogoConfig
 	Secret             *OIDCSecretConfig
@@ -413,10 +415,16 @@ func buildOIDCClientYAML(opts OIDCClientOptions) string {
 		}
 	}
 
-	if len(opts.AllowedUserGroups) > 0 {
+	if len(opts.AllowedUserGroups) > 0 || len(opts.AllowedGroupNames) > 0 || len(opts.AllowedGroupIDs) > 0 {
 		spec.WriteString("  allowedUserGroups:\n")
 		for _, group := range opts.AllowedUserGroups {
 			spec.WriteString(fmt.Sprintf("  - name: %s\n", group))
+		}
+		for _, group := range opts.AllowedGroupNames {
+			spec.WriteString(fmt.Sprintf("  - groupName: %s\n", group))
+		}
+		for _, group := range opts.AllowedGroupIDs {
+			spec.WriteString(fmt.Sprintf("  - groupID: %s\n", group))
 		}
 	}
 
@@ -962,6 +970,29 @@ echo "$BODY" | grep -o '"id":"[^"]*"' | head -1 | sed 's/"id":"//;s/"//'`,
 
 	applyYAML(createCurlPodYAML(podName, namespace, script))
 	return getPodLogs(podName, namespace)
+}
+
+// deleteUserGroupInPocketID deletes a user group directly via the Pocket-ID API,
+// simulating a group removed out-of-band (another cluster, or the UI).
+func deleteUserGroupInPocketID(podName, namespace, groupID string) {
+	staticSecretName := instanceName + "-static-api-key"
+
+	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
+		"-o", "jsonpath={.data.token}")
+	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
+
+	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
+HTTP_CODE=$(curl -s -o /dev/null -w '%%{http_code}' -X DELETE \
+  -H "X-API-KEY: $API_KEY" %s/api/user-groups/%s)
+if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "204" ]; then
+  echo "Failed to delete user group: HTTP $HTTP_CODE" >&2
+  exit 1
+fi
+echo "User group deleted"`,
+		apiKeyBase64, formatInstanceURL(), groupID)
+
+	applyYAML(createCurlPodYAML(podName, namespace, script))
+	waitForPodSucceeded(podName, namespace)
 }
 
 // getGroupMembersFromPocketID returns the space-separated user IDs of a group

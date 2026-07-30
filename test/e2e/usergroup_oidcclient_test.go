@@ -985,3 +985,302 @@ var _ = Describe("Multiple OIDC Clients Sharing a User Group", Ordered, func() {
 		}
 	})
 })
+
+var _ = Describe("OIDCClient attaching groups that have no PocketIDUserGroup CR", Ordered, func() {
+	const (
+		externalGroup    = "external-only-group"
+		byNameClient     = "attach-by-group-name"
+		byIDClient       = "attach-by-group-id"
+		missingRefClient = "attach-missing-group"
+		badIDClient      = "attach-bad-group-id"
+		nonexistentGroup = "no-such-group-anywhere"
+		// A well-formed UUID that no group in Pocket-ID owns.
+		nonexistentGroupID = "00000000-0000-4000-8000-000000000000"
+		createGroupPod     = "create-external-group"
+		verifyAttachedPod  = "verify-external-group-attached"
+	)
+
+	var externalGroupID string
+
+	BeforeAll(func() {
+		By("creating a user group directly in Pocket-ID, with no CR in this cluster")
+		externalGroupID = createUserGroupInPocketID(createGroupPod, userNS, externalGroup, "External Only Group")
+		Expect(externalGroupID).NotTo(BeEmpty(), "expected a group ID from Pocket-ID")
+	})
+
+	It("should resolve a group by groupName without a PocketIDUserGroup", func() {
+		createOIDCClient(OIDCClientOptions{
+			Name:              byNameClient,
+			CallbackURLs:      []string{"https://external-group.example.com/callback"},
+			AllowedGroupNames: []string{externalGroup},
+		})
+
+		waitForReady("pocketidoidcclient", byNameClient, userNS)
+		waitForStatusField("pocketidoidcclient", byNameClient, userNS,
+			".status.allowedUserGroupIDs[0]", externalGroupID)
+	})
+
+	It("should push the assignment through to Pocket-ID", func() {
+		clientID := kubectlGet("pocketidoidcclient", byNameClient, "-n", userNS,
+			"-o", "jsonpath={.status.clientID}")
+
+		Eventually(func(g Gomega) {
+			body := getFromPocketID(verifyAttachedPod, userNS, "/api/oidc/clients/"+clientID)
+			g.Expect(body).To(ContainSubstring(externalGroupID))
+		}, 2*time.Minute, 5*time.Second).Should(Succeed())
+	})
+
+	It("should leave no PocketIDUserGroup behind for the external group", func() {
+		output := kubectlGet("pocketidusergroup", "-n", userNS, "-o", "name")
+		Expect(output).NotTo(ContainSubstring(externalGroup))
+	})
+
+	It("should resolve a group by groupID", func() {
+		createOIDCClient(OIDCClientOptions{
+			Name:            byIDClient,
+			CallbackURLs:    []string{"https://external-group-id.example.com/callback"},
+			AllowedGroupIDs: []string{externalGroupID},
+		})
+
+		waitForReady("pocketidoidcclient", byIDClient, userNS)
+		waitForStatusField("pocketidoidcclient", byIDClient, userNS,
+			".status.allowedUserGroupIDs[0]", externalGroupID)
+	})
+
+	It("should not become Ready when groupID does not exist", func() {
+		createOIDCClient(OIDCClientOptions{
+			Name:            badIDClient,
+			CallbackURLs:    []string{"https://bad-group-id.example.com/callback"},
+			AllowedGroupIDs: []string{nonexistentGroupID},
+		})
+
+		// Pocket-ID accepts unknown group IDs silently, so the operator detects this by
+		// re-reading the client after the push rather than from the write failing.
+		waitForCondition("pocketidoidcclient", badIDClient, userNS, "Ready", "False")
+		waitForConditionReason("pocketidoidcclient", badIDClient, userNS, "Ready", "UserGroupNotFound")
+
+		By("verifying it stays not Ready across resyncs")
+		Consistently(func(g Gomega) {
+			output := kubectlGet("pocketidoidcclient", badIDClient, "-n", userNS,
+				"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+			g.Expect(output).To(Equal("False"))
+		}, 30*time.Second, 5*time.Second).Should(Succeed())
+	})
+
+	It("should report UserGroupNotFound for a group that does not exist", func() {
+		createOIDCClient(OIDCClientOptions{
+			Name:              missingRefClient,
+			CallbackURLs:      []string{"https://missing-group.example.com/callback"},
+			AllowedGroupNames: []string{nonexistentGroup},
+		})
+
+		waitForConditionReason("pocketidoidcclient", missingRefClient, userNS, "Ready", "UserGroupNotFound")
+	})
+
+	It("should recover once the referenced group exists in Pocket-ID", func() {
+		createUserGroupInPocketID("create-late-group", userNS, nonexistentGroup, "Late Group")
+		waitForReady("pocketidoidcclient", missingRefClient, userNS)
+	})
+
+	It("should leave the external group itself untouched", func() {
+		// The core promise: the operator resolves the group but never manages it.
+		// friendlyName is the field a PocketIDUserGroup would overwrite on every
+		// resync, so its survival is the strongest available signal.
+		body := getFromPocketID("verify-external-group-unmodified", userNS, "/api/user-groups/"+externalGroupID)
+		Expect(body).To(ContainSubstring("External Only Group"))
+		Expect(body).To(ContainSubstring(externalGroup))
+	})
+
+	It("should not block deletion of the client on the external group", func() {
+		Expect(kubectlDeleteWait("pocketidoidcclient", byNameClient, userNS, 2*time.Minute)).To(Succeed())
+		waitForResourceDeleted("pocketidoidcclient", byNameClient, userNS)
+	})
+
+	It("should survive deleting a client that shared the external group", func() {
+		// byNameClient was just deleted; byIDClient referenced the same group and
+		// must be unaffected, and the group must still exist in Pocket-ID.
+		waitForReady("pocketidoidcclient", byIDClient, userNS)
+		waitForStatusField("pocketidoidcclient", byIDClient, userNS,
+			".status.allowedUserGroupIDs[0]", externalGroupID)
+
+		body := getFromPocketID("verify-external-group-survives", userNS, "/api/user-groups/"+externalGroupID)
+		Expect(body).To(ContainSubstring(externalGroupID))
+	})
+})
+
+var _ = Describe("OIDCClient mixing CR, name, and ID group references", Ordered, func() {
+	const (
+		comboClient   = "attach-combo-groups"
+		comboCRGroup  = "combo-cr-group"
+		comboExtA     = "combo-external-a"
+		comboExtB     = "combo-external-b"
+		comboExtByID  = "combo-external-by-id"
+		comboCRPocket = "combo-cr-pocket-group"
+	)
+
+	var (
+		crGroupID  string
+		extAID     string
+		extBID     string
+		extByIDGid string
+	)
+
+	BeforeAll(func() {
+		By("creating one group through a PocketIDUserGroup CR")
+		createUserGroupAndWaitReady(UserGroupOptions{
+			Name:         comboCRGroup,
+			GroupName:    comboCRPocket,
+			FriendlyName: "Combo CR Group",
+		})
+		crGroupID = kubectlGet("pocketidusergroup", comboCRGroup, "-n", userNS,
+			"-o", "jsonpath={.status.groupID}")
+		Expect(crGroupID).NotTo(BeEmpty())
+
+		By("creating three groups directly in Pocket-ID with no CR")
+		extAID = createUserGroupInPocketID("create-combo-a", userNS, comboExtA, "Combo External A")
+		extBID = createUserGroupInPocketID("create-combo-b", userNS, comboExtB, "Combo External B")
+		extByIDGid = createUserGroupInPocketID("create-combo-id", userNS, comboExtByID, "Combo External By ID")
+		Expect(extAID).NotTo(BeEmpty())
+		Expect(extBID).NotTo(BeEmpty())
+		Expect(extByIDGid).NotTo(BeEmpty())
+	})
+
+	It("should resolve every reference form on one client", func() {
+		createOIDCClient(OIDCClientOptions{
+			Name:              comboClient,
+			CallbackURLs:      []string{"https://combo.example.com/callback"},
+			AllowedUserGroups: []string{comboCRGroup},
+			AllowedGroupNames: []string{comboExtA, comboExtB},
+			AllowedGroupIDs:   []string{extByIDGid},
+		})
+
+		waitForReady("pocketidoidcclient", comboClient, userNS)
+		Eventually(func(g Gomega) {
+			output := kubectlGet("pocketidoidcclient", comboClient, "-n", userNS,
+				"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+			for _, id := range []string{crGroupID, extAID, extBID, extByIDGid} {
+				g.Expect(output).To(ContainSubstring(id))
+			}
+			g.Expect(strings.Fields(output)).To(HaveLen(4))
+		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+	})
+
+	It("should push all four groups through to Pocket-ID", func() {
+		clientID := kubectlGet("pocketidoidcclient", comboClient, "-n", userNS,
+			"-o", "jsonpath={.status.clientID}")
+
+		Eventually(func(g Gomega) {
+			body := getFromPocketID("verify-combo-groups", userNS, "/api/oidc/clients/"+clientID)
+			for _, id := range []string{crGroupID, extAID, extBID, extByIDGid} {
+				g.Expect(body).To(ContainSubstring(id))
+			}
+		}, 2*time.Minute, 5*time.Second).Should(Succeed())
+	})
+
+	It("should collapse duplicate references to the same group", func() {
+		// The CR group named three ways: by CR, by its Pocket-ID name, and by ID.
+		createOIDCClient(OIDCClientOptions{
+			Name:              comboClient,
+			CallbackURLs:      []string{"https://combo.example.com/callback"},
+			AllowedUserGroups: []string{comboCRGroup},
+			AllowedGroupNames: []string{comboCRPocket},
+			AllowedGroupIDs:   []string{crGroupID},
+		})
+
+		waitForReady("pocketidoidcclient", comboClient, userNS)
+		Eventually(func(g Gomega) {
+			output := kubectlGet("pocketidoidcclient", comboClient, "-n", userNS,
+				"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+			g.Expect(strings.Fields(output)).To(Equal([]string{crGroupID}))
+		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+	})
+
+	It("should detach external groups when their references are removed", func() {
+		createOIDCClient(OIDCClientOptions{
+			Name:              comboClient,
+			CallbackURLs:      []string{"https://combo.example.com/callback"},
+			AllowedGroupNames: []string{comboExtA},
+		})
+
+		waitForReady("pocketidoidcclient", comboClient, userNS)
+		Eventually(func(g Gomega) {
+			output := kubectlGet("pocketidoidcclient", comboClient, "-n", userNS,
+				"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+			g.Expect(strings.Fields(output)).To(Equal([]string{extAID}))
+		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+	})
+
+	It("should not add a finalizer to the CR group for external references", func() {
+		// The CR group is no longer referenced by the client at all, so the
+		// cross-resource finalizer must be gone and deletion must not block.
+		Eventually(func(g Gomega) {
+			finalizers := kubectlGet("pocketidusergroup", comboCRGroup, "-n", userNS,
+				"-o", "jsonpath={.metadata.finalizers}")
+			g.Expect(finalizers).NotTo(ContainSubstring("pocketid.internal/oidc-client-finalizer"))
+		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+	})
+})
+
+var _ = Describe("OIDCClient referencing a group deleted upstream", Ordered, func() {
+	const (
+		doomedGroup = "doomed-external-group"
+		byIDClient  = "doomed-by-group-id"
+		byNameClnt  = "doomed-by-group-name"
+	)
+
+	var doomedGroupID string
+
+	BeforeAll(func() {
+		By("creating a group directly in Pocket-ID, with no CR in this cluster")
+		doomedGroupID = createUserGroupInPocketID("create-doomed-group", userNS, doomedGroup, "Doomed Group")
+		Expect(doomedGroupID).NotTo(BeEmpty())
+
+		By("attaching two clients, one by groupID and one by groupName")
+		createOIDCClient(OIDCClientOptions{
+			Name:            byIDClient,
+			CallbackURLs:    []string{"https://doomed-id.example.com/callback"},
+			AllowedGroupIDs: []string{doomedGroupID},
+		})
+		createOIDCClient(OIDCClientOptions{
+			Name:              byNameClnt,
+			CallbackURLs:      []string{"https://doomed-name.example.com/callback"},
+			AllowedGroupNames: []string{doomedGroup},
+		})
+	})
+
+	It("should start Ready with the group attached", func() {
+		for _, name := range []string{byIDClient, byNameClnt} {
+			waitForReady("pocketidoidcclient", name, userNS)
+			waitForStatusField("pocketidoidcclient", name, userNS,
+				".status.allowedUserGroupIDs[0]", doomedGroupID)
+		}
+	})
+
+	It("should go not Ready after the group is deleted in Pocket-ID", func() {
+		By("deleting the group out-of-band")
+		deleteUserGroupInPocketID("delete-doomed-group", userNS, doomedGroupID)
+
+		// Nothing in the cluster changed, so this is only caught because references
+		// are re-resolved against Pocket-ID on every reconcile.
+		By("verifying both clients report UserGroupNotFound without any spec edit")
+		for _, name := range []string{byIDClient, byNameClnt} {
+			waitForCondition("pocketidoidcclient", name, userNS, "Ready", "False")
+			waitForConditionReason("pocketidoidcclient", name, userNS, "Ready", "UserGroupNotFound")
+		}
+	})
+
+	It("should recover a groupName reference when the group is recreated", func() {
+		// A name can be re-resolved to whatever group now holds it; a groupID cannot,
+		// since a recreated group gets a new ID.
+		newID := createUserGroupInPocketID("recreate-doomed-group", userNS, doomedGroup, "Doomed Group")
+		Expect(newID).NotTo(BeEmpty())
+		Expect(newID).NotTo(Equal(doomedGroupID))
+
+		waitForReady("pocketidoidcclient", byNameClnt, userNS)
+		waitForStatusField("pocketidoidcclient", byNameClnt, userNS,
+			".status.allowedUserGroupIDs[0]", newID)
+
+		By("verifying the stale groupID reference stays not Ready")
+		waitForConditionReason("pocketidoidcclient", byIDClient, userNS, "Ready", "UserGroupNotFound")
+	})
+})

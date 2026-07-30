@@ -3230,20 +3230,50 @@ spec:
             description: spec defines the desired state of PocketIDOIDCClient
             properties:
               allowedUserGroups:
-                description: AllowedUserGroups restricts access to the listed PocketIDUserGroups
+                description: |-
+                  AllowedUserGroups restricts access to the listed user groups. Each entry names
+                  either a PocketIDUserGroup CR or, for groups managed outside this cluster, an
+                  existing Pocket-ID group by name or ID.
                 items:
-                  description: NamespacedUserGroupReference references a PocketIDUserGroup
-                    by name and namespace.
+                  description: |-
+                    NamespacedUserGroupReference selects a Pocket-ID user group, either by the
+                    PocketIDUserGroup CR that manages it or, for groups managed outside this cluster,
+                    by their name or ID in Pocket-ID.
                   properties:
+                    groupID:
+                      description: |-
+                        GroupID is the Pocket-ID ID of an existing user group. Like groupName, the
+                        group itself is left untouched.
+                      maxLength: 64
+                      minLength: 1
+                      type: string
+                    groupName:
+                      description: |-
+                        GroupName is the name of an existing user group in Pocket-ID, for groups not
+                        managed by a PocketIDUserGroup in this cluster. The operator only resolves the
+                        group to grant this client access and never modifies the group itself.
+                      maxLength: 255
+                      minLength: 2
+                      type: string
                     name:
                       description: Name is the name of the PocketIDUserGroup CR
+                      maxLength: 253
+                      minLength: 1
                       type: string
                     namespace:
                       description: |-
                         Namespace is the namespace of the PocketIDUserGroup CR
                         Defaults to the PocketIDOIDCClient namespace
+                      maxLength: 63
+                      minLength: 1
                       type: string
                   type: object
+                  x-kubernetes-validations:
+                  - message: exactly one of name, groupName, or groupID must be set
+                    rule: '(has(self.name) ? 1 : 0) + (has(self.groupName) ? 1 : 0)
+                      + (has(self.groupID) ? 1 : 0) == 1'
+                  - message: namespace may only be set together with name
+                    rule: '!has(self.namespace) || has(self.name)'
                 type: array
               apiAccess:
                 description: |-

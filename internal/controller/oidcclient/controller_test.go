@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	openapiruntime "github.com/go-openapi/runtime"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,6 +22,7 @@ import (
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/helpers"
 	"github.com/aclerici38/pocket-id-operator/internal/metrics"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
@@ -2107,7 +2109,7 @@ func TestAggregateAllowedUserGroupIDs_DirectOnly(t *testing.T) {
 	fc := newAggregationFakeClient(scheme, group, oidcClient)
 	reconciler := &Reconciler{Client: fc, Scheme: scheme}
 
-	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient)
+	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -2135,7 +2137,7 @@ func TestAggregateAllowedUserGroupIDs_ReverseOnly(t *testing.T) {
 	fc := newAggregationFakeClient(scheme, group, oidcClient)
 	reconciler := &Reconciler{Client: fc, Scheme: scheme}
 
-	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient)
+	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -2170,7 +2172,7 @@ func TestAggregateAllowedUserGroupIDs_Union(t *testing.T) {
 	fc := newAggregationFakeClient(scheme, groupA, groupB, oidcClient)
 	reconciler := &Reconciler{Client: fc, Scheme: scheme}
 
-	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient)
+	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -2205,7 +2207,7 @@ func TestAggregateAllowedUserGroupIDs_SkipsNotReady(t *testing.T) {
 	fc := newAggregationFakeClient(scheme, group, oidcClient)
 	reconciler := &Reconciler{Client: fc, Scheme: scheme}
 
-	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient)
+	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -2226,12 +2228,234 @@ func TestAggregateAllowedUserGroupIDs_NilWhenNoRefs(t *testing.T) {
 	fc := newAggregationFakeClient(scheme, oidcClient)
 	reconciler := &Reconciler{Client: fc, Scheme: scheme}
 
-	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient)
+	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if ids != nil {
 		t.Errorf("expected nil when no refs from either side, got %v", ids)
+	}
+}
+
+// staticUserGroupLookup resolves groups that have no PocketIDUserGroup in this cluster.
+type staticUserGroupLookup struct {
+	groups []*pocketid.UserGroup
+}
+
+func (s staticUserGroupLookup) ListUserGroups(_ context.Context, search string) ([]*pocketid.UserGroup, error) {
+	for _, group := range s.groups {
+		if group.Name == search {
+			return []*pocketid.UserGroup{group}, nil
+		}
+	}
+	return nil, nil
+}
+
+func (s staticUserGroupLookup) GetUserGroup(_ context.Context, id string) (*pocketid.UserGroup, error) {
+	for _, group := range s.groups {
+		if group.ID == id {
+			return group, nil
+		}
+	}
+	return nil, openapiruntime.NewAPIError("getUserGroup", nil, http.StatusNotFound)
+}
+
+func TestAggregateAllowedUserGroupIDs_ExternalGroupNeedsNoCR(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "client-ext", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
+				{GroupName: "developers"},
+			},
+		},
+	}
+
+	fc := newAggregationFakeClient(scheme, oidcClient)
+	reconciler := &Reconciler{Client: fc, Scheme: scheme}
+	lookup := staticUserGroupLookup{groups: []*pocketid.UserGroup{{ID: "gid-dev", Name: "developers"}}}
+
+	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient, lookup)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != "gid-dev" {
+		t.Errorf("expected [gid-dev], got %v", ids)
+	}
+}
+
+func TestAggregateAllowedUserGroupIDs_UnionsCRAndExternalRefs(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	group := &pocketidinternalv1alpha1.PocketIDUserGroup{
+		ObjectMeta: metav1.ObjectMeta{Name: "group-a", Namespace: testNamespace},
+		Status:     pocketidinternalv1alpha1.PocketIDUserGroupStatus{GroupID: "gid-a", Conditions: readyCondition()},
+	}
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "client-mixed", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
+				{Name: "group-a"},
+				{GroupName: "developers"},
+			},
+		},
+	}
+
+	fc := newAggregationFakeClient(scheme, group, oidcClient)
+	reconciler := &Reconciler{Client: fc, Scheme: scheme}
+	lookup := staticUserGroupLookup{groups: []*pocketid.UserGroup{{ID: "gid-dev", Name: "developers"}}}
+
+	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient, lookup)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ids) != 2 || ids[0] != "gid-a" || ids[1] != "gid-dev" {
+		t.Errorf("expected sorted [gid-a gid-dev], got %v", ids)
+	}
+}
+
+func TestReconcileErrorReason_DistinguishesMissingUserGroup(t *testing.T) {
+	missing := fmt.Errorf("aggregate allowed user groups: %w", helpers.ErrUserGroupNotFound)
+	if got := reconcileErrorReason(missing); got != "UserGroupNotFound" {
+		t.Errorf("expected UserGroupNotFound, got %q", got)
+	}
+	if got := reconcileErrorReason(fmt.Errorf("connection refused")); got != "ReconcileError" {
+		t.Errorf("expected ReconcileError, got %q", got)
+	}
+}
+
+func TestAggregateAllowedUserGroupIDs_MissingGroupKeepsSentinelThroughWrapping(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "client-missing-ext", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
+				{GroupName: "nope"},
+			},
+		},
+	}
+
+	fc := newAggregationFakeClient(scheme, oidcClient)
+	reconciler := &Reconciler{Client: fc, Scheme: scheme}
+
+	_, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient, staticUserGroupLookup{})
+	if err == nil {
+		t.Fatal("expected an error for an unresolvable group name")
+	}
+	// aggregate wraps once and the caller wraps again; the condition reason depends
+	// on the sentinel surviving both.
+	if reason := reconcileErrorReason(fmt.Errorf("aggregate allowed user groups: %w", err)); reason != "UserGroupNotFound" {
+		t.Errorf("expected UserGroupNotFound through the real call chain, got %q", reason)
+	}
+}
+
+func TestAggregateAllowedUserGroupIDs_DedupesSameGroupNamedThreeWays(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	group := &pocketidinternalv1alpha1.PocketIDUserGroup{
+		ObjectMeta: metav1.ObjectMeta{Name: "devs", Namespace: testNamespace},
+		Status:     pocketidinternalv1alpha1.PocketIDUserGroupStatus{GroupID: "gid-dev", Conditions: readyCondition()},
+	}
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "client-dupe", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
+				{Name: "devs"},
+				{GroupName: "developers"},
+				{GroupID: "gid-dev"},
+			},
+		},
+	}
+
+	fc := newAggregationFakeClient(scheme, group, oidcClient)
+	reconciler := &Reconciler{Client: fc, Scheme: scheme}
+	lookup := staticUserGroupLookup{groups: []*pocketid.UserGroup{{ID: "gid-dev", Name: "developers"}}}
+
+	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient, lookup)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != "gid-dev" {
+		t.Errorf("expected a single [gid-dev], got %v", ids)
+	}
+}
+
+func TestAggregateAllowedUserGroupIDs_UnionsExternalAndReverseRefs(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	// Reverse direction: a UserGroup CR naming this client in spec.allowedOIDCClients.
+	reverse := &pocketidinternalv1alpha1.PocketIDUserGroup{
+		ObjectMeta: metav1.ObjectMeta{Name: "group-rev", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDUserGroupSpec{
+			AllowedOIDCClients: []pocketidinternalv1alpha1.NamespacedOIDCClientReference{{Name: "client-ext-rev"}},
+		},
+		Status: pocketidinternalv1alpha1.PocketIDUserGroupStatus{GroupID: "gid-rev", Conditions: readyCondition()},
+	}
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "client-ext-rev", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
+				{GroupName: "developers"},
+			},
+		},
+	}
+
+	fc := newAggregationFakeClient(scheme, reverse, oidcClient)
+	reconciler := &Reconciler{Client: fc, Scheme: scheme}
+	lookup := staticUserGroupLookup{groups: []*pocketid.UserGroup{{ID: "gid-dev", Name: "developers"}}}
+
+	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient, lookup)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ids) != 2 || ids[0] != "gid-dev" || ids[1] != "gid-rev" {
+		t.Errorf("expected sorted [gid-dev gid-rev], got %v", ids)
+	}
+}
+
+func TestOidcClientInput_IsGroupRestrictedForExternalOnlyRefs(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	// spec.allowedUserGroups holds only external refs, so a count of the list is
+	// still the right signal for group restriction.
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "client-restricted", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
+				{GroupName: "developers"},
+				{GroupID: "gid-ops"},
+			},
+		},
+	}
+
+	reconciler := &Reconciler{Scheme: scheme}
+	if !reconciler.OidcClientInput(oidcClient, nil, "", "").IsGroupRestricted {
+		t.Error("expected IsGroupRestricted to be true for external-only refs")
+	}
+}
+
+func TestUserGroupAllowsOIDCClient_IgnoresRefsWithoutName(t *testing.T) {
+	group := &pocketidinternalv1alpha1.PocketIDUserGroup{
+		ObjectMeta: metav1.ObjectMeta{Name: "group-a", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDUserGroupSpec{
+			AllowedOIDCClients: []pocketidinternalv1alpha1.NamespacedOIDCClientReference{{Name: ""}},
+		},
+	}
+	if userGroupAllowsOIDCClient(group, testNamespace, "client-a") {
+		t.Error("expected an empty client ref to match nothing")
 	}
 }
 

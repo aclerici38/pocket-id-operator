@@ -72,6 +72,12 @@ spec:
 - `spec.allowedOIDCClients[].namespace`: namespace of the CR (defaults to the user group's namespace).
 - `status.allowedOIDCClientIDs`: resolved Pocket ID client IDs after reconciliation.
 
+Both directions require the `PocketIDOIDCClient` and `PocketIDUserGroup` to exist in
+the cluster. To attach a client to a group that has no `PocketIDUserGroup` here — a
+group owned by another cluster or created in the UI — use `groupName` or `groupID` in
+the client's `spec.allowedUserGroups` instead. See
+[pocketidoidcclient.md](pocketidoidcclient.md#allowed-user-groups).
+
 ## Status Highlights
 
 - `status.groupID`: Pocket-ID group ID.

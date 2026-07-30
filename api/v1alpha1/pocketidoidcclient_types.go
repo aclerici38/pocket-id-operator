@@ -24,16 +24,39 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// NamespacedUserGroupReference references a PocketIDUserGroup by name and namespace.
+// NamespacedUserGroupReference selects a Pocket-ID user group, either by the
+// PocketIDUserGroup CR that manages it or, for groups managed outside this cluster,
+// by their name or ID in Pocket-ID.
+// +kubebuilder:validation:XValidation:rule="(has(self.name) ? 1 : 0) + (has(self.groupName) ? 1 : 0) + (has(self.groupID) ? 1 : 0) == 1",message="exactly one of name, groupName, or groupID must be set"
+// +kubebuilder:validation:XValidation:rule="!has(self.namespace) || has(self.name)",message="namespace may only be set together with name"
 type NamespacedUserGroupReference struct {
 	// Name is the name of the PocketIDUserGroup CR
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
 	// +optional
 	Name string `json:"name,omitempty"`
 
 	// Namespace is the namespace of the PocketIDUserGroup CR
 	// Defaults to the PocketIDOIDCClient namespace
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
 	// +optional
 	Namespace string `json:"namespace,omitempty"`
+
+	// GroupName is the name of an existing user group in Pocket-ID, for groups not
+	// managed by a PocketIDUserGroup in this cluster. The operator only resolves the
+	// group to grant this client access and never modifies the group itself.
+	// +kubebuilder:validation:MinLength=2
+	// +kubebuilder:validation:MaxLength=255
+	// +optional
+	GroupName string `json:"groupName,omitempty"`
+
+	// GroupID is the Pocket-ID ID of an existing user group. Like groupName, the
+	// group itself is left untouched.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=64
+	// +optional
+	GroupID string `json:"groupID,omitempty"`
 }
 
 // NamespacedOIDCClientReference references a PocketIDOIDCClient by name and namespace.
@@ -323,7 +346,9 @@ type PocketIDOIDCClientSpec struct {
 	// +optional
 	FederatedIdentities []OIDCClientFederatedIdentity `json:"federatedIdentities,omitempty"`
 
-	// AllowedUserGroups restricts access to the listed PocketIDUserGroups
+	// AllowedUserGroups restricts access to the listed user groups. Each entry names
+	// either a PocketIDUserGroup CR or, for groups managed outside this cluster, an
+	// existing Pocket-ID group by name or ID.
 	// +optional
 	AllowedUserGroups []NamespacedUserGroupReference `json:"allowedUserGroups,omitempty"`
 

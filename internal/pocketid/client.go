@@ -1037,23 +1037,6 @@ func (c *Client) UpdateUserGroupUsers(ctx context.Context, id string, userIDs []
 	return nil
 }
 
-func (c *Client) UpdateUserGroupAllowedOIDCClients(ctx context.Context, id string, clientIDs []string) error {
-	params := oidc.NewPutAPIUserGroupsIDAllowedOidcClientsParams().
-		WithID(id).
-		WithGroups(&models.GithubComPocketIDPocketIDBackendInternalDtoUserGroupUpdateAllowedOidcClientsDto{
-			OidcClientIds: clientIDs,
-		})
-
-	start := time.Now()
-	_, err := c.raw.OIDc.PutAPIUserGroupsIDAllowedOidcClientsContext(ctx, params)
-	recordCall("update_user_group_allowed_oidc_clients", err, time.Since(start))
-	if err != nil {
-		return fmt.Errorf("update user group allowed OIDC clients failed: %w", err)
-	}
-
-	return nil
-}
-
 func (c *Client) UpdateUserGroupCustomClaims(ctx context.Context, id string, claims []CustomClaim) ([]CustomClaim, error) {
 	payload := make([]*models.GithubComPocketIDPocketIDBackendInternalDtoCustomClaimCreateDto, 0, len(claims))
 	for _, claim := range claims {
