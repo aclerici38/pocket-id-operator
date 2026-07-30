@@ -112,6 +112,7 @@ jobs:
 
   e2e-next:
     name: E2E Tests (pocket-id next)
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'pocket-id-upgrade') }}
     needs:
       - meta
       - build
