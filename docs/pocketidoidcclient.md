@@ -146,6 +146,28 @@ spec:
     - "https://app.example.com/logout"
 ```
 
+## Allowed User Groups
+
+`spec.allowedUserGroups` restricts the client to members of the listed groups. Each
+entry names a group one of three ways:
+
+```yaml
+spec:
+  allowedUserGroups:
+    - name: platform-admins       # a PocketIDUserGroup CR
+      namespace: pocket-id        # optional, defaults to the client's namespace
+    - groupName: developers       # an existing Pocket-ID group, by name
+    - groupID: 4f8c1b2e-...       # an existing Pocket-ID group, by ID
+```
+
+`groupName` and `groupID` reference a group that already exists in Pocket-ID and is
+**not** managed by a `PocketIDUserGroup` in this cluster. The operator resolves the
+group only to grant this client access; it never creates, modifies, or deletes it.
+
+Groups can also be attached from the other direction, using `spec.allowedOIDCClients`
+on a `PocketIDUserGroup`; the final set is the union of both. That direction always
+requires the oidcclient to reference a `PocketIDOIDCClient` in the same cluster.
+
 ## Minimal Public Client
 
 ```yaml
@@ -410,4 +432,4 @@ spec:
 
 When `spec.scim` is removed the operator deletes the SCIM service provider from Pocket ID.
 
-*Note:* For all options and an up-to-date spec `kubectl explain PocketIDOIDCClient` 
+*Note:* For all options and an up-to-date spec `kubectl explain PocketIDOIDCClient`

@@ -314,7 +314,9 @@ type OIDCClientOptions struct {
 	LogoutCallbackURLs []string
 	IsPublic           bool
 	SkipConsent        bool
-	AllowedUserGroups  []string
+	AllowedUserGroups  []string // spec.allowedUserGroups[].name: PocketIDUserGroup CRs
+	AllowedGroupNames  []string // spec.allowedUserGroups[].groupName: Pocket-ID groups with no CR
+	AllowedGroupIDs    []string // spec.allowedUserGroups[].groupID: Pocket-ID groups with no CR
 	APIAccess          []APIAccessGrant
 	Logo               *OIDCLogoConfig
 	Secret             *OIDCSecretConfig
@@ -413,10 +415,16 @@ func buildOIDCClientYAML(opts OIDCClientOptions) string {
 		}
 	}
 
-	if len(opts.AllowedUserGroups) > 0 {
+	if len(opts.AllowedUserGroups) > 0 || len(opts.AllowedGroupNames) > 0 || len(opts.AllowedGroupIDs) > 0 {
 		spec.WriteString("  allowedUserGroups:\n")
 		for _, group := range opts.AllowedUserGroups {
 			spec.WriteString(fmt.Sprintf("  - name: %s\n", group))
+		}
+		for _, group := range opts.AllowedGroupNames {
+			spec.WriteString(fmt.Sprintf("  - groupName: %s\n", group))
+		}
+		for _, group := range opts.AllowedGroupIDs {
+			spec.WriteString(fmt.Sprintf("  - groupID: %s\n", group))
 		}
 	}
 

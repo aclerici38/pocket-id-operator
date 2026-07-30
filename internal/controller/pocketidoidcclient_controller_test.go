@@ -154,7 +154,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 				}); err != nil {
 					return nil, err
 				}
-				return helpers.ResolveUserGroupReferences(ctx, k8sClient, oidcClient.Spec.AllowedUserGroups, oidcClient.Namespace)
+				return helpers.ResolveUserGroupReferences(ctx, k8sClient, nil, oidcClient.Spec.AllowedUserGroups, oidcClient.Namespace)
 			}, timeout, interval).Should(Equal([]string{"group-id-1"}))
 		})
 
@@ -171,7 +171,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 				},
 			}
 
-			_, err := helpers.ResolveUserGroupReferences(ctx, k8sClient, client.Spec.AllowedUserGroups, client.Namespace)
+			_, err := helpers.ResolveUserGroupReferences(ctx, k8sClient, nil, client.Spec.AllowedUserGroups, client.Namespace)
 			Expect(err).To(HaveOccurred())
 		})
 
@@ -188,7 +188,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 				},
 			}
 
-			_, err := helpers.ResolveUserGroupReferences(ctx, k8sClient, client.Spec.AllowedUserGroups, client.Namespace)
+			_, err := helpers.ResolveUserGroupReferences(ctx, k8sClient, nil, client.Spec.AllowedUserGroups, client.Namespace)
 			Expect(err).To(HaveOccurred())
 		})
 
@@ -220,7 +220,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 				},
 			}
 
-			_, err := helpers.ResolveUserGroupReferences(ctx, k8sClient, client.Spec.AllowedUserGroups, client.Namespace)
+			_, err := helpers.ResolveUserGroupReferences(ctx, k8sClient, nil, client.Spec.AllowedUserGroups, client.Namespace)
 			Expect(err).To(HaveOccurred())
 		})
 
@@ -276,7 +276,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 				},
 			}
 
-			ids, err := helpers.ResolveUserGroupReferences(ctx, k8sClient, client.Spec.AllowedUserGroups, client.Namespace)
+			ids, err := helpers.ResolveUserGroupReferences(ctx, k8sClient, nil, client.Spec.AllowedUserGroups, client.Namespace)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ids).To(Equal([]string{"cross-ns-group-id"}))
 		})
@@ -456,6 +456,64 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 
 			Expect(err).To(HaveOccurred())
 			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+		})
+	})
+
+	Context("AllowedUserGroups reference validation", func() {
+		newClient := func(name string, refs ...pocketidinternalv1alpha1.NamespacedUserGroupReference) *pocketidinternalv1alpha1.PocketIDOIDCClient {
+			return &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+				Spec:       pocketidinternalv1alpha1.PocketIDOIDCClientSpec{AllowedUserGroups: refs},
+			}
+		}
+		expectAccepted := func(resource *pocketidinternalv1alpha1.PocketIDOIDCClient) {
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, resource) })
+		}
+		expectRejected := func(resource *pocketidinternalv1alpha1.PocketIDOIDCClient) {
+			err := k8sClient.Create(ctx, resource)
+			Expect(err).To(HaveOccurred())
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+		}
+
+		It("accepts a CR reference with a namespace", func() {
+			expectAccepted(newClient("ug-cel-cr",
+				pocketidinternalv1alpha1.NamespacedUserGroupReference{Name: "group-a", Namespace: namespace}))
+		})
+
+		It("accepts a groupName reference", func() {
+			expectAccepted(newClient("ug-cel-name",
+				pocketidinternalv1alpha1.NamespacedUserGroupReference{GroupName: "developers"}))
+		})
+
+		It("accepts a groupID reference", func() {
+			expectAccepted(newClient("ug-cel-id",
+				pocketidinternalv1alpha1.NamespacedUserGroupReference{GroupID: "gid-dev"}))
+		})
+
+		It("accepts CR and external references in the same list", func() {
+			expectAccepted(newClient("ug-cel-mixed",
+				pocketidinternalv1alpha1.NamespacedUserGroupReference{Name: "group-a"},
+				pocketidinternalv1alpha1.NamespacedUserGroupReference{GroupName: "developers"}))
+		})
+
+		It("rejects an empty reference", func() {
+			expectRejected(newClient("ug-cel-empty", pocketidinternalv1alpha1.NamespacedUserGroupReference{}))
+		})
+
+		It("rejects a reference setting both name and groupName", func() {
+			expectRejected(newClient("ug-cel-both",
+				pocketidinternalv1alpha1.NamespacedUserGroupReference{Name: "group-a", GroupName: "developers"}))
+		})
+
+		It("rejects a reference setting both groupName and groupID", func() {
+			expectRejected(newClient("ug-cel-both-external",
+				pocketidinternalv1alpha1.NamespacedUserGroupReference{GroupName: "developers", GroupID: "gid-dev"}))
+		})
+
+		It("rejects a namespace without a CR name", func() {
+			expectRejected(newClient("ug-cel-ns-only",
+				pocketidinternalv1alpha1.NamespacedUserGroupReference{GroupName: "developers", Namespace: namespace}))
 		})
 	})
 

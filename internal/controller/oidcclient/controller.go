@@ -19,6 +19,7 @@ package oidcclient
 import (
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -154,7 +155,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		requeue, err := r.createOrAdoptOIDCClient(ctx, oidcClient, apiClient)
 		if err != nil {
 			log.Error(err, "Failed to create or adopt OIDC client")
-			_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "ReconcileError", err.Error())
+			_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, reconcileErrorReason(err), err.Error())
 			return ctrl.Result{RequeueAfter: common.Requeue}, nil
 		}
 		if requeue {
@@ -194,7 +195,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	updated, err := r.pushOIDCClientState(ctx, oidcClient, apiClient, current)
 	if err != nil {
 		log.Error(err, "Failed to push OIDC client state")
-		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "ReconcileError", err.Error())
+		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, reconcileErrorReason(err), err.Error())
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
@@ -303,7 +304,7 @@ func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *po
 	input := r.OidcClientInput(oidcClient, nil, logoURL, darkLogoURL)
 
 	// Aggregate all allowed groups
-	groupIDs, err := r.aggregateAllowedUserGroupIDs(ctx, oidcClient)
+	groupIDs, err := r.aggregateAllowedUserGroupIDs(ctx, oidcClient, apiClient)
 	if err != nil {
 		return false, fmt.Errorf("aggregate allowed user groups: %w", err)
 	}
@@ -379,7 +380,7 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 	log := logf.FromContext(ctx)
 
 	// Aggregate allowed groups before building input so IsGroupRestricted is correct
-	groupIDs, err := r.aggregateAllowedUserGroupIDs(ctx, oidcClient)
+	groupIDs, err := r.aggregateAllowedUserGroupIDs(ctx, oidcClient, apiClient)
 	if err != nil {
 		return false, fmt.Errorf("aggregate allowed user groups: %w", err)
 	}
@@ -444,7 +445,10 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 // 1. Direct refs from spec.allowedUserGroups
 // 2. UserGroups whose spec.allowedOIDCClients references this client
 // Returns nil if neither source contributes.
-func (r *Reconciler) aggregateAllowedUserGroupIDs(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) ([]string, error) {
+//
+// The reverse direction can only come from a PocketIDUserGroup in this cluster, so
+// only the direct refs need lookup to resolve groups that have no CR here.
+func (r *Reconciler) aggregateAllowedUserGroupIDs(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, lookup helpers.UserGroupLookup) ([]string, error) {
 	// Find UserGroups whose spec.allowedOIDCClients references this client
 	clientKey := fmt.Sprintf("%s/%s", oidcClient.Namespace, oidcClient.Name)
 	userGroups := &pocketidinternalv1alpha1.PocketIDUserGroupList{}
@@ -464,7 +468,7 @@ func (r *Reconciler) aggregateAllowedUserGroupIDs(ctx context.Context, oidcClien
 	groupIDSet := make(map[string]struct{})
 
 	if hasDirectRefs {
-		directIDs, err := helpers.ResolveUserGroupReferences(ctx, r.Client, oidcClient.Spec.AllowedUserGroups, oidcClient.Namespace)
+		directIDs, err := helpers.ResolveUserGroupReferences(ctx, r.Client, lookup, oidcClient.Spec.AllowedUserGroups, oidcClient.Namespace)
 		if err != nil {
 			return nil, fmt.Errorf("resolve allowed user groups: %w", err)
 		}
@@ -486,6 +490,16 @@ func (r *Reconciler) aggregateAllowedUserGroupIDs(ctx context.Context, oidcClien
 	}
 	sort.Strings(groupIDs)
 	return groupIDs, nil
+}
+
+// reconcileErrorReason classifies a reconcile failure for the Ready condition, so a
+// reference to a user group that does not exist reads as a spec error rather than a
+// transient one.
+func reconcileErrorReason(err error) string {
+	if stderrors.Is(err, helpers.ErrUserGroupNotFound) {
+		return "UserGroupNotFound"
+	}
+	return "ReconcileError"
 }
 
 // setClientID persists only the client ID to status.
