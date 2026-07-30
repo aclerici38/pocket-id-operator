@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -514,6 +515,43 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 		It("rejects a namespace without a CR name", func() {
 			expectRejected(newClient("ug-cel-ns-only",
 				pocketidinternalv1alpha1.NamespacedUserGroupReference{GroupName: "developers", Namespace: namespace}))
+		})
+
+		It("rejects a namespace alongside groupID", func() {
+			expectRejected(newClient("ug-cel-ns-id",
+				pocketidinternalv1alpha1.NamespacedUserGroupReference{GroupID: "gid-dev", Namespace: namespace}))
+		})
+
+		It("rejects a reference setting both name and groupID", func() {
+			expectRejected(newClient("ug-cel-name-id",
+				pocketidinternalv1alpha1.NamespacedUserGroupReference{Name: "group-a", GroupID: "gid-dev"}))
+		})
+
+		It("rejects a reference setting all three", func() {
+			expectRejected(newClient("ug-cel-all-three",
+				pocketidinternalv1alpha1.NamespacedUserGroupReference{Name: "group-a", GroupName: "developers", GroupID: "gid-dev"}))
+		})
+
+		// The length bounds are not cosmetic: without them the exactly-one-of rule
+		// exceeds the API server's CEL cost budget and the CRD is rejected outright.
+		It("rejects a groupName shorter than the minimum", func() {
+			expectRejected(newClient("ug-cel-short-name",
+				pocketidinternalv1alpha1.NamespacedUserGroupReference{GroupName: "d"}))
+		})
+
+		It("rejects a groupName longer than the maximum", func() {
+			expectRejected(newClient("ug-cel-long-name",
+				pocketidinternalv1alpha1.NamespacedUserGroupReference{GroupName: strings.Repeat("d", 256)}))
+		})
+
+		It("rejects a groupID longer than the maximum", func() {
+			expectRejected(newClient("ug-cel-long-id",
+				pocketidinternalv1alpha1.NamespacedUserGroupReference{GroupID: strings.Repeat("g", 65)}))
+		})
+
+		It("accepts a groupID at the maximum length", func() {
+			expectAccepted(newClient("ug-cel-max-id",
+				pocketidinternalv1alpha1.NamespacedUserGroupReference{GroupID: strings.Repeat("g", 64)}))
 		})
 	})
 

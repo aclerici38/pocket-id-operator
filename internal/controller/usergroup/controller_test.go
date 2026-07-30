@@ -276,3 +276,98 @@ func TestReconcileDelete_KeepFinalizerWhenAPIClientNotReady(t *testing.T) {
 		t.Error("expected UserGroupFinalizer to be kept")
 	}
 }
+
+func TestReconcileUserGroupFinalizers_ExternalRefsDoNotCouple(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	// The CR is named "developers" and the client references a Pocket-ID group that
+	// is also named "developers". They must stay decoupled: an external ref names a
+	// group in Pocket-ID, never a CR, so it must not add the blocking finalizer.
+	group := &pocketidinternalv1alpha1.PocketIDUserGroup{
+		ObjectMeta: metav1.ObjectMeta{Name: "developers", Namespace: testNamespace},
+	}
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "external-only-client", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
+				{GroupName: "developers"},
+				{GroupID: "gid-developers"},
+			},
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(group, oidcClient).
+		Build()
+
+	reconciler := &Reconciler{Client: fakeClient, Scheme: scheme}
+	if _, err := reconciler.ReconcileUserGroupFinalizers(ctx, group); err != nil {
+		t.Fatalf("ReconcileUserGroupFinalizers returned error: %v", err)
+	}
+
+	updatedGroup := &pocketidinternalv1alpha1.PocketIDUserGroup{}
+	if err := fakeClient.Get(ctx, types.NamespacedName{Name: group.Name, Namespace: group.Namespace}, updatedGroup); err != nil {
+		t.Fatalf("failed to get updated group: %v", err)
+	}
+	for _, f := range updatedGroup.Finalizers {
+		if f == OIDCClientUserGroupFinalizer {
+			t.Error("expected no OIDCClientUserGroupFinalizer for an external-only reference")
+		}
+	}
+}
+
+func TestOIDCClientAllowsGroup_ExternalRefsNeverMatch(t *testing.T) {
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "client-a", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
+				{GroupName: "developers"},
+				{GroupID: "gid-dev"},
+			},
+		},
+	}
+	if oidcClientAllowsGroup(oidcClient, testNamespace, "developers") {
+		t.Error("expected groupName not to match a CR of the same name")
+	}
+	if oidcClientAllowsGroup(oidcClient, testNamespace, "gid-dev") {
+		t.Error("expected groupID not to match a CR of the same name")
+	}
+}
+
+func TestOIDCClientAllowsGroup_MixedRefsMatchOnlyTheCRRef(t *testing.T) {
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "client-a", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
+				{GroupName: "developers"},
+				{Name: "local-admins"},
+			},
+		},
+	}
+	if !oidcClientAllowsGroup(oidcClient, testNamespace, "local-admins") {
+		t.Error("expected the CR ref to match")
+	}
+	if oidcClientAllowsGroup(oidcClient, testNamespace, "developers") {
+		t.Error("expected the external ref not to match")
+	}
+}
+
+func TestOIDCClientAllowsGroup_CRRefRespectsNamespace(t *testing.T) {
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "client-a", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
+				{Name: "admins", Namespace: "other"},
+			},
+		},
+	}
+	if !oidcClientAllowsGroup(oidcClient, "other", "admins") {
+		t.Error("expected a match in the referenced namespace")
+	}
+	if oidcClientAllowsGroup(oidcClient, testNamespace, "admins") {
+		t.Error("expected no match in the client's own namespace")
+	}
+}
