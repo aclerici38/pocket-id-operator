@@ -211,6 +211,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
+	if err := r.SyncDeclaredClientSecret(ctx, oidcClient, apiClient); err != nil {
+		log.Error(err, "Failed to sync declared client secret")
+		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "ClientSecretSyncError", err.Error())
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+	}
+
 	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient); err != nil {
 		log.Error(err, "Failed to reconcile OIDC client secret")
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "SecretReconcileError", err.Error())
@@ -221,12 +227,15 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		log.Error(err, "Failed to remove regenerate-client-secret annotation")
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	} else if removed {
-		// The annotation is removed even when it was ignored (storeClientSecret false),
-		// so it cannot fire unexpectedly if the flag is later flipped back to true.
-		if storeClientSecret(oidcClient) {
-			log.Info("Removed regenerate-client-secret annotation after secret regeneration")
-		} else {
+		// The annotation is removed even when it was ignored, so it cannot fire unexpectedly
+		// once the condition that ignored it no longer holds.
+		switch {
+		case hasDeclaredClientSecret(oidcClient):
+			log.Info("Removed regenerate-client-secret annotation without regenerating: spec.clientSecretRef is set")
+		case !storeClientSecret(oidcClient):
 			log.Info("Removed regenerate-client-secret annotation without regenerating: secret.storeClientSecret is false")
+		default:
+			log.Info("Removed regenerate-client-secret annotation after secret regeneration")
 		}
 	}
 
@@ -246,6 +255,7 @@ type PocketIDOIDCClientAPI interface {
 	GetOIDCClient(ctx context.Context, id string) (*pocketid.OIDCClient, error)
 	UpdateOIDCClient(ctx context.Context, id string, input pocketid.OIDCClientInput) (*pocketid.OIDCClient, error)
 	UpdateOIDCClientAllowedGroups(ctx context.Context, id string, groupIDs []string) error
+	SetOIDCClientSecret(ctx context.Context, id, secret string) (string, error)
 	GetOIDCClientSCIMServiceProvider(ctx context.Context, oidcClientID string) (*pocketid.SCIMServiceProvider, error)
 	CreateSCIMServiceProvider(ctx context.Context, input pocketid.SCIMServiceProviderInput) (*pocketid.SCIMServiceProvider, error)
 	UpdateSCIMServiceProvider(ctx context.Context, id string, input pocketid.SCIMServiceProviderInput) (*pocketid.SCIMServiceProvider, error)
@@ -360,11 +370,14 @@ func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *po
 	if result.IsNewlyCreated {
 		operation = "created"
 		// A brand-new client has no externally-managed secret to protect, so the initial
-		// mint is allowed even when storeClientSecret is false.
-		if r.pendingInitialMint == nil {
-			r.pendingInitialMint = make(map[types.NamespacedName]bool)
+		// mint is allowed even when storeClientSecret is false. A declared secret is pushed
+		// by SyncDeclaredClientSecret instead, so one must never be minted for it.
+		if !hasDeclaredClientSecret(oidcClient) {
+			if r.pendingInitialMint == nil {
+				r.pendingInitialMint = make(map[types.NamespacedName]bool)
+			}
+			r.pendingInitialMint[client.ObjectKeyFromObject(oidcClient)] = true
 		}
-		r.pendingInitialMint[client.ObjectKeyFromObject(oidcClient)] = true
 	}
 	metrics.ResourceOperations.WithLabelValues("PocketIDOIDCClient", operation).Inc()
 
@@ -686,6 +699,9 @@ func isURLReachable(url string) bool {
 func (r *Reconciler) clearClientStatus(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) error {
 	return r.ClearStatusField(ctx, oidcClient, func() {
 		oidcClient.Status.ClientID = ""
+		// The replacement client is created without a secret, so a declared one must be
+		// pushed again rather than assumed still applied.
+		oidcClient.Status.ClientSecretSourceVersion = ""
 	})
 }
 
@@ -1197,6 +1213,22 @@ func (r *Reconciler) reconcileClientSecretData(
 	keys pocketidinternalv1alpha1.OIDCClientSecretKeys,
 	secretData map[string][]byte,
 ) (rotatedAt *metav1.Time, scheduledRotation bool, err error) {
+	if hasDeclaredClientSecret(oidcClient) {
+		// SyncDeclaredClientSecret owns the value in Pocket-ID; here it only needs mirroring
+		// into the managed Secret. Rotation never applies, so report the schedule as disabled
+		// rather than leaving gauges from a previously rotating configuration behind.
+		r.recordRotationSchedule(oidcClient, rotationEval{})
+		if !storeClientSecret(oidcClient) {
+			return nil, false, nil
+		}
+		declared, _, err := r.resolveDeclaredClientSecret(ctx, oidcClient)
+		if err != nil {
+			return nil, false, err
+		}
+		secretData[keys.ClientSecret] = []byte(declared)
+		return nil, false, nil
+	}
+
 	if !storeClientSecret(oidcClient) && !r.pendingInitialMint[client.ObjectKeyFromObject(oidcClient)] {
 		// Record the rotation schedule as disabled so gauges from a previously enabled
 		// schedule cannot linger when rotation and storeClientSecret are turned off in

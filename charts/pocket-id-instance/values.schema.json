@@ -4674,6 +4674,39 @@
                   "null"
                 ]
               },
+              "clientSecretRef": {
+                "additionalProperties": false,
+                "description": "ClientSecretRef references a Kubernetes Secret key holding the client secret to set in\nPocket-ID, instead of letting the operator generate one. The value must be at least 16\nprintable ASCII characters. While set, the operator never generates or rotates the secret:\nclientSecretRotation cannot be enabled and the regenerate-client-secret annotation is\nignored. Requires Pocket-ID v2.12.0 or newer.",
+                "properties": {
+                  "key": {
+                    "description": "The key of the secret to select from.  Must be a valid secret key.",
+                    "type": "string"
+                  },
+                  "name": {
+                    "default": "",
+                    "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "optional": {
+                    "description": "Specify whether the Secret or its key must be defined",
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "key"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "x-kubernetes-map-type": "atomic"
+              },
               "clientSecretRotation": {
                 "additionalProperties": false,
                 "description": "ClientSecretRotation configures automatic, scheduled regeneration of the client secret.\nWhen unset the secret is only regenerated on create/adopt, on self-heal,\nor when the regenerate-client-secret annotation is set.",
@@ -5178,6 +5211,14 @@
               {
                 "message": "clientPermissions require a confidential client (isPublic must be false)",
                 "rule": "!self.isPublic || !has(self.apiAccess) || self.apiAccess.all(a, !has(a.clientPermissions) || size(a.clientPermissions) == 0)"
+              },
+              {
+                "message": "clientSecretRef requires a confidential client (isPublic must be false)",
+                "rule": "!has(self.clientSecretRef) || !self.isPublic"
+              },
+              {
+                "message": "clientSecretRotation cannot be enabled when clientSecretRef is set",
+                "rule": "!has(self.clientSecretRef) || !has(self.clientSecretRotation) || !self.clientSecretRotation.enabled"
               }
             ]
           }

@@ -3332,6 +3332,34 @@ spec:
                 maxLength: 128
                 minLength: 2
                 type: string
+              clientSecretRef:
+                description: |-
+                  ClientSecretRef references a Kubernetes Secret key holding the client secret to set in
+                  Pocket-ID, instead of letting the operator generate one. The value must be at least 16
+                  printable ASCII characters. While set, the operator never generates or rotates the secret:
+                  clientSecretRotation cannot be enabled and the regenerate-client-secret annotation is
+                  ignored. Requires Pocket-ID v2.12.0 or newer.
+                properties:
+                  key:
+                    description: The key of the secret to select from.  Must be a
+                      valid secret key.
+                    type: string
+                  name:
+                    default: ""
+                    description: |-
+                      Name of the referent.
+                      This field is effectively required, but due to backwards compatibility is
+                      allowed to be empty. Instances of this type with an empty value here are
+                      almost certainly wrong.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                    type: string
+                  optional:
+                    description: Specify whether the Secret or its key must be defined
+                    type: boolean
+                required:
+                - key
+                type: object
+                x-kubernetes-map-type: atomic
               clientSecretRotation:
                 description: |-
                   ClientSecretRotation configures automatic, scheduled regeneration of the client secret.
@@ -3686,6 +3714,13 @@ spec:
                 be false)
               rule: '!self.isPublic || !has(self.apiAccess) || self.apiAccess.all(a,
                 !has(a.clientPermissions) || size(a.clientPermissions) == 0)'
+            - message: clientSecretRef requires a confidential client (isPublic must
+                be false)
+              rule: '!has(self.clientSecretRef) || !self.isPublic'
+            - message: clientSecretRotation cannot be enabled when clientSecretRef
+                is set
+              rule: '!has(self.clientSecretRef) || !has(self.clientSecretRotation)
+                || !self.clientSecretRotation.enabled'
           status:
             description: status defines the observed state of PocketIDOIDCClient
             properties:
@@ -3702,6 +3737,12 @@ spec:
                 type: array
               clientID:
                 description: ClientID is the ID assigned by Pocket-ID
+                type: string
+              clientSecretSourceVersion:
+                description: |-
+                  ClientSecretSourceVersion identifies the spec.clientSecretRef source last pushed to
+                  Pocket-ID. Pocket-ID stores the secret hashed and never returns it, so this is how the
+                  operator detects that the referenced Secret changed and needs pushing again.
                 type: string
               conditions:
                 description: Conditions represent the current state of the PocketIDOIDCClient

@@ -23,6 +23,52 @@ client secret:
 - Enabling `spec.clientSecretRotation` together with `storeClientSecret: false` is rejected at
   admission.
 
+## Declarative Client Secret
+
+Instead of letting the operator generate a secret, you can supply one from a Kubernetes Secret
+with `spec.clientSecretRef`. This is useful when the secret is provisioned elsewhere (SOPS, External Secrets, Vault) and must
+match a value your application already has.
+
+Requires Pocket-ID **v2.12.0 or newer**. On older versions the request body is ignored and a
+random secret is generated instead; the operator detects this and fails with a clear error
+rather than leaving the cluster and Pocket-ID disagreeing.
+
+```yaml
+spec:
+  clientSecretRef:
+    name: my-app-credentials
+    key: oidc-client-secret
+```
+
+The referenced Secret must live in the same namespace as the `PocketIDOIDCClient`. The value must
+be **at least 16 printable ASCII characters**.
+
+While `clientSecretRef` is set, the operator never generates or rotates the secret:
+
+- `spec.clientSecretRotation.enabled` is rejected at admission — a rotation would replace your
+  declared value with a random one.
+- `spec.isPublic: true` is rejected at admission — public clients have no secret.
+- The `pocketid.internal/regenerate-client-secret` annotation is ignored. It is still removed, and
+  the reason is logged.
+- `spec.secret.storeClientSecret: false` still works and simply omits `client_secret` from the
+  generated Secret. The value is pushed to Pocket-ID either way.
+- `spec.secret.enabled: false` also still pushes to Pocket-ID — the push does not depend on the
+  operator writing a Secret of its own.
+
+`spec.clientSecretRef` must not point at the operator's own generated Secret; that is rejected.
+
+### How changes are detected
+
+Pocket-ID stores client secrets hashed and never returns them, so the operator cannot read back
+what is currently set. Instead it records the source Secret's revision in
+`status.clientSecretSourceVersion` and pushes again whenever that revision changes. Editing the
+referenced Secret is picked up on the next resync (default 2 minutes) — the referenced Secret is
+not operator-managed, so it is not watched.
+
+If you remove `clientSecretRef` later, the declared value stays in place until something else
+changes it. Enabling `clientSecretRotation` at that point will usually rotate immediately, since
+the rotation anchor falls back to the client's creation time.
+
 ## Regenerating Client Secrets
 
 To regenerate a client-secret set the annotation `pocketid.internal/regenerate-client-secret` to "true". The operator will remove
@@ -43,6 +89,9 @@ metadata:
 **Note:** For an accurate cron schedule be sure to set the `TZ` environment variable to your local TZ.
 In the helm chart this is `operator.timezone`; if you have an instance configured **via the chart** the value
 can be derived from `instance.spec.timezone` in the chart values.
+
+Rotation is mutually exclusive with [`spec.clientSecretRef`](#declarative-client-secret): the
+operator cannot both keep a declared value and replace it on a schedule.
 
 When `spec.clientSecretRotation.enabled` is true, the operator automatically regenerates the
 OIDC client secret on a schedule. Every scheduled rotation passes through up to three gates, in
@@ -406,7 +455,8 @@ To view the logs add the `--zap-log-level=debug` arg on the operator container.
 When enabled, the operator writes a Secret containing:
 - Client ID (always)
 - Client secret (only for non-public clients; with `storeClientSecret: false`, only if the
-  operator created the client and minted its initial secret)
+  operator created the client and minted its initial secret. With
+  [`spec.clientSecretRef`](#declarative-client-secret), the declared value)
 - Issuer URL and discovery endpoints derived from the instance `spec.appUrl`
 - Callback and logout URLs
 

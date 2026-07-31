@@ -63,6 +63,10 @@ func (m *mockPocketIDOIDCClientClient) UpdateOIDCClientAllowedGroups(ctx context
 	return nil
 }
 
+func (m *mockPocketIDOIDCClientClient) SetOIDCClientSecret(_ context.Context, _, secret string) (string, error) {
+	return secret, nil
+}
+
 func (m *mockPocketIDOIDCClientClient) GetOIDCClientSCIMServiceProvider(_ context.Context, _ string) (*pocketid.SCIMServiceProvider, error) {
 	return nil, nil
 }
