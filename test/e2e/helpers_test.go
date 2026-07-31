@@ -100,6 +100,7 @@ metadata:
 type UserOptions struct {
 	Name             string
 	Namespace        string
+	UserID           string
 	Username         string
 	FirstName        string
 	LastName         string
@@ -142,6 +143,9 @@ func buildUserYAML(opts UserOptions) string {
 
 	var spec strings.Builder
 
+	if opts.UserID != "" {
+		spec.WriteString(fmt.Sprintf("  userID: %s\n", opts.UserID))
+	}
 	if opts.Username != "" {
 		spec.WriteString(fmt.Sprintf("  username:\n    value: %s\n", opts.Username))
 	}

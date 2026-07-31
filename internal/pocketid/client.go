@@ -359,6 +359,8 @@ func (c *Client) ListUsers(ctx context.Context, search string) ([]*User, error) 
 
 // UserInput contains the fields for creating or updating a user.
 type UserInput struct {
+	// ID is honored by Pocket-ID on create only; an empty value autogenerates one.
+	ID            string
 	Username      string
 	FirstName     string
 	LastName      string
@@ -370,9 +372,17 @@ type UserInput struct {
 	EmailVerified bool
 }
 
+// Equal compares two UserInputs, ignoring ID because Pocket-ID assigns it at
+// creation and never accepts a change to it.
+func (i UserInput) Equal(other UserInput) bool {
+	i.ID, other.ID = "", ""
+	return i == other
+}
+
 // ToInput converts a User into a UserInput for comparison with desired state.
 func (u *User) ToInput() UserInput {
 	return UserInput{
+		ID:            u.ID,
 		Username:      u.Username,
 		FirstName:     u.FirstName,
 		LastName:      u.LastName,
@@ -388,6 +398,7 @@ func (u *User) ToInput() UserInput {
 func (c *Client) CreateUser(ctx context.Context, input UserInput) (*User, error) {
 	params := users.NewPostAPIUsersParams().
 		WithUser(&models.GithubComPocketIDPocketIDBackendInternalDtoUserCreateDto{
+			ID:            input.ID,
 			Username:      &input.Username,
 			FirstName:     input.FirstName,
 			LastName:      input.LastName,

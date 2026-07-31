@@ -15,6 +15,30 @@ spec:
     value: "alice@example.com"
 ```
 
+## Declarative User ID
+
+By default Pocket-ID assigns the user ID. Set `spec.userID` to pin it instead, which
+keeps the `sub` claim stable across rebuilds of an instance.
+
+```yaml
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: alice
+  namespace: pocket-id
+spec:
+  userID: 3f8a1c72-9b4d-4e61-8a0f-2c5d7e9b1a34
+  email:
+    value: "alice@example.com"
+```
+
+Pocket-ID only accepts a lowercase UUID here. If a user with that ID already exists it
+is adopted rather than recreated, so the field is also a way to bind a resource to a
+user that was created elsewhere.
+
+`spec.userID` is immutable: it cannot be changed, added, or removed after the resource
+is created. To move a user to a different ID, delete the resource and create it again.
+
 ## User With Instance Selector And Secret Inputs
 
 ```yaml

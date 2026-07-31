@@ -67,7 +67,7 @@ func TestFindExistingUser_NoMatch(t *testing.T) {
 		},
 	}
 
-	existingUser, err := reconciler.FindExistingUser(ctx, mockClient, "newuser", "newuser@example.com")
+	existingUser, err := reconciler.FindExistingUser(ctx, mockClient, "", "newuser", "newuser@example.com")
 	if err != nil {
 		t.Fatalf("FindExistingUser returned unexpected error: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestFindExistingUser_MatchByUsername(t *testing.T) {
 		},
 	}
 
-	existingUser, err := reconciler.FindExistingUser(ctx, mockClient, "existinguser", "different@example.com")
+	existingUser, err := reconciler.FindExistingUser(ctx, mockClient, "", "existinguser", "different@example.com")
 	if err != nil {
 		t.Fatalf("FindExistingUser returned unexpected error: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestFindExistingUser_MatchByEmail(t *testing.T) {
 		},
 	}
 
-	existingUser, err := reconciler.FindExistingUser(ctx, mockClient, "newusername", "existing@example.com")
+	existingUser, err := reconciler.FindExistingUser(ctx, mockClient, "", "newusername", "existing@example.com")
 	if err != nil {
 		t.Fatalf("FindExistingUser returned unexpected error: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestFindExistingUser_SkipsPlaceholderEmail(t *testing.T) {
 	username := "testuser"
 	placeholderEmail := "testuser@placeholder.local"
 
-	existingUser, err := reconciler.FindExistingUser(ctx, mockClient, username, placeholderEmail)
+	existingUser, err := reconciler.FindExistingUser(ctx, mockClient, "", username, placeholderEmail)
 	if err != nil {
 		t.Fatalf("FindExistingUser returned unexpected error: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestUserAdoption_ExistingUserByUsername(t *testing.T) {
 
 	reconciler := &Reconciler{}
 
-	foundUser, err := reconciler.FindExistingUser(ctx, mockClient, "bob", testEmailBobGmail)
+	foundUser, err := reconciler.FindExistingUser(ctx, mockClient, "", "bob", testEmailBobGmail)
 	if err != nil {
 		t.Fatalf("FindExistingUser returned error: %v", err)
 	}
@@ -233,7 +233,7 @@ func TestUserAdoption_PrioritizesUsernameMatch(t *testing.T) {
 
 	reconciler := &Reconciler{}
 
-	foundUser, err := reconciler.FindExistingUser(ctx, mockClient, "bob", testEmailBobGmail)
+	foundUser, err := reconciler.FindExistingUser(ctx, mockClient, "", "bob", testEmailBobGmail)
 	if err != nil {
 		t.Fatalf("FindExistingUser returned error: %v", err)
 	}
@@ -271,7 +271,7 @@ func TestFindExistingUser_MultipleUsersInResponse(t *testing.T) {
 		},
 	}
 
-	existingUser, err := reconciler.FindExistingUser(ctx, mockClient, "targetuser", "target@example.com")
+	existingUser, err := reconciler.FindExistingUser(ctx, mockClient, "", "targetuser", "target@example.com")
 	if err != nil {
 		t.Fatalf("FindExistingUser returned unexpected error: %v", err)
 	}
@@ -296,7 +296,7 @@ func TestFindExistingUser_EmptyEmail(t *testing.T) {
 		},
 	}
 
-	existingUser, err := reconciler.FindExistingUser(ctx, mockClient, "testuser", "")
+	existingUser, err := reconciler.FindExistingUser(ctx, mockClient, "", "testuser", "")
 	if err != nil {
 		t.Fatalf("FindExistingUser returned unexpected error: %v", err)
 	}
