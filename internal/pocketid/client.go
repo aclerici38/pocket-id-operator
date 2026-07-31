@@ -667,28 +667,45 @@ func (c *Client) UpdateOIDCClientAllowedGroups(ctx context.Context, id string, g
 // This is the only way to retrieve the client secret from Pocket ID.
 // The secret is only returned once and cannot be retrieved later without re-generating
 func (c *Client) RegenerateOIDCClientSecret(ctx context.Context, id string) (string, error) {
+	return c.postOIDCClientSecret(ctx, "regenerate_oidc_client_secret", id, nil)
+}
+
+// SetOIDCClientSecret sets the client secret to an explicit value and returns the secret
+// Pocket-ID stored. Requires Pocket-ID v2.12.0 or newer; older versions ignore the request
+// body and generate a random secret instead, so callers must compare the returned value.
+func (c *Client) SetOIDCClientSecret(ctx context.Context, id, secret string) (string, error) {
+	return c.postOIDCClientSecret(ctx, "set_oidc_client_secret", id,
+		&models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientSecretDto{Secret: secret})
+}
+
+// postOIDCClientSecret calls the client-secret endpoint and extracts the returned secret. A nil
+// payload lets Pocket-ID generate one; a non-nil payload requests a specific value.
+func (c *Client) postOIDCClientSecret(ctx context.Context, operation, id string, payload *models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientSecretDto) (string, error) {
 	params := oidc.NewPostAPIOidcClientsIDSecretParams().
 		WithID(id)
+	if payload != nil {
+		params = params.WithPayload(payload)
+	}
 
 	start := time.Now()
 	resp, err := c.raw.OIDc.PostAPIOidcClientsIDSecretContext(ctx, params)
-	recordCall("regenerate_oidc_client_secret", err, time.Since(start))
+	recordCall(operation, err, time.Since(start))
 	if err != nil {
-		return "", fmt.Errorf("regenerate OIDC client secret failed: %w", err)
+		return "", fmt.Errorf("set OIDC client secret failed: %w", err)
 	}
 
 	// The response payload is `any` type, so we need to type assert
-	payload, ok := resp.GetPayload().(map[string]any)
+	responsePayload, ok := resp.GetPayload().(map[string]any)
 	if !ok {
 		return "", fmt.Errorf("unexpected response format")
 	}
 
-	secret, ok := payload["secret"].(string)
+	returned, ok := responsePayload["secret"].(string)
 	if !ok {
 		return "", fmt.Errorf("secret not found in response")
 	}
 
-	return secret, nil
+	return returned, nil
 }
 
 // --- SCIM Service Provider Operations ---

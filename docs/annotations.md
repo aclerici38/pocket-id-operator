@@ -11,7 +11,9 @@ The operator recognizes the following annotations.
 ## PocketIDOIDCClient
 
 - `pocketid.internal/regenerate-client-secret`: when set to `"true"`, the operator
-  regenerates the client secret and then removes the annotation.
+  regenerates the client secret and then removes the annotation. It is ignored (but still
+  removed, and the reason logged) when `spec.clientSecretRef` is set or
+  `spec.secret.storeClientSecret` is `false`.
 
 ## Labels
 

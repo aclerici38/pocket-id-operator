@@ -670,6 +670,62 @@ func TestPushOIDCClientState_UpdatesWhenFieldsChange(t *testing.T) {
 	}
 }
 
+// Pushing must not arm the skip-update shortcut on its own. Steps that run after the push (SCIM,
+// API access, declared client secret, the managed Secret) can still fail, and an armed shortcut
+// would let the next reconcile skip them and report the client Ready instead of retrying.
+func TestPushOIDCClientState_DoesNotArmSkipUpdate(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	oidcClientCR := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "skip-update-client", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			CallbackURLs: []string{"https://new.example.com/cb"},
+		},
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
+			ClientID:   "skip-update-id",
+			Conditions: readyCondition(),
+		},
+	}
+	current := &pocketid.OIDCClient{
+		ID:           "skip-update-id",
+		Name:         "skip-update-client",
+		CallbackURLs: []string{"https://old.example.com/cb"},
+	}
+
+	r := newPushStateOIDCReconciler(scheme, oidcClientCR)
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Method == http.MethodPut && req.URL.Path == "/api/oidc/clients/skip-update-id" {
+			okOIDCClientResponse(w, "skip-update-id", "skip-update-client")
+			return
+		}
+		http.NotFound(w, req)
+	}))
+	defer ts.Close()
+	apiClient, _ := pocketid.NewClient(ts.URL, "")
+
+	updated, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !updated {
+		t.Fatal("expected the push to report an update")
+	}
+
+	key := client.ObjectKeyFromObject(oidcClientCR)
+	if r.skipUpdate[key] {
+		t.Error("expected pushOIDCClientState to leave the skip-update shortcut disarmed")
+	}
+
+	// Only a fully successful reconcile arms it.
+	r.markSkipUpdate(oidcClientCR)
+	if !r.skipUpdate[key] {
+		t.Error("expected markSkipUpdate to arm the skip-update shortcut")
+	}
+}
+
 func TestPushOIDCClientState_AlwaysPushesWhenCredentialsPresent(t *testing.T) {
 	// Even when the visible state is in sync, the presence of credentials forces
 	// an UpdateOIDCClient call because they are write-only and can't be compared.

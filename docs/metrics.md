@@ -325,6 +325,7 @@ outcome. Use this to track error rates and call volumes for individual API opera
 `create_one_time_access_token`, `list_oidc_clients`, `create_oidc_client`,
 `update_oidc_client`, `get_oidc_client`, `delete_oidc_client`,
 `update_oidc_client_allowed_groups`, `regenerate_oidc_client_secret`,
+`set_oidc_client_secret`,
 `get_oidc_client_scim_service_provider`, `create_scim_service_provider`,
 `update_scim_service_provider`, `delete_scim_service_provider`,
 `list_user_groups`, `create_user_group`, `update_user_group`, `get_user_group`,

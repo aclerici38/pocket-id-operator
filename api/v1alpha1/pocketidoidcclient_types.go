@@ -274,6 +274,8 @@ type SCIMSpec struct {
 // +kubebuilder:validation:XValidation:rule="has(self.clientID) == has(oldSelf.clientID) && (!has(self.clientID) || self.clientID == oldSelf.clientID)",message="clientID is immutable"
 // +kubebuilder:validation:XValidation:rule="!has(self.clientSecretRotation) || !self.clientSecretRotation.enabled || !has(self.secret) || !has(self.secret.storeClientSecret) || self.secret.storeClientSecret",message="clientSecretRotation cannot be enabled when secret.storeClientSecret is false"
 // +kubebuilder:validation:XValidation:rule="!self.isPublic || !has(self.apiAccess) || self.apiAccess.all(a, !has(a.clientPermissions) || size(a.clientPermissions) == 0)",message="clientPermissions require a confidential client (isPublic must be false)"
+// +kubebuilder:validation:XValidation:rule="!has(self.clientSecretRef) || !self.isPublic",message="clientSecretRef requires a confidential client (isPublic must be false)"
+// +kubebuilder:validation:XValidation:rule="!has(self.clientSecretRef) || !has(self.clientSecretRotation) || !self.clientSecretRotation.enabled",message="clientSecretRotation cannot be enabled when clientSecretRef is set"
 type PocketIDOIDCClientSpec struct {
 	// Name of the oidc client to create in Pocket ID.
 	// If omitted, defaults to metadata.name of the oidcclient resource.
@@ -374,6 +376,14 @@ type PocketIDOIDCClientSpec struct {
 	// or when the regenerate-client-secret annotation is set.
 	// +optional
 	ClientSecretRotation *ClientSecretRotation `json:"clientSecretRotation,omitempty"`
+
+	// ClientSecretRef references a Kubernetes Secret key holding the client secret to set in
+	// Pocket-ID, instead of letting the operator generate one. The value must be at least 16
+	// printable ASCII characters. While set, the operator never generates or rotates the secret:
+	// clientSecretRotation cannot be enabled and the regenerate-client-secret annotation is
+	// ignored. Requires Pocket-ID v2.12.0 or newer.
+	// +optional
+	ClientSecretRef *corev1.SecretKeySelector `json:"clientSecretRef,omitempty"`
 }
 
 // RotationWindow restricts rotations to a recurring time window.
@@ -487,6 +497,12 @@ type PocketIDOIDCClientStatus struct {
 	// operator. Used to determine when the next scheduled rotation is due.
 	// +optional
 	LastRotatedAt *metav1.Time `json:"lastRotatedAt,omitempty"`
+
+	// ClientSecretSourceVersion identifies the spec.clientSecretRef source last pushed to
+	// Pocket-ID. Pocket-ID stores the secret hashed and never returns it, so this is how the
+	// operator detects that the referenced Secret changed and needs pushing again.
+	// +optional
+	ClientSecretSourceVersion string `json:"clientSecretSourceVersion,omitempty"`
 }
 
 // +kubebuilder:object:root=true
