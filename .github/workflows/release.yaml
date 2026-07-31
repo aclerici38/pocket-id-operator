@@ -30,7 +30,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.validate.outputs.version }}
-      helm_version: ${{ steps.validate.outputs.helm_version }}
       image_repo: ${{ steps.validate.outputs.image_repo }}
       # Commit the release is cut from
       target_sha: ${{ steps.validate.outputs.target_sha }}
@@ -60,7 +59,6 @@ jobs:
             exit 1
           fi
 
-          HELM_VERSION="${VERSION#v}"
           REPO_OWNER=$(echo "${REPO_OWNER}" | tr '[:upper:]' '[:lower:]')
 
           # Does a release for this version already exist?
@@ -97,11 +95,94 @@ jobs:
           SHORT_SHA=$(git rev-parse --short "$TARGET_SHA")
 
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "helm_version=${HELM_VERSION}" >> "$GITHUB_OUTPUT"
           echo "image_repo=ghcr.io/${REPO_OWNER}/pocket-id-operator" >> "$GITHUB_OUTPUT"
           echo "target_sha=${TARGET_SHA}" >> "$GITHUB_OUTPUT"
           echo "image_build_tag=${SHORT_SHA}-main" >> "$GITHUB_OUTPUT"
           echo "promote=${PROMOTE}" >> "$GITHUB_OUTPUT"
+
+  # Rewrites every version reference in the repo and pushes the result to main,
+  # so the released tag, charts and docs all describe the version being cut
+  # instead of catching up whenever Renovate notices the new image.
+  bump-versions:
+    name: Bump version references
+    # A promotion re-releases the commit its prerelease was cut from, which was
+    # already bumped when that prerelease ran.
+    if: ${{ needs.validate.outputs.promote != 'true' }}
+    permissions:
+      contents: read
+      packages: read
+    needs:
+      - validate
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_KEY }}
+          permission-contents: write
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate.outputs.target_sha }}
+          persist-credentials: false
+
+      - name: Setup mise
+        uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+        with:
+          # renovate: datasource=github-releases depName=jdx/mise
+          version: "2026.7.14"
+          install_args: "sd yq"
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The version tag is a retag of this build, so its digest is already final.
+      - name: Resolve released image digest
+        id: digest
+        env:
+          IMAGE_REPO: ${{ needs.validate.outputs.image_repo }}
+          BUILD_TAG: ${{ needs.validate.outputs.image_build_tag }}
+        run: |
+          DIGEST=$(docker buildx imagetools inspect "${IMAGE_REPO}:${BUILD_TAG}" --format '{{ .Manifest.Digest }}')
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Set version
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          DIGEST: ${{ steps.digest.outputs.digest }}
+        run: mise run set-version "$VERSION" "$DIGEST"
+
+      # CI is skipped: the commit only rewrites version strings, and the image
+      # the release publishes was already built from its parent.
+      - name: Commit and push
+        id: commit
+        env:
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "200541989+${APP_SLUG}[bot]@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "Version references are already up to date."
+          else
+            git commit -am "chore(release): ${VERSION} [skip ci]"
+            git push "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "HEAD:main"
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   # Registry-publishing jobs (retag-image, generate-changelog, publish-chart)
   # are skipped for a prerelease..
@@ -132,13 +213,24 @@ jobs:
 
   retag-image:
     name: Retag Docker image
-    if: ${{ !inputs.prerelease }}
+    if: >-
+      ${{ !cancelled() && !inputs.prerelease
+          && needs.validate.result == 'success'
+          && needs.bump-versions.result != 'failure' }}
     permissions:
+      contents: read
       packages: write
     needs:
       - validate
+      - bump-versions
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.bump-versions.outputs.sha || needs.validate.outputs.target_sha }}
+          persist-credentials: false
+
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
@@ -149,19 +241,26 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Retagging by the digest the manifests pin — rather than by the build tag —
+      # keeps the version tag and the shipped install.yaml in agreement, including
+      # when a promotion releases a commit built during an earlier run.
       - name: Retag release commit image as release version
         env:
           IMAGE_REPO: ${{ needs.validate.outputs.image_repo }}
           VERSION: ${{ needs.validate.outputs.version }}
-          BUILD_TAG: ${{ needs.validate.outputs.image_build_tag }}
         run: |
+          DIGEST=$(yq '.images[0].newTag | split("@") | .[1]' config/manager/kustomization.yaml)
           docker buildx imagetools create \
             -t "${IMAGE_REPO}:${VERSION}" \
-            "${IMAGE_REPO}:${BUILD_TAG}"
+            "${IMAGE_REPO}@${DIGEST}"
 
   publish-chart:
     name: Publish Helm chart
-    if: ${{ !inputs.prerelease }}
+    # Versions come from the Chart.yaml files the bump job committed.
+    if: >-
+      ${{ !cancelled() && !inputs.prerelease
+          && needs.generate-changelog.result == 'success'
+          && needs.bump-versions.result != 'failure' }}
     permissions:
       actions: write
       contents: read
@@ -170,12 +269,11 @@ jobs:
     needs:
       - validate
       - generate-changelog
+      - bump-versions
     uses: ./.github/workflows/push-chart.yaml
     with:
-      chart_version: ${{ needs.validate.outputs.helm_version }}
-      app_version: ${{ needs.validate.outputs.version }}
       changelog: ${{ needs.generate-changelog.outputs.changelog }}
-      ref: ${{ needs.validate.outputs.target_sha }}
+      ref: ${{ needs.bump-versions.outputs.sha || needs.validate.outputs.target_sha }}
 
   release:
     name: Publish GitHub Release
@@ -183,6 +281,7 @@ jobs:
       contents: write
     needs:
       - validate
+      - bump-versions
       - generate-changelog
       - retag-image
       - publish-chart
@@ -191,6 +290,7 @@ jobs:
     if: >-
       ${{ !cancelled()
           && needs.validate.result == 'success'
+          && needs.bump-versions.result != 'failure'
           && (inputs.prerelease
               || (needs.retag-image.result == 'success'
                   && needs.publish-chart.result == 'success')) }}
@@ -199,7 +299,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.validate.outputs.target_sha }}
+          ref: ${{ needs.bump-versions.outputs.sha || needs.validate.outputs.target_sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -241,35 +341,15 @@ jobs:
           } > /tmp/changelog.final.md
           mv /tmp/changelog.final.md /tmp/changelog.md
 
-      - name: Set up Go
-        if: ${{ needs.validate.outputs.promote != 'true' }}
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: false
-
-      - name: Setup mise
-        if: ${{ needs.validate.outputs.promote != 'true' }}
-        uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
-        with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: "2026.7.14"
-          install_args: "go:sigs.k8s.io/controller-tools/cmd/controller-gen kustomize"
-
-      - name: Generate install manifest
-        if: ${{ needs.validate.outputs.promote != 'true' }}
-        env:
-          IMAGE_REPO: ${{ needs.validate.outputs.image_repo }}
-          VERSION: ${{ needs.validate.outputs.version }}
-        run: |
-          IMG="${IMAGE_REPO}:${VERSION}" mise run build-installer
-
+      # dist/ is committed and already points at this release: the bump job
+      # rewrote the image reference in install.yaml, and everything else under
+      # dist/ is derived from the API types.
       - name: Create GitHub release
         if: ${{ needs.validate.outputs.promote != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.validate.outputs.version }}
-          TARGET_SHA: ${{ needs.validate.outputs.target_sha }}
+          TARGET_SHA: ${{ needs.bump-versions.outputs.sha || needs.validate.outputs.target_sha }}
           PRERELEASE: ${{ inputs.prerelease }}
         run: |
           RELEASE_FLAG="--latest"

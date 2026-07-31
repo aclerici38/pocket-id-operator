@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+#MISE description="Point every version reference in the repo (charts, manifests, docs) at a released operator version"
+set -euo pipefail
+
+version="${1:-}"
+if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+  echo "usage: mise run set-version <vX.Y.Z> [sha256:<digest>]" >&2
+  exit 1
+fi
+chart_version="${version#v}"
+
+kustomization=config/manager/kustomization.yaml
+
+# The digest of the image the release publishes. Defaults to the currently
+# pinned one so the task can be run locally without a registry lookup.
+digest="${2:-$(yq '.images[0].newTag | split("@") | .[1]' "$kustomization")}"
+if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+  echo "digest must look like sha256:<64 hex chars>, got '${digest}'" >&2
+  exit 1
+fi
+
+# Rewrites every tracked file containing the pattern. The strings below only
+# ever refer to this operator's own release, so docs and examples added later
+# are picked up without teaching the release workflow about each new file.
+replace() {
+  local files
+  files="$(git grep -lE "$1" || true)"
+  # shellcheck disable=SC2086 # deliberate word splitting over the file list
+  [ -z "$files" ] || sd "$1" "$2" $files
+}
+
+replace "ghcr\.io/aclerici38/pocket-id-operator:[^@[:space:]]+@sha256:[0-9a-f]+" \
+  "ghcr.io/aclerici38/pocket-id-operator:${version}@${digest}"
+
+replace "ghcr\.io/aclerici38/charts/pocket-id-(operator|instance):[0-9]+\.[0-9]+\.[0-9]+" \
+  "ghcr.io/aclerici38/charts/pocket-id-\${1}:${chart_version}"
+
+replace "k8s-versioned-schemas\.pages\.dev/pocket-id-operator/[0-9]+\.[0-9]+\.[0-9]+" \
+  "k8s-versioned-schemas.pages.dev/pocket-id-operator/${chart_version}"
+
+# kustomize splits the image reference across `name` and `newTag`, so the
+# repo-wide replace above cannot see it.
+TAG="${version}@${digest}" yq -i '.images[0].newTag = strenv(TAG)' "$kustomization"
+
+export CHART_VERSION="$chart_version" APP_VERSION="$version"
+
+yq -i '.version = strenv(CHART_VERSION) | .appVersion = strenv(APP_VERSION)' \
+  charts/pocket-id-instance/Chart.yaml
+
+yq -i '.version = strenv(CHART_VERSION) | .appVersion = strenv(APP_VERSION)
+  | (.dependencies[] | select(.name == "pocket-id-instance")).version = strenv(CHART_VERSION)' \
+  charts/pocket-id-operator/Chart.yaml
+
+# dist/install.yaml carries the image reference and was updated in place above;
+# everything else under dist/ is derived from the API types, not the version.
+echo "Set version to ${version} (chart ${chart_version}, image digest ${digest})"
+git --no-pager diff --stat

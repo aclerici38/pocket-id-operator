@@ -4,13 +4,15 @@ on:
   workflow_call:
     inputs:
       chart_version:
-        description: Version to use for the Helm chart (e.g., "0.0.0" or "1.2.3").
-        required: true
+        description: Override the chart version (e.g., "1.2.3"). Empty uses the version in Chart.yaml.
+        required: false
         type: string
+        default: ""
       app_version:
-        description: App version to embed in the chart (e.g., "0.0.0" or "v1.2.3").
-        required: true
+        description: Override the app version (e.g., "v1.2.3"). Empty uses the appVersion in Chart.yaml.
+        required: false
         type: string
+        default: ""
       additional_tags:
         description: Space-separated additional tags to apply to the chart.
         required: false
@@ -29,13 +31,15 @@ on:
   workflow_dispatch:
     inputs:
       chart_version:
-        description: Version to use for the Helm chart (e.g., "0.0.0" or "1.2.3").
-        required: true
+        description: Override the chart version (e.g., "1.2.3"). Empty uses the version in Chart.yaml.
+        required: false
         type: string
+        default: ""
       app_version:
-        description: App version to embed in the chart (e.g., "0.0.0" or "v1.2.3").
-        required: true
+        description: Override the app version (e.g., "v1.2.3"). Empty uses the appVersion in Chart.yaml.
+        required: false
         type: string
+        default: ""
       additional_tags:
         description: Space-separated additional tags to apply to the chart.
         required: false
@@ -79,11 +83,12 @@ jobs:
         id: meta
         env:
           REPO_OWNER: ${{ github.repository_owner }}
+          CHART_VERSION: ${{ inputs.chart_version }}
         run: |
+          CHART="charts/${{ matrix.chart }}/Chart.yaml"
           REPO_OWNER=$(echo "${REPO_OWNER}" | tr '[:upper:]' '[:lower:]')
-          CHART_NAME=$(awk -F': ' '$1=="name"{print $2}' "charts/${{ matrix.chart }}/Chart.yaml" | tr -d '"')
-          CHART_REF="ghcr.io/${REPO_OWNER}/charts/${CHART_NAME}"
-          echo "chart_ref=${CHART_REF}" >> "$GITHUB_OUTPUT"
+          echo "chart_ref=ghcr.io/${REPO_OWNER}/charts/$(yq '.name' "$CHART")" >> "$GITHUB_OUTPUT"
+          echo "chart_version=${CHART_VERSION:-$(yq '.version' "$CHART")}" >> "$GITHUB_OUTPUT"
 
       - name: Setup mise
         uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
@@ -117,8 +122,8 @@ jobs:
         run: |
           mkdir -p "charts/${{ matrix.chart }}-packages"
           helm package "charts/${{ matrix.chart }}" \
-            --version "${CHART_VERSION}" \
-            --app-version "${APP_VERSION}" \
+            ${CHART_VERSION:+--version "${CHART_VERSION}"} \
+            ${APP_VERSION:+--app-version "${APP_VERSION}"} \
             --destination "charts/${{ matrix.chart }}-packages"
 
       - name: Push chart
@@ -140,7 +145,7 @@ jobs:
         env:
           ADDITIONAL_TAGS: ${{ inputs.additional_tags }}
           CHART_REF: ${{ steps.meta.outputs.chart_ref }}
-          CHART_VERSION: ${{ inputs.chart_version }}
+          CHART_VERSION: ${{ steps.meta.outputs.chart_version }}
         run: |
           for tag in $ADDITIONAL_TAGS; do
             oras tag \

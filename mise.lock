@@ -179,6 +179,25 @@ url = "https://github.com/evilmartians/lefthook/releases/download/v2.1.10/leftho
 url_api = "https://api.github.com/repos/evilmartians/lefthook/releases/assets/470227499"
 provenance = "github-attestations"
 
+[[tools.sd]]
+version = "1.1.0"
+backend = "aqua:chmln/sd"
+
+[tools.sd."platforms.linux-arm64"]
+checksum = "sha256:ec8c93c0533ff21f4851d11566808d4082544baf063d9b96ea77c27e98b7cd99"
+url = "https://github.com/chmln/sd/releases/download/v1.1.0/sd-v1.1.0-aarch64-unknown-linux-musl.tar.gz"
+url_api = "https://api.github.com/repos/chmln/sd/releases/assets/362325535"
+
+[tools.sd."platforms.linux-x64"]
+checksum = "sha256:02f00f4777d43e8e95b7b8d49e1a0d6e502fed4b8e79c1c8b8063857a30caa2e"
+url = "https://github.com/chmln/sd/releases/download/v1.1.0/sd-v1.1.0-x86_64-unknown-linux-musl.tar.gz"
+url_api = "https://api.github.com/repos/chmln/sd/releases/assets/362325321"
+
+[tools.sd."platforms.macos-arm64"]
+checksum = "sha256:4bd3c09226376ca0a1d69589c91e86276fae36c5fbaaee669afce583f6682030"
+url = "https://github.com/chmln/sd/releases/download/v1.1.0/sd-v1.1.0-aarch64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/chmln/sd/releases/assets/362325451"
+
 [[tools.setup-envtest]]
 version = "0.24.1"
 backend = "aqua:kubernetes-sigs/controller-runtime/setup-envtest"
@@ -197,6 +216,28 @@ url_api = "https://api.github.com/repos/kubernetes-sigs/controller-runtime/relea
 checksum = "sha256:7e59a0d526f6946aa2f114d34b2e309639c811f3a4f83d56f37b6e3197c6fdfb"
 url = "https://github.com/kubernetes-sigs/controller-runtime/releases/download/v0.24.1/setup-envtest-darwin-arm64"
 url_api = "https://api.github.com/repos/kubernetes-sigs/controller-runtime/releases/assets/418514281"
+
+[[tools.yq]]
+version = "4.53.3"
+backend = "aqua:mikefarah/yq"
+
+[tools.yq."platforms.linux-arm64"]
+checksum = "sha256:578648e463a11c1b6db6010cbf41eafed6bee79466fcffa1bb446672cf7945ea"
+url = "https://github.com/mikefarah/yq/releases/download/v4.53.3/yq_linux_arm64"
+url_api = "https://api.github.com/repos/mikefarah/yq/releases/assets/440146727"
+provenance = "cosign"
+
+[tools.yq."platforms.linux-x64"]
+checksum = "sha256:fa52a4e758c63d38299163fbdd1edfb4c4963247918bf9c1c5d31d84789eded4"
+url = "https://github.com/mikefarah/yq/releases/download/v4.53.3/yq_linux_amd64"
+url_api = "https://api.github.com/repos/mikefarah/yq/releases/assets/440146735"
+provenance = "cosign"
+
+[tools.yq."platforms.macos-arm64"]
+checksum = "sha256:877de31753a4dd2401aa048937aa9a7fc4d5f6ce858cf31508c5802954297213"
+url = "https://github.com/mikefarah/yq/releases/download/v4.53.3/yq_darwin_arm64"
+url_api = "https://api.github.com/repos/mikefarah/yq/releases/assets/440146762"
+provenance = "cosign"
 
 [[tools.zizmor]]
 version = "1.28.0"
