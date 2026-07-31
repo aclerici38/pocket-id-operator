@@ -242,6 +242,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionTrue, "Reconciled", "OIDC client is in sync")
 
 	if updated {
+		r.markSkipUpdate(oidcClient)
 		return ctrl.Result{RequeueAfter: 100 * time.Millisecond}, nil
 	}
 
@@ -446,12 +447,18 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 
 	metrics.ResourceOperations.WithLabelValues("PocketIDOIDCClient", "updated").Inc()
 
+	return true, nil
+}
+
+// markSkipUpdate records that the next reconcile is the status refresh triggered by an update we
+// just pushed, so it can skip re-pushing the same state. It is deliberately only called once the
+// entire reconcile has succeeded: recording it earlier would let the skip branch consume the
+// retry of a downstream step that failed after the push.
+func (r *Reconciler) markSkipUpdate(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) {
 	if r.skipUpdate == nil {
 		r.skipUpdate = make(map[types.NamespacedName]bool)
 	}
 	r.skipUpdate[client.ObjectKeyFromObject(oidcClient)] = true
-
-	return true, nil
 }
 
 // aggregateAllowedUserGroupIDs returns the union of:
