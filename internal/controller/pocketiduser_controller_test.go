@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
@@ -887,6 +888,96 @@ var _ = Describe("PocketIDUser Controller", func() {
 
 			Expect(createdUser.Spec.UserInfoSecretRef.Name).To(Equal(secretName))
 			// Controller should apply defaults for empty values
+		})
+	})
+
+	Context("UserID validation", func() {
+		const (
+			validID = "3f8a1c72-9b4d-4e61-8a0f-2c5d7e9b1a34"
+			otherID = "8c2e5b41-7a3f-4d92-b6e8-1f0a3c5d7e91"
+		)
+
+		newUser := func(name, userID string) *pocketidinternalv1alpha1.PocketIDUser {
+			return &pocketidinternalv1alpha1.PocketIDUser{
+				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+				Spec:       pocketidinternalv1alpha1.PocketIDUserSpec{UserID: userID},
+			}
+		}
+
+		// mutate applies a spec change to the latest version of the resource and
+		// returns the resulting API error, if any.
+		mutate := func(name string, apply func(*pocketidinternalv1alpha1.PocketIDUser)) error {
+			return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				current := &pocketidinternalv1alpha1.PocketIDUser{}
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, current); err != nil {
+					return err
+				}
+				apply(current)
+				return k8sClient.Update(ctx, current)
+			})
+		}
+
+		createUser := func(name, userID string) {
+			user := newUser(name, userID)
+			Expect(k8sClient.Create(ctx, user)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, user) })
+		}
+
+		It("Should accept a lowercase UUID", func() {
+			createUser("test-userid-valid", validID)
+		})
+
+		It("Should accept an omitted userID", func() {
+			createUser("test-userid-omitted", "")
+		})
+
+		DescribeTable("Should reject a userID that is not a lowercase UUID",
+			func(userID string) {
+				err := k8sClient.Create(ctx, newUser("test-userid-invalid", userID))
+				Expect(err).To(HaveOccurred())
+				Expect(errors.IsInvalid(err)).To(BeTrue())
+			},
+			Entry("free-form text", "not-a-uuid"),
+			Entry("uppercase hex", "3F8A1C72-9B4D-4E61-8A0F-2C5D7E9B1A34"),
+			Entry("no hyphens", "3f8a1c729b4d4e618a0f2c5d7e9b1a34"),
+			Entry("trailing characters", validID+"-extra"),
+			Entry("non-hex characters", "zzzzzzzz-9b4d-4e61-8a0f-2c5d7e9b1a34"),
+		)
+
+		It("Should reject changing userID after creation", func() {
+			const name = "test-userid-change"
+			createUser(name, validID)
+
+			err := mutate(name, func(u *pocketidinternalv1alpha1.PocketIDUser) { u.Spec.UserID = otherID })
+			Expect(err).To(HaveOccurred())
+			Expect(errors.IsInvalid(err)).To(BeTrue())
+		})
+
+		It("Should reject setting userID after creation", func() {
+			const name = "test-userid-set"
+			createUser(name, "")
+
+			err := mutate(name, func(u *pocketidinternalv1alpha1.PocketIDUser) { u.Spec.UserID = validID })
+			Expect(err).To(HaveOccurred())
+			Expect(errors.IsInvalid(err)).To(BeTrue())
+		})
+
+		It("Should reject removing userID after creation", func() {
+			const name = "test-userid-remove"
+			createUser(name, validID)
+
+			err := mutate(name, func(u *pocketidinternalv1alpha1.PocketIDUser) { u.Spec.UserID = "" })
+			Expect(err).To(HaveOccurred())
+			Expect(errors.IsInvalid(err)).To(BeTrue())
+		})
+
+		It("Should allow unrelated spec changes while userID is unchanged", func() {
+			const name = "test-userid-unchanged"
+			createUser(name, validID)
+
+			Expect(mutate(name, func(u *pocketidinternalv1alpha1.PocketIDUser) {
+				u.Spec.Locale = "de"
+			})).To(Succeed())
 		})
 	})
 })

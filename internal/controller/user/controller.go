@@ -339,10 +339,25 @@ type PocketIDUserAPI interface {
 	UpdateUser(ctx context.Context, id string, input pocketid.UserInput) (*pocketid.User, error)
 }
 
-// FindExistingUser checks if a user with the given username or email already exists in Pocket-ID.
-// Returns the existing user if found, or nil if no matching user exists.
-func (r *Reconciler) FindExistingUser(ctx context.Context, apiClient PocketIDUserAPI, username, email string) (*pocketid.User, error) {
+// FindExistingUser checks if a user already exists in Pocket-ID.
+// If id is non-empty, it looks up by ID directly. Otherwise it searches by username
+// and then email. Returns the existing user if found, or nil if no match exists.
+func (r *Reconciler) FindExistingUser(ctx context.Context, apiClient PocketIDUserAPI, id, username, email string) (*pocketid.User, error) {
 	log := logf.FromContext(ctx)
+
+	if id != "" {
+		log.Info("Looking up user by ID", "userID", id)
+		existingUser, err := apiClient.GetUser(ctx, id)
+		if err != nil {
+			if pocketid.IsNotFoundError(err) {
+				log.Info("User not found in Pocket-ID", "userID", id)
+				return nil, nil
+			}
+			return nil, fmt.Errorf("get user: %w", err)
+		}
+		log.Info("Found existing user in Pocket-ID", "userID", id)
+		return existingUser, nil
+	}
 
 	// Check if user with username already exists
 	log.Info("Checking if user exists in Pocket-ID", "username", username)
@@ -430,6 +445,7 @@ func (r *Reconciler) buildUserInput(ctx context.Context, user *pocketidinternalv
 	}
 
 	return pocketid.UserInput{
+		ID:          user.Spec.UserID,
 		Username:    username,
 		FirstName:   firstName,
 		LastName:    lastName,
@@ -451,6 +467,19 @@ func (r *Reconciler) createOrAdoptUser(ctx context.Context, user *pocketidintern
 		return false, err
 	}
 
+	// A declarative ID identifies the user directly, so adopt an existing one up front
+	if input.ID != "" {
+		existing, err := r.FindExistingUser(ctx, apiClient, input.ID, "", "")
+		if err != nil {
+			return false, fmt.Errorf("search for existing user by ID: %w", err)
+		}
+		if existing != nil {
+			log.Info("Found existing user by ID, adopting", "userID", existing.ID)
+			metrics.ResourceOperations.WithLabelValues("PocketIDUser", "adopted").Inc()
+			return true, r.setUserID(ctx, user, existing.ID)
+		}
+	}
+
 	result, err := common.CreateOrAdopt(ctx, common.CreateOrAdoptConfig[*pocketid.User]{
 		ResourceKind: "user",
 		ResourceID:   input.Username,
@@ -458,7 +487,7 @@ func (r *Reconciler) createOrAdoptUser(ctx context.Context, user *pocketidintern
 			return apiClient.CreateUser(ctx, input)
 		},
 		FindExisting: func() (*pocketid.User, error) {
-			return r.FindExistingUser(ctx, apiClient, input.Username, input.Email)
+			return r.FindExistingUser(ctx, apiClient, input.ID, input.Username, input.Email)
 		},
 		IsNil: func(u *pocketid.User) bool {
 			return u == nil
@@ -511,7 +540,7 @@ func (r *Reconciler) pushUserState(ctx context.Context, user *pocketidinternalv1
 	// Always preserve the current value so the operator never resets it.
 	desired.EmailVerified = current.EmailVerified
 
-	if desired == current.ToInput() {
+	if desired.Equal(current.ToInput()) {
 		log.V(1).Info("User state is in sync, skipping update")
 		return false, nil
 	}
