@@ -38,9 +38,20 @@ replace "ghcr\.io/aclerici38/charts/pocket-id-(operator|instance):[0-9]+\.[0-9]+
 replace "k8s-versioned-schemas\.pages\.dev/pocket-id-operator/[0-9]+\.[0-9]+\.[0-9]+" \
   "k8s-versioned-schemas.pages.dev/pocket-id-operator/${chart_version}"
 
-# kustomize splits the image reference across `name` and `newTag`, so the
-# repo-wide replace above cannot see it.
-TAG="${version}@${digest}" yq -i '.images[0].newTag = strenv(TAG)' "$kustomization"
+# kustomize splits the image reference across `name`/`newTag` and the chart
+# across `repository`/`tag`, so the repo-wide replace above cannot see either.
+export TAG="${version}@${digest}"
+
+yq -i '.images[0].newTag = strenv(TAG)' "$kustomization"
+
+# The chart's tag is the only `tag:` key in its values. Rewritten with sd
+# because yq reflows the file, dropping the blank lines between its blocks;
+values=charts/pocket-id-operator/values.yaml
+sd "^(\s+tag: )\"[^\"]*\"" "\${1}\"${TAG}\"" "$values"
+if [ "$(yq '.operator.image.tag' "$values")" != "$TAG" ]; then
+  echo "failed to pin operator.image.tag in ${values}" >&2
+  exit 1
+fi
 
 export CHART_VERSION="$chart_version" APP_VERSION="$version"
 
