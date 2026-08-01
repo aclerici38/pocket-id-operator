@@ -173,6 +173,7 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}
           VERSION: ${{ needs.validate.outputs.version }}
+          TARGET_SHA: ${{ needs.validate.outputs.target_sha }}
         run: |
           git config user.name "${APP_SLUG}[bot]"
           git config user.email "200541989+${APP_SLUG}[bot]@users.noreply.github.com"
@@ -180,7 +181,10 @@ jobs:
             echo "Version references are already up to date."
           else
             git commit -am "chore(release): ${VERSION} [skip ci]"
-            git push "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "HEAD:main"
+            if ! git push "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "HEAD:main"; then
+              echo "::error::main advanced past ${TARGET_SHA} while this release was preparing. Nothing has been published; re-run the workflow to cut ${VERSION} from the new tip."
+              exit 1
+            fi
           fi
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
