@@ -32,6 +32,8 @@ filter_unconventional = true
 split_commits = false
 
 commit_parsers = [
+  # The release workflow's own version-bump commit.
+  { message = "^chore\\(release\\)", skip = true },
   { message = "\\(deps\\)", group = "<!-- 5 -->Dependencies" },
   { message = "^feat", group = "<!-- 0 -->Features" },
   { message = "^refactor", group = "<!-- 1 -->Refactor" },

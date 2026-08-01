@@ -12,6 +12,10 @@ go = "1.26.5"
 # Kubernetes manifest tooling
 kustomize = "5.8.1"
 "go:sigs.k8s.io/controller-tools/cmd/controller-gen" = "0.21.0"
+yq = "4.53.3"
+
+# Release version rewriting
+sd = "1.1.0"
 
 # Test tooling
 setup-envtest = "0.24.1"
@@ -44,7 +48,7 @@ postinstall = "command -v lefthook >/dev/null 2>&1 && lefthook install || true"
 [env]
 # Default image for the docker/deploy tasks. Override with `IMG=… mise run …`.
 # Kept separate from IMG so it never leaks into the e2e suite's image logic.
-DEFAULT_IMG = "ghcr.io/aclerici38/pocket-id-operator:v0.6.1@sha256:2c6b9c89e2e7f4300eaeef7c2853cd7ca9961eeb19e676bbeccdc69c4282dd9c"
+DEFAULT_IMG = "ghcr.io/aclerici38/pocket-id-operator:v0.11.1@sha256:cd6d60a76a66e9132a13f7639a903c87676ca7eba45d3a5b6024fac4a9bd58d1"
 KIND_CLUSTER = "pocket-id-operator-test-e2e"
 CONTAINER_TOOL = "docker"
 PLATFORMS = "linux/arm64,linux/amd64,linux/s390x,linux/ppc64le"
