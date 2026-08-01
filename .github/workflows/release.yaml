@@ -53,9 +53,8 @@ jobs:
           REPO_OWNER: ${{ github.repository_owner }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Ensure version starts with 'v'
-          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9] ]]; then
-            echo "::error::Version must be in format v0.0.0"
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version must be exactly v0.0.0 (no suffixes)"
             exit 1
           fi
 
