@@ -21,6 +21,12 @@ env:
   # install_args installs this job's tool subset; don't let `mise run`
   # auto-install the rest of mise.toml on top of it.
   MISE_TASK_RUN_AUTO_INSTALL: "false"
+  BUMP_SUBJECT: "chore(release): ${{ inputs.version }} [skip ci]"
+
+# Serialize releases: two runs bumping main at once would race on the push.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   # Bumps first so everything downstream is cut from `sha`, a commit whose
@@ -92,20 +98,24 @@ jobs:
             false/false) echo "::error::Release ${VERSION} is already published."; exit 1 ;;
           esac
 
-          KUSTOMIZATION=config/manager/kustomization.yaml
           if [ "$PROMOTE" = "true" ]; then
             # main was bumped by the run that created the prerelease.
             SHA=$(git rev-parse "${VERSION}^{commit}")
-            PINNED=$(git show "${VERSION}:${KUSTOMIZATION}" | yq '.images[0].newTag')
           else
-            SHA=$(git rev-parse HEAD)
-            PINNED=$(yq '.images[0].newTag' "$KUSTOMIZATION")
+            # A failed attempt may already have landed the bump. Cut from that
+            # commit, never from main's current head: work merged since is not in
+            # the image this version tags.
+            SHA=$(git log -1 --format=%H -F --grep="${BUMP_SUBJECT}" HEAD)
+            if [ -z "$SHA" ]; then
+              SHA=$(git rev-parse HEAD)
+              echo "needs_bump=true" >> "$GITHUB_OUTPUT"
+            fi
           fi
 
-          # Once the bump has landed the digest is pinned in the tree, and that
-          # commit is [skip ci] so it has no image of its own to look up. Only the
-          # first attempt at a version asks the registry what CI built for main's
-          # head; promotions and re-runs read the digest back.
+          # The bump pins the digest in the tree, and that commit is [skip ci] so
+          # it has no image of its own to look up. Only a first attempt asks the
+          # registry what CI built for main's head.
+          PINNED=$(git show "${SHA}:config/manager/kustomization.yaml" | yq '.images[0].newTag')
           if [[ "$PINNED" == "${VERSION}@"* ]]; then
             DIGEST="${PINNED#*@}"
           else
@@ -124,7 +134,7 @@ jobs:
 
       - name: Generate GitHub App token
         id: app-token
-        if: ${{ steps.plan.outputs.promote != 'true' }}
+        if: ${{ steps.plan.outputs.needs_bump == 'true' }}
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           client-id: ${{ secrets.APP_CLIENT_ID }}
@@ -136,7 +146,7 @@ jobs:
       # and tested from the parent commit.
       - name: Bump version references and push to main
         id: bump
-        if: ${{ steps.plan.outputs.promote != 'true' }}
+        if: ${{ steps.plan.outputs.needs_bump == 'true' }}
         env:
           APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -151,11 +161,13 @@ jobs:
           if git diff --quiet; then
             echo "Version references on main are already up to date."
           else
-            git commit -am "chore(release): ${VERSION} [skip ci]"
-            # Rejected as a non-fast-forward if main moved since the checkout above,
-            # which would otherwise cut the release from an orphaned commit.
+            git commit -am "${BUMP_SUBJECT}"
+            # Rejected as a non-fast-forward if main moved since the checkout above.
+            # Deliberately not rebased: the digest resolved above belongs to the
+            # commit this one is based on, so retargeting would tag an image that
+            # does not contain the newer code.
             if ! git push "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "HEAD:main"; then
-              echo "::error::main moved while ${VERSION} was being prepared. Re-run this workflow."
+              echo "::error::main moved while ${VERSION} was being prepared. Nothing has been published; re-run this workflow to release from main's new head."
               exit 1
             fi
           fi
