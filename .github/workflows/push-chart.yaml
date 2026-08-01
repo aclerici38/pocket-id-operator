@@ -1,23 +1,11 @@
 name: Push Chart
 
+# Packages the charts exactly as they are committed at `ref`. The release
+# workflow bumps main before calling this, so Chart.yaml already carries the
+# release version, the appVersion and the subchart dependency constraint.
 on:
   workflow_call:
     inputs:
-      chart_version:
-        description: Override the chart version (e.g., "1.2.3"). Empty uses the version in Chart.yaml.
-        required: false
-        type: string
-        default: ""
-      app_version:
-        description: Override the app version (e.g., "v1.2.3"). Empty uses the appVersion in Chart.yaml.
-        required: false
-        type: string
-        default: ""
-      additional_tags:
-        description: Space-separated additional tags to apply to the chart.
-        required: false
-        type: string
-        default: ""
       changelog:
         description: Artifact Hub changelog annotation.
         required: false
@@ -30,21 +18,6 @@ on:
         default: ""
   workflow_dispatch:
     inputs:
-      chart_version:
-        description: Override the chart version (e.g., "1.2.3"). Empty uses the version in Chart.yaml.
-        required: false
-        type: string
-        default: ""
-      app_version:
-        description: Override the app version (e.g., "v1.2.3"). Empty uses the appVersion in Chart.yaml.
-        required: false
-        type: string
-        default: ""
-      additional_tags:
-        description: Space-separated additional tags to apply to the chart.
-        required: false
-        type: string
-        default: ""
       changelog:
         description: Artifact Hub changelog annotation.
         required: false
@@ -83,19 +56,15 @@ jobs:
         id: meta
         env:
           REPO_OWNER: ${{ github.repository_owner }}
-          CHART_VERSION: ${{ inputs.chart_version }}
         run: |
-          CHART="charts/${{ matrix.chart }}/Chart.yaml"
-          REPO_OWNER=$(echo "${REPO_OWNER}" | tr '[:upper:]' '[:lower:]')
-          echo "chart_ref=ghcr.io/${REPO_OWNER}/charts/$(yq '.name' "$CHART")" >> "$GITHUB_OUTPUT"
-          echo "chart_version=${CHART_VERSION:-$(yq '.version' "$CHART")}" >> "$GITHUB_OUTPUT"
+          echo "chart_repo=ghcr.io/$(echo "$REPO_OWNER" | tr '[:upper:]' '[:lower:]')/charts" >> "$GITHUB_OUTPUT"
 
       - name: Setup mise
         uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
         with:
           # renovate: datasource=github-releases depName=jdx/mise
           version: "2026.7.14"
-          install_args: helm
+          install_args: "helm yq"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -116,52 +85,35 @@ jobs:
         run: mise run helm-deps
 
       - name: Package chart
-        env:
-          CHART_VERSION: ${{ inputs.chart_version }}
-          APP_VERSION: ${{ inputs.app_version }}
         run: |
           mkdir -p "charts/${{ matrix.chart }}-packages"
           helm package "charts/${{ matrix.chart }}" \
-            ${CHART_VERSION:+--version "${CHART_VERSION}"} \
-            ${APP_VERSION:+--app-version "${APP_VERSION}"} \
             --destination "charts/${{ matrix.chart }}-packages"
 
       - name: Push chart
         id: push
         env:
-          CHART_REF: ${{ steps.meta.outputs.chart_ref }}
+          CHART_REPO: ${{ steps.meta.outputs.chart_repo }}
         run: |
           PUSH_OUTPUT=$(helm push "charts/${{ matrix.chart }}-packages"/*.tgz \
-            "oci://$(dirname "${CHART_REF}")" 2>&1)
+            "oci://${CHART_REPO}" 2>&1)
           echo "$PUSH_OUTPUT"
           DIGEST=$(echo "$PUSH_OUTPUT" | grep "Digest:" | awk '{print $2}')
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
+      # https://artifacthub.io/docs/topics/repositories/helm-charts/#oci-support
+      # Both steps are skipped for charts without their own artifacthub-repo.yaml
       - name: Setup ORAS
+        if: hashFiles(format('charts/{0}/artifacthub-repo.yaml', matrix.chart)) != ''
         uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d # v2.0.1
 
-      - name: Apply additional tags
-        if: inputs.additional_tags != ''
-        env:
-          ADDITIONAL_TAGS: ${{ inputs.additional_tags }}
-          CHART_REF: ${{ steps.meta.outputs.chart_ref }}
-          CHART_VERSION: ${{ steps.meta.outputs.chart_version }}
-        run: |
-          for tag in $ADDITIONAL_TAGS; do
-            oras tag \
-              "${CHART_REF}:${CHART_VERSION}" \
-              "${tag}"
-          done
-
       - name: Push Artifact Hub metadata
-        # https://artifacthub.io/docs/topics/repositories/helm-charts/#oci-support
-        # Skipped for charts without their own artifacthub-repo.yaml
         if: hashFiles(format('charts/{0}/artifacthub-repo.yaml', matrix.chart)) != ''
         env:
-          CHART_REF: ${{ steps.meta.outputs.chart_ref }}
+          CHART_REPO: ${{ steps.meta.outputs.chart_repo }}
         run: |
           oras push \
-            "${CHART_REF}:artifacthub.io" \
+            "${CHART_REPO}/${{ matrix.chart }}:artifacthub.io" \
             --config /dev/null:application/vnd.cncf.artifacthub.config.v1+yaml \
             "charts/${{ matrix.chart }}/artifacthub-repo.yaml:application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml"
 
@@ -170,19 +122,19 @@ jobs:
 
       - name: Sign chart
         env:
-          CHART_REF: ${{ steps.meta.outputs.chart_ref }}
+          CHART_REPO: ${{ steps.meta.outputs.chart_repo }}
           CHART_DIGEST: ${{ steps.push.outputs.digest }}
         run: |
           cosign sign --yes \
-            "${CHART_REF}@${CHART_DIGEST}"
+            "${CHART_REPO}/${{ matrix.chart }}@${CHART_DIGEST}"
 
       - name: Verify chart signature
         env:
           REPOSITORY: ${{ github.repository }}
-          CHART_REF: ${{ steps.meta.outputs.chart_ref }}
+          CHART_REPO: ${{ steps.meta.outputs.chart_repo }}
           CHART_DIGEST: ${{ steps.push.outputs.digest }}
         run: |
           cosign verify \
             --certificate-identity-regexp "https://github.com/${REPOSITORY}/" \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-            "${CHART_REF}@${CHART_DIGEST}"
+            "${CHART_REPO}/${{ matrix.chart }}@${CHART_DIGEST}"
