@@ -11,7 +11,10 @@ chart_version="${version#v}"
 
 kustomization=config/manager/kustomization.yaml
 
+# Current `<tag>@<digest>`
 current="$(yq '.images[0].newTag' "$kustomization")"
+old_chart_version="${current%@*}"
+old_chart_version="${old_chart_version#v}"
 
 # The digest of the image the release publishes. Defaults to the currently
 # pinned one so the task can be run locally without a registry lookup.
@@ -23,31 +26,27 @@ fi
 
 pinned="${version}@${digest}"
 
-# Rewrites every tracked file containing the pattern. The strings below only
-# ever refer to this operator's own release, so docs and examples added later
-# are picked up without teaching the release workflow about each new file.
-# Pass -F to match a literal string rather than a regex.
 replace() {
-  local fixed=""
-  [ "$1" != -F ] || { fixed=-F; shift; }
   local files
+  files="$(git grep -lF "$1" || true)"
   # shellcheck disable=SC2086
-  files="$(git grep -l ${fixed:--E} "$1" || true)"
-  # shellcheck disable=SC2086
-  [ -z "$files" ] || sd $fixed "$1" "$2" $files
+  [ -z "$files" ] || sd -F "$1" "$2" $files
 }
 
-replace "ghcr\.io/aclerici38/pocket-id-operator:[^@[:space:]]+@sha256:[0-9a-f]+" \
-  "ghcr.io/aclerici38/pocket-id-operator:${version}@${digest}"
+# Reaches the halves kustomize and the chart split across keys (`newTag`, `tag:`)
+# as well as the full image references.
+replace "$current" "$pinned"
 
-replace "ghcr\.io/aclerici38/charts/pocket-id-(operator|instance):[0-9]+\.[0-9]+\.[0-9]+" \
-  "ghcr.io/aclerici38/charts/pocket-id-\${1}:${chart_version}"
+replace "ghcr.io/aclerici38/charts/pocket-id-operator:${old_chart_version}" \
+  "ghcr.io/aclerici38/charts/pocket-id-operator:${chart_version}"
 
-replace "k8s-versioned-schemas\.pages\.dev/pocket-id-operator/[0-9]+\.[0-9]+\.[0-9]+" \
+replace "ghcr.io/aclerici38/charts/pocket-id-instance:${old_chart_version}" \
+  "ghcr.io/aclerici38/charts/pocket-id-instance:${chart_version}"
+
+replace "k8s-versioned-schemas.pages.dev/pocket-id-operator/${old_chart_version}" \
   "k8s-versioned-schemas.pages.dev/pocket-id-operator/${chart_version}"
 
-# kustomize and the chart split the image reference across keys, so guard against
-# the replace above having missed the halves that carry the tag.
+# Verify kustomize and chart since those are what's being deployed
 check() {
   if [ "$(yq "$2" "$1")" != "$pinned" ]; then
     echo "failed to pin ${2} in ${1}" >&2
