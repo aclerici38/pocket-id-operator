@@ -45,9 +45,10 @@ import (
 )
 
 const (
-	UserFinalizer              = "pocketid.internal/user-finalizer"
-	UserGroupUserFinalizer     = "pocketid.internal/user-group-finalizer"
-	DefaultLoginTokenExpiryMin = 15
+	UserFinalizer          = "pocketid.internal/user-finalizer"
+	UserGroupUserFinalizer = "pocketid.internal/user-group-finalizer"
+	// DefaultLoginTokenExpiryMin must stay above 15 for a full-length token
+	DefaultLoginTokenExpiryMin = 60
 
 	// DeleteFromPocketIDAnnotation when set to "true" will delete the user from Pocket-ID
 	// when the PocketIDUser resource is deleted from Kubernetes. By default, users are

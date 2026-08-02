@@ -87,4 +87,4 @@ On creation a PocketIDOIDCClient is matched to existing user groups by `spec.cli
 On creation a PocketIDAPI is matched to an existing API in pocket-id by `spec.resource`, its permanent audience identifier. See [PocketIDAPI](pocketidapi.md) for more details.
 
 # Starting Fresh
-If installing Pocket-ID for the first time with this operator the procedure should be straightforward. The only difference in features are with the `PocketIDUser` custom resources, when initialized through the operator a one-time passcode will be generated and stored in the status of the custom resource for 15 minutes.
+If installing Pocket-ID for the first time with this operator the procedure should be straightforward. The only difference in features are with the `PocketIDUser` custom resources, when initialized through the operator a one-time passcode will be generated and stored in the status of the custom resource for 60 minutes.

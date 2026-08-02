@@ -115,7 +115,7 @@ spec:
 When a user is first created in pocket-id via a custom resource a one-time code is automatically
 generated for them to use on first login. The code will be displayed in the resource's status under `oneTimeLoginToken`.
 If `spec.appUrl` is set on the targeted `PocketIDInstance`, `oneTimeLoginURL` will contain a fqdn that will auto-login the user with the code.
-This code expires after 15 minutes and is subsequently removed from the resource's status.
+This code expires after 60 minutes and is subsequently removed from the resource's status.
 
 ## Status Highlights
 
