@@ -11,22 +11,30 @@ chart_version="${version#v}"
 
 kustomization=config/manager/kustomization.yaml
 
+current="$(yq '.images[0].newTag' "$kustomization")"
+
 # The digest of the image the release publishes. Defaults to the currently
 # pinned one so the task can be run locally without a registry lookup.
-digest="${2:-$(yq '.images[0].newTag | split("@") | .[1]' "$kustomization")}"
+digest="${2:-${current#*@}}"
 if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
   echo "digest must look like sha256:<64 hex chars>, got '${digest}'" >&2
   exit 1
 fi
 
+pinned="${version}@${digest}"
+
 # Rewrites every tracked file containing the pattern. The strings below only
 # ever refer to this operator's own release, so docs and examples added later
 # are picked up without teaching the release workflow about each new file.
+# Pass -F to match a literal string rather than a regex.
 replace() {
+  local fixed=""
+  [ "$1" != -F ] || { fixed=-F; shift; }
   local files
-  files="$(git grep -lE "$1" || true)"
-  # shellcheck disable=SC2086 # deliberate word splitting over the file list
-  [ -z "$files" ] || sd "$1" "$2" $files
+  # shellcheck disable=SC2086
+  files="$(git grep -l ${fixed:--E} "$1" || true)"
+  # shellcheck disable=SC2086
+  [ -z "$files" ] || sd $fixed "$1" "$2" $files
 }
 
 replace "ghcr\.io/aclerici38/pocket-id-operator:[^@[:space:]]+@sha256:[0-9a-f]+" \
@@ -38,20 +46,17 @@ replace "ghcr\.io/aclerici38/charts/pocket-id-(operator|instance):[0-9]+\.[0-9]+
 replace "k8s-versioned-schemas\.pages\.dev/pocket-id-operator/[0-9]+\.[0-9]+\.[0-9]+" \
   "k8s-versioned-schemas.pages.dev/pocket-id-operator/${chart_version}"
 
-# kustomize splits the image reference across `name`/`newTag` and the chart
-# across `repository`/`tag`, so the repo-wide replace above cannot see either.
-export TAG="${version}@${digest}"
+# kustomize and the chart split the image reference across keys, so guard against
+# the replace above having missed the halves that carry the tag.
+check() {
+  if [ "$(yq "$2" "$1")" != "$pinned" ]; then
+    echo "failed to pin ${2} in ${1}" >&2
+    exit 1
+  fi
+}
 
-yq -i '.images[0].newTag = strenv(TAG)' "$kustomization"
-
-# The chart's tag is the only `tag:` key in its values. Rewritten with sd
-# because yq reflows the file, dropping the blank lines between its blocks;
-values=charts/pocket-id-operator/values.yaml
-sd "^(\s+tag: )\"[^\"]*\"" "\${1}\"${TAG}\"" "$values"
-if [ "$(yq '.operator.image.tag' "$values")" != "$TAG" ]; then
-  echo "failed to pin operator.image.tag in ${values}" >&2
-  exit 1
-fi
+check "$kustomization" '.images[0].newTag'
+check charts/pocket-id-operator/values.yaml '.operator.image.tag'
 
 export CHART_VERSION="$chart_version" APP_VERSION="$version"
 
