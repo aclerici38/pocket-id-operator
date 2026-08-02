@@ -35,6 +35,9 @@ permissions:
   id-token: write
   packages: write
 
+env:
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+
 jobs:
   publish:
     name: Package and publish ${{ matrix.chart }}
