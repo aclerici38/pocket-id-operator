@@ -956,6 +956,22 @@ curl -sf -H "X-API-KEY: $API_KEY" %s%s`,
 	return getPodLogs(podName, namespace)
 }
 
+// getAppConfigFieldFromPocketID returns a single field from Pocket-ID's public
+// application configuration. This endpoint needs no auth: it is the same payload the
+// login page reads in the browser before the user has a session. The response is a flat
+// array of {"key","type","value"} objects rather than an object keyed by field name, so
+// this pulls the entry whose "key" matches and reads its "value". Values are always
+// strings, so booleans come back as "true"/"false".
+func getAppConfigFieldFromPocketID(podName, namespace, field string) string {
+	script := fmt.Sprintf(`curl -sf %s/api/application-configuration \
+  | grep -o '{[^{}]*"key":"%s"[^{}]*}' \
+  | grep -o '"value":"[^"]*"' | head -1 | sed 's/.*":"//;s/"$//'`,
+		formatInstanceURL(), field)
+
+	applyYAML(createCurlPodYAML(podName, namespace, script))
+	return getPodLogs(podName, namespace)
+}
+
 // createAPIInPocketID creates an API directly via the Pocket-ID API (bypassing the
 // operator, simulating creation through the UI) and returns the new API's ID. Used to
 // test adoption of a pre-existing API by resource.
