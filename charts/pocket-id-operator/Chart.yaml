@@ -2,11 +2,11 @@ apiVersion: v2
 name: pocket-id-operator
 description: A Helm chart to distribute the project pocket-id-operator
 type: application
-version: 0.12.0
-appVersion: v0.12.0
+version: 0.12.1
+appVersion: v0.12.1
 dependencies:
   - name: pocket-id-instance
-    version: 0.12.0
+    version: 0.12.1
     repository: file://../pocket-id-instance
 home: https://github.com/aclerici38/pocket-id-operator
 sources:
