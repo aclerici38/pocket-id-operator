@@ -170,7 +170,7 @@ jobs:
             --create-namespace \
             --namespace pocket-id-instance-test \
             --values .github/helm-test-values-instance.yaml \
-            --set "instance.spec.appUrl=http://pocket-id-instance.pocket-id-instance-test.svc.cluster.local:1411" \
+            --set "instance.spec.appUrl=http://pocket-id-instance.pocket-id-instance-test.svc:1411" \
             --wait \
             --timeout 2m
 

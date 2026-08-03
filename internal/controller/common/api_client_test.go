@@ -191,7 +191,7 @@ func TestResolveAPIClientCredentials_Deployed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if want := InternalServiceURL("deployed", "pocket-id"); url != want {
+	if want := "http://deployed.pocket-id.svc:1411"; url != want {
 		t.Errorf("url: got %q, want %q", url, want)
 	}
 	if key != "static-key" {

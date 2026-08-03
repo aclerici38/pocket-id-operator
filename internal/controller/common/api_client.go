@@ -91,5 +91,5 @@ func StaticAPIKeySecretName(instanceName string) string {
 
 // InternalServiceURL returns the internal Kubernetes service URL for the instance.
 func InternalServiceURL(instanceName, namespace string) string {
-	return fmt.Sprintf("http://%s.%s.svc.cluster.local:1411", instanceName, namespace)
+	return fmt.Sprintf("http://%s.%s.svc:1411", instanceName, namespace)
 }
