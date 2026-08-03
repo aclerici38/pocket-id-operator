@@ -92,7 +92,7 @@ metadata:
       secretKeyRef:
         name: pocket-id-encryption
         key: key
-  appUrl: "http://%s.%s.svc.cluster.local:1411"
+  appUrl: "http://%s.%s.svc:1411"
 %s`, opts.Name, opts.Namespace, labels, opts.Image, opts.Name, opts.Namespace, persistence)
 }
 
@@ -884,7 +884,7 @@ func getPodLogs(name, namespace string) string {
 
 // formatInstanceURL returns the internal service URL for the e2e instance
 func formatInstanceURL() string {
-	return fmt.Sprintf("http://%s.%s.svc.cluster.local:1411", instanceName, instanceNS)
+	return fmt.Sprintf("http://%s.%s.svc:1411", instanceName, instanceNS)
 }
 
 // addUserToGroupInPocketID adds a user to a group directly via the Pocket-ID API,

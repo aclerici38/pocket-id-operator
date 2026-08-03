@@ -40,7 +40,7 @@ lefthook = "2.1.10"
 # Changelog generation
 "aqua:orhun/git-cliff" = "2.13.1"
 
-# Register lefthook's git hooks after `mise install`. 
+# Register lefthook's git hooks after `mise install`.
 # No-op in CI jobs
 [hooks]
 postinstall = "command -v lefthook >/dev/null 2>&1 && lefthook install || true"
@@ -124,13 +124,23 @@ run = [
 ]
 
 [tasks.setup-test-e2e]
-description = "Create the e2e Kind cluster if it does not exist"
+description = "Create the e2e Kind cluster if it does not exist, with a randomized DNS domain (pin with KIND_DNS_DOMAIN)"
 run = '''
 if kind get clusters 2>/dev/null | grep -q "^${KIND_CLUSTER}$"; then
   echo "Kind cluster '${KIND_CLUSTER}' already exists. Skipping creation."
 else
-  echo "Creating Kind cluster '${KIND_CLUSTER}'..."
-  kind create cluster --name "${KIND_CLUSTER}"
+  # `.internal` rather than `.local` keeps the name off macOS mDNS.
+  domain="${KIND_DNS_DOMAIN:-e2e-$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n').internal}"
+  echo "Creating Kind cluster '${KIND_CLUSTER}' with dnsDomain '${domain}'..."
+  kind create cluster --name "${KIND_CLUSTER}" --config - <<EOF
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+kubeadmConfigPatches:
+  - |
+    kind: ClusterConfiguration
+    networking:
+      dnsDomain: ${domain}
+EOF
 fi
 '''
 
