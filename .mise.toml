@@ -135,8 +135,11 @@ else
   kind create cluster --name "${KIND_CLUSTER}" --config - <<EOF
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
-networking:
-  dnsDomain: ${domain}
+kubeadmConfigPatches:
+  - |
+    kind: ClusterConfiguration
+    networking:
+      dnsDomain: ${domain}
 EOF
 fi
 '''
