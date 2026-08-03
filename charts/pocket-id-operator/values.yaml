@@ -60,6 +60,7 @@ metrics:
   port: 8080
   serviceMonitor:
     enabled: false
+    labels: {}
   prometheusRule:
     # Enabled by default when the PrometheusRule CRD is available on the cluster.
     # Set to false to explicitly disable.

@@ -10950,6 +10950,13 @@
                       "type": "boolean",
                       "description": "Create a ServiceMonitor for the operator metrics",
                       "default": false
+                    },
+                    "labels": {
+                      "type": "object",
+                      "description": "Additional labels for the ServiceMonitor resource",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
                     }
                   }
                 },
