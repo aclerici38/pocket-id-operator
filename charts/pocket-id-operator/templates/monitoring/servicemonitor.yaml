@@ -5,6 +5,9 @@ metadata:
   labels:
     {{- include "chart.labels" . | nindent 4 }}
     control-plane: controller-manager
+    {{- with .Values.metrics.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   name: pocket-id-operator
   namespace: {{ .Release.Namespace }}
 spec:
