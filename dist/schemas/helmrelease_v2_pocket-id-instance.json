@@ -5898,6 +5898,14 @@
                           "null"
                         ]
                       },
+                      "requiresPushedAuthorizationRequests": {
+                        "default": false,
+                        "description": "Requires the client to use pushed authorization requests (PAR)",
+                        "type": [
+                          "boolean",
+                          "null"
+                        ]
+                      },
                       "requiresReauthentication": {
                         "default": false,
                         "description": "Requires reauthentication on login",

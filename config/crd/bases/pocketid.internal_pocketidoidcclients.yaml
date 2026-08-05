@@ -355,6 +355,11 @@ spec:
                 default: false
                 description: Enables PKCE for the client
                 type: boolean
+              requiresPushedAuthorizationRequests:
+                default: false
+                description: Requires the client to use pushed authorization requests
+                  (PAR)
+                type: boolean
               requiresReauthentication:
                 default: false
                 description: Requires reauthentication on login

@@ -36,17 +36,18 @@ func TestOidcClientInput(t *testing.T) {
 			Name: "fallback-name",
 		},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-			ClientID:                 "client-id",
-			Description:              "a test client",
-			CallbackURLs:             []string{"https://example.com/callback"},
-			LogoutCallbackURLs:       []string{"https://example.com/logout"},
-			LaunchURL:                "https://example.com",
-			LogoURL:                  "https://example.com/logo.png",
-			DarkLogoURL:              "https://example.com/logo-dark.png",
-			IsPublic:                 true,
-			PKCEEnabled:              true,
-			RequiresReauthentication: true,
-			SkipConsent:              true,
+			ClientID:                            "client-id",
+			Description:                         "a test client",
+			CallbackURLs:                        []string{"https://example.com/callback"},
+			LogoutCallbackURLs:                  []string{"https://example.com/logout"},
+			LaunchURL:                           "https://example.com",
+			LogoURL:                             "https://example.com/logo.png",
+			DarkLogoURL:                         "https://example.com/logo-dark.png",
+			IsPublic:                            true,
+			PKCEEnabled:                         true,
+			RequiresReauthentication:            true,
+			RequiresPushedAuthorizationRequests: true,
+			SkipConsent:                         true,
 			FederatedIdentities: []pocketidinternalv1alpha1.OIDCClientFederatedIdentity{
 				{
 					Issuer:   "https://issuer.example.com",
@@ -79,6 +80,9 @@ func TestOidcClientInput(t *testing.T) {
 	}
 	if !input.SkipConsent {
 		t.Error("expected SkipConsent to be true")
+	}
+	if !input.RequiresPushedAuthorizationRequests {
+		t.Error("expected RequiresPushedAuthorizationRequests to be true")
 	}
 	if input.Credentials == nil {
 		t.Fatal("expected Credentials to not be nil")

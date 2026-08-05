@@ -339,6 +339,11 @@ type PocketIDOIDCClientSpec struct {
 	// +optional
 	RequiresReauthentication bool `json:"requiresReauthentication,omitempty"`
 
+	// Requires the client to use pushed authorization requests (PAR)
+	// +kubebuilder:default=false
+	// +optional
+	RequiresPushedAuthorizationRequests bool `json:"requiresPushedAuthorizationRequests,omitempty"`
+
 	// Skips the consent screen on initial authorization for this client
 	// +kubebuilder:default=false
 	// +optional
