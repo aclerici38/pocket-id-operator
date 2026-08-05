@@ -1,8 +1,8 @@
 resources:
-- manager.yaml
+  - manager.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 images:
-- name: ghcr.io/aclerici38/pocket-id-operator
-  newName: pocket-id-operator
-  newTag: e2e
+  - name: ghcr.io/aclerici38/pocket-id-operator
+    newName: ghcr.io/aclerici38/pocket-id-operator
+    newTag: v0.12.1@sha256:44be40a88bf039c16875760713399c0bdbe9ac6f304586492932bf4f7982778c
