@@ -63,21 +63,22 @@ type APIKeyWithToken struct {
 
 // OIDCClient represents an OIDC client with key configuration.
 type OIDCClient struct {
-	ID                       string
-	Name                     string
-	Description              string
-	CallbackURLs             []string
-	LogoutCallbackURLs       []string
-	LaunchURL                string
-	HasLogo                  bool
-	HasDarkLogo              bool
-	IsPublic                 bool
-	IsGroupRestricted        bool
-	PKCEEnabled              bool
-	PKCESupported            bool
-	RequiresReauthentication bool
-	SkipConsent              bool
-	AllowedUserGroupIDs      []string
+	ID                                  string
+	Name                                string
+	Description                         string
+	CallbackURLs                        []string
+	LogoutCallbackURLs                  []string
+	LaunchURL                           string
+	HasLogo                             bool
+	HasDarkLogo                         bool
+	IsPublic                            bool
+	IsGroupRestricted                   bool
+	PKCEEnabled                         bool
+	PKCESupported                       bool
+	RequiresReauthentication            bool
+	RequiresPushedAuthorizationRequests bool
+	SkipConsent                         bool
+	AllowedUserGroupIDs                 []string
 }
 
 // ToInput converts an OIDCClient into an OIDCClientInput for comparison with desired state.
@@ -88,18 +89,19 @@ type OIDCClient struct {
 // PKCESupported is read-only (set by Pocket-ID, never pushed) and excluded from the input.
 func (c *OIDCClient) ToInput() OIDCClientInput {
 	return OIDCClientInput{
-		Name:                     c.Name,
-		Description:              c.Description,
-		CallbackURLs:             c.CallbackURLs,
-		LogoutCallbackURLs:       c.LogoutCallbackURLs,
-		LaunchURL:                c.LaunchURL,
-		HasLogo:                  c.HasLogo,
-		HasDarkLogo:              c.HasDarkLogo,
-		IsPublic:                 c.IsPublic,
-		IsGroupRestricted:        c.IsGroupRestricted,
-		PKCEEnabled:              c.PKCEEnabled,
-		RequiresReauthentication: c.RequiresReauthentication,
-		SkipConsent:              c.SkipConsent,
+		Name:                                c.Name,
+		Description:                         c.Description,
+		CallbackURLs:                        c.CallbackURLs,
+		LogoutCallbackURLs:                  c.LogoutCallbackURLs,
+		LaunchURL:                           c.LaunchURL,
+		HasLogo:                             c.HasLogo,
+		HasDarkLogo:                         c.HasDarkLogo,
+		IsPublic:                            c.IsPublic,
+		IsGroupRestricted:                   c.IsGroupRestricted,
+		PKCEEnabled:                         c.PKCEEnabled,
+		RequiresReauthentication:            c.RequiresReauthentication,
+		RequiresPushedAuthorizationRequests: c.RequiresPushedAuthorizationRequests,
+		SkipConsent:                         c.SkipConsent,
 	}
 }
 
@@ -118,22 +120,23 @@ type OIDCClientCredentials struct {
 
 // OIDCClientInput contains fields for creating or updating an OIDC client.
 type OIDCClientInput struct {
-	ID                       *string // nil means let Pocket-ID autogenerate
-	Name                     string
-	Description              string
-	CallbackURLs             []string
-	LogoutCallbackURLs       []string
-	LaunchURL                string
-	LogoURL                  string
-	DarkLogoURL              string
-	HasLogo                  bool
-	HasDarkLogo              bool
-	IsPublic                 bool
-	IsGroupRestricted        bool
-	PKCEEnabled              bool
-	RequiresReauthentication bool
-	SkipConsent              bool
-	Credentials              *OIDCClientCredentials
+	ID                                  *string // nil means let Pocket-ID autogenerate
+	Name                                string
+	Description                         string
+	CallbackURLs                        []string
+	LogoutCallbackURLs                  []string
+	LaunchURL                           string
+	LogoURL                             string
+	DarkLogoURL                         string
+	HasLogo                             bool
+	HasDarkLogo                         bool
+	IsPublic                            bool
+	IsGroupRestricted                   bool
+	PKCEEnabled                         bool
+	RequiresReauthentication            bool
+	RequiresPushedAuthorizationRequests bool
+	SkipConsent                         bool
+	Credentials                         *OIDCClientCredentials
 }
 
 // Equal compares two OIDCClientInputs for equality on the fields that can be
@@ -150,6 +153,7 @@ func (i OIDCClientInput) Equal(other OIDCClientInput) bool {
 		i.IsGroupRestricted != other.IsGroupRestricted ||
 		i.PKCEEnabled != other.PKCEEnabled ||
 		i.RequiresReauthentication != other.RequiresReauthentication ||
+		i.RequiresPushedAuthorizationRequests != other.RequiresPushedAuthorizationRequests ||
 		i.SkipConsent != other.SkipConsent {
 		return false
 	}
@@ -537,21 +541,22 @@ func (c *Client) ListOIDCClients(ctx context.Context, search string) ([]*OIDCCli
 
 func (c *Client) CreateOIDCClient(ctx context.Context, input OIDCClientInput) (*OIDCClient, error) {
 	dto := &models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientCreateDto{
-		Name:                     &input.Name,
-		Description:              input.Description,
-		CallbackURLs:             input.CallbackURLs,
-		LogoutCallbackURLs:       input.LogoutCallbackURLs,
-		LaunchURL:                input.LaunchURL,
-		LogoURL:                  input.LogoURL,
-		DarkLogoURL:              input.DarkLogoURL,
-		HasLogo:                  input.HasLogo,
-		HasDarkLogo:              input.HasDarkLogo,
-		IsPublic:                 input.IsPublic,
-		IsGroupRestricted:        input.IsGroupRestricted,
-		PkceEnabled:              input.PKCEEnabled,
-		RequiresReauthentication: input.RequiresReauthentication,
-		SkipConsent:              input.SkipConsent,
-		Credentials:              oidcCredentialsToDTO(input.Credentials),
+		Name:                                &input.Name,
+		Description:                         input.Description,
+		CallbackURLs:                        input.CallbackURLs,
+		LogoutCallbackURLs:                  input.LogoutCallbackURLs,
+		LaunchURL:                           input.LaunchURL,
+		LogoURL:                             input.LogoURL,
+		DarkLogoURL:                         input.DarkLogoURL,
+		HasLogo:                             input.HasLogo,
+		HasDarkLogo:                         input.HasDarkLogo,
+		IsPublic:                            input.IsPublic,
+		IsGroupRestricted:                   input.IsGroupRestricted,
+		PkceEnabled:                         input.PKCEEnabled,
+		RequiresReauthentication:            input.RequiresReauthentication,
+		RequiresPushedAuthorizationRequests: input.RequiresPushedAuthorizationRequests,
+		SkipConsent:                         input.SkipConsent,
+		Credentials:                         oidcCredentialsToDTO(input.Credentials),
 	}
 
 	// Only set ID if explicitly provided; otherwise let Pocket-ID autogenerate
@@ -576,21 +581,22 @@ func (c *Client) UpdateOIDCClient(ctx context.Context, id string, input OIDCClie
 	params := oidc.NewPutAPIOidcClientsIDParams().
 		WithID(id).
 		WithClient(&models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientUpdateDto{
-			Name:                     &input.Name,
-			Description:              input.Description,
-			CallbackURLs:             input.CallbackURLs,
-			LogoutCallbackURLs:       input.LogoutCallbackURLs,
-			LaunchURL:                input.LaunchURL,
-			LogoURL:                  input.LogoURL,
-			DarkLogoURL:              input.DarkLogoURL,
-			HasLogo:                  input.HasLogo,
-			HasDarkLogo:              input.HasDarkLogo,
-			IsPublic:                 input.IsPublic,
-			IsGroupRestricted:        input.IsGroupRestricted,
-			PkceEnabled:              input.PKCEEnabled,
-			RequiresReauthentication: input.RequiresReauthentication,
-			SkipConsent:              input.SkipConsent,
-			Credentials:              oidcCredentialsToDTO(input.Credentials),
+			Name:                                &input.Name,
+			Description:                         input.Description,
+			CallbackURLs:                        input.CallbackURLs,
+			LogoutCallbackURLs:                  input.LogoutCallbackURLs,
+			LaunchURL:                           input.LaunchURL,
+			LogoURL:                             input.LogoURL,
+			DarkLogoURL:                         input.DarkLogoURL,
+			HasLogo:                             input.HasLogo,
+			HasDarkLogo:                         input.HasDarkLogo,
+			IsPublic:                            input.IsPublic,
+			IsGroupRestricted:                   input.IsGroupRestricted,
+			PkceEnabled:                         input.PKCEEnabled,
+			RequiresReauthentication:            input.RequiresReauthentication,
+			RequiresPushedAuthorizationRequests: input.RequiresPushedAuthorizationRequests,
+			SkipConsent:                         input.SkipConsent,
+			Credentials:                         oidcCredentialsToDTO(input.Credentials),
 		})
 
 	start := time.Now()
@@ -1189,21 +1195,22 @@ func oidcClientFromListDTO(dto *models.GithubComPocketIDPocketIDBackendInternalD
 		return nil
 	}
 	return &OIDCClient{
-		ID:                       dto.ID,
-		Name:                     dto.Name,
-		Description:              dto.Description,
-		CallbackURLs:             dto.CallbackURLs,
-		LogoutCallbackURLs:       dto.LogoutCallbackURLs,
-		LaunchURL:                dto.LaunchURL,
-		HasLogo:                  dto.HasLogo,
-		HasDarkLogo:              dto.HasDarkLogo,
-		IsPublic:                 dto.IsPublic,
-		IsGroupRestricted:        dto.IsGroupRestricted,
-		PKCEEnabled:              dto.PkceEnabled,
-		PKCESupported:            dto.PkceSupported,
-		RequiresReauthentication: dto.RequiresReauthentication,
-		SkipConsent:              dto.SkipConsent,
-		AllowedUserGroupIDs:      []string{},
+		ID:                                  dto.ID,
+		Name:                                dto.Name,
+		Description:                         dto.Description,
+		CallbackURLs:                        dto.CallbackURLs,
+		LogoutCallbackURLs:                  dto.LogoutCallbackURLs,
+		LaunchURL:                           dto.LaunchURL,
+		HasLogo:                             dto.HasLogo,
+		HasDarkLogo:                         dto.HasDarkLogo,
+		IsPublic:                            dto.IsPublic,
+		IsGroupRestricted:                   dto.IsGroupRestricted,
+		PKCEEnabled:                         dto.PkceEnabled,
+		PKCESupported:                       dto.PkceSupported,
+		RequiresReauthentication:            dto.RequiresReauthentication,
+		RequiresPushedAuthorizationRequests: dto.RequiresPushedAuthorizationRequests,
+		SkipConsent:                         dto.SkipConsent,
+		AllowedUserGroupIDs:                 []string{},
 	}
 }
 
@@ -1219,21 +1226,22 @@ func oidcClientFromAllowedGroupsDTO(dto *models.GithubComPocketIDPocketIDBackend
 		groupIDs = append(groupIDs, group.ID)
 	}
 	return &OIDCClient{
-		ID:                       dto.ID,
-		Name:                     dto.Name,
-		Description:              dto.Description,
-		CallbackURLs:             dto.CallbackURLs,
-		LogoutCallbackURLs:       dto.LogoutCallbackURLs,
-		LaunchURL:                dto.LaunchURL,
-		HasLogo:                  dto.HasLogo,
-		HasDarkLogo:              dto.HasDarkLogo,
-		IsPublic:                 dto.IsPublic,
-		IsGroupRestricted:        dto.IsGroupRestricted,
-		PKCEEnabled:              dto.PkceEnabled,
-		PKCESupported:            dto.PkceSupported,
-		RequiresReauthentication: dto.RequiresReauthentication,
-		SkipConsent:              dto.SkipConsent,
-		AllowedUserGroupIDs:      groupIDs,
+		ID:                                  dto.ID,
+		Name:                                dto.Name,
+		Description:                         dto.Description,
+		CallbackURLs:                        dto.CallbackURLs,
+		LogoutCallbackURLs:                  dto.LogoutCallbackURLs,
+		LaunchURL:                           dto.LaunchURL,
+		HasLogo:                             dto.HasLogo,
+		HasDarkLogo:                         dto.HasDarkLogo,
+		IsPublic:                            dto.IsPublic,
+		IsGroupRestricted:                   dto.IsGroupRestricted,
+		PKCEEnabled:                         dto.PkceEnabled,
+		PKCESupported:                       dto.PkceSupported,
+		RequiresReauthentication:            dto.RequiresReauthentication,
+		RequiresPushedAuthorizationRequests: dto.RequiresPushedAuthorizationRequests,
+		SkipConsent:                         dto.SkipConsent,
+		AllowedUserGroupIDs:                 groupIDs,
 	}
 }
 

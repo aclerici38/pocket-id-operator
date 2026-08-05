@@ -74,6 +74,38 @@ func TestUpdateOIDCClient_SendsCallbackURLsAsProvided(t *testing.T) {
 	}
 }
 
+func TestUpdateOIDCClient_SendsRequiresPushedAuthorizationRequests(t *testing.T) {
+	var body map[string]any
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut || r.URL.Path != "/api/oidc/clients/test-id" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(oidcClientResponse{ID: "test-id", Name: "test-client", AllowedUserGroups: []any{}})
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(ts.URL, "")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	_, err = client.UpdateOIDCClient(context.Background(), "test-id", OIDCClientInput{
+		Name:                                "test-client",
+		RequiresPushedAuthorizationRequests: true,
+	})
+	if err != nil {
+		t.Fatalf("UpdateOIDCClient: %v", err)
+	}
+
+	if got, _ := body["requiresPushedAuthorizationRequests"].(bool); !got {
+		t.Errorf("expected requiresPushedAuthorizationRequests true in payload, got %v", body["requiresPushedAuthorizationRequests"])
+	}
+}
+
 func TestUpdateOIDCClientAllowedGroups_RetriesOn500(t *testing.T) {
 	attempts := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -159,18 +191,19 @@ func TestUpdateOIDCClientAllowedGroups_NoRetryOnNon500(t *testing.T) {
 
 func TestOIDCClientToInput_MapsAllFields(t *testing.T) {
 	c := &OIDCClient{
-		ID:                       "should-be-excluded",
-		Name:                     "test-client",
-		CallbackURLs:             []string{"https://a.example.com/cb"},
-		LogoutCallbackURLs:       []string{"https://a.example.com/logout"},
-		LaunchURL:                "https://app.example.com",
-		HasLogo:                  true,
-		HasDarkLogo:              true,
-		IsPublic:                 true,
-		IsGroupRestricted:        true,
-		PKCEEnabled:              true,
-		RequiresReauthentication: true,
-		AllowedUserGroupIDs:      []string{"group-1"},
+		ID:                                  "should-be-excluded",
+		Name:                                "test-client",
+		CallbackURLs:                        []string{"https://a.example.com/cb"},
+		LogoutCallbackURLs:                  []string{"https://a.example.com/logout"},
+		LaunchURL:                           "https://app.example.com",
+		HasLogo:                             true,
+		HasDarkLogo:                         true,
+		IsPublic:                            true,
+		IsGroupRestricted:                   true,
+		PKCEEnabled:                         true,
+		RequiresReauthentication:            true,
+		RequiresPushedAuthorizationRequests: true,
+		AllowedUserGroupIDs:                 []string{"group-1"},
 	}
 	input := c.ToInput()
 	if input.Name != "test-client" {
@@ -202,6 +235,9 @@ func TestOIDCClientToInput_MapsAllFields(t *testing.T) {
 	}
 	if !input.RequiresReauthentication {
 		t.Error("RequiresReauthentication: expected true")
+	}
+	if !input.RequiresPushedAuthorizationRequests {
+		t.Error("RequiresPushedAuthorizationRequests: expected true")
 	}
 	// Fields excluded from ToInput: ID, LogoURL, DarkLogoURL, Credentials
 	if input.ID != nil {
@@ -458,6 +494,14 @@ func TestOIDCClientInputEqual_DifferentNameNotEqual(t *testing.T) {
 	b := OIDCClientInput{Name: "b"}
 	if a.Equal(b) {
 		t.Error("expected different names to not be equal")
+	}
+}
+
+func TestOIDCClientInputEqual_DifferentPushedAuthorizationRequestsNotEqual(t *testing.T) {
+	a := OIDCClientInput{Name: "test", RequiresPushedAuthorizationRequests: true}
+	b := OIDCClientInput{Name: "test"}
+	if a.Equal(b) {
+		t.Error("expected different RequiresPushedAuthorizationRequests to not be equal")
 	}
 }
 
