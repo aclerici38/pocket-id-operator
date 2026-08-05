@@ -555,10 +555,11 @@ func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.Pocket
 		identities := make([]pocketid.OIDCClientFederatedIdentity, 0, len(oidcClient.Spec.FederatedIdentities))
 		for _, identity := range oidcClient.Spec.FederatedIdentities {
 			identities = append(identities, pocketid.OIDCClientFederatedIdentity{
-				Issuer:   identity.Issuer,
-				Subject:  identity.Subject,
-				Audience: identity.Audience,
-				JWKS:     identity.JWKS,
+				Issuer:           identity.Issuer,
+				Subject:          identity.Subject,
+				Audience:         identity.Audience,
+				JWKS:             identity.JWKS,
+				ReplayProtection: identity.ReplayProtection,
 			})
 		}
 		credentials = &pocketid.OIDCClientCredentials{FederatedIdentities: identities}

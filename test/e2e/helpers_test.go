@@ -318,13 +318,25 @@ type OIDCClientOptions struct {
 	LogoutCallbackURLs []string
 	IsPublic           bool
 	SkipConsent        bool
-	AllowedUserGroups  []string // spec.allowedUserGroups[].name: PocketIDUserGroup CRs
-	AllowedGroupNames  []string // spec.allowedUserGroups[].groupName: Pocket-ID groups with no CR
-	AllowedGroupIDs    []string // spec.allowedUserGroups[].groupID: Pocket-ID groups with no CR
-	APIAccess          []APIAccessGrant
-	Logo               *OIDCLogoConfig
-	Secret             *OIDCSecretConfig
-	SCIM               *SCIMConfig
+	RequiresPAR        bool // spec.requiresPushedAuthorizationRequests
+
+	FederatedIdentities []FederatedIdentity
+	AllowedUserGroups   []string // spec.allowedUserGroups[].name: PocketIDUserGroup CRs
+	AllowedGroupNames   []string // spec.allowedUserGroups[].groupName: Pocket-ID groups with no CR
+	AllowedGroupIDs     []string // spec.allowedUserGroups[].groupID: Pocket-ID groups with no CR
+	APIAccess           []APIAccessGrant
+	Logo                *OIDCLogoConfig
+	Secret              *OIDCSecretConfig
+	SCIM                *SCIMConfig
+}
+
+// FederatedIdentity configures a spec.federatedIdentities entry.
+type FederatedIdentity struct {
+	Issuer           string
+	Subject          string
+	Audience         string
+	JWKS             string
+	ReplayProtection bool
 }
 
 // APIAccessGrant configures a spec.apiAccess entry granting permissions on a PocketIDAPI.
@@ -405,6 +417,29 @@ func buildOIDCClientYAML(opts OIDCClientOptions) string {
 
 	if opts.SkipConsent {
 		spec.WriteString("  skipConsent: true\n")
+	}
+
+	if opts.RequiresPAR {
+		spec.WriteString("  requiresPushedAuthorizationRequests: true\n")
+	}
+
+	if len(opts.FederatedIdentities) > 0 {
+		spec.WriteString("  federatedIdentities:\n")
+		for _, identity := range opts.FederatedIdentities {
+			spec.WriteString(fmt.Sprintf("  - issuer: %s\n", identity.Issuer))
+			if identity.Subject != "" {
+				spec.WriteString(fmt.Sprintf("    subject: %s\n", identity.Subject))
+			}
+			if identity.Audience != "" {
+				spec.WriteString(fmt.Sprintf("    audience: %s\n", identity.Audience))
+			}
+			if identity.JWKS != "" {
+				spec.WriteString(fmt.Sprintf("    jwks: %s\n", identity.JWKS))
+			}
+			if identity.ReplayProtection {
+				spec.WriteString("    replayProtection: true\n")
+			}
+		}
 	}
 
 	spec.WriteString("  callbackUrls:\n")
