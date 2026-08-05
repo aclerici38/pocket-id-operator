@@ -306,6 +306,14 @@
                   "null"
                 ]
               },
+              "replayProtection": {
+                "default": false,
+                "description": "ReplayProtection requires client assertions to carry a jti and rejects replays",
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
               "subject": {
                 "description": "Subject is the subject for the identity",
                 "type": [

@@ -119,6 +119,11 @@ type OIDCClientFederatedIdentity struct {
 	// JWKS is the URL or JSON for the identity's JWKS
 	// +optional
 	JWKS string `json:"jwks,omitempty"`
+
+	// ReplayProtection requires client assertions to carry a jti and rejects replays
+	// +kubebuilder:default=false
+	// +optional
+	ReplayProtection bool `json:"replayProtection,omitempty"`
 }
 
 // OIDCClientSecretSpec defines how credentials should be stored in a Secret.

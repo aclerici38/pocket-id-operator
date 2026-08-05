@@ -107,10 +107,11 @@ func (c *OIDCClient) ToInput() OIDCClientInput {
 
 // OIDCClientFederatedIdentity represents a federated identity for OIDC clients.
 type OIDCClientFederatedIdentity struct {
-	Issuer   string
-	Subject  string
-	Audience string
-	JWKS     string
+	Issuer           string
+	Subject          string
+	Audience         string
+	JWKS             string
+	ReplayProtection bool
 }
 
 // OIDCClientCredentials holds optional federated identity configuration.
@@ -1179,10 +1180,11 @@ func oidcCredentialsToDTO(credentials *OIDCClientCredentials) *models.GithubComP
 	identities := make([]*models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientFederatedIdentityDto, 0, len(credentials.FederatedIdentities))
 	for _, identity := range credentials.FederatedIdentities {
 		identities = append(identities, &models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientFederatedIdentityDto{
-			Issuer:   identity.Issuer,
-			Subject:  identity.Subject,
-			Audience: identity.Audience,
-			Jwks:     identity.JWKS,
+			Issuer:           identity.Issuer,
+			Subject:          identity.Subject,
+			Audience:         identity.Audience,
+			Jwks:             identity.JWKS,
+			ReplayProtection: identity.ReplayProtection,
 		})
 	}
 	return &models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientCredentialsDto{

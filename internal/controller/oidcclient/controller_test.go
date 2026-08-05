@@ -50,10 +50,11 @@ func TestOidcClientInput(t *testing.T) {
 			SkipConsent:                         true,
 			FederatedIdentities: []pocketidinternalv1alpha1.OIDCClientFederatedIdentity{
 				{
-					Issuer:   "https://issuer.example.com",
-					Subject:  "subject",
-					Audience: "audience",
-					JWKS:     "https://issuer.example.com/jwks",
+					Issuer:           "https://issuer.example.com",
+					Subject:          "subject",
+					Audience:         "audience",
+					JWKS:             "https://issuer.example.com/jwks",
+					ReplayProtection: true,
 				},
 			},
 			AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
@@ -91,10 +92,11 @@ func TestOidcClientInput(t *testing.T) {
 		t.Fatalf("expected 1 federated identity, got %d", len(input.Credentials.FederatedIdentities))
 	}
 	expected := pocketid.OIDCClientFederatedIdentity{
-		Issuer:   "https://issuer.example.com",
-		Subject:  "subject",
-		Audience: "audience",
-		JWKS:     "https://issuer.example.com/jwks",
+		Issuer:           "https://issuer.example.com",
+		Subject:          "subject",
+		Audience:         "audience",
+		JWKS:             "https://issuer.example.com/jwks",
+		ReplayProtection: true,
 	}
 	if input.Credentials.FederatedIdentities[0] != expected {
 		t.Errorf("expected federated identity %+v, got %+v", expected, input.Credentials.FederatedIdentities[0])

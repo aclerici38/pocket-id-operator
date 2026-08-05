@@ -106,6 +106,44 @@ func TestUpdateOIDCClient_SendsRequiresPushedAuthorizationRequests(t *testing.T)
 	}
 }
 
+func TestUpdateOIDCClient_SendsFederatedIdentityReplayProtection(t *testing.T) {
+	var body map[string]any
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut || r.URL.Path != "/api/oidc/clients/test-id" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(oidcClientResponse{ID: "test-id", Name: "test-client", AllowedUserGroups: []any{}})
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(ts.URL, "")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	_, err = client.UpdateOIDCClient(context.Background(), "test-id", OIDCClientInput{
+		Name: "test-client",
+		Credentials: &OIDCClientCredentials{
+			FederatedIdentities: []OIDCClientFederatedIdentity{{
+				Issuer:           "https://issuer.example.com",
+				ReplayProtection: true,
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdateOIDCClient: %v", err)
+	}
+
+	identity := firstFederatedIdentity(t, body)
+	if got, _ := identity["replayProtection"].(bool); !got {
+		t.Errorf("expected replayProtection true in payload, got %v", identity["replayProtection"])
+	}
+}
+
 func TestUpdateOIDCClientAllowedGroups_RetriesOn500(t *testing.T) {
 	attempts := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -640,6 +678,26 @@ func TestCustomClaimsEqual_ExtraKeyNotEqual(t *testing.T) {
 }
 
 // jsonStringSlice extracts a []string from a JSON-decoded map.
+// firstFederatedIdentity returns credentials.federatedIdentities[0] from a
+// decoded OIDC client write payload.
+func firstFederatedIdentity(t *testing.T, body map[string]any) map[string]any {
+	t.Helper()
+
+	credentials, ok := body["credentials"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected credentials object in payload, got %v", body["credentials"])
+	}
+	identities, ok := credentials["federatedIdentities"].([]any)
+	if !ok || len(identities) == 0 {
+		t.Fatalf("expected a federated identity in payload, got %v", credentials["federatedIdentities"])
+	}
+	identity, ok := identities[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected federated identity object, got %v", identities[0])
+	}
+	return identity
+}
+
 func jsonStringSlice(m map[string]any, key string) []string {
 	raw, ok := m[key]
 	if !ok || raw == nil {
