@@ -78,6 +78,8 @@ type OIDCClient struct {
 	RequiresReauthentication            bool
 	RequiresPushedAuthorizationRequests bool
 	SkipConsent                         bool
+	AccessTokenDurationMinutes          int64
+	RefreshTokenDurationMinutes         int64
 	AllowedUserGroupIDs                 []string
 }
 
@@ -102,6 +104,8 @@ func (c *OIDCClient) ToInput() OIDCClientInput {
 		RequiresReauthentication:            c.RequiresReauthentication,
 		RequiresPushedAuthorizationRequests: c.RequiresPushedAuthorizationRequests,
 		SkipConsent:                         c.SkipConsent,
+		AccessTokenDurationMinutes:          c.AccessTokenDurationMinutes,
+		RefreshTokenDurationMinutes:         c.RefreshTokenDurationMinutes,
 	}
 }
 
@@ -137,6 +141,8 @@ type OIDCClientInput struct {
 	RequiresReauthentication            bool
 	RequiresPushedAuthorizationRequests bool
 	SkipConsent                         bool
+	AccessTokenDurationMinutes          int64
+	RefreshTokenDurationMinutes         int64
 	Credentials                         *OIDCClientCredentials
 }
 
@@ -155,7 +161,9 @@ func (i OIDCClientInput) Equal(other OIDCClientInput) bool {
 		i.PKCEEnabled != other.PKCEEnabled ||
 		i.RequiresReauthentication != other.RequiresReauthentication ||
 		i.RequiresPushedAuthorizationRequests != other.RequiresPushedAuthorizationRequests ||
-		i.SkipConsent != other.SkipConsent {
+		i.SkipConsent != other.SkipConsent ||
+		i.AccessTokenDurationMinutes != other.AccessTokenDurationMinutes ||
+		i.RefreshTokenDurationMinutes != other.RefreshTokenDurationMinutes {
 		return false
 	}
 	if !orderedEqual(i.CallbackURLs, other.CallbackURLs) {
@@ -557,6 +565,8 @@ func (c *Client) CreateOIDCClient(ctx context.Context, input OIDCClientInput) (*
 		RequiresReauthentication:            input.RequiresReauthentication,
 		RequiresPushedAuthorizationRequests: input.RequiresPushedAuthorizationRequests,
 		SkipConsent:                         input.SkipConsent,
+		AccessTokenDurationMinutes:          input.AccessTokenDurationMinutes,
+		RefreshTokenDurationMinutes:         input.RefreshTokenDurationMinutes,
 		Credentials:                         oidcCredentialsToDTO(input.Credentials),
 	}
 
@@ -597,6 +607,8 @@ func (c *Client) UpdateOIDCClient(ctx context.Context, id string, input OIDCClie
 			RequiresReauthentication:            input.RequiresReauthentication,
 			RequiresPushedAuthorizationRequests: input.RequiresPushedAuthorizationRequests,
 			SkipConsent:                         input.SkipConsent,
+			AccessTokenDurationMinutes:          input.AccessTokenDurationMinutes,
+			RefreshTokenDurationMinutes:         input.RefreshTokenDurationMinutes,
 			Credentials:                         oidcCredentialsToDTO(input.Credentials),
 		})
 
@@ -1212,6 +1224,8 @@ func oidcClientFromListDTO(dto *models.GithubComPocketIDPocketIDBackendInternalD
 		RequiresReauthentication:            dto.RequiresReauthentication,
 		RequiresPushedAuthorizationRequests: dto.RequiresPushedAuthorizationRequests,
 		SkipConsent:                         dto.SkipConsent,
+		AccessTokenDurationMinutes:          dto.AccessTokenDurationMinutes,
+		RefreshTokenDurationMinutes:         dto.RefreshTokenDurationMinutes,
 		AllowedUserGroupIDs:                 []string{},
 	}
 }
@@ -1243,6 +1257,8 @@ func oidcClientFromAllowedGroupsDTO(dto *models.GithubComPocketIDPocketIDBackend
 		RequiresReauthentication:            dto.RequiresReauthentication,
 		RequiresPushedAuthorizationRequests: dto.RequiresPushedAuthorizationRequests,
 		SkipConsent:                         dto.SkipConsent,
+		AccessTokenDurationMinutes:          dto.AccessTokenDurationMinutes,
+		RefreshTokenDurationMinutes:         dto.RefreshTokenDurationMinutes,
 		AllowedUserGroupIDs:                 groupIDs,
 	}
 }

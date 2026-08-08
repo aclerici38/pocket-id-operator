@@ -48,6 +48,8 @@ func TestOidcClientInput(t *testing.T) {
 			RequiresReauthentication:            true,
 			RequiresPushedAuthorizationRequests: true,
 			SkipConsent:                         true,
+			AccessTokenDurationMinutes:          15,
+			RefreshTokenDurationMinutes:         1440,
 			FederatedIdentities: []pocketidinternalv1alpha1.OIDCClientFederatedIdentity{
 				{
 					Issuer:           "https://issuer.example.com",
@@ -84,6 +86,12 @@ func TestOidcClientInput(t *testing.T) {
 	}
 	if !input.RequiresPushedAuthorizationRequests {
 		t.Error("expected RequiresPushedAuthorizationRequests to be true")
+	}
+	if input.AccessTokenDurationMinutes != 15 {
+		t.Errorf("expected AccessTokenDurationMinutes 15, got %d", input.AccessTokenDurationMinutes)
+	}
+	if input.RefreshTokenDurationMinutes != 1440 {
+		t.Errorf("expected RefreshTokenDurationMinutes 1440, got %d", input.RefreshTokenDurationMinutes)
 	}
 	if input.Credentials == nil {
 		t.Fatal("expected Credentials to not be nil")

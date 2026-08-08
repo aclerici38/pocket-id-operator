@@ -81,6 +81,8 @@ func captureOIDCClientWrite(t *testing.T, method, path string, write func(*Clien
 		RequiresReauthentication:            true,
 		RequiresPushedAuthorizationRequests: true,
 		SkipConsent:                         true,
+		AccessTokenDurationMinutes:          15,
+		RefreshTokenDurationMinutes:         1440,
 		Credentials: &OIDCClientCredentials{
 			FederatedIdentities: []OIDCClientFederatedIdentity{{
 				Issuer:           "https://issuer.example.com",
