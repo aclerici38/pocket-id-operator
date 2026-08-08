@@ -195,6 +195,18 @@ spec:
     - "https://app.example.com/logout"
 ```
 
+## Token Lifetimes
+
+`spec.accessTokenDurationMinutes` and `spec.refreshTokenDurationMinutes` set how long
+tokens issued to this client stay valid. Both accept 1 to 525600 minutes (one year) and
+default to Pocket-ID's own defaults — 60 minutes and 43200 minutes (30 days).
+
+```yaml
+spec:
+  accessTokenDurationMinutes: 15
+  refreshTokenDurationMinutes: 1440
+```
+
 ## Allowed User Groups
 
 `spec.allowedUserGroups` restricts the client to members of the listed groups. Each

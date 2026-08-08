@@ -22,6 +22,45 @@ type oidcClientResponse struct {
 	IsGroupRestricted  bool     `json:"isGroupRestricted"`
 	PkceEnabled        bool     `json:"pkceEnabled"`
 	AllowedUserGroups  []any    `json:"allowedUserGroups"`
+
+	AccessTokenDurationMinutes  int64 `json:"accessTokenDurationMinutes"`
+	RefreshTokenDurationMinutes int64 `json:"refreshTokenDurationMinutes"`
+}
+
+// Pocket-ID always returns a concrete token lifetime, so the read mapping has to
+// pick it up for ToInput to compare it against the spec.
+func TestGetOIDCClient_ReadsTokenDurations(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/oidc/clients/test-id" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(oidcClientResponse{
+			ID:                          "test-id",
+			Name:                        "test-client",
+			AllowedUserGroups:           []any{},
+			AccessTokenDurationMinutes:  15,
+			RefreshTokenDurationMinutes: 1440,
+		})
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(ts.URL, "")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	got, err := client.GetOIDCClient(context.Background(), "test-id")
+	if err != nil {
+		t.Fatalf("GetOIDCClient: %v", err)
+	}
+	if got.AccessTokenDurationMinutes != 15 {
+		t.Errorf("AccessTokenDurationMinutes: got %d, want 15", got.AccessTokenDurationMinutes)
+	}
+	if got.RefreshTokenDurationMinutes != 1440 {
+		t.Errorf("RefreshTokenDurationMinutes: got %d, want 1440", got.RefreshTokenDurationMinutes)
+	}
 }
 
 func TestUpdateOIDCClient_SendsCallbackURLsAsProvided(t *testing.T) {
@@ -241,6 +280,8 @@ func TestOIDCClientToInput_MapsAllFields(t *testing.T) {
 		PKCEEnabled:                         true,
 		RequiresReauthentication:            true,
 		RequiresPushedAuthorizationRequests: true,
+		AccessTokenDurationMinutes:          15,
+		RefreshTokenDurationMinutes:         1440,
 		AllowedUserGroupIDs:                 []string{"group-1"},
 	}
 	input := c.ToInput()
@@ -276,6 +317,12 @@ func TestOIDCClientToInput_MapsAllFields(t *testing.T) {
 	}
 	if !input.RequiresPushedAuthorizationRequests {
 		t.Error("RequiresPushedAuthorizationRequests: expected true")
+	}
+	if input.AccessTokenDurationMinutes != 15 {
+		t.Errorf("AccessTokenDurationMinutes: got %d, want 15", input.AccessTokenDurationMinutes)
+	}
+	if input.RefreshTokenDurationMinutes != 1440 {
+		t.Errorf("RefreshTokenDurationMinutes: got %d, want 1440", input.RefreshTokenDurationMinutes)
 	}
 	// Fields excluded from ToInput: ID, LogoURL, DarkLogoURL, Credentials
 	if input.ID != nil {
@@ -540,6 +587,16 @@ func TestOIDCClientInputEqual_DifferentPushedAuthorizationRequestsNotEqual(t *te
 	b := OIDCClientInput{Name: "test"}
 	if a.Equal(b) {
 		t.Error("expected different RequiresPushedAuthorizationRequests to not be equal")
+	}
+}
+
+func TestOIDCClientInputEqual_DifferentTokenDurationsNotEqual(t *testing.T) {
+	a := OIDCClientInput{Name: "test", AccessTokenDurationMinutes: 15, RefreshTokenDurationMinutes: 1440}
+	if a.Equal(OIDCClientInput{Name: "test", AccessTokenDurationMinutes: 60, RefreshTokenDurationMinutes: 1440}) {
+		t.Error("expected different AccessTokenDurationMinutes to not be equal")
+	}
+	if a.Equal(OIDCClientInput{Name: "test", AccessTokenDurationMinutes: 15, RefreshTokenDurationMinutes: 43200}) {
+		t.Error("expected different RefreshTokenDurationMinutes to not be equal")
 	}
 }
 

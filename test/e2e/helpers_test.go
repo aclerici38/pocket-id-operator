@@ -320,6 +320,9 @@ type OIDCClientOptions struct {
 	SkipConsent        bool
 	RequiresPAR        bool // spec.requiresPushedAuthorizationRequests
 
+	AccessTokenDurationMinutes  int64
+	RefreshTokenDurationMinutes int64
+
 	FederatedIdentities []FederatedIdentity
 	AllowedUserGroups   []string // spec.allowedUserGroups[].name: PocketIDUserGroup CRs
 	AllowedGroupNames   []string // spec.allowedUserGroups[].groupName: Pocket-ID groups with no CR
@@ -421,6 +424,13 @@ func buildOIDCClientYAML(opts OIDCClientOptions) string {
 
 	if opts.RequiresPAR {
 		spec.WriteString("  requiresPushedAuthorizationRequests: true\n")
+	}
+
+	if opts.AccessTokenDurationMinutes != 0 {
+		spec.WriteString(fmt.Sprintf("  accessTokenDurationMinutes: %d\n", opts.AccessTokenDurationMinutes))
+	}
+	if opts.RefreshTokenDurationMinutes != 0 {
+		spec.WriteString(fmt.Sprintf("  refreshTokenDurationMinutes: %d\n", opts.RefreshTokenDurationMinutes))
 	}
 
 	if len(opts.FederatedIdentities) > 0 {

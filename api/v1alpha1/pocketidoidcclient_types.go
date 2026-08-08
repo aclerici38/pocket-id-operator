@@ -354,6 +354,20 @@ type PocketIDOIDCClientSpec struct {
 	// +optional
 	SkipConsent bool `json:"skipConsent,omitempty"`
 
+	// How long access tokens issued to this client stay valid, in minutes
+	// +kubebuilder:default=60
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=525600
+	// +optional
+	AccessTokenDurationMinutes int64 `json:"accessTokenDurationMinutes,omitempty"`
+
+	// How long refresh tokens issued to this client stay valid, in minutes
+	// +kubebuilder:default=43200
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=525600
+	// +optional
+	RefreshTokenDurationMinutes int64 `json:"refreshTokenDurationMinutes,omitempty"`
+
 	// FederatedIdentities configures JWT assertion identities
 	// +optional
 	FederatedIdentities []OIDCClientFederatedIdentity `json:"federatedIdentities,omitempty"`

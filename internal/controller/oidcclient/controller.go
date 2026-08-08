@@ -593,6 +593,8 @@ func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.Pocket
 		RequiresReauthentication:            oidcClient.Spec.RequiresReauthentication,
 		RequiresPushedAuthorizationRequests: oidcClient.Spec.RequiresPushedAuthorizationRequests,
 		SkipConsent:                         oidcClient.Spec.SkipConsent,
+		AccessTokenDurationMinutes:          oidcClient.Spec.AccessTokenDurationMinutes,
+		RefreshTokenDurationMinutes:         oidcClient.Spec.RefreshTokenDurationMinutes,
 		Credentials:                         credentials,
 	}
 }

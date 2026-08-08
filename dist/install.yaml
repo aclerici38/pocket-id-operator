@@ -3238,6 +3238,14 @@ spec:
           spec:
             description: spec defines the desired state of PocketIDOIDCClient
             properties:
+              accessTokenDurationMinutes:
+                default: 60
+                description: How long access tokens issued to this client stay valid,
+                  in minutes
+                format: int64
+                maximum: 525600
+                minimum: 1
+                type: integer
               allowedUserGroups:
                 description: |-
                   AllowedUserGroups restricts access to the listed user groups. Each entry names
@@ -3556,6 +3564,14 @@ spec:
                 default: false
                 description: Enables PKCE for the client
                 type: boolean
+              refreshTokenDurationMinutes:
+                default: 43200
+                description: How long refresh tokens issued to this client stay valid,
+                  in minutes
+                format: int64
+                maximum: 525600
+                minimum: 1
+                type: integer
               requiresPushedAuthorizationRequests:
                 default: false
                 description: Requires the client to use pushed authorization requests
