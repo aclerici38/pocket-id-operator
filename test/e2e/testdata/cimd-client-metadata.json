@@ -1,6 +1,5 @@
 {
-  "_comment": "TODO: swap the @cimd ref for @main before merging, here and in cimdMetadataURL in test/e2e/cimd_test.go. This client_id must equal the URL the document is served from.",
-  "client_id": "https://cdn.jsdelivr.net/gh/aclerici38/pocket-id-operator@cimd/test/e2e/testdata/cimd-client-metadata.json",
+  "client_id": "https://cdn.jsdelivr.net/gh/aclerici38/pocket-id-operator@main/test/e2e/testdata/cimd-client-metadata.json",
   "client_name": "Pocket ID Operator E2E CIMD",
   "client_uri": "https://github.com/aclerici38/pocket-id-operator",
   "token_endpoint_auth_method": "none",

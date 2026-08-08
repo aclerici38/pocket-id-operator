@@ -21,11 +21,7 @@ import (
 // Pocket-ID's metadata fetcher refuses private, loopback and other special-use addresses
 // with no runtime opt-out, so the document cannot be served from inside the cluster: this
 // is why the URL is external and why the cluster needs egress to cdn.jsdelivr.net.
-//
-// TODO: swap the @cimd ref for @main before merging, here and in the client_id field of
-// test/e2e/testdata/cimd-client-metadata.json. The two must always agree, and the
-// document only resolves from the branch it is actually pushed to.
-const cimdMetadataURL = "https://cdn.jsdelivr.net/gh/aclerici38/pocket-id-operator@cimd/" +
+const cimdMetadataURL = "https://cdn.jsdelivr.net/gh/aclerici38/pocket-id-operator@main/" +
 	"test/e2e/testdata/cimd-client-metadata.json"
 
 var _ = Describe("Client ID Metadata Documents", Ordered, func() {
