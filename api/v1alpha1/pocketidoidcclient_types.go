@@ -471,8 +471,8 @@ type PocketIDOIDCClientStatus struct {
 	Name string `json:"name,omitempty"`
 
 	// ClientType is how the client was registered in Pocket-ID: "standard" or "cimd".
-	// The operator refuses to manage "cimd" clients, whose configuration is owned by
-	// their OAuth Client ID Metadata Document.
+	// For a "cimd" client the operator manages only the fields Pocket-ID persists on an
+	// admin update; the rest are owned by its OAuth Client ID Metadata Document.
 	// +optional
 	ClientType string `json:"clientType,omitempty"`
 

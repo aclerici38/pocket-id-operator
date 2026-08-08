@@ -402,8 +402,9 @@ func (o OIDCClientOptions) withDefaults() OIDCClientOptions {
 		o.Namespace = userNS
 	}
 	// A CIMD client's callback URLs come from its metadata document and are rejected in
-	// the spec, so the default must not be injected for one.
-	if len(o.CallbackURLs) == 0 && !strings.Contains(o.ClientID, "://") {
+	// the spec, so the default must not be injected for one. The https prefix is what both
+	// the CRD's CEL rules and pocketid.LooksLikeCIMDID key on.
+	if len(o.CallbackURLs) == 0 && !strings.HasPrefix(o.ClientID, "https://") {
 		o.CallbackURLs = []string{"https://example.com/callback"}
 	}
 	return o

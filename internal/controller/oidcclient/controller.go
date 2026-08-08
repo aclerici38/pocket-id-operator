@@ -68,6 +68,13 @@ const (
 	defaultDarkLogoTemplate = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}-dark.png"
 )
 
+// errAwaitingCIMD reports that a metadata-document client does not exist in Pocket-ID yet.
+// The row appears when the app first authorizes, so this is a normal waiting state rather
+// than a misconfiguration, and it is requeued on the resync interval instead of the much
+// shorter error interval.
+var errAwaitingCIMD = stderrors.New(
+	"CIMD client does not exist yet; Pocket-ID creates it on the app's first authorization request")
+
 // Reconciler reconciles a PocketIDOIDCClient object
 type Reconciler struct {
 	client.Client
@@ -162,6 +169,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	// No client ID yet, create or adopt
 	if oidcClient.Status.ClientID == "" {
 		requeue, err := r.createOrAdoptOIDCClient(ctx, oidcClient, apiClient)
+		if stderrors.Is(err, errAwaitingCIMD) {
+			// Normal for a metadata document whose app has not authorized yet, which can
+			// last indefinitely: resync rather than hammering the API every few seconds.
+			log.V(1).Info("Waiting for Pocket-ID to materialize the CIMD client", "clientID", oidcClient.Spec.ClientID)
+			_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, reconcileErrorReason(err), err.Error())
+			return common.ApplyResync(ctrl.Result{}), nil
+		}
 		if err != nil {
 			log.Error(err, "Failed to create or adopt OIDC client")
 			_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, reconcileErrorReason(err), err.Error())
@@ -265,7 +279,7 @@ type PocketIDOIDCClientAPI interface {
 	GetOIDCClient(ctx context.Context, id string) (*pocketid.OIDCClient, error)
 	UpdateOIDCClient(ctx context.Context, id string, input pocketid.OIDCClientInput) (*pocketid.OIDCClient, error)
 	UpdateOIDCClientAllowedGroups(ctx context.Context, id string, groupIDs []string) error
-	RefreshOIDCClientMetadata(ctx context.Context, id string) (*pocketid.OIDCClient, error)
+	RefreshOIDCClientMetadata(ctx context.Context, id string) error
 	SetOIDCClientSecret(ctx context.Context, id, secret string) (string, error)
 	GetOIDCClientSCIMServiceProvider(ctx context.Context, oidcClientID string) (*pocketid.SCIMServiceProvider, error)
 	CreateSCIMServiceProvider(ctx context.Context, input pocketid.SCIMServiceProviderInput) (*pocketid.SCIMServiceProvider, error)
@@ -286,7 +300,7 @@ func (r *Reconciler) refreshClientMetadata(ctx context.Context, oidcClient *pock
 		return stderrors.New("cannot refresh client metadata: the client has not been adopted yet")
 	}
 
-	if _, err := apiClient.RefreshOIDCClientMetadata(ctx, id); err != nil {
+	if err := apiClient.RefreshOIDCClientMetadata(ctx, id); err != nil {
 		return err
 	}
 
@@ -298,9 +312,9 @@ func (r *Reconciler) refreshClientMetadata(ctx context.Context, oidcClient *pock
 // If specClientID is non-empty, it looks up by client ID directly.
 // Otherwise, it searches by name and returns an exact match.
 // Returns the existing client if found, or nil if no matching client exists.
-// A CIMD client is only ever adopted through an explicit spec.clientID: a name match is
-// refused so a document-supplied client_name colliding with a CR name cannot silently
-// pull an unrelated self-registered client under management.
+// A CIMD client is only ever adopted through an explicit spec.clientID: name matches skip
+// them so a document-supplied client_name colliding with a CR name cannot silently pull an
+// unrelated self-registered client under management.
 func (r *Reconciler) FindExistingOIDCClient(ctx context.Context, apiClient PocketIDOIDCClientAPI, specClientID, name string) (*pocketid.OIDCClient, error) {
 	log := logf.FromContext(ctx)
 
@@ -325,14 +339,19 @@ func (r *Reconciler) FindExistingOIDCClient(ctx context.Context, apiClient Pocke
 	}
 
 	for _, c := range clients {
-		if c.Name == name {
-			if c.IsCIMD() {
-				return nil, fmt.Errorf(
-					"OIDC client %q matched by name is a CIMD client; set spec.clientID to its metadata document URL to manage it", c.ID)
-			}
-			log.Info("Found existing OIDC client with matching name", "name", name, "clientID", c.ID)
-			return c, nil
+		if c.Name != name {
+			continue
 		}
+		// A CIMD client's name comes from a document the app publishes about itself, so a
+		// collision is not the operator's to resolve: skipping keeps a self-registered app
+		// from blocking an unrelated client that only ever wanted to be created by name.
+		if c.IsCIMD() {
+			log.Info("Skipping CIMD client with matching name; set spec.clientID to its metadata document URL to manage it",
+				"name", name, "clientID", c.ID)
+			continue
+		}
+		log.Info("Found existing OIDC client with matching name", "name", name, "clientID", c.ID)
+		return c, nil
 	}
 
 	log.Info("No OIDC client found with matching name", "name", name)
@@ -599,12 +618,6 @@ func reconcileErrorReason(err error) string {
 	}
 	return "ReconcileError"
 }
-
-// errAwaitingCIMD reports that a metadata-document client does not exist in Pocket-ID yet.
-// The row appears when the app first authorizes, so this is a normal waiting state rather
-// than a misconfiguration.
-var errAwaitingCIMD = stderrors.New(
-	"CIMD client does not exist yet; Pocket-ID creates it on the app's first authorization request")
 
 // setClientID persists only the client ID to status.
 func (r *Reconciler) setClientID(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, id string) error {

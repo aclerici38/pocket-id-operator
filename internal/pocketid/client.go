@@ -98,57 +98,26 @@ func (c *OIDCClient) IsCIMD() bool {
 }
 
 // LooksLikeCIMDID reports whether a client ID is a metadata document URL. Pocket-ID
-// restricts registered client IDs to [a-zA-Z0-9._-]+, so "://" can only come from one.
-// Unlike IsCIMD this needs no API round trip, which is what makes it usable for admission
-// validation and before a client has been resolved.
+// restricts registered client IDs to [a-zA-Z0-9._-]+, so an "https://" prefix can only come
+// from a metadata document. Unlike IsCIMD this needs no API round trip, which is what makes
+// it usable before a client has been resolved. It matches the CRD's CEL admission rules and
+// upstream's fosite.LooksLikeCIMDURL, which both require the https scheme.
 func LooksLikeCIMDID(id string) bool {
-	return strings.Contains(id, "://")
+	return strings.HasPrefix(id, "https://")
 }
 
 // clientIDPathParam encodes a client ID for use as a URL path parameter. A CIMD client ID
 // is a full https URL whose slashes cannot survive a single path segment, so Pocket-ID
 // accepts it base64url-encoded behind a "~" prefix and decodes it in middleware. Ordinary
 // client IDs are passed through untouched.
+//
+// Every call that takes an OIDC client ID as a path parameter must apply this;
+// TestOIDCClientOperations_UseEncodedPathForMetadataDocumentIDs enumerates them.
 func clientIDPathParam(id string) string {
 	if !LooksLikeCIMDID(id) {
 		return id
 	}
 	return "~" + base64.RawURLEncoding.EncodeToString([]byte(id))
-}
-
-// clientIDEncodingTransport applies clientIDPathParam to every path parameter the generated
-// client writes.
-//
-// Every other path parameter Pocket-ID takes is a server-generated ID that cannot contain a
-// scheme separator, so the encoding is a no-op for them.
-type clientIDEncodingTransport struct {
-	runtime.ContextualTransport
-}
-
-func (t clientIDEncodingTransport) Submit(op *runtime.ClientOperation) (any, error) {
-	return t.ContextualTransport.Submit(encodePathParams(op))
-}
-
-func (t clientIDEncodingTransport) SubmitContext(ctx context.Context, op *runtime.ClientOperation) (any, error) {
-	return t.ContextualTransport.SubmitContext(ctx, encodePathParams(op))
-}
-
-// encodePathParams wraps the operation's parameter writer so it sees a request whose
-// SetPathParam encodes CIMD client IDs.
-func encodePathParams(op *runtime.ClientOperation) *runtime.ClientOperation {
-	inner := op.Params
-	op.Params = runtime.ClientRequestWriterFunc(func(req runtime.ClientRequest, reg strfmt.Registry) error {
-		return inner.WriteToRequest(clientIDPathParamWriter{ClientRequest: req}, reg)
-	})
-	return op
-}
-
-type clientIDPathParamWriter struct {
-	runtime.ClientRequest
-}
-
-func (w clientIDPathParamWriter) SetPathParam(name, value string) error {
-	return w.ClientRequest.SetPathParam(name, clientIDPathParam(value))
 }
 
 // ToInput converts an OIDCClient into an OIDCClientInput for comparison with desired state.
@@ -372,7 +341,7 @@ func NewClient(baseURL string, apiKey string) (*Client, error) {
 		)
 	}
 
-	raw := apiclient.New(clientIDEncodingTransport{ContextualTransport: transport}, strfmt.Default)
+	raw := apiclient.New(transport, strfmt.Default)
 
 	return &Client{
 		raw:     raw,
@@ -658,7 +627,7 @@ func (c *Client) CreateOIDCClient(ctx context.Context, input OIDCClientInput) (*
 
 func (c *Client) UpdateOIDCClient(ctx context.Context, id string, input OIDCClientInput) (*OIDCClient, error) {
 	params := oidc.NewPutAPIOidcClientsIDParams().
-		WithID(id).
+		WithID(clientIDPathParam(id)).
 		WithClient(&models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientUpdateDto{
 			Name:                                &input.Name,
 			Description:                         input.Description,
@@ -692,7 +661,7 @@ func (c *Client) UpdateOIDCClient(ctx context.Context, id string, input OIDCClie
 
 func (c *Client) GetOIDCClient(ctx context.Context, id string) (*OIDCClient, error) {
 	params := oidc.NewGetAPIOidcClientsIDParams().
-		WithID(id)
+		WithID(clientIDPathParam(id))
 
 	start := time.Now()
 	resp, err := c.raw.OIDc.GetAPIOidcClientsIDContext(ctx, params)
@@ -705,25 +674,26 @@ func (c *Client) GetOIDCClient(ctx context.Context, id string) (*OIDCClient, err
 }
 
 // RefreshOIDCClientMetadata forces a re-fetch of a CIMD client's metadata document,
-// bypassing the cache TTL, and returns the refreshed client. Pocket-ID rejects the
-// call for standard clients and when no CIMD allowlist is configured.
-func (c *Client) RefreshOIDCClientMetadata(ctx context.Context, id string) (*OIDCClient, error) {
+// bypassing the cache TTL. Pocket-ID rejects the call for standard clients and when no
+// CIMD allowlist is configured. The refreshed client is discarded: the reconcile that
+// triggers this re-reads the canonical state immediately afterwards.
+func (c *Client) RefreshOIDCClientMetadata(ctx context.Context, id string) error {
 	params := oidc.NewPostAPIOidcClientsIDRefreshParams().
-		WithID(id)
+		WithID(clientIDPathParam(id))
 
 	start := time.Now()
-	resp, err := c.raw.OIDc.PostAPIOidcClientsIDRefreshContext(ctx, params)
+	_, err := c.raw.OIDc.PostAPIOidcClientsIDRefreshContext(ctx, params)
 	recordCall("refresh_oidc_client_metadata", err, time.Since(start))
 	if err != nil {
-		return nil, fmt.Errorf("refresh OIDC client metadata failed: %w", err)
+		return fmt.Errorf("refresh OIDC client metadata failed: %w", err)
 	}
 
-	return oidcClientFromAllowedGroupsDTO(resp.Payload), nil
+	return nil
 }
 
 func (c *Client) DeleteOIDCClient(ctx context.Context, id string) error {
 	params := oidc.NewDeleteAPIOidcClientsIDParams().
-		WithID(id)
+		WithID(clientIDPathParam(id))
 
 	start := time.Now()
 	_, err := c.raw.OIDc.DeleteAPIOidcClientsIDContext(ctx, params)
@@ -748,7 +718,7 @@ func (c *Client) UpdateOIDCClientAllowedGroups(ctx context.Context, id string, g
 			}
 		}
 		params := oidc.NewPutAPIOidcClientsIDAllowedUserGroupsParams().
-			WithID(id).
+			WithID(clientIDPathParam(id)).
 			WithGroups(&models.GithubComPocketIDPocketIDBackendInternalDtoOidcUpdateAllowedUserGroupsDto{
 				UserGroupIds: groupIDs,
 			})
@@ -786,7 +756,7 @@ func (c *Client) SetOIDCClientSecret(ctx context.Context, id, secret string) (st
 // payload lets Pocket-ID generate one; a non-nil payload requests a specific value.
 func (c *Client) postOIDCClientSecret(ctx context.Context, operation, id string, payload *models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientSecretDto) (string, error) {
 	params := oidc.NewPostAPIOidcClientsIDSecretParams().
-		WithID(id)
+		WithID(clientIDPathParam(id))
 	if payload != nil {
 		params = params.WithPayload(payload)
 	}
@@ -818,7 +788,7 @@ func (c *Client) postOIDCClientSecret(ctx context.Context, operation, id string,
 // Returns nil, nil if no SCIM service provider is configured (404).
 func (c *Client) GetOIDCClientSCIMServiceProvider(ctx context.Context, oidcClientID string) (*SCIMServiceProvider, error) {
 	params := oidc.NewGetAPIOidcClientsIDScimServiceProviderParams().
-		WithID(oidcClientID)
+		WithID(clientIDPathParam(oidcClientID))
 
 	start := time.Now()
 	resp, err := c.raw.OIDc.GetAPIOidcClientsIDScimServiceProviderContext(ctx, params)
@@ -1034,7 +1004,7 @@ func (c *Client) UpdateAPIPermissions(ctx context.Context, id string, permission
 
 // GetClientAPIAccess returns the API permissions currently granted to an OIDC client.
 func (c *Client) GetClientAPIAccess(ctx context.Context, clientID string) (*ClientAPIAccess, error) {
-	params := apis.NewGetAPIAPIAccessClientIDParams().WithClientID(clientID)
+	params := apis.NewGetAPIAPIAccessClientIDParams().WithClientID(clientIDPathParam(clientID))
 
 	start := time.Now()
 	resp, err := c.raw.Apis.GetAPIAPIAccessClientIDContext(ctx, params)
@@ -1048,7 +1018,7 @@ func (c *Client) GetClientAPIAccess(ctx context.Context, clientID string) (*Clie
 // UpdateClientAPIAccess replaces the full set of API permissions granted to an OIDC client.
 func (c *Client) UpdateClientAPIAccess(ctx context.Context, clientID string, access ClientAPIAccess) (*ClientAPIAccess, error) {
 	params := apis.NewPutAPIAPIAccessClientIDParams().
-		WithClientID(clientID).
+		WithClientID(clientIDPathParam(clientID)).
 		WithAccess(&models.APIClientAPIAccessUpdateDto{
 			ClientPermissionIds:        access.ClientPermissionIDs,
 			UserDelegatedPermissionIds: access.UserDelegatedPermissionIDs,

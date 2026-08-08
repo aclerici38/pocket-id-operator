@@ -21,7 +21,11 @@ import (
 // Pocket-ID's metadata fetcher refuses private, loopback and other special-use addresses
 // with no runtime opt-out, so the document cannot be served from inside the cluster: this
 // is why the URL is external and why the cluster needs egress to cdn.jsdelivr.net.
-const cimdMetadataURL = "https://cdn.jsdelivr.net/gh/aclerici38/pocket-id-operator@main/" +
+//
+// TODO: swap the @cimd ref for @main before merging, here and in the client_id field of
+// test/e2e/testdata/cimd-client-metadata.json. The two must always agree, and the
+// document only resolves from the branch it is actually pushed to.
+const cimdMetadataURL = "https://cdn.jsdelivr.net/gh/aclerici38/pocket-id-operator@cimd/" +
 	"test/e2e/testdata/cimd-client-metadata.json"
 
 var _ = Describe("Client ID Metadata Documents", Ordered, func() {
@@ -65,11 +69,7 @@ var _ = Describe("Client ID Metadata Documents", Ordered, func() {
 
 		BeforeAll(func() {
 			By("checking the metadata document is published")
-			if !cimdDocumentReachable() {
-				Skip("metadata document is not reachable at " + cimdMetadataURL +
-					" — it is served from this repo via jsDelivr, so it only resolves once " +
-					"test/e2e/testdata/cimd-client-metadata.json is merged to main")
-			}
+			requireCIMDDocumentReachable()
 
 			By("triggering materialization via the unauthenticated device authorization endpoint")
 			materializeCIMDClient()
@@ -137,23 +137,26 @@ func encodeCIMDClientID(id string) string {
 	return "~" + base64.RawURLEncoding.EncodeToString([]byte(id))
 }
 
-// cimdDocumentReachable reports whether the metadata document resolves from inside the
-// cluster with the content type and client_id Pocket-ID requires. It runs before the
-// managed-client specs so an unpublished document skips them with a clear reason instead
-// of failing as though the operator were broken.
-func cimdDocumentReachable() bool {
+// requireCIMDDocumentReachable fails the suite unless the metadata document resolves from
+// inside the cluster with the content type and client_id Pocket-ID requires. It runs before
+// the managed-client specs, which are the only coverage of adoption and of the anti-drift
+// behaviour: skipping on an unreachable document would let that coverage disappear
+// silently, which is exactly how a stale branch ref goes unnoticed.
+func requireCIMDDocumentReachable() {
 	script := fmt.Sprintf(`CODE=$(curl -s -o /tmp/doc -w '%%{http_code}' -H 'Accept: application/json' %q)
-if [ "$CODE" != "200" ]; then echo "unreachable: HTTP $CODE"; exit 0; fi
-grep -q %q /tmp/doc && echo reachable || echo "unreachable: client_id mismatch"`,
+if [ "$CODE" != "200" ]; then echo "HTTP $CODE"; exit 0; fi
+grep -q %q /tmp/doc && echo reachable || echo "client_id in the document does not match its URL"`,
 		cimdMetadataURL, cimdMetadataURL)
 
 	applyYAML(createCurlPodYAML("cimd-preflight", instanceNS, script))
 	out := getPodLogs("cimd-preflight", instanceNS)
 	kubectlDelete("pod", "cimd-preflight", instanceNS)
-	if out != "reachable" {
-		GinkgoWriter.Printf("CIMD preflight: %s\n", out)
-	}
-	return out == "reachable"
+
+	Expect(out).To(Equal("reachable"),
+		"the metadata document at %s is not usable (%s).\nIt is served from this repo via "+
+			"jsDelivr, so cimdMetadataURL and the document's own client_id field must both name "+
+			"the branch the file is pushed to — see the TODO on cimdMetadataURL.",
+		cimdMetadataURL, out)
 }
 
 // materializeCIMDClient makes Pocket-ID fetch the metadata document and persist the client.

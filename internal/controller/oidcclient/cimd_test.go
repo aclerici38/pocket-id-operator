@@ -28,12 +28,9 @@ type fakeRefreshAPI struct {
 	err   error
 }
 
-func (f *fakeRefreshAPI) RefreshOIDCClientMetadata(_ context.Context, id string) (*pocketid.OIDCClient, error) {
+func (f *fakeRefreshAPI) RefreshOIDCClientMetadata(_ context.Context, id string) error {
 	f.calls = append(f.calls, id)
-	if f.err != nil {
-		return nil, f.err
-	}
-	return &pocketid.OIDCClient{ID: id, ClientType: pocketid.ClientTypeCIMD}, nil
+	return f.err
 }
 
 func cimdClient(annotations map[string]string) *pocketidinternalv1alpha1.PocketIDOIDCClient {
@@ -218,9 +215,9 @@ func cimdCurrent() *pocketid.OIDCClient {
 	}
 }
 
-func cimdClientCR(name string, mutate func(*pocketidinternalv1alpha1.PocketIDOIDCClient)) *pocketidinternalv1alpha1.PocketIDOIDCClient {
+func cimdClientCR(mutate func(*pocketidinternalv1alpha1.PocketIDOIDCClient)) *pocketidinternalv1alpha1.PocketIDOIDCClient {
 	cr := &pocketidinternalv1alpha1.PocketIDOIDCClient{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: "metadata-app", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			ClientID:                    "https://apps.example.com/meta.json",
 			AccessTokenDurationMinutes:  60,
@@ -246,7 +243,7 @@ func TestPushOIDCClientState_CIMDDoesNotDrift(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
 
-	cr := cimdClientCR("metadata-app", nil)
+	cr := cimdClientCR(nil)
 	r := newPushStateOIDCReconciler(scheme, cr)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -273,7 +270,7 @@ func TestPushOIDCClientState_CIMDPushesWritableFields(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
 
-	cr := cimdClientCR("metadata-app", func(c *pocketidinternalv1alpha1.PocketIDOIDCClient) {
+	cr := cimdClientCR(func(c *pocketidinternalv1alpha1.PocketIDOIDCClient) {
 		c.Spec.SkipConsent = true
 		c.Spec.AccessTokenDurationMinutes = 15
 		c.Status.Conditions = readyCondition()
@@ -334,7 +331,7 @@ func TestIsPublicClient_TreatsCIMDAsPublic(t *testing.T) {
 // would take the mint path and try to regenerate a secret on adoption. A nil apiClient
 // makes any such call fail loudly instead of passing silently.
 func TestReconcileSecret_CIMDClientSkipsSecretMinting(t *testing.T) {
-	oidcClient := cimdClientCR("metadata-app", nil)
+	oidcClient := cimdClientCR(nil)
 	instance := &pocketidinternalv1alpha1.PocketIDInstance{
 		ObjectMeta: metav1.ObjectMeta{Name: "my-instance", Namespace: testNamespace},
 	}
@@ -446,5 +443,71 @@ func TestUpdateOIDCClientStatus_RecordsClientType(t *testing.T) {
 	}
 	if oidcClient.Status.ClientType != "standard" {
 		t.Errorf("status.clientType: got %q, want %q", oidcClient.Status.ClientType, "standard")
+	}
+}
+
+// A CIMD client is deleted like any other. Pocket-ID has no garbage collection for them —
+// removing a URL from the allowlist only stops it resolving, and the row keeps appearing in
+// the admin client list — so skipping the delete would strand a record nothing owns. The
+// encoded path also has to survive the delete, since the ID is the document URL.
+func TestReconcileDelete_DeletesCIMDClient(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	wantPath := "/api/oidc/clients/~" + base64.RawURLEncoding.EncodeToString(
+		[]byte("https://apps.example.com/meta.json"))
+	var deleted bool
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodDelete || req.URL.EscapedPath() != wantPath {
+			t.Errorf("unexpected %s %s, want DELETE %s", req.Method, req.URL.EscapedPath(), wantPath)
+			http.NotFound(w, req)
+			return
+		}
+		deleted = true
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer ts.Close()
+
+	instance := &pocketidinternalv1alpha1.PocketIDInstance{
+		ObjectMeta: metav1.ObjectMeta{Name: "external-instance", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+			External: &pocketidinternalv1alpha1.ExternalInstanceConfig{
+				URL: ts.URL,
+				APIKeySecretRef: corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: "external-api-key"},
+					Key:                  "token",
+				},
+			},
+		},
+	}
+	apiKeySecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "external-api-key", Namespace: testNamespace},
+		Data:       map[string][]byte{"token": []byte("a-token")},
+	}
+	resource := cimdClientCR(func(c *pocketidinternalv1alpha1.PocketIDOIDCClient) {
+		c.Finalizers = []string{oidcClientFinalizer}
+	})
+
+	r := newPushStateOIDCReconciler(scheme, instance, apiKeySecret, resource)
+	r.BaseReconciler.APIReader = r.Client
+
+	if _, err := r.ReconcileDelete(ctx, resource); err != nil {
+		t.Fatalf("ReconcileDelete returned error: %v", err)
+	}
+
+	if !deleted {
+		t.Error("expected the CIMD client to be deleted from Pocket-ID")
+	}
+
+	updated := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
+	if err := r.Get(ctx, client.ObjectKeyFromObject(resource), updated); err != nil {
+		t.Fatalf("get resource: %v", err)
+	}
+	for _, f := range updated.Finalizers {
+		if f == oidcClientFinalizer {
+			t.Error("expected the finalizer to be removed after deleting the client")
+		}
 	}
 }

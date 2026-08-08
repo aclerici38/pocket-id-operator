@@ -66,8 +66,8 @@ func TestGetOIDCClient_ReadsTokenDurations(t *testing.T) {
 	}
 }
 
-// clientType drives the operator's refusal to manage CIMD clients, so both read paths
-// used for adoption have to carry it through.
+// clientType decides which fields the operator may push, so both read paths used for
+// adoption have to carry it through.
 func TestOIDCClientReads_CarryClientType(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -130,8 +130,24 @@ func TestClientIDPathParam_EncodesMetadataDocumentURLs(t *testing.T) {
 	if got := clientIDPathParam("grafana"); got != "grafana" {
 		t.Errorf("an ordinary client ID must pass through untouched, got %q", got)
 	}
-	if !LooksLikeCIMDID(metadataURL) || LooksLikeCIMDID("grafana") {
-		t.Error("LooksLikeCIMDID should key on the scheme separator")
+}
+
+// LooksLikeCIMDID has to agree with the CRD's CEL rules and upstream's
+// fosite.LooksLikeCIMDURL, both of which require the https scheme. A looser test (any
+// "://") would route a mistyped "http://" client ID down the adopt-only path, where it
+// waits forever for a client Pocket-ID will never materialize, while admission had already
+// waved through the metadata-owned fields the CEL rules exist to reject.
+func TestLooksLikeCIMDID_RequiresHTTPSScheme(t *testing.T) {
+	for id, want := range map[string]bool{
+		"https://apps.example.com/myapp/client-metadata.json": true,
+		"http://apps.example.com/myapp/client-metadata.json":  false,
+		"ftp://apps.example.com/meta.json":                    false,
+		"grafana":                                             false,
+		"my-client.id_2":                                      false,
+	} {
+		if got := LooksLikeCIMDID(id); got != want {
+			t.Errorf("LooksLikeCIMDID(%q) = %v, want %v", id, got, want)
+		}
 	}
 }
 
@@ -187,7 +203,7 @@ func TestOIDCClientOperations_UseEncodedPathForMetadataDocumentIDs(t *testing.T)
 	if _, err := client.GetOIDCClient(ctx, metadataURL); err != nil {
 		t.Errorf("GetOIDCClient: %v", err)
 	}
-	if _, err := client.RefreshOIDCClientMetadata(ctx, metadataURL); err != nil {
+	if err := client.RefreshOIDCClientMetadata(ctx, metadataURL); err != nil {
 		t.Errorf("RefreshOIDCClientMetadata: %v", err)
 	}
 	if _, err := client.UpdateOIDCClient(ctx, metadataURL, OIDCClientInput{Name: "My App"}); err != nil {
@@ -252,15 +268,11 @@ func TestRefreshOIDCClientMetadata_PostsToRefreshEndpoint(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	got, err := client.RefreshOIDCClientMetadata(context.Background(), "test-id")
-	if err != nil {
+	if err := client.RefreshOIDCClientMetadata(context.Background(), "test-id"); err != nil {
 		t.Fatalf("RefreshOIDCClientMetadata: %v", err)
 	}
 	if calls != 1 {
 		t.Errorf("expected 1 call to the refresh endpoint, got %d", calls)
-	}
-	if got == nil || !got.IsCIMD() {
-		t.Errorf("expected the refreshed CIMD client to be returned, got %+v", got)
 	}
 }
 
@@ -275,7 +287,7 @@ func TestRefreshOIDCClientMetadata_PropagatesError(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	if _, err := client.RefreshOIDCClientMetadata(context.Background(), "test-id"); err == nil {
+	if err := client.RefreshOIDCClientMetadata(context.Background(), "test-id"); err == nil {
 		t.Fatal("expected an error when the refresh is rejected")
 	}
 }

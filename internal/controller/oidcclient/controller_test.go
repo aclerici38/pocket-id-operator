@@ -2597,7 +2597,7 @@ func (f *fakeSCIMAPI) UpdateOIDCClient(_ context.Context, _ string, _ pocketid.O
 func (f *fakeSCIMAPI) UpdateOIDCClientAllowedGroups(_ context.Context, _ string, _ []string) error {
 	panic("not implemented")
 }
-func (f *fakeSCIMAPI) RefreshOIDCClientMetadata(_ context.Context, _ string) (*pocketid.OIDCClient, error) {
+func (f *fakeSCIMAPI) RefreshOIDCClientMetadata(_ context.Context, _ string) error {
 	panic("not implemented")
 }
 func (f *fakeSCIMAPI) SetOIDCClientSecret(_ context.Context, _, _ string) (string, error) {
