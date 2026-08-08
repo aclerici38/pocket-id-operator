@@ -148,15 +148,21 @@ func TestOIDCClientOperations_UseEncodedPathForMetadataDocumentIDs(t *testing.T)
 			http.NotFound(w, r)
 			return
 		}
-		seen[r.Method+" "+strings.TrimPrefix(r.URL.EscapedPath(), prefix)] = true
-		if r.Method == http.MethodDelete {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
+		suffix := strings.TrimPrefix(r.URL.EscapedPath(), prefix)
+		seen[r.Method+" "+suffix] = true
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(oidcClientResponse{
-			ID: metadataURL, Name: "My App", ClientType: ClientTypeCIMD, AllowedUserGroups: []any{},
-		})
+		switch {
+		case r.Method == http.MethodDelete:
+			w.WriteHeader(http.StatusNoContent)
+		case suffix == "/secret":
+			_ = json.NewEncoder(w).Encode(map[string]any{"secret": "a-declared-secret-value"})
+		case suffix == "/scim-service-provider":
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "scim-1", "endpoint": "https://scim.example.com"})
+		default:
+			_ = json.NewEncoder(w).Encode(oidcClientResponse{
+				ID: metadataURL, Name: "My App", ClientType: ClientTypeCIMD, AllowedUserGroups: []any{},
+			})
+		}
 	}))
 	defer ts.Close()
 
@@ -178,11 +184,22 @@ func TestOIDCClientOperations_UseEncodedPathForMetadataDocumentIDs(t *testing.T)
 	if err := client.UpdateOIDCClientAllowedGroups(ctx, metadataURL, []string{"g1"}); err != nil {
 		t.Errorf("UpdateOIDCClientAllowedGroups: %v", err)
 	}
+	// ReconcileSCIM calls this on the first reconcile of every client, SCIM spec or not,
+	// so it is on the adoption path for every CIMD client.
+	if _, err := client.GetOIDCClientSCIMServiceProvider(ctx, metadataURL); err != nil {
+		t.Errorf("GetOIDCClientSCIMServiceProvider: %v", err)
+	}
+	if _, err := client.SetOIDCClientSecret(ctx, metadataURL, "a-declared-secret-value"); err != nil {
+		t.Errorf("SetOIDCClientSecret: %v", err)
+	}
 	if err := client.DeleteOIDCClient(ctx, metadataURL); err != nil {
 		t.Errorf("DeleteOIDCClient: %v", err)
 	}
 
-	for _, want := range []string{"GET ", "POST /refresh", "PUT ", "PUT /allowed-user-groups", "DELETE "} {
+	for _, want := range []string{
+		"GET ", "POST /refresh", "PUT ", "PUT /allowed-user-groups", "DELETE ",
+		"GET /scim-service-provider", "POST /secret",
+	} {
 		if !seen[want] {
 			t.Errorf("no request reached the encoded route for %q (seen: %v)", want, seen)
 		}

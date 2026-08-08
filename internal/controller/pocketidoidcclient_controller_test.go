@@ -728,6 +728,28 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 			}), "always public and has no client secret")
 		})
 
+		// The pre-existing clientPermissions rule keys on spec.isPublic, which a CIMD
+		// client must leave false even though the client itself is public.
+		It("rejects apiAccess clientPermissions on a CIMD client", func() {
+			expectRejectedWith(newClient("cimd-cel-client-perms", func(s *pocketidinternalv1alpha1.PocketIDOIDCClientSpec) {
+				s.APIAccess = []pocketidinternalv1alpha1.OIDCClientAPIAccess{{
+					APIRef:            pocketidinternalv1alpha1.NamespacedAPIReference{Name: "my-api"},
+					ClientPermissions: []string{"read"},
+				}}
+			}), "clientPermissions require a confidential client")
+		})
+
+		It("accepts apiAccess delegatedPermissions on a CIMD client", func() {
+			resource := newClient("cimd-cel-delegated-perms", func(s *pocketidinternalv1alpha1.PocketIDOIDCClientSpec) {
+				s.APIAccess = []pocketidinternalv1alpha1.OIDCClientAPIAccess{{
+					APIRef:               pocketidinternalv1alpha1.NamespacedAPIReference{Name: "my-api"},
+					DelegatedPermissions: []string{"read"},
+				}}
+			})
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, resource) })
+		})
+
 		It("allows an ordinary client ID up to 128 characters and rejects longer ones", func() {
 			ok := &pocketidinternalv1alpha1.PocketIDOIDCClient{
 				ObjectMeta: metav1.ObjectMeta{Name: "cimd-cel-len-ok", Namespace: namespace},

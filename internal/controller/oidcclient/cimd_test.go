@@ -3,14 +3,17 @@ package oidcclient
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
@@ -199,6 +202,119 @@ func TestPreserveMetadataOwnedFields_KeepsWritableFields(t *testing.T) {
 	}
 }
 
+// cimdCurrent is a CIMD client as Pocket-ID reports it: the metadata document owns the
+// name, callbacks, and public/PKCE flags, all of which disagree with what a CR produces.
+func cimdCurrent() *pocketid.OIDCClient {
+	return &pocketid.OIDCClient{
+		ID:                          "https://apps.example.com/meta.json",
+		Name:                        "My App",
+		CallbackURLs:                []string{"https://apps.example.com/cb"},
+		LogoutCallbackURLs:          []string{"https://apps.example.com/logout"},
+		IsPublic:                    true,
+		PKCEEnabled:                 true,
+		ClientType:                  pocketid.ClientTypeCIMD,
+		AccessTokenDurationMinutes:  60,
+		RefreshTokenDurationMinutes: 43200,
+	}
+}
+
+func cimdClientCR(name string, mutate func(*pocketidinternalv1alpha1.PocketIDOIDCClient)) *pocketidinternalv1alpha1.PocketIDOIDCClient {
+	cr := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			ClientID:                    "https://apps.example.com/meta.json",
+			AccessTokenDurationMinutes:  60,
+			RefreshTokenDurationMinutes: 43200,
+		},
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
+			ClientID:   "https://apps.example.com/meta.json",
+			ClientType: pocketid.ClientTypeCIMD,
+		},
+	}
+	if mutate != nil {
+		mutate(cr)
+	}
+	return cr
+}
+
+// The drift loop this design exists to prevent, asserted through the real reconcile path
+// rather than the helper in isolation. This is deliberately the *first* reconcile (no Ready
+// condition), which is when the operator would otherwise also push a credentials clear — so
+// it covers both the metadata-owned diff and the CIMD credential skip.
+func TestPushOIDCClientState_CIMDDoesNotDrift(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	cr := cimdClientCR("metadata-app", nil)
+	r := newPushStateOIDCReconciler(scheme, cr)
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		t.Errorf("unexpected %s %s: a CIMD client in sync on its writable fields must not be pushed",
+			req.Method, req.URL.Path)
+		http.Error(w, "unexpected", http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+	apiClient, _ := pocketid.NewClient(ts.URL, "")
+
+	updated, err := r.pushOIDCClientState(ctx, cr, apiClient, cimdCurrent())
+	if err != nil {
+		t.Fatalf("pushOIDCClientState returned error: %v", err)
+	}
+	if updated {
+		t.Error("expected no update for a CIMD client that differs only on metadata-owned fields")
+	}
+}
+
+// The counterpart: a writable field must still be pushed, and the payload must carry the
+// metadata document's values rather than the CR's, so nothing is clobbered on the way.
+func TestPushOIDCClientState_CIMDPushesWritableFields(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	cr := cimdClientCR("metadata-app", func(c *pocketidinternalv1alpha1.PocketIDOIDCClient) {
+		c.Spec.SkipConsent = true
+		c.Spec.AccessTokenDurationMinutes = 15
+		c.Status.Conditions = readyCondition()
+	})
+	r := newPushStateOIDCReconciler(scheme, cr)
+
+	var body map[string]any
+	encodedPath := "/api/oidc/clients/~" + base64.RawURLEncoding.EncodeToString([]byte("https://apps.example.com/meta.json"))
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodPut || req.URL.EscapedPath() != encodedPath {
+			t.Errorf("unexpected %s %s", req.Method, req.URL.EscapedPath())
+			http.NotFound(w, req)
+			return
+		}
+		_ = json.NewDecoder(req.Body).Decode(&body)
+		okOIDCClientResponse(w, "https://apps.example.com/meta.json", "My App")
+	}))
+	defer ts.Close()
+	apiClient, _ := pocketid.NewClient(ts.URL, "")
+
+	if _, err := r.pushOIDCClientState(ctx, cr, apiClient, cimdCurrent()); err != nil {
+		t.Fatalf("pushOIDCClientState returned error: %v", err)
+	}
+
+	if body == nil {
+		t.Fatal("expected an update when a writable field changed")
+	}
+	if got, _ := body["skipConsent"].(bool); !got {
+		t.Error("expected skipConsent to be pushed")
+	}
+	if got, _ := body["accessTokenDurationMinutes"].(float64); got != 15 {
+		t.Errorf("accessTokenDurationMinutes: got %v, want 15", body["accessTokenDurationMinutes"])
+	}
+	if got, _ := body["name"].(string); got != "My App" {
+		t.Errorf("name must carry the document value, got %q", got)
+	}
+	if got, _ := body["isPublic"].(bool); !got {
+		t.Error("isPublic must carry the document value (true), not the CR default")
+	}
+}
+
 // A CIMD client's metadata document must declare token_endpoint_auth_method "none", so it
 // is always public and the operator must never try to mint or rotate a secret for it.
 func TestIsPublicClient_TreatsCIMDAsPublic(t *testing.T) {
@@ -210,6 +326,34 @@ func TestIsPublicClient_TreatsCIMDAsPublic(t *testing.T) {
 	oidcClient.Status.ClientType = pocketid.ClientTypeCIMD
 	if !isPublicClient(oidcClient) {
 		t.Error("a CIMD client must be treated as public regardless of spec.isPublic")
+	}
+}
+
+// The isPublicClient guard in effect, not just in isolation: a CIMD client leaves
+// spec.isPublic false (admission rejects setting it), so without the guard ReconcileSecret
+// would take the mint path and try to regenerate a secret on adoption. A nil apiClient
+// makes any such call fail loudly instead of passing silently.
+func TestReconcileSecret_CIMDClientSkipsSecretMinting(t *testing.T) {
+	oidcClient := cimdClientCR("metadata-app", nil)
+	instance := &pocketidinternalv1alpha1.PocketIDInstance{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-instance", Namespace: testNamespace},
+	}
+	r := declaredSecretReconciler(t, oidcClient, instance)
+
+	if err := r.ReconcileSecret(context.Background(), oidcClient, instance, nil); err != nil {
+		t.Fatalf("ReconcileSecret returned error: %v", err)
+	}
+
+	secret := &corev1.Secret{}
+	key := types.NamespacedName{Name: r.GetSecretName(oidcClient), Namespace: testNamespace}
+	if err := r.Get(context.Background(), key, secret); err != nil {
+		t.Fatalf("expected the managed secret to be created: %v", err)
+	}
+	if _, ok := secret.Data[r.GetSecretKeys(oidcClient).ClientSecret]; ok {
+		t.Error("a CIMD client is always public and must never have a client_secret stored")
+	}
+	if got := string(secret.Data[r.GetSecretKeys(oidcClient).ClientID]); got != oidcClient.Status.ClientID {
+		t.Errorf("client_id: got %q, want %q", got, oidcClient.Status.ClientID)
 	}
 }
 
