@@ -342,6 +342,15 @@ spec:
                 description: Audit log retention in days
                 format: int32
                 type: integer
+              cimdUrlAllowlist:
+                description: |-
+                  CIMDURLAllowlist restricts which https URLs may be used as OAuth Client ID Metadata
+                  Documents. Entries are callback-URL patterns (wildcards allowed). A non-empty list
+                  enables CIMD; leaving it empty keeps the feature off.
+                  The operator automatically sets UI_CONFIG_DISABLED=true when this field is set.
+                items:
+                  type: string
+                type: array
               containerSecurityContext:
                 description: Container security context
                 properties:
@@ -3350,9 +3359,11 @@ spec:
                 type: array
               clientID:
                 description: |-
-                  ClientID is the optional OIDC client ID to use instead of a generated one
-                  The Client ID is immutable and cannot be changed once the oidc client is created
-                maxLength: 128
+                  ClientID is the optional OIDC client ID to use instead of a generated one.
+                  The Client ID is immutable and cannot be changed once the oidc client is created.
+                  An https:// URL marks the client as an OAuth Client ID Metadata Document (CIMD)
+                  client, which the operator adopts but never creates and only partially manages.
+                maxLength: 512
                 minLength: 2
                 type: string
               clientSecretRef:
@@ -3762,6 +3773,26 @@ spec:
                 is set
               rule: '!has(self.clientSecretRef) || !has(self.clientSecretRotation)
                 || !self.clientSecretRotation.enabled'
+            - message: clientID must be at most 128 characters unless it is a client
+                ID metadata document URL
+              rule: '!has(self.clientID) || self.clientID.startsWith(''https://'')
+                || self.clientID.size() <= 128'
+            - message: name, callbackUrls, logoutCallbackUrls, federatedIdentities,
+                isPublic, and pkceEnabled are owned by the client ID metadata document
+                and must not be set on a CIMD client
+              rule: '!(has(self.clientID) && self.clientID.startsWith(''https://''))
+                || (!has(self.name) && !has(self.callbackUrls) && !has(self.logoutCallbackUrls)
+                && !has(self.federatedIdentities) && !self.isPublic && !self.pkceEnabled)'
+            - message: a CIMD client is always public and has no client secret, so
+                clientSecretRef and clientSecretRotation are not supported
+              rule: '!(has(self.clientID) && self.clientID.startsWith(''https://''))
+                || (!has(self.clientSecretRef) && (!has(self.clientSecretRotation)
+                || !self.clientSecretRotation.enabled))'
+            - message: clientPermissions require a confidential client, and a CIMD
+                client is always public
+              rule: '!(has(self.clientID) && self.clientID.startsWith(''https://''))
+                || !has(self.apiAccess) || self.apiAccess.all(a, !has(a.clientPermissions)
+                || size(a.clientPermissions) == 0)'
           status:
             description: status defines the observed state of PocketIDOIDCClient
             properties:
@@ -3784,6 +3815,12 @@ spec:
                   ClientSecretSourceVersion identifies the spec.clientSecretRef source last pushed to
                   Pocket-ID. Pocket-ID stores the secret hashed and never returns it, so this is how the
                   operator detects that the referenced Secret changed and needs pushing again.
+                type: string
+              clientType:
+                description: |-
+                  ClientType is how the client was registered in Pocket-ID: "standard" or "cimd".
+                  For a "cimd" client the operator manages only the fields Pocket-ID persists on an
+                  admin update; the rest are owned by its OAuth Client ID Metadata Document.
                 type: string
               conditions:
                 description: Conditions represent the current state of the PocketIDOIDCClient

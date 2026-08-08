@@ -195,6 +195,69 @@ spec:
     - "https://app.example.com/logout"
 ```
 
+## Client ID Metadata Documents
+
+A `cimd` client is synthesized by Pocket-ID from an OAuth Client ID Metadata Document that
+the app publishes at an https URL, rather than being provisioned ahead of time. Enable the
+feature with [`spec.cimdUrlAllowlist`](pocketidinstance.md#client-id-metadata-documents) on
+the instance. `status.clientType` reports `standard` or `cimd`.
+
+Set `spec.clientID` to the metadata document URL to manage one via the operator.
+
+```yaml
+spec:
+  clientID: "https://apps.example.com/myapp/client-metadata.json"
+
+  description: "Self-registered via metadata document"
+  launchUrl: "https://apps.example.com/myapp"
+  skipConsent: false
+  requiresReauthentication: true
+  accessTokenDurationMinutes: 15
+  refreshTokenDurationMinutes: 1440
+  allowedUserGroups:
+    - name: platform-engineers
+```
+
+### What the operator manages
+
+The fields Pocket-ID persists on an admin update of a `cimd` client: `description`,
+`launchUrl`, `skipConsent`, `requiresReauthentication`,
+`requiresPushedAuthorizationRequests`, `accessTokenDurationMinutes`, and
+`refreshTokenDurationMinutes`.
+
+The parts of the client that live outside that update are managed as usual, because
+Pocket-ID applies them to any client type: `allowedUserGroups`, `logo`, `scim`, the
+`apiAccess` delegated permissions, and the generated Kubernetes `secret`.
+
+Note that an auto-generated logo is resolved from `metadata.name`, not from the document's
+`client_name`. Set `logo.nameOverride` or disable `logo.autoGenerate` if that is wrong for
+the app.
+
+`name`, `callbackUrls`, `logoutCallbackUrls`, `isPublic`, `pkceEnabled`,
+`federatedIdentities`, `clientSecretRef`, `clientSecretRotation`, and the `apiAccess`
+client permissions are owned by the metadata document or unsupported for a public client,
+and are rejected at admission. The document-owned ones still appear in `status` as observed
+values.
+
+### Lifecycle
+
+The operator adopts a `cimd` client but never creates one — Pocket-ID materializes the
+record when the app first authorizes. Until that happens the resource stays `Ready=False`
+with reason `AwaitingFirstAuthorization`. Adoption requires an explicit `spec.clientID`.
+
+Deleting the resource deletes the client from Pocket-ID, exactly as it does for a standard
+client.
+
+> **Deleting the resource does not revoke access.** The app's URL is still allowlisted on
+> the instance, so it re-materializes from its metadata document on the next authorization.
+> What the delete does remove is local state: every user's existing consent for the app,
+> along with the settings below. To revoke access, remove its URL from
+> `spec.cimdUrlAllowlist` on the instance.
+
+To force a re-fetch of the metadata document ahead of the cache TTL, set the
+`pocketid.internal/refresh-client-metadata` annotation (see
+[annotations.md](annotations.md)).
+
 ## Token Lifetimes
 
 `spec.accessTokenDurationMinutes` and `spec.refreshTokenDurationMinutes` set how long

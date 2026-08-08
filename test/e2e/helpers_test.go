@@ -34,6 +34,7 @@ type InstanceOptions struct {
 	PersistenceEnabled *bool
 	PersistenceSize    string
 	ExistingClaim      string
+	CIMDURLAllowlist   []string
 }
 
 const defaultPocketIDImage = "ghcr.io/pocket-id/pocket-id:v2.13.0-distroless@sha256:ccb590169770feb5b23ba16d49386514a2c26a77e95bb687b442ae09f17c15da"
@@ -79,6 +80,15 @@ func buildInstanceYAML(opts InstanceOptions) string {
 			persistence += fmt.Sprintf("    size: %s\n", opts.PersistenceSize)
 		}
 	}
+
+	var cimd string
+	if len(opts.CIMDURLAllowlist) > 0 {
+		cimd = "  cimdUrlAllowlist:\n"
+		for _, pattern := range opts.CIMDURLAllowlist {
+			cimd += fmt.Sprintf("  - %q\n", pattern)
+		}
+	}
+	persistence += cimd
 
 	return fmt.Sprintf(`apiVersion: pocketid.internal/v1alpha1
 kind: PocketIDInstance
@@ -391,7 +401,10 @@ func (o OIDCClientOptions) withDefaults() OIDCClientOptions {
 	if o.Namespace == "" {
 		o.Namespace = userNS
 	}
-	if len(o.CallbackURLs) == 0 {
+	// A CIMD client's callback URLs come from its metadata document and are rejected in
+	// the spec, so the default must not be injected for one. The https prefix is what both
+	// the CRD's CEL rules and pocketid.LooksLikeCIMDID key on.
+	if len(o.CallbackURLs) == 0 && !strings.HasPrefix(o.ClientID, "https://") {
 		o.CallbackURLs = []string{"https://example.com/callback"}
 	}
 	return o
@@ -407,7 +420,8 @@ func buildOIDCClientYAML(opts OIDCClientOptions) string {
 	}
 
 	if opts.ClientID != "" {
-		spec.WriteString(fmt.Sprintf("  clientID: %s\n", opts.ClientID))
+		// Quoted because a CIMD client ID is a URL.
+		spec.WriteString(fmt.Sprintf("  clientID: %q\n", opts.ClientID))
 	}
 
 	if opts.Description != "" {
@@ -452,9 +466,11 @@ func buildOIDCClientYAML(opts OIDCClientOptions) string {
 		}
 	}
 
-	spec.WriteString("  callbackUrls:\n")
-	for _, url := range opts.CallbackURLs {
-		spec.WriteString(fmt.Sprintf("  - %s\n", url))
+	if len(opts.CallbackURLs) > 0 {
+		spec.WriteString("  callbackUrls:\n")
+		for _, url := range opts.CallbackURLs {
+			spec.WriteString(fmt.Sprintf("  - %s\n", url))
+		}
 	}
 
 	if len(opts.LogoutCallbackURLs) > 0 {

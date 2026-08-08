@@ -659,6 +659,126 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 		})
 	})
 
+	// Admission is what keeps a CIMD resource from declaring fields its metadata document
+	// owns. Without these rules the operator would silently ignore them instead.
+	Context("CIMD client validation", func() {
+		const metadataURL = "https://apps.example.com/myapp/client-metadata.json"
+
+		newClient := func(name string, mutate func(*pocketidinternalv1alpha1.PocketIDOIDCClientSpec)) *pocketidinternalv1alpha1.PocketIDOIDCClient {
+			spec := pocketidinternalv1alpha1.PocketIDOIDCClientSpec{ClientID: metadataURL}
+			mutate(&spec)
+			return &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+				Spec:       spec,
+			}
+		}
+		expectRejectedWith := func(resource *pocketidinternalv1alpha1.PocketIDOIDCClient, substring string) {
+			err := k8sClient.Create(ctx, resource)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring(substring))
+		}
+
+		It("accepts a CIMD client setting only the fields Pocket-ID persists", func() {
+			resource := newClient("cimd-cel-ok", func(s *pocketidinternalv1alpha1.PocketIDOIDCClientSpec) {
+				s.Description = "Self-registered app"
+				s.LaunchURL = "https://apps.example.com/myapp"
+				s.SkipConsent = true
+				s.RequiresReauthentication = true
+				s.AccessTokenDurationMinutes = 15
+				s.AllowedUserGroups = []pocketidinternalv1alpha1.NamespacedUserGroupReference{{GroupName: "platform"}}
+			})
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, resource) })
+		})
+
+		DescribeTable("rejects metadata-owned fields",
+			func(mutate func(*pocketidinternalv1alpha1.PocketIDOIDCClientSpec)) {
+				expectRejectedWith(newClient("cimd-cel-owned", mutate),
+					"owned by the client ID metadata document")
+			},
+			Entry("name", func(s *pocketidinternalv1alpha1.PocketIDOIDCClientSpec) { s.Name = "My App" }),
+			Entry("callbackUrls", func(s *pocketidinternalv1alpha1.PocketIDOIDCClientSpec) {
+				s.CallbackURLs = []string{"https://apps.example.com/cb"}
+			}),
+			Entry("logoutCallbackUrls", func(s *pocketidinternalv1alpha1.PocketIDOIDCClientSpec) {
+				s.LogoutCallbackURLs = []string{"https://apps.example.com/logout"}
+			}),
+			Entry("isPublic", func(s *pocketidinternalv1alpha1.PocketIDOIDCClientSpec) { s.IsPublic = true }),
+			Entry("pkceEnabled", func(s *pocketidinternalv1alpha1.PocketIDOIDCClientSpec) { s.PKCEEnabled = true }),
+			Entry("federatedIdentities", func(s *pocketidinternalv1alpha1.PocketIDOIDCClientSpec) {
+				s.FederatedIdentities = []pocketidinternalv1alpha1.OIDCClientFederatedIdentity{{Issuer: "https://issuer.example.com"}}
+			}),
+		)
+
+		It("rejects clientSecretRef on a CIMD client", func() {
+			expectRejectedWith(newClient("cimd-cel-secret-ref", func(s *pocketidinternalv1alpha1.PocketIDOIDCClientSpec) {
+				s.ClientSecretRef = &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: "creds"},
+					Key:                  "secret",
+				}
+			}), "always public and has no client secret")
+		})
+
+		It("rejects enabling clientSecretRotation on a CIMD client", func() {
+			expectRejectedWith(newClient("cimd-cel-rotation", func(s *pocketidinternalv1alpha1.PocketIDOIDCClientSpec) {
+				s.ClientSecretRotation = &pocketidinternalv1alpha1.ClientSecretRotation{
+					Enabled:  true,
+					Interval: &metav1.Duration{Duration: 720 * time.Hour},
+				}
+			}), "always public and has no client secret")
+		})
+
+		// The pre-existing clientPermissions rule keys on spec.isPublic, which a CIMD
+		// client must leave false even though the client itself is public.
+		It("rejects apiAccess clientPermissions on a CIMD client", func() {
+			expectRejectedWith(newClient("cimd-cel-client-perms", func(s *pocketidinternalv1alpha1.PocketIDOIDCClientSpec) {
+				s.APIAccess = []pocketidinternalv1alpha1.OIDCClientAPIAccess{{
+					APIRef:            pocketidinternalv1alpha1.NamespacedAPIReference{Name: "my-api"},
+					ClientPermissions: []string{"read"},
+				}}
+			}), "clientPermissions require a confidential client")
+		})
+
+		It("accepts apiAccess delegatedPermissions on a CIMD client", func() {
+			resource := newClient("cimd-cel-delegated-perms", func(s *pocketidinternalv1alpha1.PocketIDOIDCClientSpec) {
+				s.APIAccess = []pocketidinternalv1alpha1.OIDCClientAPIAccess{{
+					APIRef:               pocketidinternalv1alpha1.NamespacedAPIReference{Name: "my-api"},
+					DelegatedPermissions: []string{"read"},
+				}}
+			})
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, resource) })
+		})
+
+		It("allows an ordinary client ID up to 128 characters and rejects longer ones", func() {
+			ok := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{Name: "cimd-cel-len-ok", Namespace: namespace},
+				Spec:       pocketidinternalv1alpha1.PocketIDOIDCClientSpec{ClientID: strings.Repeat("a", 128)},
+			}
+			Expect(k8sClient.Create(ctx, ok)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, ok) })
+
+			long := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{Name: "cimd-cel-len-bad", Namespace: namespace},
+				Spec:       pocketidinternalv1alpha1.PocketIDOIDCClientSpec{ClientID: strings.Repeat("a", 129)},
+			}
+			err := k8sClient.Create(ctx, long)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("at most 128 characters"))
+		})
+
+		It("allows a metadata document URL longer than 128 characters", func() {
+			resource := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{Name: "cimd-cel-long-url", Namespace: namespace},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+					ClientID: "https://apps.example.com/" + strings.Repeat("deep/", 25) + "client-metadata.json",
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, resource) })
+		})
+	})
+
 	Context("Updating OIDC client status", func() {
 		const clientName = "test-oidc-status-update"
 

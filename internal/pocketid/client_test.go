@@ -2,9 +2,11 @@ package pocketid
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -21,6 +23,7 @@ type oidcClientResponse struct {
 	IsPublic           bool     `json:"isPublic"`
 	IsGroupRestricted  bool     `json:"isGroupRestricted"`
 	PkceEnabled        bool     `json:"pkceEnabled"`
+	ClientType         string   `json:"clientType"`
 	AllowedUserGroups  []any    `json:"allowedUserGroups"`
 
 	AccessTokenDurationMinutes  int64 `json:"accessTokenDurationMinutes"`
@@ -60,6 +63,232 @@ func TestGetOIDCClient_ReadsTokenDurations(t *testing.T) {
 	}
 	if got.RefreshTokenDurationMinutes != 1440 {
 		t.Errorf("RefreshTokenDurationMinutes: got %d, want 1440", got.RefreshTokenDurationMinutes)
+	}
+}
+
+// clientType decides which fields the operator may push, so both read paths used for
+// adoption have to carry it through.
+func TestOIDCClientReads_CarryClientType(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.NotFound(w, r)
+			return
+		}
+		cimd := oidcClientResponse{
+			ID:                "https://apps.example.com/meta.json",
+			Name:              "metadata-app",
+			ClientType:        ClientTypeCIMD,
+			AllowedUserGroups: []any{},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/oidc/clients/test-id":
+			_ = json.NewEncoder(w).Encode(cimd)
+		case "/api/oidc/clients":
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": []oidcClientResponse{cimd}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(ts.URL, "")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	got, err := client.GetOIDCClient(context.Background(), "test-id")
+	if err != nil {
+		t.Fatalf("GetOIDCClient: %v", err)
+	}
+	if !got.IsCIMD() {
+		t.Errorf("GetOIDCClient clientType: got %q, want %q", got.ClientType, ClientTypeCIMD)
+	}
+
+	listed, err := client.ListOIDCClients(context.Background(), "")
+	if err != nil {
+		t.Fatalf("ListOIDCClients: %v", err)
+	}
+	if len(listed) != 1 {
+		t.Fatalf("expected 1 listed client, got %d", len(listed))
+	}
+	if !listed[0].IsCIMD() {
+		t.Errorf("ListOIDCClients clientType: got %q, want %q", listed[0].ClientType, ClientTypeCIMD)
+	}
+}
+
+// A CIMD client ID is a full https URL. Raw, its slashes become extra path segments and
+// gin never matches the route, so Pocket-ID takes it base64url-encoded behind a "~" and
+// decodes it in middleware. Every client-ID path param has to go through that encoding.
+func TestClientIDPathParam_EncodesMetadataDocumentURLs(t *testing.T) {
+	const metadataURL = "https://apps.example.com/myapp/client-metadata.json"
+	want := "~" + base64.RawURLEncoding.EncodeToString([]byte(metadataURL))
+
+	if got := clientIDPathParam(metadataURL); got != want {
+		t.Errorf("clientIDPathParam(%q) = %q, want %q", metadataURL, got, want)
+	}
+	if got := clientIDPathParam("grafana"); got != "grafana" {
+		t.Errorf("an ordinary client ID must pass through untouched, got %q", got)
+	}
+}
+
+// LooksLikeCIMDID has to agree with the CRD's CEL rules and upstream's
+// fosite.LooksLikeCIMDURL, both of which require the https scheme. A looser test (any
+// "://") would route a mistyped "http://" client ID down the adopt-only path, where it
+// waits forever for a client Pocket-ID will never materialize, while admission had already
+// waved through the metadata-owned fields the CEL rules exist to reject.
+func TestLooksLikeCIMDID_RequiresHTTPSScheme(t *testing.T) {
+	for id, want := range map[string]bool{
+		"https://apps.example.com/myapp/client-metadata.json": true,
+		"http://apps.example.com/myapp/client-metadata.json":  false,
+		"ftp://apps.example.com/meta.json":                    false,
+		"grafana":                                             false,
+		"my-client.id_2":                                      false,
+	} {
+		if got := LooksLikeCIMDID(id); got != want {
+			t.Errorf("LooksLikeCIMDID(%q) = %v, want %v", id, got, want)
+		}
+	}
+}
+
+// Exercises the encoding through the real request path: the stub only answers the encoded
+// route, so a regression in any client-ID path param shows up as a 404 here.
+func TestOIDCClientOperations_UseEncodedPathForMetadataDocumentIDs(t *testing.T) {
+	const metadataURL = "https://apps.example.com/myapp/client-metadata.json"
+	encoded := "~" + base64.RawURLEncoding.EncodeToString([]byte(metadataURL))
+
+	seen := map[string]bool{}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.EscapedPath()
+		w.Header().Set("Content-Type", "application/json")
+
+		// API access lives on its own route prefix, so it needs encoding independently of
+		// the /api/oidc/clients ones.
+		if apiAccess := "/api/api-access/" + encoded; path == apiAccess {
+			seen[r.Method+" api-access"] = true
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"clientPermissionIds": []string{}, "userDelegatedPermissionIds": []string{},
+			})
+			return
+		}
+
+		prefix := "/api/oidc/clients/" + encoded
+		if !strings.HasPrefix(path, prefix) {
+			http.NotFound(w, r)
+			return
+		}
+		suffix := strings.TrimPrefix(path, prefix)
+		seen[r.Method+" "+suffix] = true
+		switch {
+		case r.Method == http.MethodDelete:
+			w.WriteHeader(http.StatusNoContent)
+		case suffix == "/secret":
+			_ = json.NewEncoder(w).Encode(map[string]any{"secret": "a-declared-secret-value"})
+		case suffix == "/scim-service-provider":
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "scim-1", "endpoint": "https://scim.example.com"})
+		default:
+			_ = json.NewEncoder(w).Encode(oidcClientResponse{
+				ID: metadataURL, Name: "My App", ClientType: ClientTypeCIMD, AllowedUserGroups: []any{},
+			})
+		}
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(ts.URL, "")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	ctx := context.Background()
+
+	if _, err := client.GetOIDCClient(ctx, metadataURL); err != nil {
+		t.Errorf("GetOIDCClient: %v", err)
+	}
+	if err := client.RefreshOIDCClientMetadata(ctx, metadataURL); err != nil {
+		t.Errorf("RefreshOIDCClientMetadata: %v", err)
+	}
+	if _, err := client.UpdateOIDCClient(ctx, metadataURL, OIDCClientInput{Name: "My App"}); err != nil {
+		t.Errorf("UpdateOIDCClient: %v", err)
+	}
+	if err := client.UpdateOIDCClientAllowedGroups(ctx, metadataURL, []string{"g1"}); err != nil {
+		t.Errorf("UpdateOIDCClientAllowedGroups: %v", err)
+	}
+	// ReconcileSCIM calls this on the first reconcile of every client, SCIM spec or not,
+	// so it is on the adoption path for every CIMD client.
+	if _, err := client.GetOIDCClientSCIMServiceProvider(ctx, metadataURL); err != nil {
+		t.Errorf("GetOIDCClientSCIMServiceProvider: %v", err)
+	}
+	if _, err := client.SetOIDCClientSecret(ctx, metadataURL, "a-declared-secret-value"); err != nil {
+		t.Errorf("SetOIDCClientSecret: %v", err)
+	}
+	// Reachable for CIMD: admission allows apiAccess.delegatedPermissions on one.
+	if _, err := client.GetClientAPIAccess(ctx, metadataURL); err != nil {
+		t.Errorf("GetClientAPIAccess: %v", err)
+	}
+	if _, err := client.UpdateClientAPIAccess(ctx, metadataURL, ClientAPIAccess{
+		UserDelegatedPermissionIDs: []string{"perm-1"},
+	}); err != nil {
+		t.Errorf("UpdateClientAPIAccess: %v", err)
+	}
+	if err := client.DeleteOIDCClient(ctx, metadataURL); err != nil {
+		t.Errorf("DeleteOIDCClient: %v", err)
+	}
+
+	for _, want := range []string{
+		"GET ", "POST /refresh", "PUT ", "PUT /allowed-user-groups", "DELETE ",
+		"GET /scim-service-provider", "POST /secret",
+		"GET api-access", "PUT api-access",
+	} {
+		if !seen[want] {
+			t.Errorf("no request reached the encoded route for %q (seen: %v)", want, seen)
+		}
+	}
+}
+
+func TestRefreshOIDCClientMetadata_PostsToRefreshEndpoint(t *testing.T) {
+	var calls int
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/oidc/clients/test-id/refresh" {
+			http.NotFound(w, r)
+			return
+		}
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(oidcClientResponse{
+			ID:                "test-id",
+			Name:              "metadata-app",
+			ClientType:        ClientTypeCIMD,
+			AllowedUserGroups: []any{},
+		})
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(ts.URL, "")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	if err := client.RefreshOIDCClientMetadata(context.Background(), "test-id"); err != nil {
+		t.Fatalf("RefreshOIDCClientMetadata: %v", err)
+	}
+	if calls != 1 {
+		t.Errorf("expected 1 call to the refresh endpoint, got %d", calls)
+	}
+}
+
+func TestRefreshOIDCClientMetadata_PropagatesError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(ts.URL, "")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	if err := client.RefreshOIDCClientMetadata(context.Background(), "test-id"); err == nil {
+		t.Fatal("expected an error when the refresh is rejected")
 	}
 }
 

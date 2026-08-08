@@ -86,7 +86,10 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	}))
 
 	By("creating the shared e2e instance")
-	createInstance(InstanceOptions{})
+	// The CIMD allowlist is set on the shared instance rather than a dedicated one because
+	// SelectInstance rejects a selector matching more than one PocketIDInstance, so a
+	// long-lived second instance would break every client that omits instanceSelector.
+	createInstance(InstanceOptions{CIMDURLAllowlist: []string{cimdMetadataURL}})
 
 	By("waiting for the shared instance to be Ready")
 	Eventually(func(g Gomega) {

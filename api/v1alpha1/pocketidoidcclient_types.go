@@ -281,6 +281,10 @@ type SCIMSpec struct {
 // +kubebuilder:validation:XValidation:rule="!self.isPublic || !has(self.apiAccess) || self.apiAccess.all(a, !has(a.clientPermissions) || size(a.clientPermissions) == 0)",message="clientPermissions require a confidential client (isPublic must be false)"
 // +kubebuilder:validation:XValidation:rule="!has(self.clientSecretRef) || !self.isPublic",message="clientSecretRef requires a confidential client (isPublic must be false)"
 // +kubebuilder:validation:XValidation:rule="!has(self.clientSecretRef) || !has(self.clientSecretRotation) || !self.clientSecretRotation.enabled",message="clientSecretRotation cannot be enabled when clientSecretRef is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.clientID) || self.clientID.startsWith('https://') || self.clientID.size() <= 128",message="clientID must be at most 128 characters unless it is a client ID metadata document URL"
+// +kubebuilder:validation:XValidation:rule="!(has(self.clientID) && self.clientID.startsWith('https://')) || (!has(self.name) && !has(self.callbackUrls) && !has(self.logoutCallbackUrls) && !has(self.federatedIdentities) && !self.isPublic && !self.pkceEnabled)",message="name, callbackUrls, logoutCallbackUrls, federatedIdentities, isPublic, and pkceEnabled are owned by the client ID metadata document and must not be set on a CIMD client"
+// +kubebuilder:validation:XValidation:rule="!(has(self.clientID) && self.clientID.startsWith('https://')) || (!has(self.clientSecretRef) && (!has(self.clientSecretRotation) || !self.clientSecretRotation.enabled))",message="a CIMD client is always public and has no client secret, so clientSecretRef and clientSecretRotation are not supported"
+// +kubebuilder:validation:XValidation:rule="!(has(self.clientID) && self.clientID.startsWith('https://')) || !has(self.apiAccess) || self.apiAccess.all(a, !has(a.clientPermissions) || size(a.clientPermissions) == 0)",message="clientPermissions require a confidential client, and a CIMD client is always public"
 type PocketIDOIDCClientSpec struct {
 	// Name of the oidc client to create in Pocket ID.
 	// If omitted, defaults to metadata.name of the oidcclient resource.
@@ -296,10 +300,12 @@ type PocketIDOIDCClientSpec struct {
 	// +optional
 	InstanceSelector *metav1.LabelSelector `json:"instanceSelector,omitempty"`
 
-	// ClientID is the optional OIDC client ID to use instead of a generated one
-	// The Client ID is immutable and cannot be changed once the oidc client is created
+	// ClientID is the optional OIDC client ID to use instead of a generated one.
+	// The Client ID is immutable and cannot be changed once the oidc client is created.
+	// An https:// URL marks the client as an OAuth Client ID Metadata Document (CIMD)
+	// client, which the operator adopts but never creates and only partially manages.
 	// +kubebuilder:validation:MinLength=2
-	// +kubebuilder:validation:MaxLength=128
+	// +kubebuilder:validation:MaxLength=512
 	// +optional
 	ClientID string `json:"clientID,omitempty"`
 
@@ -463,6 +469,12 @@ type PocketIDOIDCClientStatus struct {
 	// Name is the resolved name from Pocket-ID
 	// +optional
 	Name string `json:"name,omitempty"`
+
+	// ClientType is how the client was registered in Pocket-ID: "standard" or "cimd".
+	// For a "cimd" client the operator manages only the fields Pocket-ID persists on an
+	// admin update; the rest are owned by its OAuth Client ID Metadata Document.
+	// +optional
+	ClientType string `json:"clientType,omitempty"`
 
 	// CreatedAt is the creation timestamp from Pocket-ID
 	// +optional

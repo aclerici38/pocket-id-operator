@@ -81,6 +81,16 @@
             "null"
           ]
         },
+        "cimdUrlAllowlist": {
+          "description": "CIMDURLAllowlist restricts which https URLs may be used as OAuth Client ID Metadata\nDocuments. Entries are callback-URL patterns (wildcards allowed). A non-empty list\nenables CIMD; leaving it empty keeps the feature off.\nThe operator automatically sets UI_CONFIG_DISABLED=true when this field is set.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "containerSecurityContext": {
           "additionalProperties": false,
           "description": "Container security context",

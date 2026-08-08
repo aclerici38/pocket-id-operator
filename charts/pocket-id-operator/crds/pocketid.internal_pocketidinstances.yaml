@@ -74,6 +74,15 @@ spec:
                 description: Audit log retention in days
                 format: int32
                 type: integer
+              cimdUrlAllowlist:
+                description: |-
+                  CIMDURLAllowlist restricts which https URLs may be used as OAuth Client ID Metadata
+                  Documents. Entries are callback-URL patterns (wildcards allowed). A non-empty list
+                  enables CIMD; leaving it empty keeps the feature off.
+                  The operator automatically sets UI_CONFIG_DISABLED=true when this field is set.
+                items:
+                  type: string
+                type: array
               containerSecurityContext:
                 description: Container security context
                 properties:
