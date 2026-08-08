@@ -447,13 +447,15 @@ func TestBuildEnvVars_LDAP(t *testing.T) {
 func TestBuildEnvVars_Logging(t *testing.T) {
 	inst := minimalInstance()
 	inst.Spec.Logging = &pocketidinternalv1alpha1.LoggingConfig{
-		Level: "debug",
-		JSON:  true,
+		Level:     "debug",
+		JSON:      true,
+		QueryArgs: true,
 	}
 
 	env := buildEnvVars(inst)
 	requireEnv(t, env, "LOG_LEVEL", "debug")
 	requireEnv(t, env, "LOG_JSON", "true")
+	requireEnv(t, env, "LOG_QUERY_ARGS", "true")
 }
 
 func TestBuildEnvVars_Tracing(t *testing.T) {

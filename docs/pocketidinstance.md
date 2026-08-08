@@ -208,6 +208,7 @@ spec:
   logging:
     level: "info"                            # debug, info, warn, error
     json: true                               # JSON log output
+    queryArgs: false                         # SQL parameter values in debug logs and traces
 ```
 
 ## Tracing
@@ -599,7 +600,7 @@ spec:
   - `SMTP_ENABLED=true` + `SMTP_*` (from `spec.smtp`)
   - `EMAIL_*_ENABLED` (from `spec.emailNotifications`)
   - `LDAP_ENABLED=true` + `LDAP_*` (from `spec.ldap`)
-  - `LOG_LEVEL`, `LOG_JSON` (from `spec.logging`)
+  - `LOG_LEVEL`, `LOG_JSON`, `LOG_QUERY_ARGS` (from `spec.logging`)
   - `OTEL_TRACES_EXPORTER=otlp` (from `spec.tracing`)
   - `OTEL_METRICS_EXPORTER=prometheus` + `OTEL_*` (from `spec.metrics`)
   - `APP_NAME`, `SESSION_DURATION`, `HOME_PAGE_URL`, `DISABLE_ANIMATIONS`, `ACCENT_COLOR` (from `spec.ui`)

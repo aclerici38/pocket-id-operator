@@ -296,6 +296,9 @@ func buildLoggingEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []core
 	if instance.Spec.Logging.JSON {
 		env = append(env, corev1.EnvVar{Name: "LOG_JSON", Value: "true"})
 	}
+	if instance.Spec.Logging.QueryArgs {
+		env = append(env, corev1.EnvVar{Name: "LOG_QUERY_ARGS", Value: "true"})
+	}
 	return env
 }
 

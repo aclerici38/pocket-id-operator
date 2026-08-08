@@ -257,6 +257,12 @@ type LoggingConfig struct {
 	// +kubebuilder:default=false
 	// +optional
 	JSON bool `json:"json,omitempty"`
+
+	// Include SQL query parameter values in traces and in the query logs emitted
+	// at the debug level. These values may contain sensitive data.
+	// +kubebuilder:default=false
+	// +optional
+	QueryArgs bool `json:"queryArgs,omitempty"`
 }
 
 // TracingConfig enables OpenTelemetry tracing.

@@ -1731,6 +1731,12 @@ spec:
                     - warn
                     - error
                     type: string
+                  queryArgs:
+                    default: false
+                    description: |-
+                      Include SQL query parameter values in traces and in the query logs emitted
+                      at the debug level. These values may contain sensitive data.
+                    type: boolean
                 type: object
               metrics:
                 description: |-
