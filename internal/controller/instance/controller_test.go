@@ -8,7 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-const testImage = "ghcr.io/pocket-id/pocket-id:v2.12.0-distroless@sha256:b2fad8a82fab26fe4c11797dd13ea55aa6c7d6ea93fe829a139f2e28be2d339d"
+const testImage = "ghcr.io/pocket-id/pocket-id:v2.13.0-distroless@sha256:ccb590169770feb5b23ba16d49386514a2c26a77e95bb687b442ae09f17c15da"
 
 func TestBuildPodTemplate_NoPodTemplate(t *testing.T) {
 	inst := minimalInstance()
