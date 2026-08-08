@@ -1,6 +1,7 @@
 package instance
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -58,6 +59,7 @@ func buildEnvVars(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.
 	env = append(env, buildTracingEnv(instance)...)
 	env = append(env, buildUIEnv(instance)...)
 	env = append(env, buildUserManagementEnv(instance)...)
+	env = append(env, buildOIDCEnv(instance)...)
 	env = append(env, buildGeoIPEnv(instance)...)
 	env = append(env, buildStandaloneEnv(instance)...)
 
@@ -115,7 +117,8 @@ func needsUIConfigDisabled(instance *pocketidinternalv1alpha1.PocketIDInstance) 
 		instance.Spec.UserManagement != nil ||
 		instance.Spec.SMTP != nil ||
 		instance.Spec.EmailNotifications != nil ||
-		instance.Spec.LDAP != nil
+		instance.Spec.LDAP != nil ||
+		len(instance.Spec.CIMDURLAllowlist) > 0
 }
 
 func buildMetricsEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.EnvVar {
@@ -361,6 +364,17 @@ func buildUserManagementEnv(instance *pocketidinternalv1alpha1.PocketIDInstance)
 		env = append(env, corev1.EnvVar{Name: "SIGNUP_DEFAULT_USER_GROUP_IDS", Value: strings.Join(um.SignupDefaultUserGroupIDs, ",")})
 	}
 	return env
+}
+
+// buildOIDCEnv emits the OAuth Client ID Metadata Document allowlist. Pocket-ID reads
+// CIMD_URL_ALLOWLIST as a JSON-encoded array of strings.
+func buildOIDCEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.EnvVar {
+	if len(instance.Spec.CIMDURLAllowlist) == 0 {
+		return nil
+	}
+	// Marshalling a []string cannot fail.
+	allowlist, _ := json.Marshal(instance.Spec.CIMDURLAllowlist)
+	return []corev1.EnvVar{{Name: "CIMD_URL_ALLOWLIST", Value: string(allowlist)}}
 }
 
 func buildGeoIPEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.EnvVar {

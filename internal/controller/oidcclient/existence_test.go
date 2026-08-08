@@ -3,6 +3,7 @@ package oidcclient
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
@@ -16,6 +17,7 @@ type mockPocketIDOIDCClientClient struct {
 	getOIDCClientFunc                 func(ctx context.Context, id string) (*pocketid.OIDCClient, error)
 	updateOIDCClientFunc              func(ctx context.Context, id string, input pocketid.OIDCClientInput) (*pocketid.OIDCClient, error)
 	updateOIDCClientAllowedGroupsFunc func(ctx context.Context, id string, groupIDs []string) error
+	refreshOIDCClientMetadataFunc     func(ctx context.Context, id string) (*pocketid.OIDCClient, error)
 }
 
 func (m *mockPocketIDOIDCClientClient) ListOIDCClients(ctx context.Context, search string) ([]*pocketid.OIDCClient, error) {
@@ -61,6 +63,13 @@ func (m *mockPocketIDOIDCClientClient) UpdateOIDCClientAllowedGroups(ctx context
 		return m.updateOIDCClientAllowedGroupsFunc(ctx, id, groupIDs)
 	}
 	return nil
+}
+
+func (m *mockPocketIDOIDCClientClient) RefreshOIDCClientMetadata(ctx context.Context, id string) (*pocketid.OIDCClient, error) {
+	if m.refreshOIDCClientMetadataFunc != nil {
+		return m.refreshOIDCClientMetadataFunc(ctx, id)
+	}
+	return &pocketid.OIDCClient{ID: id, ClientType: pocketid.ClientTypeCIMD}, nil
 }
 
 func (m *mockPocketIDOIDCClientClient) SetOIDCClientSecret(_ context.Context, _, secret string) (string, error) {
@@ -308,6 +317,69 @@ func TestOIDCClientAdoption_ExistingClientByName(t *testing.T) {
 	}
 	if createCalled {
 		t.Fatal("CreateOIDCClient should not have been called for existing client")
+	}
+}
+
+// An explicit spec.clientID is the opt-in for CIMD management, so a by-ID lookup adopts.
+func TestFindExistingOIDCClient_AdoptsCIMDClientByID(t *testing.T) {
+	ctx := context.Background()
+
+	mockClient := &mockPocketIDOIDCClientClient{
+		getOIDCClientFunc: func(_ context.Context, id string) (*pocketid.OIDCClient, error) {
+			return &pocketid.OIDCClient{ID: id, Name: "metadata-app", ClientType: pocketid.ClientTypeCIMD}, nil
+		},
+	}
+
+	found, err := (&Reconciler{}).FindExistingOIDCClient(ctx, mockClient, "https://apps.example.com/meta.json", "metadata-app")
+	if err != nil {
+		t.Fatalf("FindExistingOIDCClient returned unexpected error: %v", err)
+	}
+	if found == nil || !found.IsCIMD() {
+		t.Fatalf("expected the CIMD client to be adopted, got %+v", found)
+	}
+}
+
+// A name match is not an opt-in: a document-supplied client_name colliding with a CR name
+// must never pull an unrelated self-registered client under management.
+func TestFindExistingOIDCClient_RefusesCIMDClientByName(t *testing.T) {
+	ctx := context.Background()
+
+	mockClient := &mockPocketIDOIDCClientClient{
+		listOIDCClientsFunc: func(_ context.Context, _ string) ([]*pocketid.OIDCClient, error) {
+			return []*pocketid.OIDCClient{
+				{ID: "other", Name: "other-app"},
+				{ID: "https://apps.example.com/meta.json", Name: "metadata-app", ClientType: pocketid.ClientTypeCIMD},
+			}, nil
+		},
+	}
+
+	found, err := (&Reconciler{}).FindExistingOIDCClient(ctx, mockClient, "", "metadata-app")
+	if err == nil {
+		t.Fatal("expected an error for a CIMD client, got nil")
+	}
+	if found != nil {
+		t.Fatalf("expected no client to be adopted, got %+v", found)
+	}
+	if !strings.Contains(err.Error(), "spec.clientID") {
+		t.Errorf("expected the error to point at spec.clientID, got %q", err.Error())
+	}
+}
+
+func TestFindExistingOIDCClient_AdoptsStandardClient(t *testing.T) {
+	ctx := context.Background()
+
+	mockClient := &mockPocketIDOIDCClientClient{
+		getOIDCClientFunc: func(_ context.Context, id string) (*pocketid.OIDCClient, error) {
+			return &pocketid.OIDCClient{ID: id, Name: "grafana", ClientType: "standard"}, nil
+		},
+	}
+
+	found, err := (&Reconciler{}).FindExistingOIDCClient(ctx, mockClient, "grafana-id", "grafana")
+	if err != nil {
+		t.Fatalf("FindExistingOIDCClient returned unexpected error: %v", err)
+	}
+	if found == nil || found.ID != "grafana-id" {
+		t.Fatalf("expected the standard client to be adopted, got %+v", found)
 	}
 }
 

@@ -14,6 +14,11 @@ The operator recognizes the following annotations.
   regenerates the client secret and then removes the annotation. It is ignored (but still
   removed, and the reason logged) when `spec.clientSecretRef` is set or
   `spec.secret.storeClientSecret` is `false`.
+- `pocketid.internal/refresh-client-metadata`: when set to `"true"`, the operator forces
+  the adopted client to re-fetch its OAuth Client ID Metadata Document, bypassing the
+  cache TTL. The annotation is removed before the call, so a rejected refresh (a
+  `standard` client, or CIMD not enabled on the instance) fires once and surfaces on the
+  `Ready` condition rather than retrying forever.
 
 ## Labels
 

@@ -60,6 +60,9 @@ const (
 	// regenerateClientSecretAnnotation is set by a user to force an immediate secret
 	// rotation, bypassing the scheduled-rotation gates.
 	regenerateClientSecretAnnotation = "pocketid.internal/regenerate-client-secret"
+	// refreshClientMetadataAnnotation is set by a user to force a CIMD client to re-fetch
+	// its metadata document ahead of the cache TTL.
+	refreshClientMetadataAnnotation = "pocketid.internal/refresh-client-metadata"
 
 	defaultLogoTemplate     = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}.png"
 	defaultDarkLogoTemplate = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}-dark.png"
@@ -148,6 +151,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	apiClient, result, err := r.GetAPIClientOrRequeue(ctx, oidcClient, instance)
 	if result != nil {
 		return *result, err
+	}
+
+	if err := r.refreshClientMetadata(ctx, oidcClient, apiClient); err != nil {
+		log.Error(err, "Failed to refresh client metadata document")
+		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "MetadataRefreshError", err.Error())
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
 	// No client ID yet, create or adopt
@@ -256,6 +265,7 @@ type PocketIDOIDCClientAPI interface {
 	GetOIDCClient(ctx context.Context, id string) (*pocketid.OIDCClient, error)
 	UpdateOIDCClient(ctx context.Context, id string, input pocketid.OIDCClientInput) (*pocketid.OIDCClient, error)
 	UpdateOIDCClientAllowedGroups(ctx context.Context, id string, groupIDs []string) error
+	RefreshOIDCClientMetadata(ctx context.Context, id string) (*pocketid.OIDCClient, error)
 	SetOIDCClientSecret(ctx context.Context, id, secret string) (string, error)
 	GetOIDCClientSCIMServiceProvider(ctx context.Context, oidcClientID string) (*pocketid.SCIMServiceProvider, error)
 	CreateSCIMServiceProvider(ctx context.Context, input pocketid.SCIMServiceProviderInput) (*pocketid.SCIMServiceProvider, error)
@@ -263,10 +273,34 @@ type PocketIDOIDCClientAPI interface {
 	DeleteSCIMServiceProvider(ctx context.Context, id string) error
 }
 
+// refreshClientMetadata services the refresh-client-metadata annotation by forcing an
+// adopted CIMD client to re-fetch its metadata document ahead of the cache TTL.
+func (r *Reconciler) refreshClientMetadata(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient PocketIDOIDCClientAPI) error {
+	removed, err := helpers.CheckAndRemoveAnnotation(ctx, r.Client, oidcClient, refreshClientMetadataAnnotation, "true")
+	if err != nil || !removed {
+		return err
+	}
+
+	id := oidcClient.Status.ClientID
+	if id == "" {
+		return stderrors.New("cannot refresh client metadata: the client has not been adopted yet")
+	}
+
+	if _, err := apiClient.RefreshOIDCClientMetadata(ctx, id); err != nil {
+		return err
+	}
+
+	logf.FromContext(ctx).Info("Refreshed client metadata document", "clientID", id)
+	return nil
+}
+
 // FindExistingOIDCClient checks if an OIDC client already exists in Pocket-ID.
 // If specClientID is non-empty, it looks up by client ID directly.
 // Otherwise, it searches by name and returns an exact match.
 // Returns the existing client if found, or nil if no matching client exists.
+// A CIMD client is only ever adopted through an explicit spec.clientID: a name match is
+// refused so a document-supplied client_name colliding with a CR name cannot silently
+// pull an unrelated self-registered client under management.
 func (r *Reconciler) FindExistingOIDCClient(ctx context.Context, apiClient PocketIDOIDCClientAPI, specClientID, name string) (*pocketid.OIDCClient, error) {
 	log := logf.FromContext(ctx)
 
@@ -292,6 +326,10 @@ func (r *Reconciler) FindExistingOIDCClient(ctx context.Context, apiClient Pocke
 
 	for _, c := range clients {
 		if c.Name == name {
+			if c.IsCIMD() {
+				return nil, fmt.Errorf(
+					"OIDC client %q matched by name is a CIMD client; set spec.clientID to its metadata document URL to manage it", c.ID)
+			}
 			log.Info("Found existing OIDC client with matching name", "name", name, "clientID", c.ID)
 			return c, nil
 		}
@@ -346,6 +384,25 @@ func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *po
 		log.Info("No existing OIDC client found by name, creating new", "name", name)
 	}
 
+	// Pocket-ID materializes a CIMD client from its metadata document on the app's first
+	// authorization request; the operator can only ever adopt one. Falling through to
+	// CreateOrAdopt would try to register a standard client under the document URL.
+	if pocketid.LooksLikeCIMDID(oidcClient.Spec.ClientID) {
+		existing, err := r.FindExistingOIDCClient(ctx, apiClient, oidcClient.Spec.ClientID, name)
+		if err != nil {
+			return false, err
+		}
+		if existing == nil {
+			return false, errAwaitingCIMD
+		}
+		log.Info("Adopting CIMD client", "clientID", existing.ID)
+		metrics.ResourceOperations.WithLabelValues("PocketIDOIDCClient", "adopted").Inc()
+		if err := r.setClientID(ctx, oidcClient, existing.ID); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+
 	result, err := common.CreateOrAdopt(ctx, common.CreateOrAdoptConfig[*pocketid.OIDCClient]{
 		ResourceKind: "OIDC client",
 		ResourceID:   resourceID,
@@ -388,6 +445,19 @@ func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *po
 	return true, nil
 }
 
+// preserveMetadataOwnedFields adopts the observed values for the fields Pocket-ID refuses
+// to write on a CIMD client, whose metadata document owns them. Without this the operator
+// would diff against values the server discards and re-push them on every reconcile.
+// Admission rejects these fields in the spec, so this only overwrites CRD defaults.
+func preserveMetadataOwnedFields(desired *pocketid.OIDCClientInput, current *pocketid.OIDCClient) {
+	desired.Name = current.Name
+	desired.CallbackURLs = current.CallbackURLs
+	desired.LogoutCallbackURLs = current.LogoutCallbackURLs
+	desired.IsPublic = current.IsPublic
+	desired.PKCEEnabled = current.PKCEEnabled
+	desired.Credentials = nil
+}
+
 // pushOIDCClientState compares the desired state from the CR spec against the current
 // state fetched from Pocket ID and only pushes updates if they differ.
 func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client, current *pocketid.OIDCClient) (bool, error) {
@@ -408,14 +478,19 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 
 	desired := r.OidcClientInput(oidcClient, current, logoURL, darkLogoURL)
 	desired.IsGroupRestricted = len(groupIDs) > 0
+	if current.IsCIMD() {
+		preserveMetadataOwnedFields(&desired, current)
+	}
 
 	currentInput := current.ToInput()
 	clientChanged := !desired.Equal(currentInput)
 	hasCredentials := desired.Credentials != nil
 	groupsChanged := !pocketid.SortedEqual(groupIDs, current.AllowedUserGroupIDs)
 
-	// Clear any existing credentials if the CR doesn't specify any when adopting
-	firstReconcile := !helpers.IsResourceReady(oidcClient.Status.Conditions)
+	// Clear any existing credentials if the CR doesn't specify any when adopting.
+	// A CIMD client's credentials are metadata-owned and discarded on write, so clearing
+	// them would only cost a pointless PUT on every adoption.
+	firstReconcile := !helpers.IsResourceReady(oidcClient.Status.Conditions) && !current.IsCIMD()
 	if firstReconcile && !hasCredentials {
 		desired.Credentials = &pocketid.OIDCClientCredentials{FederatedIdentities: []pocketid.OIDCClientFederatedIdentity{}}
 	}
@@ -519,14 +594,31 @@ func reconcileErrorReason(err error) string {
 	if stderrors.Is(err, helpers.ErrUserGroupNotFound) {
 		return "UserGroupNotFound"
 	}
+	if stderrors.Is(err, errAwaitingCIMD) {
+		return "AwaitingFirstAuthorization"
+	}
 	return "ReconcileError"
 }
+
+// errAwaitingCIMD reports that a metadata-document client does not exist in Pocket-ID yet.
+// The row appears when the app first authorizes, so this is a normal waiting state rather
+// than a misconfiguration.
+var errAwaitingCIMD = stderrors.New(
+	"CIMD client does not exist yet; Pocket-ID creates it on the app's first authorization request")
 
 // setClientID persists only the client ID to status.
 func (r *Reconciler) setClientID(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, id string) error {
 	base := oidcClient.DeepCopy()
 	oidcClient.Status.ClientID = id
 	return r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
+}
+
+// isPublicClient reports whether the client has no client secret to manage. A CIMD client
+// is always public — its metadata document must declare token_endpoint_auth_method "none",
+// since Pocket-ID does not persist key material for one — so the operator must never try
+// to mint or rotate a secret for it, regardless of what spec.isPublic says.
+func isPublicClient(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) bool {
+	return oidcClient.Spec.IsPublic || oidcClient.Status.ClientType == pocketid.ClientTypeCIMD
 }
 
 // oidcClientName returns the Pocket-ID name for the given OIDC client:
@@ -840,6 +932,7 @@ func (r *Reconciler) UpdateOIDCClientStatus(ctx context.Context, oidcClient *poc
 	base := oidcClient.DeepCopy()
 	oidcClient.Status.ClientID = current.ID
 	oidcClient.Status.Name = current.Name
+	oidcClient.Status.ClientType = current.ClientType
 	oidcClient.Status.CallbackURLs = current.CallbackURLs
 	oidcClient.Status.LogoutCallbackURLs = current.LogoutCallbackURLs
 	oidcClient.Status.AllowedUserGroupIDs = current.AllowedUserGroupIDs
@@ -989,7 +1082,7 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 	// Only regenerate if the secret doesn't exist yet or if explicitly requested via annotation.
 	var rotatedAt *metav1.Time
 	var scheduledRotation bool
-	if !oidcClient.Spec.IsPublic && oidcClient.Status.ClientID != "" {
+	if !isPublicClient(oidcClient) && oidcClient.Status.ClientID != "" {
 		var err error
 		rotatedAt, scheduledRotation, err = r.reconcileClientSecretData(ctx, oidcClient, instance, apiClient, secretName, keys, secretData)
 		if err != nil {

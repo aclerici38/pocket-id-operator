@@ -206,6 +206,32 @@ func TestBuildEnvVars_UIConfigDisabledWhenLDAPSet(t *testing.T) {
 	requireEnv(t, buildEnvVars(inst), "UI_CONFIG_DISABLED", "true")
 }
 
+func TestBuildEnvVars_UIConfigDisabledWhenCIMDAllowlistSet(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.CIMDURLAllowlist = []string{"https://apps.example.com/*/client-metadata.json"}
+	requireEnv(t, buildEnvVars(inst), "UI_CONFIG_DISABLED", "true")
+}
+
+func TestBuildEnvVars_CIMDURLAllowlist(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.CIMDURLAllowlist = []string{
+		"https://apps.example.com/*/client-metadata.json",
+		`https://quo"ted.example.com/meta.json`,
+	}
+
+	requireEnv(t, buildEnvVars(inst), "CIMD_URL_ALLOWLIST",
+		`["https://apps.example.com/*/client-metadata.json","https://quo\"ted.example.com/meta.json"]`)
+}
+
+func TestBuildEnvVars_CIMDURLAllowlistAbsentWhenEmpty(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.CIMDURLAllowlist = []string{}
+
+	env := buildEnvVars(inst)
+	requireEnvAbsent(t, env, "CIMD_URL_ALLOWLIST")
+	requireEnvAbsent(t, env, "UI_CONFIG_DISABLED")
+}
+
 func TestBuildEnvVars_DatabaseUrl(t *testing.T) {
 	inst := minimalInstance()
 	inst.Spec.DatabaseUrl = &pocketidinternalv1alpha1.SensitiveValue{Value: "postgres://localhost/pocket-id"}

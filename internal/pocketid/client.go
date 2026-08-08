@@ -3,9 +3,11 @@ package pocketid
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net/url"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-openapi/runtime"
@@ -81,6 +83,37 @@ type OIDCClient struct {
 	AccessTokenDurationMinutes          int64
 	RefreshTokenDurationMinutes         int64
 	AllowedUserGroupIDs                 []string
+	// ClientType is "standard" or "cimd". Read-only; Pocket-ID sets it at registration.
+	ClientType string
+}
+
+// ClientTypeCIMD marks a client synthesized from an OAuth Client ID Metadata Document.
+// Its ID is the https URL of that document, and Pocket-ID persists only a subset of
+// columns on an admin update, leaving the rest to the metadata refresh.
+const ClientTypeCIMD = "cimd"
+
+// IsCIMD reports whether the client is backed by an OAuth Client ID Metadata Document.
+func (c *OIDCClient) IsCIMD() bool {
+	return c.ClientType == ClientTypeCIMD
+}
+
+// LooksLikeCIMDID reports whether a client ID is a metadata document URL. Pocket-ID
+// restricts registered client IDs to [a-zA-Z0-9._-]+, so "://" can only come from one.
+// Unlike IsCIMD this needs no API round trip, which is what makes it usable for admission
+// validation and before a client has been resolved.
+func LooksLikeCIMDID(id string) bool {
+	return strings.Contains(id, "://")
+}
+
+// clientIDPathParam encodes a client ID for use as a URL path parameter. A CIMD client ID
+// is a full https URL whose slashes cannot survive a single path segment, so Pocket-ID
+// accepts it base64url-encoded behind a "~" prefix and decodes it in middleware. Ordinary
+// client IDs are passed through untouched.
+func clientIDPathParam(id string) string {
+	if !LooksLikeCIMDID(id) {
+		return id
+	}
+	return "~" + base64.RawURLEncoding.EncodeToString([]byte(id))
 }
 
 // ToInput converts an OIDCClient into an OIDCClientInput for comparison with desired state.
@@ -590,7 +623,7 @@ func (c *Client) CreateOIDCClient(ctx context.Context, input OIDCClientInput) (*
 
 func (c *Client) UpdateOIDCClient(ctx context.Context, id string, input OIDCClientInput) (*OIDCClient, error) {
 	params := oidc.NewPutAPIOidcClientsIDParams().
-		WithID(id).
+		WithID(clientIDPathParam(id)).
 		WithClient(&models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientUpdateDto{
 			Name:                                &input.Name,
 			Description:                         input.Description,
@@ -624,7 +657,7 @@ func (c *Client) UpdateOIDCClient(ctx context.Context, id string, input OIDCClie
 
 func (c *Client) GetOIDCClient(ctx context.Context, id string) (*OIDCClient, error) {
 	params := oidc.NewGetAPIOidcClientsIDParams().
-		WithID(id)
+		WithID(clientIDPathParam(id))
 
 	start := time.Now()
 	resp, err := c.raw.OIDc.GetAPIOidcClientsIDContext(ctx, params)
@@ -636,9 +669,26 @@ func (c *Client) GetOIDCClient(ctx context.Context, id string) (*OIDCClient, err
 	return oidcClientFromAllowedGroupsDTO(resp.Payload), nil
 }
 
+// RefreshOIDCClientMetadata forces a re-fetch of a CIMD client's metadata document,
+// bypassing the cache TTL, and returns the refreshed client. Pocket-ID rejects the
+// call for standard clients and when no CIMD allowlist is configured.
+func (c *Client) RefreshOIDCClientMetadata(ctx context.Context, id string) (*OIDCClient, error) {
+	params := oidc.NewPostAPIOidcClientsIDRefreshParams().
+		WithID(clientIDPathParam(id))
+
+	start := time.Now()
+	resp, err := c.raw.OIDc.PostAPIOidcClientsIDRefreshContext(ctx, params)
+	recordCall("refresh_oidc_client_metadata", err, time.Since(start))
+	if err != nil {
+		return nil, fmt.Errorf("refresh OIDC client metadata failed: %w", err)
+	}
+
+	return oidcClientFromAllowedGroupsDTO(resp.Payload), nil
+}
+
 func (c *Client) DeleteOIDCClient(ctx context.Context, id string) error {
 	params := oidc.NewDeleteAPIOidcClientsIDParams().
-		WithID(id)
+		WithID(clientIDPathParam(id))
 
 	start := time.Now()
 	_, err := c.raw.OIDc.DeleteAPIOidcClientsIDContext(ctx, params)
@@ -663,7 +713,7 @@ func (c *Client) UpdateOIDCClientAllowedGroups(ctx context.Context, id string, g
 			}
 		}
 		params := oidc.NewPutAPIOidcClientsIDAllowedUserGroupsParams().
-			WithID(id).
+			WithID(clientIDPathParam(id)).
 			WithGroups(&models.GithubComPocketIDPocketIDBackendInternalDtoOidcUpdateAllowedUserGroupsDto{
 				UserGroupIds: groupIDs,
 			})
@@ -701,7 +751,7 @@ func (c *Client) SetOIDCClientSecret(ctx context.Context, id, secret string) (st
 // payload lets Pocket-ID generate one; a non-nil payload requests a specific value.
 func (c *Client) postOIDCClientSecret(ctx context.Context, operation, id string, payload *models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientSecretDto) (string, error) {
 	params := oidc.NewPostAPIOidcClientsIDSecretParams().
-		WithID(id)
+		WithID(clientIDPathParam(id))
 	if payload != nil {
 		params = params.WithPayload(payload)
 	}
@@ -733,7 +783,7 @@ func (c *Client) postOIDCClientSecret(ctx context.Context, operation, id string,
 // Returns nil, nil if no SCIM service provider is configured (404).
 func (c *Client) GetOIDCClientSCIMServiceProvider(ctx context.Context, oidcClientID string) (*SCIMServiceProvider, error) {
 	params := oidc.NewGetAPIOidcClientsIDScimServiceProviderParams().
-		WithID(oidcClientID)
+		WithID(clientIDPathParam(oidcClientID))
 
 	start := time.Now()
 	resp, err := c.raw.OIDc.GetAPIOidcClientsIDScimServiceProviderContext(ctx, params)
@@ -1227,6 +1277,7 @@ func oidcClientFromListDTO(dto *models.GithubComPocketIDPocketIDBackendInternalD
 		AccessTokenDurationMinutes:          dto.AccessTokenDurationMinutes,
 		RefreshTokenDurationMinutes:         dto.RefreshTokenDurationMinutes,
 		AllowedUserGroupIDs:                 []string{},
+		ClientType:                          dto.ClientType,
 	}
 }
 
@@ -1260,6 +1311,7 @@ func oidcClientFromAllowedGroupsDTO(dto *models.GithubComPocketIDPocketIDBackend
 		AccessTokenDurationMinutes:          dto.AccessTokenDurationMinutes,
 		RefreshTokenDurationMinutes:         dto.RefreshTokenDurationMinutes,
 		AllowedUserGroupIDs:                 groupIDs,
+		ClientType:                          dto.ClientType,
 	}
 }
 

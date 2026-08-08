@@ -176,7 +176,7 @@ spec:
 
 ## UI Configuration
 
-The operator automatically sets `UI_CONFIG_DISABLED=true` when any of the `ui`, `userManagement`, `smtp`, `emailNotifications`, or `ldap` sections are configured.
+The operator automatically sets `UI_CONFIG_DISABLED=true` when any of the `ui`, `userManagement`, `smtp`, `emailNotifications`, or `ldap` sections, or `cimdUrlAllowlist`, are configured.
 
 ```yaml
 spec:
@@ -187,6 +187,24 @@ spec:
     disableAnimations: false
     accentColor: "#3b82f6"                   # any valid CSS color
 ```
+
+## Client ID Metadata Documents
+
+`cimdUrlAllowlist` restricts which `https` URLs may be used as OAuth Client ID Metadata
+Documents, letting clients self-register by publishing metadata instead of being
+provisioned ahead of time. Entries are callback-URL patterns, so wildcards are allowed. The
+operator JSON-encodes the list into `CIMD_URL_ALLOWLIST`; leaving it empty keeps CIMD off
+and `client_id_metadata_document_supported` false in the discovery document.
+
+```yaml
+spec:
+  cimdUrlAllowlist:
+    - "https://apps.example.com/*/client-metadata.json"
+```
+
+Removing a URL from this list is how you revoke a self-registered app's access. To manage
+an individual CIMD client's policy from the cluster, see
+[pocketidoidcclient.md](pocketidoidcclient.md#client-id-metadata-documents).
 
 ## User Management
 
@@ -591,7 +609,7 @@ spec:
   - `ENCRYPTION_KEY` (from `spec.encryptionKey`)
   - `STATIC_API_KEY` (secret reference)
 - Conditionally set from spec fields:
-  - `UI_CONFIG_DISABLED=true` (when `spec.ui`, `spec.userManagement`, `spec.smtp`, `spec.emailNotifications`, or `spec.ldap` is configured)
+  - `UI_CONFIG_DISABLED=true` (when `spec.ui`, `spec.userManagement`, `spec.smtp`, `spec.emailNotifications`, `spec.ldap`, or `spec.cimdUrlAllowlist` is configured)
   - `DB_CONNECTION_STRING` (from `spec.databaseUrl`)
   - `APP_URL` (from `spec.appUrl`)
   - `INTERNAL_APP_URL` (from `spec.internalAppUrl`)
@@ -605,6 +623,7 @@ spec:
   - `OTEL_METRICS_EXPORTER=prometheus` + `OTEL_*` (from `spec.metrics`)
   - `APP_NAME`, `SESSION_DURATION`, `HOME_PAGE_URL`, `DISABLE_ANIMATIONS`, `ACCENT_COLOR` (from `spec.ui`)
   - `EMAILS_VERIFIED`, `ALLOW_OWN_ACCOUNT_EDIT`, `ALLOW_USER_SIGNUPS`, `SIGNUP_DEFAULT_*` (from `spec.userManagement`)
+  - `CIMD_URL_ALLOWLIST` (JSON-encoded from `spec.cimdUrlAllowlist`)
   - `MAXMIND_LICENSE_KEY`, `GEOLITE_DB_PATH`, `GEOLITE_DB_URL` (from `spec.geoip`)
   - `TZ` (from `spec.timezone`)
   - `LOCAL_IPV6_RANGES` (from `spec.localIPv6Ranges`)

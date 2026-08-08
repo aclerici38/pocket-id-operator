@@ -650,6 +650,13 @@ type PocketIDInstanceSpec struct {
 	// +optional
 	Timezone string `json:"timezone,omitempty"`
 
+	// CIMDURLAllowlist restricts which https URLs may be used as OAuth Client ID Metadata
+	// Documents. Entries are callback-URL patterns (wildcards allowed). A non-empty list
+	// enables CIMD; leaving it empty keeps the feature off.
+	// The operator automatically sets UI_CONFIG_DISABLED=true when this field is set.
+	// +optional
+	CIMDURLAllowlist []string `json:"cimdUrlAllowlist,omitempty"`
+
 	// OIDCClientRotation configures instance-wide throttling of OIDC client secret rotations.
 	// +optional
 	OIDCClientRotation *OIDCClientRotationConfig `json:"OIDCClientRotation,omitempty"`

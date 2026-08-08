@@ -835,6 +835,11 @@ func (in *PocketIDInstanceSpec) DeepCopyInto(out *PocketIDInstanceSpec) {
 		*out = new(TrustedProxiesConfig)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.CIMDURLAllowlist != nil {
+		in, out := &in.CIMDURLAllowlist, &out.CIMDURLAllowlist
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.OIDCClientRotation != nil {
 		in, out := &in.OIDCClientRotation, &out.OIDCClientRotation
 		*out = new(OIDCClientRotationConfig)
