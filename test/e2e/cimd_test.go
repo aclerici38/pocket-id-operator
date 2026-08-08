@@ -60,8 +60,12 @@ var _ = Describe("Client ID Metadata Documents", Ordered, func() {
 		waitForConditionReason("pocketidoidcclient", clientName, userNS, "Ready", "AwaitingFirstAuthorization")
 
 		By("verifying no client ID was ever assigned")
-		Expect(kubectlGet("pocketidoidcclient", clientName, userNS, "-o", "jsonpath={.status.clientID}")).To(BeEmpty(),
-			"the operator must not create a client for an unmaterialized metadata document")
+		// Asserted via the whole status, not jsonpath={.status.clientID}: kubectlGet returns
+		// "" when the command itself fails, so an empty-string assertion cannot tell an
+		// absent client ID from a broken query.
+		Expect(kubectlGet("pocketidoidcclient", clientName, "-n", userNS, "-o", "jsonpath={.status}")).
+			NotTo(ContainSubstring(`"clientID"`),
+				"the operator must not create a client for an unmaterialized metadata document")
 	})
 
 	Context("with a materialized CIMD client", Ordered, func() {
@@ -89,9 +93,9 @@ var _ = Describe("Client ID Metadata Documents", Ordered, func() {
 			waitForReady("pocketidoidcclient", clientName, userNS)
 
 			By("verifying status reports the adopted client")
-			Expect(kubectlGet("pocketidoidcclient", clientName, userNS, "-o", "jsonpath={.status.clientType}")).
+			Expect(kubectlGet("pocketidoidcclient", clientName, "-n", userNS, "-o", "jsonpath={.status.clientType}")).
 				To(Equal("cimd"))
-			Expect(kubectlGet("pocketidoidcclient", clientName, userNS, "-o", "jsonpath={.status.clientID}")).
+			Expect(kubectlGet("pocketidoidcclient", clientName, "-n", userNS, "-o", "jsonpath={.status.clientID}")).
 				To(Equal(cimdMetadataURL))
 		})
 
