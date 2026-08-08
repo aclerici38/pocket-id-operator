@@ -3006,6 +3006,14 @@
                               "string",
                               "null"
                             ]
+                          },
+                          "queryArgs": {
+                            "default": false,
+                            "description": "Include SQL query parameter values in traces and in the query logs emitted\nat the debug level. These values may contain sensitive data.",
+                            "type": [
+                              "boolean",
+                              "null"
+                            ]
                           }
                         },
                         "type": [
