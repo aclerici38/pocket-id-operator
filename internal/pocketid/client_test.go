@@ -143,14 +143,26 @@ func TestOIDCClientOperations_UseEncodedPathForMetadataDocumentIDs(t *testing.T)
 
 	seen := map[string]bool{}
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.EscapedPath()
+		w.Header().Set("Content-Type", "application/json")
+
+		// API access lives on its own route prefix, so it needs encoding independently of
+		// the /api/oidc/clients ones.
+		if apiAccess := "/api/api-access/" + encoded; path == apiAccess {
+			seen[r.Method+" api-access"] = true
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"clientPermissionIds": []string{}, "userDelegatedPermissionIds": []string{},
+			})
+			return
+		}
+
 		prefix := "/api/oidc/clients/" + encoded
-		if !strings.HasPrefix(r.URL.EscapedPath(), prefix) {
+		if !strings.HasPrefix(path, prefix) {
 			http.NotFound(w, r)
 			return
 		}
-		suffix := strings.TrimPrefix(r.URL.EscapedPath(), prefix)
+		suffix := strings.TrimPrefix(path, prefix)
 		seen[r.Method+" "+suffix] = true
-		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.Method == http.MethodDelete:
 			w.WriteHeader(http.StatusNoContent)
@@ -192,6 +204,15 @@ func TestOIDCClientOperations_UseEncodedPathForMetadataDocumentIDs(t *testing.T)
 	if _, err := client.SetOIDCClientSecret(ctx, metadataURL, "a-declared-secret-value"); err != nil {
 		t.Errorf("SetOIDCClientSecret: %v", err)
 	}
+	// Reachable for CIMD: admission allows apiAccess.delegatedPermissions on one.
+	if _, err := client.GetClientAPIAccess(ctx, metadataURL); err != nil {
+		t.Errorf("GetClientAPIAccess: %v", err)
+	}
+	if _, err := client.UpdateClientAPIAccess(ctx, metadataURL, ClientAPIAccess{
+		UserDelegatedPermissionIDs: []string{"perm-1"},
+	}); err != nil {
+		t.Errorf("UpdateClientAPIAccess: %v", err)
+	}
 	if err := client.DeleteOIDCClient(ctx, metadataURL); err != nil {
 		t.Errorf("DeleteOIDCClient: %v", err)
 	}
@@ -199,6 +220,7 @@ func TestOIDCClientOperations_UseEncodedPathForMetadataDocumentIDs(t *testing.T)
 	for _, want := range []string{
 		"GET ", "POST /refresh", "PUT ", "PUT /allowed-user-groups", "DELETE ",
 		"GET /scim-service-provider", "POST /secret",
+		"GET api-access", "PUT api-access",
 	} {
 		if !seen[want] {
 			t.Errorf("no request reached the encoded route for %q (seen: %v)", want, seen)

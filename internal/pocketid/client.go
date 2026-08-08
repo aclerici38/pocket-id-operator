@@ -116,6 +116,41 @@ func clientIDPathParam(id string) string {
 	return "~" + base64.RawURLEncoding.EncodeToString([]byte(id))
 }
 
+// clientIDEncodingTransport applies clientIDPathParam to every path parameter the generated
+// client writes.
+//
+// Every other path parameter Pocket-ID takes is a server-generated ID that cannot contain a
+// scheme separator, so the encoding is a no-op for them.
+type clientIDEncodingTransport struct {
+	runtime.ContextualTransport
+}
+
+func (t clientIDEncodingTransport) Submit(op *runtime.ClientOperation) (any, error) {
+	return t.ContextualTransport.Submit(encodePathParams(op))
+}
+
+func (t clientIDEncodingTransport) SubmitContext(ctx context.Context, op *runtime.ClientOperation) (any, error) {
+	return t.ContextualTransport.SubmitContext(ctx, encodePathParams(op))
+}
+
+// encodePathParams wraps the operation's parameter writer so it sees a request whose
+// SetPathParam encodes CIMD client IDs.
+func encodePathParams(op *runtime.ClientOperation) *runtime.ClientOperation {
+	inner := op.Params
+	op.Params = runtime.ClientRequestWriterFunc(func(req runtime.ClientRequest, reg strfmt.Registry) error {
+		return inner.WriteToRequest(clientIDPathParamWriter{ClientRequest: req}, reg)
+	})
+	return op
+}
+
+type clientIDPathParamWriter struct {
+	runtime.ClientRequest
+}
+
+func (w clientIDPathParamWriter) SetPathParam(name, value string) error {
+	return w.ClientRequest.SetPathParam(name, clientIDPathParam(value))
+}
+
 // ToInput converts an OIDCClient into an OIDCClientInput for comparison with desired state.
 // ID and Credentials are not included since they aren't returned by the GET API.
 // LogoURL and DarkLogoURL are write-only (not returned by the API); logo presence is
@@ -337,7 +372,7 @@ func NewClient(baseURL string, apiKey string) (*Client, error) {
 		)
 	}
 
-	raw := apiclient.New(transport, strfmt.Default)
+	raw := apiclient.New(clientIDEncodingTransport{ContextualTransport: transport}, strfmt.Default)
 
 	return &Client{
 		raw:     raw,
@@ -623,7 +658,7 @@ func (c *Client) CreateOIDCClient(ctx context.Context, input OIDCClientInput) (*
 
 func (c *Client) UpdateOIDCClient(ctx context.Context, id string, input OIDCClientInput) (*OIDCClient, error) {
 	params := oidc.NewPutAPIOidcClientsIDParams().
-		WithID(clientIDPathParam(id)).
+		WithID(id).
 		WithClient(&models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientUpdateDto{
 			Name:                                &input.Name,
 			Description:                         input.Description,
@@ -657,7 +692,7 @@ func (c *Client) UpdateOIDCClient(ctx context.Context, id string, input OIDCClie
 
 func (c *Client) GetOIDCClient(ctx context.Context, id string) (*OIDCClient, error) {
 	params := oidc.NewGetAPIOidcClientsIDParams().
-		WithID(clientIDPathParam(id))
+		WithID(id)
 
 	start := time.Now()
 	resp, err := c.raw.OIDc.GetAPIOidcClientsIDContext(ctx, params)
@@ -674,7 +709,7 @@ func (c *Client) GetOIDCClient(ctx context.Context, id string) (*OIDCClient, err
 // call for standard clients and when no CIMD allowlist is configured.
 func (c *Client) RefreshOIDCClientMetadata(ctx context.Context, id string) (*OIDCClient, error) {
 	params := oidc.NewPostAPIOidcClientsIDRefreshParams().
-		WithID(clientIDPathParam(id))
+		WithID(id)
 
 	start := time.Now()
 	resp, err := c.raw.OIDc.PostAPIOidcClientsIDRefreshContext(ctx, params)
@@ -688,7 +723,7 @@ func (c *Client) RefreshOIDCClientMetadata(ctx context.Context, id string) (*OID
 
 func (c *Client) DeleteOIDCClient(ctx context.Context, id string) error {
 	params := oidc.NewDeleteAPIOidcClientsIDParams().
-		WithID(clientIDPathParam(id))
+		WithID(id)
 
 	start := time.Now()
 	_, err := c.raw.OIDc.DeleteAPIOidcClientsIDContext(ctx, params)
@@ -713,7 +748,7 @@ func (c *Client) UpdateOIDCClientAllowedGroups(ctx context.Context, id string, g
 			}
 		}
 		params := oidc.NewPutAPIOidcClientsIDAllowedUserGroupsParams().
-			WithID(clientIDPathParam(id)).
+			WithID(id).
 			WithGroups(&models.GithubComPocketIDPocketIDBackendInternalDtoOidcUpdateAllowedUserGroupsDto{
 				UserGroupIds: groupIDs,
 			})
@@ -751,7 +786,7 @@ func (c *Client) SetOIDCClientSecret(ctx context.Context, id, secret string) (st
 // payload lets Pocket-ID generate one; a non-nil payload requests a specific value.
 func (c *Client) postOIDCClientSecret(ctx context.Context, operation, id string, payload *models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientSecretDto) (string, error) {
 	params := oidc.NewPostAPIOidcClientsIDSecretParams().
-		WithID(clientIDPathParam(id))
+		WithID(id)
 	if payload != nil {
 		params = params.WithPayload(payload)
 	}
@@ -783,7 +818,7 @@ func (c *Client) postOIDCClientSecret(ctx context.Context, operation, id string,
 // Returns nil, nil if no SCIM service provider is configured (404).
 func (c *Client) GetOIDCClientSCIMServiceProvider(ctx context.Context, oidcClientID string) (*SCIMServiceProvider, error) {
 	params := oidc.NewGetAPIOidcClientsIDScimServiceProviderParams().
-		WithID(clientIDPathParam(oidcClientID))
+		WithID(oidcClientID)
 
 	start := time.Now()
 	resp, err := c.raw.OIDc.GetAPIOidcClientsIDScimServiceProviderContext(ctx, params)
