@@ -508,6 +508,29 @@ func TestBuildEnvVars_TracingAbsent(t *testing.T) {
 	requireEnvAbsent(t, env, "OTEL_TRACES_EXPORTER")
 }
 
+func TestBuildEnvVars_TLS(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.TLS = &pocketidinternalv1alpha1.TLSConfig{
+		SecretRef: corev1.LocalObjectReference{Name: "pocket-id-tls"},
+	}
+
+	env := buildEnvVars(inst)
+
+	// The _FILE variants, not the inline TLS_CERT/TLS_KEY pair: Pocket-ID rejects
+	// mixing the two and only watches the file paths for renewals.
+	requireEnv(t, env, "TLS_CERT_FILE", "/etc/pocket-id/tls/tls.crt")
+	requireEnv(t, env, "TLS_KEY_FILE", "/etc/pocket-id/tls/tls.key")
+	requireEnvAbsent(t, env, "TLS_CERT")
+	requireEnvAbsent(t, env, "TLS_KEY")
+}
+
+func TestBuildEnvVars_TLSUnset(t *testing.T) {
+	env := buildEnvVars(minimalInstance())
+
+	requireEnvAbsent(t, env, "TLS_CERT_FILE")
+	requireEnvAbsent(t, env, "TLS_KEY_FILE")
+}
+
 func TestBuildEnvVars_Metrics(t *testing.T) {
 	inst := minimalInstance()
 	inst.Spec.Metrics = &pocketidinternalv1alpha1.MetricsConfig{

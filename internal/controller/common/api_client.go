@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -15,17 +16,30 @@ import (
 // For external instances the URL and API key come from spec.external; otherwise
 // the operator-managed in-cluster service + static API key Secret are used.
 func GetAPIClient(ctx context.Context, k8sClient client.Client, apiReader client.Reader, instance *pocketidinternalv1alpha1.PocketIDInstance) (*pocketid.Client, error) {
-	url, apiKey, err := resolveAPIClientCredentials(ctx, apiReader, instance)
+	baseURL, apiKey, err := resolveAPIClientCredentials(ctx, apiReader, instance)
 	if err != nil {
 		return nil, err
 	}
 
-	apiClient, err := pocketid.NewClient(url, apiKey)
+	apiClient, err := pocketid.NewClient(baseURL, apiKey, pocketid.WithTLSConfig(internalTLSConfig(instance)))
 	if err != nil {
 		return nil, fmt.Errorf("create pocketid client: %w", err)
 	}
 
 	return apiClient, nil
+}
+
+// internalTLSConfig returns the TLS settings for reaching a managed instance that
+// terminates TLS itself, and nil when there is nothing to configure.
+// Does NOT verify certificates intentionally.
+func internalTLSConfig(instance *pocketidinternalv1alpha1.PocketIDInstance) *tls.Config {
+	if instance.Spec.External != nil || instance.Spec.TLS == nil {
+		return nil
+	}
+	return &tls.Config{
+		InsecureSkipVerify: true,
+		MinVersion:         tls.VersionTLS12,
+	}
 }
 
 // resolveAPIClientCredentials returns the URL + API key for the instance, branching
@@ -42,7 +56,7 @@ func resolveAPIClientCredentials(ctx context.Context, apiReader client.Reader, i
 	if err != nil {
 		return "", "", err
 	}
-	return InternalServiceURL(instance.Name, instance.Namespace), apiKey, nil
+	return InternalServiceURL(instance), apiKey, nil
 }
 
 // getExternalAPIKey reads the user-provided API key for an externally-adopted instance.
@@ -90,6 +104,11 @@ func StaticAPIKeySecretName(instanceName string) string {
 }
 
 // InternalServiceURL returns the internal Kubernetes service URL for the instance.
-func InternalServiceURL(instanceName, namespace string) string {
-	return fmt.Sprintf("http://%s.%s.svc:1411", instanceName, namespace)
+// Pocket-ID serves either plaintext or TLS on the one port, so spec.tls decides the scheme.
+func InternalServiceURL(instance *pocketidinternalv1alpha1.PocketIDInstance) string {
+	scheme := "http"
+	if instance.Spec.TLS != nil {
+		scheme = "https"
+	}
+	return fmt.Sprintf("%s://%s.%s.svc:1411", scheme, instance.Name, instance.Namespace)
 }

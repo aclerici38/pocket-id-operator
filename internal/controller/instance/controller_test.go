@@ -6,6 +6,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
+
+	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 )
 
 const testImage = "ghcr.io/pocket-id/pocket-id:v2.13.0-distroless@sha256:ccb590169770feb5b23ba16d49386514a2c26a77e95bb687b442ae09f17c15da"
@@ -283,6 +286,88 @@ func TestBuildPodTemplate_ExtraVolumeMounts(t *testing.T) {
 	}
 	if mounts[1].Name != "geoip-db" || mounts[1].MountPath != "/geoip" || !mounts[1].ReadOnly {
 		t.Errorf("second mount: got name=%s path=%s readOnly=%v", mounts[1].Name, mounts[1].MountPath, mounts[1].ReadOnly)
+	}
+}
+
+func findVolume(volumes []corev1.Volume, name string) *corev1.Volume {
+	for i := range volumes {
+		if volumes[i].Name == name {
+			return &volumes[i]
+		}
+	}
+	return nil
+}
+
+func TestBuildPodTemplate_TLSSecretMounted(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.TLS = &pocketidinternalv1alpha1.TLSConfig{
+		SecretRef: corev1.LocalObjectReference{Name: "pocket-id-tls"},
+	}
+
+	pt := (&Reconciler{}).buildPodTemplate(inst, "")
+
+	vol := findVolume(pt.Spec.Volumes, "tls")
+	if vol == nil || vol.Secret == nil || vol.Secret.SecretName != "pocket-id-tls" {
+		t.Fatalf("expected tls volume from secret pocket-id-tls, got %+v", vol)
+	}
+	mounts := pt.Spec.Containers[0].VolumeMounts
+	if len(mounts) != 2 {
+		t.Fatalf("expected data + tls mounts, got %d", len(mounts))
+	}
+	if mounts[1].Name != "tls" || mounts[1].MountPath != "/etc/pocket-id/tls" || !mounts[1].ReadOnly {
+		t.Errorf("tls mount: got %+v", mounts[1])
+	}
+}
+
+func TestBuildPodTemplate_TLSSwitchesProbeScheme(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.TLS = &pocketidinternalv1alpha1.TLSConfig{
+		SecretRef: corev1.LocalObjectReference{Name: "pocket-id-tls"},
+	}
+
+	pt := (&Reconciler{}).buildPodTemplate(inst, "")
+
+	container := pt.Spec.Containers[0]
+	if got := container.ReadinessProbe.HTTPGet.Scheme; got != corev1.URISchemeHTTPS {
+		t.Errorf("readiness probe scheme: got %q, want HTTPS", got)
+	}
+	if got := container.LivenessProbe.HTTPGet.Scheme; got != corev1.URISchemeHTTPS {
+		t.Errorf("liveness probe scheme: got %q, want HTTPS", got)
+	}
+}
+
+func TestBuildPodTemplate_ProbeSchemeDefaultsToHTTP(t *testing.T) {
+	pt := (&Reconciler{}).buildPodTemplate(minimalInstance(), "")
+
+	container := pt.Spec.Containers[0]
+	if got := container.ReadinessProbe.HTTPGet.Scheme; got != corev1.URISchemeHTTP {
+		t.Errorf("readiness probe scheme: got %q, want HTTP", got)
+	}
+	if got := container.LivenessProbe.HTTPGet.Scheme; got != corev1.URISchemeHTTP {
+		t.Errorf("liveness probe scheme: got %q, want HTTP", got)
+	}
+	if findVolume(pt.Spec.Volumes, "tls") != nil {
+		t.Error("tls volume should be absent when spec.tls is unset")
+	}
+}
+
+func TestBuildPodTemplate_TLSKeepsUserProbes(t *testing.T) {
+	// An explicit probe is taken verbatim; the operator only picks the scheme for
+	// the probes it synthesizes.
+	inst := minimalInstance()
+	inst.Spec.TLS = &pocketidinternalv1alpha1.TLSConfig{
+		SecretRef: corev1.LocalObjectReference{Name: "pocket-id-tls"},
+	}
+	inst.Spec.ReadinessProbe = &corev1.Probe{
+		ProbeHandler: corev1.ProbeHandler{
+			TCPSocket: &corev1.TCPSocketAction{Port: intstr.FromInt(1411)},
+		},
+	}
+
+	pt := (&Reconciler{}).buildPodTemplate(inst, "")
+
+	if pt.Spec.Containers[0].ReadinessProbe.TCPSocket == nil {
+		t.Error("user-provided readiness probe should be used as-is")
 	}
 }
 

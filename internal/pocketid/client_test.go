@@ -2,6 +2,8 @@ package pocketid
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -1000,4 +1002,65 @@ func jsonStringSlice(m map[string]any, key string) []string {
 		}
 	}
 	return result
+}
+
+// TLS-terminating instances are reached over HTTPS with a certificate the system
+// trust store does not know, so the caller-supplied config has to reach the
+// transport that actually performs requests.
+func TestWithTLSConfig_UsesSuppliedTrustStore(t *testing.T) {
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"currentVersion":"2.13.0"}`))
+	}))
+	defer ts.Close()
+
+	roots := x509.NewCertPool()
+	roots.AddCert(ts.Certificate())
+	tlsConfig := &tls.Config{RootCAs: roots, ServerName: "example.com", MinVersion: tls.VersionTLS12}
+
+	client, err := NewClient(ts.URL, "", WithTLSConfig(tlsConfig))
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	// httptest's certificate is issued for example.com, so the handshake only
+	// succeeds if both RootCAs and ServerName made it through.
+	if _, err := client.GetCurrentVersion(context.Background()); err != nil {
+		t.Fatalf("GetCurrentVersion over TLS: %v", err)
+	}
+}
+
+func TestWithTLSConfig_RejectsUntrustedCertificate(t *testing.T) {
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"currentVersion":"2.13.0"}`))
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(ts.URL, "")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	if _, err := client.GetCurrentVersion(context.Background()); err == nil {
+		t.Fatal("expected the default trust store to reject the test certificate")
+	}
+}
+
+func TestWithTLSConfig_NilIsNoOp(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"currentVersion":"2.13.0"}`))
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(ts.URL, "", WithTLSConfig(nil))
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	if client.httpClient != nil {
+		t.Error("a nil config must leave the default transport in place")
+	}
+	if _, err := client.GetCurrentVersion(context.Background()); err != nil {
+		t.Fatalf("GetCurrentVersion: %v", err)
+	}
 }

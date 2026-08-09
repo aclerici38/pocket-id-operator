@@ -201,6 +201,75 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Serial, Ordered, fu
 		})
 	})
 
+	Context("TLS Termination", func() {
+		It("should serve HTTPS from the mounted certificate and stay manageable", func() {
+			const tlsInstance = "tls-test-instance"
+			const tlsSecret = "tls-test-cert"
+			const tlsUser = "tls-test-user"
+			tlsLabels := map[string]string{"tls": "enabled"}
+
+			// A leftover second instance would break every later spec that selects the
+			// shared instance without a selector, so clean up even on failure.
+			DeferCleanup(func() {
+				kubectlDelete("pocketiduser", tlsUser, userNS)
+				_ = kubectlDeleteWait("pocketidinstance", tlsInstance, instanceNS, 60*time.Second)
+				kubectlDelete("secret", tlsSecret, instanceNS)
+			})
+
+			// The hostname is not the Service DNS name the operator dials, mirroring a
+			// real certificate issued for the instance's public URL.
+			By("creating a self-signed certificate for an unrelated hostname")
+			applyTLSSecret(tlsSecret, instanceNS, "pocket-id.example.com")
+
+			By("creating a TLS-enabled instance")
+			createInstanceAndWaitReady(InstanceOptions{
+				Name:          tlsInstance,
+				Labels:        tlsLabels,
+				TLSSecretName: tlsSecret,
+			})
+
+			By("verifying the certificate is mounted and pointed at with the _FILE variants")
+			Expect(kubectlGet("deployment", tlsInstance, "-n", instanceNS,
+				"-o", "jsonpath={.spec.template.spec.containers[0].env[?(@.name=='TLS_CERT_FILE')].value}")).
+				To(Equal("/etc/pocket-id/tls/tls.crt"))
+			Expect(kubectlGet("deployment", tlsInstance, "-n", instanceNS,
+				"-o", "jsonpath={.spec.template.spec.containers[0].env[?(@.name=='TLS_KEY_FILE')].value}")).
+				To(Equal("/etc/pocket-id/tls/tls.key"))
+			Expect(kubectlGet("deployment", tlsInstance, "-n", instanceNS,
+				"-o", "jsonpath={.spec.template.spec.volumes[?(@.name=='tls')].secret.secretName}")).
+				To(Equal(tlsSecret))
+
+			By("verifying the probes use the HTTPS scheme")
+			Expect(kubectlGet("deployment", tlsInstance, "-n", instanceNS,
+				"-o", "jsonpath={.spec.template.spec.containers[0].readinessProbe.httpGet.scheme}")).
+				To(Equal("HTTPS"))
+
+			By("verifying the Service advertises the https appProtocol")
+			Expect(kubectlGet("service", tlsInstance, "-n", instanceNS,
+				"-o", "jsonpath={.spec.ports[?(@.name=='http')].appProtocol}")).
+				To(Equal("https"))
+
+			// Readiness only proves the pod passes its HTTPS probes; the reported version
+			// comes from the operator's own API call, so it also covers the client side.
+			By("verifying the reported version proves an API call over TLS")
+			waitForStatusFieldNotEmpty("pocketidinstance", tlsInstance, instanceNS, ".status.version")
+
+			// An API key goes through the session-auth path, which uses a separate HTTP
+			// client from the generated API client and needs the same trust store.
+			By("provisioning a user with an API key against the TLS instance")
+			createUserAndWaitReady(UserOptions{
+				Name:             tlsUser,
+				Admin:            boolPtr(true),
+				InstanceSelector: tlsLabels,
+				APIKeys:          []APIKeySpec{{Name: "tls-key", Description: "over TLS"}},
+			})
+			secretName := kubectlGet("pocketiduser", tlsUser, "-n", userNS,
+				"-o", "jsonpath={.status.apiKeys[0].secretName}")
+			Expect(secretName).NotTo(BeEmpty())
+			waitForSecretKey(secretName, userNS, "token")
+		})
+	})
+
 	Context("Instance Deletion Cascades Secret Deletion", func() {
 		It("should delete static API key secret when instance is deleted", func() {
 			const testInstance = "static-key-deletion-test"

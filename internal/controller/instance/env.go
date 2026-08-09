@@ -3,6 +3,7 @@ package instance
 import (
 	"encoding/json"
 	"fmt"
+	"path"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -49,6 +50,7 @@ func effectiveTrustProxy(instance *pocketidinternalv1alpha1.PocketIDInstance) st
 // Order matters: operator-managed vars first, then spec-derived vars, then user's spec.env last (can override).
 func buildEnvVars(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.EnvVar {
 	env := buildCoreEnv(instance)
+	env = append(env, buildTLSEnv(instance)...)
 	env = append(env, buildMetricsEnv(instance)...)
 	env = append(env, buildFileBackendEnv(instance)...)
 	env = append(env, buildS3Env(instance)...)
@@ -119,6 +121,19 @@ func needsUIConfigDisabled(instance *pocketidinternalv1alpha1.PocketIDInstance) 
 		instance.Spec.EmailNotifications != nil ||
 		instance.Spec.LDAP != nil ||
 		len(instance.Spec.CIMDURLAllowlist) > 0
+}
+
+// buildTLSEnv points Pocket-ID at the mounted certificate. The _FILE variants are
+// preferred over the inline TLS_CERT/TLS_KEY pair because Pocket-ID watches them and
+// reloads the certificate in place, so renewals need no pod restart.
+func buildTLSEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.EnvVar {
+	if instance.Spec.TLS == nil {
+		return nil
+	}
+	return []corev1.EnvVar{
+		{Name: "TLS_CERT_FILE", Value: path.Join(tlsMountPath, corev1.TLSCertKey)},
+		{Name: "TLS_KEY_FILE", Value: path.Join(tlsMountPath, corev1.TLSPrivateKeyKey)},
+	}
 }
 
 func buildMetricsEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.EnvVar {

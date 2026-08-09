@@ -3015,6 +3015,32 @@ spec:
                   Timezone for the Pocket-ID instance (e.g. "America/New_York")
                   Sets the TZ environment variable
                 type: string
+              tls:
+                description: TLS terminates HTTPS in the Pocket-ID pod from a mounted
+                  certificate Secret.
+                properties:
+                  secretRef:
+                    description: |-
+                      SecretRef names a kubernetes.io/tls Secret in the instance's namespace holding
+                      tls.crt and tls.key.
+                    properties:
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                    type: object
+                    x-kubernetes-map-type: atomic
+                required:
+                - secretRef
+                type: object
+                x-kubernetes-validations:
+                - message: tls.secretRef.name is required
+                  rule: size(self.secretRef.name) > 0
               tracing:
                 description: |-
                   OpenTelemetry tracing configuration

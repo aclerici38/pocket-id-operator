@@ -47,6 +47,31 @@ func TestBuildServiceSpec_MetricsPort(t *testing.T) {
 	}
 }
 
+func TestBuildServiceSpec_TLSSetsAppProtocol(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.TLS = &pocketidinternalv1alpha1.TLSConfig{
+		SecretRef: corev1.LocalObjectReference{Name: "pocket-id-tls"},
+	}
+
+	spec := buildServiceSpec(inst)
+
+	http := findServicePort(spec.Ports, "http")
+	if http == nil {
+		t.Fatal("http port missing")
+	}
+	if http.AppProtocol == nil || *http.AppProtocol != "https" {
+		t.Errorf("appProtocol: got %v, want https", http.AppProtocol)
+	}
+}
+
+func TestBuildServiceSpec_NoTLSLeavesAppProtocolUnset(t *testing.T) {
+	spec := buildServiceSpec(minimalInstance())
+
+	if http := findServicePort(spec.Ports, "http"); http == nil || http.AppProtocol != nil {
+		t.Errorf("appProtocol should be unset without tls, got %+v", http)
+	}
+}
+
 func TestBuildServiceSpec_TemplateFieldsPassThrough(t *testing.T) {
 	inst := minimalInstance()
 	inst.Spec.ServiceTemplate = &corev1.ServiceSpec{

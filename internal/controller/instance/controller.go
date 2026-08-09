@@ -78,6 +78,10 @@ const (
 	appName = "pocket-id"
 
 	defaultMountPath = "/app/data"
+
+	// tlsVolumeName/tlsMountPath locate the mounted spec.tls certificate Secret.
+	tlsVolumeName = "tls"
+	tlsMountPath  = "/etc/pocket-id/tls"
 )
 
 // APIClientFactory builds the Pocket-ID API client used to talk to an instance.
@@ -286,13 +290,19 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 	}
 
 	// No patches for the pocket-id container
+	probeScheme := corev1.URISchemeHTTP
+	if instance.Spec.TLS != nil {
+		probeScheme = corev1.URISchemeHTTPS
+	}
+
 	readinessProbe := instance.Spec.ReadinessProbe
 	if readinessProbe == nil {
 		readinessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
-					Path: "/readyz",
-					Port: intstr.FromInt(1411),
+					Path:   "/readyz",
+					Port:   intstr.FromInt(1411),
+					Scheme: probeScheme,
 				},
 			},
 			InitialDelaySeconds: 10,
@@ -308,8 +318,9 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 		livenessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
-					Path: "/readyz",
-					Port: intstr.FromInt(1411),
+					Path:   "/readyz",
+					Port:   intstr.FromInt(1411),
+					Scheme: probeScheme,
 				},
 			},
 			InitialDelaySeconds: 30,
@@ -329,6 +340,9 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 		dataMount.SubPath = instance.Spec.Persistence.SubPath
 	}
 	volumeMounts := append([]corev1.VolumeMount{dataMount}, instance.Spec.Persistence.ExtraVolumeMounts...)
+	if instance.Spec.TLS != nil {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{Name: tlsVolumeName, MountPath: tlsMountPath, ReadOnly: true})
+	}
 
 	container := corev1.Container{
 		Name:            appName,
@@ -360,6 +374,15 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 					ClaimName: claimName,
 				},
+			},
+		})
+	}
+
+	if instance.Spec.TLS != nil {
+		setVolume(&pt.Spec.Volumes, corev1.Volume{
+			Name: tlsVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{SecretName: instance.Spec.TLS.SecretRef.Name},
 			},
 		})
 	}
@@ -588,12 +611,19 @@ func buildServiceSpec(instance *pocketidinternalv1alpha1.PocketIDInstance) corev
 		"app.kubernetes.io/instance": instance.Name,
 	}
 
-	setServicePort(&spec.Ports, corev1.ServicePort{
+	httpPort := corev1.ServicePort{
 		Name:       "http",
 		Port:       1411,
 		TargetPort: intstr.FromInt(1411),
 		Protocol:   corev1.ProtocolTCP,
-	})
+	}
+	// The port keeps its "http" name so references to it stay stable; appProtocol is
+	// the signal consumers (and Gateway implementations) read for backend TLS.
+	if instance.Spec.TLS != nil {
+		appProtocol := "https"
+		httpPort.AppProtocol = &appProtocol
+	}
+	setServicePort(&spec.Ports, httpPort)
 
 	if instance.Spec.Metrics != nil && instance.Spec.Metrics.Enabled {
 		metricsPort := int32(9464)

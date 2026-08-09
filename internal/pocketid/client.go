@@ -3,8 +3,10 @@ package pocketid
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"net/http"
 	"net/url"
 	"sort"
 	"strings"
@@ -31,6 +33,25 @@ import (
 type Client struct {
 	raw     *apiclient.PocketIDAPI
 	baseURL string
+	// httpClient is nil unless an option customized transport behavior, in which case
+	// the session-auth calls reuse it so they reach the instance the same way.
+	httpClient *http.Client
+}
+
+// ClientOption customizes a Client at construction time.
+type ClientOption func(*Client)
+
+// WithTLSConfig makes the client use cfg for HTTPS connections. A nil cfg is a no-op,
+// leaving Go's default verification against the system trust store in place.
+func WithTLSConfig(cfg *tls.Config) ClientOption {
+	return func(c *Client) {
+		if cfg == nil {
+			return
+		}
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.TLSClientConfig = cfg
+		c.httpClient = &http.Client{Transport: transport}
+	}
 }
 
 // User represents a Pocket-ID user with clean field names.
@@ -325,13 +346,18 @@ func SortedEqual(a, b []string) bool {
 }
 
 // NewClient creates a new Pocket-ID client for the given base URL with optional API key.
-func NewClient(baseURL string, apiKey string) (*Client, error) {
+func NewClient(baseURL string, apiKey string, opts ...ClientOption) (*Client, error) {
 	parsed, err := url.Parse(baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("parse base URL: %w", err)
 	}
 
-	transport := httptransport.New(parsed.Host, "/", []string{parsed.Scheme})
+	c := &Client{baseURL: parsed.Scheme + "://" + parsed.Host}
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	transport := httptransport.NewWithClient(parsed.Host, "/", []string{parsed.Scheme}, c.httpClient)
 
 	if apiKey != "" {
 		transport.DefaultAuthentication = runtime.ClientAuthInfoWriterFunc(
@@ -341,12 +367,9 @@ func NewClient(baseURL string, apiKey string) (*Client, error) {
 		)
 	}
 
-	raw := apiclient.New(transport, strfmt.Default)
+	c.raw = apiclient.New(transport, strfmt.Default)
 
-	return &Client{
-		raw:     raw,
-		baseURL: parsed.Scheme + "://" + parsed.Host,
-	}, nil
+	return c, nil
 }
 
 // --- Version Operations ---
@@ -522,7 +545,7 @@ func (c *Client) CreateAPIKeyForUser(ctx context.Context, userID, name, expiresA
 		return nil, fmt.Errorf("create one-time access token: %w", err)
 	}
 
-	session := newSessionClient(c.baseURL, nil)
+	session := newSessionClient(c.baseURL, c.httpClient)
 	cookies, err := session.exchangeOneTimeAccessToken(ctx, token.Token)
 	if err != nil {
 		return nil, fmt.Errorf("exchange one-time access token: %w", err)
