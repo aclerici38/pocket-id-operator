@@ -325,6 +325,27 @@ type UserManagementConfig struct {
 	SignupDefaultUserGroupIDs []string `json:"signupDefaultUserGroupIds,omitempty"`
 }
 
+// WebAuthnConfig restricts which passkeys Pocket-ID accepts.
+// Omitted fields are left unset so Pocket-ID's own defaults apply.
+// The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured.
+type WebAuthnConfig struct {
+	// Whether the authenticator must verify the user (PIN, biometric) during login
+	// +kubebuilder:validation:Enum=required;preferred
+	// +optional
+	UserVerification string `json:"userVerification,omitempty"`
+
+	// Accept passkeys that are backup-eligible, i.e. synced to a cloud account
+	// such as iCloud Keychain or Google Password Manager
+	// +optional
+	AllowSyncedPasskeys *bool `json:"allowSyncedPasskeys,omitempty"`
+
+	// Authenticator type accepted at registration: platform (device-bound),
+	// cross-platform (roaming security key), or any
+	// +kubebuilder:validation:Enum=any;platform;cross-platform
+	// +optional
+	AuthenticatorAttachment string `json:"authenticatorAttachment,omitempty"`
+}
+
 // GeoIPConfig configures GeoIP/MaxMind integration for audit log geolocation.
 type GeoIPConfig struct {
 	// MaxMind license key for downloading GeoLite2 database
@@ -622,6 +643,11 @@ type PocketIDInstanceSpec struct {
 	// User registration and account management settings
 	// +optional
 	UserManagement *UserManagementConfig `json:"userManagement,omitempty"`
+
+	// Passkey restrictions
+	// The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured
+	// +optional
+	WebAuthn *WebAuthnConfig `json:"webauthn,omitempty"`
 
 	// GeoIP/MaxMind integration for audit log geolocation
 	// +optional

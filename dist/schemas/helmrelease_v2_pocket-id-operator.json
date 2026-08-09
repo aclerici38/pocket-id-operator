@@ -4746,6 +4746,46 @@
                               "boolean",
                               "null"
                             ]
+                          },
+                          "webauthn": {
+                            "additionalProperties": false,
+                            "description": "Passkey restrictions\nThe operator automatically sets UI_CONFIG_DISABLED=true when this section is configured",
+                            "properties": {
+                              "allowSyncedPasskeys": {
+                                "description": "Accept passkeys that are backup-eligible, i.e. synced to a cloud account\nsuch as iCloud Keychain or Google Password Manager",
+                                "type": [
+                                  "boolean",
+                                  "null"
+                                ]
+                              },
+                              "authenticatorAttachment": {
+                                "description": "Authenticator type accepted at registration: platform (device-bound),\ncross-platform (roaming security key), or any",
+                                "enum": [
+                                  "any",
+                                  "platform",
+                                  "cross-platform"
+                                ],
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "userVerification": {
+                                "description": "Whether the authenticator must verify the user (PIN, biometric) during login",
+                                "enum": [
+                                  "required",
+                                  "preferred"
+                                ],
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              }
+                            },
+                            "type": [
+                              "object",
+                              "null"
+                            ]
                           }
                         },
                         "type": "object",
@@ -10245,6 +10285,46 @@
                         "description": "Disable GitHub version checks",
                         "type": [
                           "boolean",
+                          "null"
+                        ]
+                      },
+                      "webauthn": {
+                        "additionalProperties": false,
+                        "description": "Passkey restrictions\nThe operator automatically sets UI_CONFIG_DISABLED=true when this section is configured",
+                        "properties": {
+                          "allowSyncedPasskeys": {
+                            "description": "Accept passkeys that are backup-eligible, i.e. synced to a cloud account\nsuch as iCloud Keychain or Google Password Manager",
+                            "type": [
+                              "boolean",
+                              "null"
+                            ]
+                          },
+                          "authenticatorAttachment": {
+                            "description": "Authenticator type accepted at registration: platform (device-bound),\ncross-platform (roaming security key), or any",
+                            "enum": [
+                              "any",
+                              "platform",
+                              "cross-platform"
+                            ],
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "userVerification": {
+                            "description": "Whether the authenticator must verify the user (PIN, biometric) during login",
+                            "enum": [
+                              "required",
+                              "preferred"
+                            ],
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "type": [
+                          "object",
                           "null"
                         ]
                       }

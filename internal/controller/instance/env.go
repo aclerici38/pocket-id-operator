@@ -61,6 +61,7 @@ func buildEnvVars(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.
 	env = append(env, buildTracingEnv(instance)...)
 	env = append(env, buildUIEnv(instance)...)
 	env = append(env, buildUserManagementEnv(instance)...)
+	env = append(env, buildWebAuthnEnv(instance)...)
 	env = append(env, buildOIDCEnv(instance)...)
 	env = append(env, buildGeoIPEnv(instance)...)
 	env = append(env, buildStandaloneEnv(instance)...)
@@ -120,6 +121,7 @@ func needsUIConfigDisabled(instance *pocketidinternalv1alpha1.PocketIDInstance) 
 		instance.Spec.SMTP != nil ||
 		instance.Spec.EmailNotifications != nil ||
 		instance.Spec.LDAP != nil ||
+		instance.Spec.WebAuthn != nil ||
 		len(instance.Spec.CIMDURLAllowlist) > 0
 }
 
@@ -377,6 +379,24 @@ func buildUserManagementEnv(instance *pocketidinternalv1alpha1.PocketIDInstance)
 	}
 	if len(um.SignupDefaultUserGroupIDs) > 0 {
 		env = append(env, corev1.EnvVar{Name: "SIGNUP_DEFAULT_USER_GROUP_IDS", Value: strings.Join(um.SignupDefaultUserGroupIDs, ",")})
+	}
+	return env
+}
+
+func buildWebAuthnEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.EnvVar {
+	if instance.Spec.WebAuthn == nil {
+		return nil
+	}
+	wa := instance.Spec.WebAuthn
+	var env []corev1.EnvVar
+	if wa.UserVerification != "" {
+		env = append(env, corev1.EnvVar{Name: "WEBAUTHN_USER_VERIFICATION", Value: wa.UserVerification})
+	}
+	if wa.AllowSyncedPasskeys != nil {
+		env = append(env, corev1.EnvVar{Name: "WEBAUTHN_ALLOW_SYNCED_PASSKEYS", Value: fmt.Sprintf("%t", *wa.AllowSyncedPasskeys)})
+	}
+	if wa.AuthenticatorAttachment != "" {
+		env = append(env, corev1.EnvVar{Name: "WEBAUTHN_AUTHENTICATOR_ATTACHMENT", Value: wa.AuthenticatorAttachment})
 	}
 	return env
 }
