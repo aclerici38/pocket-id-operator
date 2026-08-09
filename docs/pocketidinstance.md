@@ -393,6 +393,51 @@ spec:
                   replaceFullPath: /readyz
 ```
 
+## TLS
+
+`spec.tls` terminates HTTPS inside the Pocket-ID pod instead of at a proxy in front of it.
+The referenced `kubernetes.io/tls` Secret is mounted read-only at `/etc/pocket-id/tls` and
+Pocket-ID is pointed at it with `TLS_CERT_FILE` / `TLS_KEY_FILE`. Pocket-ID watches the
+mount, so certificate renewals apply without restarting the pod.
+The certificate is NOT verified to allow access over the cluster dns. 
+
+Enabling TLS also:
+- switches the operator's default readiness/liveness probes to `scheme: HTTPS`
+  (a probe you set in `spec.readinessProbe`/`spec.livenessProbe` is used verbatim),
+- sets `appProtocol: https` on the Service's `http` port. The port keeps its name so
+  existing references stay valid.
+
+```yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: pocket-id-tls
+  namespace: pocket-id
+spec:
+  secretName: pocket-id-tls
+  dnsNames:
+    - pocket-id.example.com
+  issuerRef:
+    name: letsencrypt
+    kind: ClusterIssuer
+---
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDInstance
+metadata:
+  name: pocket-id
+  namespace: pocket-id
+spec:
+  encryptionKey:
+    valueFrom:
+      secretKeyRef:
+        name: pocket-id-encryption
+        key: key
+  appUrl: "https://pocket-id.example.com"
+  tls:
+    secretRef:
+      name: pocket-id-tls
+```
+
 ## Trusted Proxies
 
 `spec.trustedProxies` controls which upstream proxies Pocket-ID trusts for
@@ -618,6 +663,7 @@ spec:
   - `SMTP_ENABLED=true` + `SMTP_*` (from `spec.smtp`)
   - `EMAIL_*_ENABLED` (from `spec.emailNotifications`)
   - `LDAP_ENABLED=true` + `LDAP_*` (from `spec.ldap`)
+  - `TLS_CERT_FILE`, `TLS_KEY_FILE` (from `spec.tls`, pointing at the mounted Secret)
   - `LOG_LEVEL`, `LOG_JSON`, `LOG_QUERY_ARGS` (from `spec.logging`)
   - `OTEL_TRACES_EXPORTER=otlp` (from `spec.tracing`)
   - `OTEL_METRICS_EXPORTER=prometheus` + `OTEL_*` (from `spec.metrics`)

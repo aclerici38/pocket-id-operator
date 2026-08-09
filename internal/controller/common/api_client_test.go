@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"testing"
 
@@ -237,5 +238,67 @@ func TestGetAPIClient_ExternalPropagatesError(t *testing.T) {
 	_, err := GetAPIClient(ctx, nil, reader, inst)
 	if !errors.Is(err, ErrAPIClientNotReady) {
 		t.Fatalf("expected ErrAPIClientNotReady, got %v", err)
+	}
+}
+
+// --- InternalServiceURL / internalTLSConfig ---
+
+// tlsInstance is a managed instance that terminates TLS itself.
+func tlsInstance(secretName string) *pocketidinternalv1alpha1.PocketIDInstance {
+	inst := &pocketidinternalv1alpha1.PocketIDInstance{}
+	inst.Name = "deployed"
+	inst.Namespace = "pocket-id"
+	inst.Spec.AppURL = "https://id.example.com"
+	inst.Spec.TLS = &pocketidinternalv1alpha1.TLSConfig{
+		SecretRef: corev1.LocalObjectReference{Name: secretName},
+	}
+	return inst
+}
+
+func TestInternalServiceURL_SchemeFollowsTLS(t *testing.T) {
+	plain := &pocketidinternalv1alpha1.PocketIDInstance{}
+	plain.Name = "deployed"
+	plain.Namespace = "pocket-id"
+
+	if want := "http://deployed.pocket-id.svc:1411"; InternalServiceURL(plain) != want {
+		t.Errorf("without tls: got %q, want %q", InternalServiceURL(plain), want)
+	}
+	if want := "https://deployed.pocket-id.svc:1411"; InternalServiceURL(tlsInstance("tls")) != want {
+		t.Errorf("with tls: got %q, want %q", InternalServiceURL(tlsInstance("tls")), want)
+	}
+}
+
+func TestInternalTLSConfig_NilWithoutTLS(t *testing.T) {
+	if cfg := internalTLSConfig(&pocketidinternalv1alpha1.PocketIDInstance{}); cfg != nil {
+		t.Errorf("expected nil config without spec.tls, got %+v", cfg)
+	}
+}
+
+func TestInternalTLSConfig_NilForExternal(t *testing.T) {
+	// An adopted instance is dialed at its own public URL, where the certificate does
+	// match the name being dialed, so the default verifying transport applies.
+	inst := externalInstance("admin-token", "token")
+	inst.Spec.TLS = &pocketidinternalv1alpha1.TLSConfig{
+		SecretRef: corev1.LocalObjectReference{Name: "tls"},
+	}
+
+	if cfg := internalTLSConfig(inst); cfg != nil {
+		t.Errorf("expected nil config for external instances, got %+v", cfg)
+	}
+}
+
+func TestInternalTLSConfig_SkipsVerificationForManagedInstance(t *testing.T) {
+	// The certificate is issued for the instance's own hostname, not the Service DNS
+	// name the operator dials, so the in-cluster hop cannot verify the peer.
+	cfg := internalTLSConfig(tlsInstance("pocket-id-tls"))
+
+	if cfg == nil {
+		t.Fatal("expected a TLS config for a managed instance with spec.tls")
+	}
+	if !cfg.InsecureSkipVerify {
+		t.Error("expected peer verification to be skipped on the in-cluster hop")
+	}
+	if cfg.MinVersion < tls.VersionTLS12 {
+		t.Errorf("minVersion: got %d, want at least TLS 1.2", cfg.MinVersion)
 	}
 }

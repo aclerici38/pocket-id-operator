@@ -4,8 +4,14 @@
 package e2e
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"os"
 	"os/exec"
 	"strings"
@@ -35,6 +41,9 @@ type InstanceOptions struct {
 	PersistenceSize    string
 	ExistingClaim      string
 	CIMDURLAllowlist   []string
+	// TLSSecretName makes the instance terminate TLS from that kubernetes.io/tls
+	// Secret, which also forces appUrl to https.
+	TLSSecretName string
 }
 
 const defaultPocketIDImage = "ghcr.io/pocket-id/pocket-id:v2.13.0-distroless@sha256:ccb590169770feb5b23ba16d49386514a2c26a77e95bb687b442ae09f17c15da"
@@ -90,6 +99,12 @@ func buildInstanceYAML(opts InstanceOptions) string {
 	}
 	persistence += cimd
 
+	scheme := "http"
+	if opts.TLSSecretName != "" {
+		scheme = "https"
+		persistence += fmt.Sprintf("  tls:\n    secretRef:\n      name: %s\n", opts.TLSSecretName)
+	}
+
 	return fmt.Sprintf(`apiVersion: pocketid.internal/v1alpha1
 kind: PocketIDInstance
 metadata:
@@ -102,8 +117,8 @@ metadata:
       secretKeyRef:
         name: pocket-id-encryption
         key: key
-  appUrl: "http://%s.%s.svc:1411"
-%s`, opts.Name, opts.Namespace, labels, opts.Image, opts.Name, opts.Namespace, persistence)
+  appUrl: "%s://%s.%s.svc:1411"
+%s`, opts.Name, opts.Namespace, labels, opts.Image, scheme, opts.Name, opts.Namespace, persistence)
 }
 
 // UserOptions configures a PocketIDUser YAML.
@@ -868,6 +883,44 @@ metadata:
 type: Opaque
 stringData:
 %s`, name, namespace, dataLines.String())
+}
+
+// applyTLSSecret creates a kubernetes.io/tls Secret holding a self-signed certificate
+// for dnsName, which is deliberately not the Service DNS name the operator dials: the
+// operator must reach the instance without being able to verify the peer.
+func applyTLSSecret(name, namespace, dnsName string) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	Expect(err).NotTo(HaveOccurred())
+
+	tmpl := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: dnsName},
+		DNSNames:              []string{dnsName},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	Expect(err).NotTo(HaveOccurred())
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+
+	applyYAML(fmt.Sprintf(`apiVersion: v1
+kind: Secret
+metadata:
+  name: %s
+  namespace: %s
+type: kubernetes.io/tls
+data:
+  tls.crt: %s
+  tls.key: %s
+`, name, namespace,
+		base64.StdEncoding.EncodeToString(certPEM),
+		base64.StdEncoding.EncodeToString(keyPEM)))
 }
 
 func createPVCYAML(name, namespace, size string) string {

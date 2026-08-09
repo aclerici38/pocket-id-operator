@@ -4558,6 +4558,41 @@
                               "null"
                             ]
                           },
+                          "tls": {
+                            "additionalProperties": false,
+                            "description": "TLS terminates HTTPS in the Pocket-ID pod from a mounted certificate Secret.",
+                            "properties": {
+                              "secretRef": {
+                                "additionalProperties": false,
+                                "description": "SecretRef names a kubernetes.io/tls Secret in the instance's namespace holding\ntls.crt and tls.key.",
+                                "properties": {
+                                  "name": {
+                                    "default": "",
+                                    "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  }
+                                },
+                                "type": "object",
+                                "x-kubernetes-map-type": "atomic"
+                              }
+                            },
+                            "required": [
+                              "secretRef"
+                            ],
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "x-kubernetes-validations": [
+                              {
+                                "message": "tls.secretRef.name is required",
+                                "rule": "size(self.secretRef.name) > 0"
+                              }
+                            ]
+                          },
                           "tracing": {
                             "additionalProperties": false,
                             "description": "OpenTelemetry tracing configuration\nWhen present, tracing is automatically enabled\nConfigure additional exporter-specific OTEL_* variables via the env escape hatch",
@@ -10022,6 +10057,41 @@
                         "type": [
                           "string",
                           "null"
+                        ]
+                      },
+                      "tls": {
+                        "additionalProperties": false,
+                        "description": "TLS terminates HTTPS in the Pocket-ID pod from a mounted certificate Secret.",
+                        "properties": {
+                          "secretRef": {
+                            "additionalProperties": false,
+                            "description": "SecretRef names a kubernetes.io/tls Secret in the instance's namespace holding\ntls.crt and tls.key.",
+                            "properties": {
+                              "name": {
+                                "default": "",
+                                "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              }
+                            },
+                            "type": "object",
+                            "x-kubernetes-map-type": "atomic"
+                          }
+                        },
+                        "required": [
+                          "secretRef"
+                        ],
+                        "type": [
+                          "object",
+                          "null"
+                        ],
+                        "x-kubernetes-validations": [
+                          {
+                            "message": "tls.secretRef.name is required",
+                            "rule": "size(self.secretRef.name) > 0"
+                          }
                         ]
                       },
                       "tracing": {

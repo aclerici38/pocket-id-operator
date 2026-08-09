@@ -448,6 +448,17 @@ type MetricsConfig struct {
 	Port int32 `json:"port,omitempty"`
 }
 
+// TLSConfig terminates TLS inside the Pocket-ID pod instead of at a proxy in front
+// of it. The referenced Secret is mounted read-only and Pocket-ID watches it, so
+// certificate renewals are picked up without restarting the pod.
+// +kubebuilder:validation:XValidation:rule="size(self.secretRef.name) > 0",message="tls.secretRef.name is required"
+type TLSConfig struct {
+	// SecretRef names a kubernetes.io/tls Secret in the instance's namespace holding
+	// tls.crt and tls.key.
+	// +kubebuilder:validation:Required
+	SecretRef corev1.LocalObjectReference `json:"secretRef"`
+}
+
 // PocketIDInstanceSpec defines the desired state of PocketIDInstance
 // +kubebuilder:validation:XValidation:rule="self.deploymentType == oldSelf.deploymentType",message="deploymentType is immutable"
 // +kubebuilder:validation:XValidation:rule="has(self.external) == has(oldSelf.external)",message="external is immutable; create a new PocketIDInstance to switch modes"
@@ -555,6 +566,10 @@ type PocketIDInstanceSpec struct {
 	// Creates an HTTPRoute when enabled. Requires Gateway API CRDs to be installed.
 	// +optional
 	Route *HTTPRouteConfig `json:"route,omitempty"`
+
+	// TLS terminates HTTPS in the Pocket-ID pod from a mounted certificate Secret.
+	// +optional
+	TLS *TLSConfig `json:"tls,omitempty"`
 
 	// ServiceTemplate is merged with the operator-built Service spec.
 	// Operator-managed fields (the selector and the http/metrics ports) always take precedence.
