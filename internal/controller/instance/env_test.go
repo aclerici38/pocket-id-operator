@@ -206,6 +206,12 @@ func TestBuildEnvVars_UIConfigDisabledWhenLDAPSet(t *testing.T) {
 	requireEnv(t, buildEnvVars(inst), "UI_CONFIG_DISABLED", "true")
 }
 
+func TestBuildEnvVars_UIConfigDisabledWhenWebAuthnSet(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.WebAuthn = &pocketidinternalv1alpha1.WebAuthnConfig{UserVerification: "preferred"}
+	requireEnv(t, buildEnvVars(inst), "UI_CONFIG_DISABLED", "true")
+}
+
 func TestBuildEnvVars_UIConfigDisabledWhenCIMDAllowlistSet(t *testing.T) {
 	inst := minimalInstance()
 	inst.Spec.CIMDURLAllowlist = []string{"https://apps.example.com/*/client-metadata.json"}
@@ -596,6 +602,38 @@ func TestBuildEnvVars_UserManagement(t *testing.T) {
 	requireEnv(t, env, "ALLOW_USER_SIGNUPS", "withToken")
 	requireEnv(t, env, "SIGNUP_DEFAULT_CUSTOM_CLAIMS", `[{"key":"role","value":"user"}]`)
 	requireEnv(t, env, "SIGNUP_DEFAULT_USER_GROUP_IDS", "uuid-1,uuid-2")
+}
+
+func TestBuildEnvVars_WebAuthn(t *testing.T) {
+	inst := minimalInstance()
+	allowSynced := false
+	inst.Spec.WebAuthn = &pocketidinternalv1alpha1.WebAuthnConfig{
+		UserVerification:        "preferred",
+		AllowSyncedPasskeys:     &allowSynced,
+		AuthenticatorAttachment: "cross-platform",
+	}
+
+	env := buildEnvVars(inst)
+	requireEnv(t, env, "WEBAUTHN_USER_VERIFICATION", "preferred")
+	requireEnv(t, env, "WEBAUTHN_ALLOW_SYNCED_PASSKEYS", "false")
+	requireEnv(t, env, "WEBAUTHN_AUTHENTICATOR_ATTACHMENT", "cross-platform")
+}
+
+func TestBuildEnvVars_WebAuthnPartial(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.WebAuthn = &pocketidinternalv1alpha1.WebAuthnConfig{AuthenticatorAttachment: "platform"}
+
+	env := buildEnvVars(inst)
+	requireEnv(t, env, "WEBAUTHN_AUTHENTICATOR_ATTACHMENT", "platform")
+	requireEnvAbsent(t, env, "WEBAUTHN_USER_VERIFICATION")
+	requireEnvAbsent(t, env, "WEBAUTHN_ALLOW_SYNCED_PASSKEYS")
+}
+
+func TestBuildEnvVars_WebAuthnAbsent(t *testing.T) {
+	env := buildEnvVars(minimalInstance())
+	requireEnvAbsent(t, env, "WEBAUTHN_USER_VERIFICATION")
+	requireEnvAbsent(t, env, "WEBAUTHN_ALLOW_SYNCED_PASSKEYS")
+	requireEnvAbsent(t, env, "WEBAUTHN_AUTHENTICATOR_ATTACHMENT")
 }
 
 func TestBuildEnvVars_GeoIP(t *testing.T) {

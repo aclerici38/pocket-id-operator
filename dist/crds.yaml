@@ -3122,6 +3122,33 @@ spec:
                 default: false
                 description: Disable GitHub version checks
                 type: boolean
+              webauthn:
+                description: |-
+                  Passkey restrictions
+                  The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured
+                properties:
+                  allowSyncedPasskeys:
+                    description: |-
+                      Accept passkeys that are backup-eligible, i.e. synced to a cloud account
+                      such as iCloud Keychain or Google Password Manager
+                    type: boolean
+                  authenticatorAttachment:
+                    description: |-
+                      Authenticator type accepted at registration: platform (device-bound),
+                      cross-platform (roaming security key), or any
+                    enum:
+                    - any
+                    - platform
+                    - cross-platform
+                    type: string
+                  userVerification:
+                    description: Whether the authenticator must verify the user (PIN,
+                      biometric) during login
+                    enum:
+                    - required
+                    - preferred
+                    type: string
+                type: object
             type: object
             x-kubernetes-validations:
             - message: deploymentType is immutable

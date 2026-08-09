@@ -176,7 +176,7 @@ spec:
 
 ## UI Configuration
 
-The operator automatically sets `UI_CONFIG_DISABLED=true` when any of the `ui`, `userManagement`, `smtp`, `emailNotifications`, or `ldap` sections, or `cimdUrlAllowlist`, are configured.
+The operator automatically sets `UI_CONFIG_DISABLED=true` when any of the `ui`, `userManagement`, `webauthn`, `smtp`, `emailNotifications`, or `ldap` sections, or `cimdUrlAllowlist`, are configured.
 
 ```yaml
 spec:
@@ -217,6 +217,23 @@ spec:
     signupDefaultCustomClaims: '[]'          # JSON array of default claims
     signupDefaultUserGroupIds:               # UUIDs of default groups
       - "550e8400-e29b-41d4-a716-446655440000"
+```
+
+## Passkeys
+
+`webauthn` restricts which passkeys are accepted at registration and login. Omitted
+fields are left unset, so Pocket-ID's own defaults apply.
+
+```yaml
+spec:
+  webauthn:
+    userVerification: "required"             # required or preferred
+    allowSyncedPasskeys: false               # reject iCloud/Google-synced credentials
+    authenticatorAttachment: "cross-platform" # any, platform, or cross-platform
+```
+
+Combining `allowSyncedPasskeys: false` with `authenticatorAttachment: cross-platform`
+effectively requires hardware security keys.
 ```
 
 ## Logging
@@ -654,7 +671,7 @@ spec:
   - `ENCRYPTION_KEY` (from `spec.encryptionKey`)
   - `STATIC_API_KEY` (secret reference)
 - Conditionally set from spec fields:
-  - `UI_CONFIG_DISABLED=true` (when `spec.ui`, `spec.userManagement`, `spec.smtp`, `spec.emailNotifications`, `spec.ldap`, or `spec.cimdUrlAllowlist` is configured)
+  - `UI_CONFIG_DISABLED=true` (when `spec.ui`, `spec.userManagement`, `spec.webauthn`, `spec.smtp`, `spec.emailNotifications`, `spec.ldap`, or `spec.cimdUrlAllowlist` is configured)
   - `DB_CONNECTION_STRING` (from `spec.databaseUrl`)
   - `APP_URL` (from `spec.appUrl`)
   - `INTERNAL_APP_URL` (from `spec.internalAppUrl`)
@@ -669,6 +686,7 @@ spec:
   - `OTEL_METRICS_EXPORTER=prometheus` + `OTEL_*` (from `spec.metrics`)
   - `APP_NAME`, `SESSION_DURATION`, `HOME_PAGE_URL`, `DISABLE_ANIMATIONS`, `ACCENT_COLOR` (from `spec.ui`)
   - `EMAILS_VERIFIED`, `ALLOW_OWN_ACCOUNT_EDIT`, `ALLOW_USER_SIGNUPS`, `SIGNUP_DEFAULT_*` (from `spec.userManagement`)
+  - `WEBAUTHN_USER_VERIFICATION`, `WEBAUTHN_ALLOW_SYNCED_PASSKEYS`, `WEBAUTHN_AUTHENTICATOR_ATTACHMENT` (from `spec.webauthn`)
   - `CIMD_URL_ALLOWLIST` (JSON-encoded from `spec.cimdUrlAllowlist`)
   - `MAXMIND_LICENSE_KEY`, `GEOLITE_DB_PATH`, `GEOLITE_DB_URL` (from `spec.geoip`)
   - `TZ` (from `spec.timezone`)
