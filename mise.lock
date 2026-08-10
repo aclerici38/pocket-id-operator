@@ -58,7 +58,7 @@ checksum = "sha256:efb87ff28af9a188d0536ef5d42e63dd52ba8263cd7344a993cc48dd11ded
 url = "https://dl.google.com/go/go1.26.5.darwin-arm64.tar.gz"
 
 [[tools."go:github.com/onsi/ginkgo/v2/ginkgo"]]
-version = "v2.32.0"
+version = "2.32.1"
 backend = "go:github.com/onsi/ginkgo/v2/ginkgo"
 
 [[tools."go:sigs.k8s.io/controller-tools/cmd/controller-gen"]]
