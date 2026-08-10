@@ -23,7 +23,7 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// CustomClaim defines a custom claim key/value pair for a user group.
+// CustomClaim defines a custom claim key/value pair for a user or user group.
 type CustomClaim struct {
 	// Key is the claim key
 	// +kubebuilder:validation:Required

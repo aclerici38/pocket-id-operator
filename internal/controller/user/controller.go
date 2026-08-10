@@ -541,15 +541,31 @@ func (r *Reconciler) pushUserState(ctx context.Context, user *pocketidinternalv1
 	// Always preserve the current value so the operator never resets it.
 	desired.EmailVerified = current.EmailVerified
 
-	if desired.Equal(current.ToInput()) {
+	desiredClaims := helpers.CustomClaimsToPocketID(user.Spec.CustomClaims)
+	profileChanged := !desired.Equal(current.ToInput())
+	claimsChanged := !pocketid.CustomClaimsEqual(desiredClaims, current.CustomClaims)
+
+	if !profileChanged && !claimsChanged {
 		log.V(1).Info("User state is in sync, skipping update")
 		return false, nil
 	}
 
 	log.Info("Updating user", "name", user.Name)
 
-	if _, err := apiClient.UpdateUser(ctx, user.Status.UserID, desired); err != nil {
-		return false, fmt.Errorf("update user: %w", err)
+	if profileChanged {
+		if _, err := apiClient.UpdateUser(ctx, user.Status.UserID, desired); err != nil {
+			return false, fmt.Errorf("update user: %w", err)
+		}
+	}
+
+	// Custom claims have a dedicated endpoint that replaces the full set.
+	if claimsChanged {
+		if desiredClaims == nil {
+			desiredClaims = []pocketid.CustomClaim{}
+		}
+		if _, err := apiClient.UpdateUserCustomClaims(ctx, user.Status.UserID, desiredClaims); err != nil {
+			return false, fmt.Errorf("update user custom claims: %w", err)
+		}
 	}
 
 	metrics.ResourceOperations.WithLabelValues("PocketIDUser", "updated").Inc()
@@ -602,6 +618,7 @@ func (r *Reconciler) updateUserStatus(ctx context.Context, user *pocketidinterna
 		latest.Status.Disabled = pUser.Disabled
 		latest.Status.Locale = pUser.Locale
 		latest.Status.EmailVerified = pUser.EmailVerified
+		latest.Status.CustomClaims = helpers.CustomClaimsFromPocketID(pUser.CustomClaims)
 
 		return r.Status().Patch(ctx, latest, client.MergeFrom(base))
 	})

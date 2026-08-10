@@ -257,14 +257,6 @@ func (r *Reconciler) buildUserGroupInput(ctx context.Context, userGroup *pocketi
 		friendlyName = name
 	}
 
-	var claims []pocketid.CustomClaim
-	if userGroup.Spec.CustomClaims != nil {
-		claims = make([]pocketid.CustomClaim, 0, len(userGroup.Spec.CustomClaims))
-		for _, claim := range userGroup.Spec.CustomClaims {
-			claims = append(claims, pocketid.CustomClaim{Key: claim.Key, Value: claim.Value})
-		}
-	}
-
 	var userIDs []string
 	if userGroup.Spec.Users != nil {
 		var err error
@@ -277,7 +269,7 @@ func (r *Reconciler) buildUserGroupInput(ctx context.Context, userGroup *pocketi
 	return pocketid.UserGroupInput{
 		Name:         name,
 		FriendlyName: friendlyName,
-		CustomClaims: claims,
+		CustomClaims: helpers.CustomClaimsToPocketID(userGroup.Spec.CustomClaims),
 		UserIDs:      userIDs,
 	}, nil
 }
@@ -494,7 +486,7 @@ func (r *Reconciler) updateUserGroupStatus(ctx context.Context, userGroup *pocke
 	userGroup.Status.CreatedAt = current.CreatedAt
 	userGroup.Status.LdapID = current.LdapID
 	userGroup.Status.TotalUserCount = current.UserCount
-	userGroup.Status.CustomClaims = toCustomClaims(current.CustomClaims)
+	userGroup.Status.CustomClaims = helpers.CustomClaimsFromPocketID(current.CustomClaims)
 	userGroup.Status.AllowedOIDCClientIDs = current.AllowedOIDCClientIDs
 	if err := r.Status().Patch(ctx, userGroup, client.MergeFrom(base)); err != nil {
 		return err
@@ -662,20 +654,6 @@ func (r *Reconciler) requestsForOIDCClient(ctx context.Context, obj client.Objec
 	}
 
 	return requests
-}
-
-func toCustomClaims(claims []pocketid.CustomClaim) []pocketidinternalv1alpha1.CustomClaim {
-	if len(claims) == 0 {
-		return nil
-	}
-	result := make([]pocketidinternalv1alpha1.CustomClaim, 0, len(claims))
-	for _, claim := range claims {
-		result = append(result, pocketidinternalv1alpha1.CustomClaim{
-			Key:   claim.Key,
-			Value: claim.Value,
-		})
-	}
-	return result
 }
 
 // SetupWithManager sets up the controller with the Manager.

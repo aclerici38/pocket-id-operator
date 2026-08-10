@@ -65,7 +65,7 @@ spec:
                   in this group
                 items:
                   description: CustomClaim defines a custom claim key/value pair for
-                    a user group.
+                    a user or user group.
                   properties:
                     key:
                       description: Key is the claim key
@@ -248,7 +248,7 @@ spec:
                 description: CustomClaims are the resolved custom claims on the group
                 items:
                   description: CustomClaim defines a custom claim key/value pair for
-                    a user group.
+                    a user or user group.
                   properties:
                     key:
                       description: Key is the claim key

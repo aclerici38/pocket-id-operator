@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -767,6 +768,109 @@ func TestUpdateUser_NeverSendsID(t *testing.T) {
 
 	if _, present := sentBody["id"]; present {
 		t.Errorf("expected id to be omitted from the update body, got %v", sentBody["id"])
+	}
+}
+
+// --- User custom claims ---
+
+// Custom claims come back on the user read paths, and the controller diffs against
+// them, so dropping them would make every reconcile push the same claims again.
+func TestGetUser_ReadsCustomClaims(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/users/uid-alice" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":       "uid-alice",
+			"username": "alice",
+			"customClaims": []map[string]string{
+				{"key": "department", "value": "engineering"},
+			},
+		})
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(ts.URL, "")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	user, err := client.GetUser(context.Background(), "uid-alice")
+	if err != nil {
+		t.Fatalf("GetUser: %v", err)
+	}
+
+	want := []CustomClaim{{Key: "department", Value: "engineering"}}
+	if !CustomClaimsEqual(user.CustomClaims, want) {
+		t.Errorf("CustomClaims: got %v, want %v", user.CustomClaims, want)
+	}
+}
+
+func TestUpdateUserCustomClaims_PutsFullSetToUserEndpoint(t *testing.T) {
+	var sentBody []map[string]string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut || r.URL.Path != "/api/custom-claims/user/uid-alice" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewDecoder(r.Body).Decode(&sentBody)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(sentBody)
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(ts.URL, "")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	claims := []CustomClaim{{Key: "department", Value: "engineering"}, {Key: "level", Value: "3"}}
+	got, err := client.UpdateUserCustomClaims(context.Background(), "uid-alice", claims)
+	if err != nil {
+		t.Fatalf("UpdateUserCustomClaims: %v", err)
+	}
+
+	if len(sentBody) != 2 || sentBody[0]["key"] != "department" || sentBody[1]["value"] != "3" {
+		t.Errorf("request body: got %v", sentBody)
+	}
+	if !CustomClaimsEqual(got, claims) {
+		t.Errorf("returned claims: got %v, want %v", got, claims)
+	}
+}
+
+// An empty set is how the operator clears claims, so it has to reach the API as an
+// empty JSON array rather than null.
+func TestUpdateUserCustomClaims_SendsEmptyArrayToClearClaims(t *testing.T) {
+	var rawBody string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut || r.URL.Path != "/api/custom-claims/user/uid-alice" {
+			http.NotFound(w, r)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		rawBody = strings.TrimSpace(string(body))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("[]"))
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(ts.URL, "")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	got, err := client.UpdateUserCustomClaims(context.Background(), "uid-alice", nil)
+	if err != nil {
+		t.Fatalf("UpdateUserCustomClaims: %v", err)
+	}
+
+	if rawBody != "[]" {
+		t.Errorf("request body: got %q, want %q", rawBody, "[]")
+	}
+	if got != nil {
+		t.Errorf("returned claims: got %v, want nil", got)
 	}
 }
 

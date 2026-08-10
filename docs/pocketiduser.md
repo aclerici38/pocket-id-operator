@@ -66,6 +66,33 @@ spec:
   locale: en
 ```
 
+## User With Custom Claims
+
+Claims declared here are attached to the user directly and are added to the claims the
+user already inherits from their groups. Where the same key appears in both, the user
+claim wins.
+
+```yaml
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: alice
+  namespace: pocket-id
+spec:
+  email:
+    value: "alice@example.com"
+  customClaims:
+    - key: department
+      value: engineering
+    - key: employee_id
+      value: "E-1042"
+```
+
+The operator owns the full set of user-level claims: removing an entry from
+`spec.customClaims` removes it from Pocket-ID, and claims added to the user outside the
+operator are removed on the next reconcile. Group claims are unaffected — see
+[pocketidusergroup.md](pocketidusergroup.md).
+
 ## User With API Keys
 
 ```yaml
@@ -123,6 +150,7 @@ This code expires after 60 minutes and is subsequently removed from the resource
 - `status.userInfoSecretName`: name of the output secret containing resolved user
   profile fields (`<user>-user-data`).
 - `status.apiKeys`: observed API key state and secret references.
+- `status.customClaims`: resolved user-level claims.
 - `status.oneTimeLoginToken` and `status.oneTimeLoginURL`: set for new users.
 
 ## Deletion Annotation

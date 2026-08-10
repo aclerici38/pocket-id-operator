@@ -74,6 +74,62 @@ var _ = Describe("User State Sync", func() {
 			}, time.Minute, 2*time.Second).Should(Succeed())
 		})
 	})
+
+	Context("User custom claims sync to status", Ordered, func() {
+		const userName = "sync-user-claims"
+
+		BeforeAll(func() {
+			By("creating a user with a custom claim")
+			createUserAndWaitReady(UserOptions{
+				Name:         userName,
+				Username:     "sync-user-claims",
+				Email:        "sync-user-claims@example.local",
+				CustomClaims: []CustomClaim{{Key: "department", Value: "engineering"}},
+			})
+		})
+
+		It("should reflect the claim in status.customClaims", func() {
+			Eventually(func(g Gomega) {
+				val := kubectlGet("pocketiduser", userName, "-n", userNS,
+					"-o", "jsonpath={.status.customClaims[?(@.key=='department')].value}")
+				g.Expect(val).To(Equal("engineering"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+
+		It("should reflect an updated claim value in status.customClaims", func() {
+			By("changing the claim value in spec")
+			createUser(UserOptions{
+				Name:         userName,
+				Username:     "sync-user-claims",
+				Email:        "sync-user-claims@example.local",
+				CustomClaims: []CustomClaim{{Key: "department", Value: "platform"}},
+			})
+
+			Eventually(func(g Gomega) {
+				val := kubectlGet("pocketiduser", userName, "-n", userNS,
+					"-o", "jsonpath={.status.customClaims[?(@.key=='department')].value}")
+				g.Expect(val).To(Equal("platform"))
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
+
+		It("should clear status.customClaims when all claims are removed from spec", func() {
+			By("removing all custom claims from the spec")
+			createUser(UserOptions{
+				Name:     userName,
+				Username: "sync-user-claims",
+				Email:    "sync-user-claims@example.local",
+				// CustomClaims intentionally absent — all claims removed
+			})
+
+			Eventually(func(g Gomega) {
+				val := kubectlGet("pocketiduser", userName, "-n", userNS,
+					"-o", "jsonpath={.status.customClaims}")
+				g.Expect(val).To(BeEmpty())
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			waitForReady("pocketiduser", userName, userNS)
+		})
+	})
 })
 
 var _ = Describe("UserGroup State Sync", Ordered, func() {

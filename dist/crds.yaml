@@ -4051,7 +4051,7 @@ spec:
                   in this group
                 items:
                   description: CustomClaim defines a custom claim key/value pair for
-                    a user group.
+                    a user or user group.
                   properties:
                     key:
                       description: Key is the claim key
@@ -4234,7 +4234,7 @@ spec:
                 description: CustomClaims are the resolved custom claims on the group
                 items:
                   description: CustomClaim defines a custom claim key/value pair for
-                    a user group.
+                    a user or user group.
                   properties:
                     key:
                       description: Key is the claim key
@@ -4371,6 +4371,25 @@ spec:
                       x-kubernetes-map-type: atomic
                   required:
                   - name
+                  type: object
+                type: array
+              customClaims:
+                description: |-
+                  CustomClaims are additional claims to attach to this user.
+                  User claims take precedence over claims inherited from the user's groups.
+                items:
+                  description: CustomClaim defines a custom claim key/value pair for
+                    a user or user group.
+                  properties:
+                    key:
+                      description: Key is the claim key
+                      type: string
+                    value:
+                      description: Value is the claim value
+                      type: string
+                  required:
+                  - key
+                  - value
                   type: object
                 type: array
               disabled:
@@ -4720,6 +4739,23 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              customClaims:
+                description: CustomClaims are the resolved custom claims on the user
+                items:
+                  description: CustomClaim defines a custom claim key/value pair for
+                    a user or user group.
+                  properties:
+                    key:
+                      description: Key is the claim key
+                      type: string
+                    value:
+                      description: Value is the claim value
+                      type: string
+                  required:
+                  - key
+                  - value
+                  type: object
+                type: array
               disabled:
                 description: Disabled reflects whether the user is disabled in Pocket-ID
                 type: boolean

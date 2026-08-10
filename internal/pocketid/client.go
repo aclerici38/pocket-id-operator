@@ -66,6 +66,7 @@ type User struct {
 	Disabled      bool
 	Locale        string
 	EmailVerified bool
+	CustomClaims  []CustomClaim
 }
 
 // APIKey represents a Pocket-ID API key.
@@ -517,6 +518,22 @@ func (c *Client) UpdateUser(ctx context.Context, id string, input UserInput) (*U
 	}
 
 	return userFromDTO(resp.Payload), nil
+}
+
+// UpdateUserCustomClaims replaces the full set of custom claims on a user.
+func (c *Client) UpdateUserCustomClaims(ctx context.Context, id string, claims []CustomClaim) ([]CustomClaim, error) {
+	params := custom_claims.NewPutAPICustomClaimsUserUserIDParams().
+		WithUserID(id).
+		WithClaims(customClaimsToDTO(claims))
+
+	start := time.Now()
+	resp, err := c.raw.CustomClaims.PutAPICustomClaimsUserUserIDContext(ctx, params)
+	recordCall("update_user_custom_claims", err, time.Since(start))
+	if err != nil {
+		return nil, fmt.Errorf("update user custom claims failed: %w", err)
+	}
+
+	return customClaimsFromDTO(resp.Payload), nil
 }
 
 func (c *Client) DeleteUser(ctx context.Context, id string) error {
@@ -1162,20 +1179,11 @@ func (c *Client) UpdateUserGroupUsers(ctx context.Context, id string, userIDs []
 	return nil
 }
 
+// UpdateUserGroupCustomClaims replaces the full set of custom claims on a user group.
 func (c *Client) UpdateUserGroupCustomClaims(ctx context.Context, id string, claims []CustomClaim) ([]CustomClaim, error) {
-	payload := make([]*models.GithubComPocketIDPocketIDBackendInternalDtoCustomClaimCreateDto, 0, len(claims))
-	for _, claim := range claims {
-		key := claim.Key
-		value := claim.Value
-		payload = append(payload, &models.GithubComPocketIDPocketIDBackendInternalDtoCustomClaimCreateDto{
-			Key:   &key,
-			Value: &value,
-		})
-	}
-
 	params := custom_claims.NewPutAPICustomClaimsUserGroupUserGroupIDParams().
 		WithUserGroupID(id).
-		WithClaims(payload)
+		WithClaims(customClaimsToDTO(claims))
 
 	start := time.Now()
 	resp, err := c.raw.CustomClaims.PutAPICustomClaimsUserGroupUserGroupIDContext(ctx, params)
@@ -1247,6 +1255,7 @@ func userFromDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoUserDto)
 		Disabled:      dto.Disabled,
 		Locale:        dto.Locale,
 		EmailVerified: dto.EmailVerified,
+		CustomClaims:  customClaimsFromDTO(dto.CustomClaims),
 	}
 }
 
@@ -1455,4 +1464,17 @@ func customClaimsFromDTO(dto []*models.GithubComPocketIDPocketIDBackendInternalD
 		return nil
 	}
 	return claims
+}
+
+func customClaimsToDTO(claims []CustomClaim) []*models.GithubComPocketIDPocketIDBackendInternalDtoCustomClaimCreateDto {
+	payload := make([]*models.GithubComPocketIDPocketIDBackendInternalDtoCustomClaimCreateDto, 0, len(claims))
+	for _, claim := range claims {
+		key := claim.Key
+		value := claim.Value
+		payload = append(payload, &models.GithubComPocketIDPocketIDBackendInternalDtoCustomClaimCreateDto{
+			Key:   &key,
+			Value: &value,
+		})
+	}
+	return payload
 }
