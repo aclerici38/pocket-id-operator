@@ -20,7 +20,7 @@ sd = "1.1.0"
 # Test tooling
 setup-envtest = "0.24.1"
 # ginkgo stays a go: build so the CLI matches the ginkgo library version
-"go:github.com/onsi/ginkgo/v2/ginkgo" = "v2.32.0"
+"go:github.com/onsi/ginkgo/v2/ginkgo" = "v2.32.1"
 
 # Linting
 golangci-lint = "2.12.2"
