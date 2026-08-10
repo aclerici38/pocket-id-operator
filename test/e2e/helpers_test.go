@@ -132,6 +132,7 @@ type UserOptions struct {
 	Email            string
 	DisplayName      string
 	Admin            *bool
+	CustomClaims     []CustomClaim
 	APIKeys          []APIKeySpec
 	UserInfoSecret   string
 	InstanceSelector map[string]string
@@ -191,6 +192,12 @@ func buildUserYAML(opts UserOptions) string {
 	}
 	if opts.UserInfoSecret != "" {
 		spec.WriteString(fmt.Sprintf("  userInfoSecretRef:\n    name: %s\n", opts.UserInfoSecret))
+	}
+	if len(opts.CustomClaims) > 0 {
+		spec.WriteString("  customClaims:\n")
+		for _, claim := range opts.CustomClaims {
+			spec.WriteString(fmt.Sprintf("  - key: %s\n    value: %s\n", claim.Key, claim.Value))
+		}
 	}
 	if len(opts.InstanceSelector) > 0 {
 		spec.WriteString("  instanceSelector:\n    matchLabels:\n")

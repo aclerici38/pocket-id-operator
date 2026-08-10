@@ -4927,6 +4927,32 @@
                               "null"
                             ]
                           },
+                          "customClaims": {
+                            "description": "CustomClaims are additional claims to attach to this user.\nUser claims take precedence over claims inherited from the user's groups.",
+                            "items": {
+                              "additionalProperties": false,
+                              "description": "CustomClaim defines a custom claim key/value pair for a user or user group.",
+                              "properties": {
+                                "key": {
+                                  "description": "Key is the claim key",
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "description": "Value is the claim value",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "key",
+                                "value"
+                              ],
+                              "type": "object"
+                            },
+                            "type": [
+                              "array",
+                              "null"
+                            ]
+                          },
                           "disabled": {
                             "default": false,
                             "description": "Disabled indicates whether the user account is disabled",
@@ -5358,7 +5384,7 @@
                             "description": "CustomClaims are additional claims to attach to users in this group",
                             "items": {
                               "additionalProperties": false,
-                              "description": "CustomClaim defines a custom claim key/value pair for a user group.",
+                              "description": "CustomClaim defines a custom claim key/value pair for a user or user group.",
                               "properties": {
                                 "key": {
                                   "description": "Key is the claim key",
@@ -10468,6 +10494,32 @@
                           "null"
                         ]
                       },
+                      "customClaims": {
+                        "description": "CustomClaims are additional claims to attach to this user.\nUser claims take precedence over claims inherited from the user's groups.",
+                        "items": {
+                          "additionalProperties": false,
+                          "description": "CustomClaim defines a custom claim key/value pair for a user or user group.",
+                          "properties": {
+                            "key": {
+                              "description": "Key is the claim key",
+                              "type": "string"
+                            },
+                            "value": {
+                              "description": "Value is the claim value",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "key",
+                            "value"
+                          ],
+                          "type": "object"
+                        },
+                        "type": [
+                          "array",
+                          "null"
+                        ]
+                      },
                       "disabled": {
                         "default": false,
                         "description": "Disabled indicates whether the user account is disabled",
@@ -10899,7 +10951,7 @@
                         "description": "CustomClaims are additional claims to attach to users in this group",
                         "items": {
                           "additionalProperties": false,
-                          "description": "CustomClaim defines a custom claim key/value pair for a user group.",
+                          "description": "CustomClaim defines a custom claim key/value pair for a user or user group.",
                           "properties": {
                             "key": {
                               "description": "Key is the claim key",

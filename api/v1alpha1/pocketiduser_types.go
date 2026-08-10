@@ -153,6 +153,11 @@ type PocketIDUserSpec struct {
 	// APIKeys is a list of API keys to create for this user
 	// +optional
 	APIKeys []APIKeySpec `json:"apiKeys,omitempty"`
+
+	// CustomClaims are additional claims to attach to this user.
+	// User claims take precedence over claims inherited from the user's groups.
+	// +optional
+	CustomClaims []CustomClaim `json:"customClaims,omitempty"`
 }
 
 // PocketIDUserStatus defines the observed state of PocketIDUser.
@@ -197,6 +202,10 @@ type PocketIDUserStatus struct {
 	// APIKeys reflects the observed state of each API key
 	// +optional
 	APIKeys []APIKeyStatus `json:"apiKeys,omitempty"`
+
+	// CustomClaims are the resolved custom claims on the user
+	// +optional
+	CustomClaims []CustomClaim `json:"customClaims,omitempty"`
 
 	// Conditions represent the current state of the PocketIDUser resource.
 	// +listType=map
