@@ -66,7 +66,15 @@ const (
 	// firstUnsupportedPocketIDVersion is the lowest pocket-id version that introduces
 	// breaking changes this operator cannot manage. Detecting this version or newer
 	// on an instance crashloops the operator to prevent unwanted changes via an incompatible api
-	firstUnsupportedPocketIDVersion = "v3.0.0"
+	//
+	// v2.14.0 replaces the single-secret OIDC client endpoints
+	// (GET/POST /oidc/clients/:id/secret) with the multi-secret
+	// /oidc/clients/:id/secrets collection, which this operator does not speak:
+	// https://github.com/pocket-id/pocket-id/commit/155a1fcba09fa09262af24d712f8da39d16836e6
+	firstUnsupportedPocketIDVersion = "v2.14.0"
+
+	// TODO: revert after v2.14 is released
+	// firstUnsupportedPocketIDVersion = "v3.0.0"
 
 	// Environment variable mapping
 	envEncryptionKey      = "ENCRYPTION_KEY"
@@ -946,9 +954,17 @@ func normalizeVersion(version string) string {
 
 // isUnsupportedVersion reports whether the given pocket-id version is at or above
 // firstUnsupportedPocketIDVersion. Invalid/empty versions are treated as supported.
+//
+// The comparison is done at major.minor granularity so pre-releases of the cutoff
+// minor (v2.14.0-beta.1, and the rolling `next` builds that carry a pre-release
+// suffix) are caught too: plain semver ordering sorts them below v2.14.0 even
+// though they already carry the breaking API change.
 func isUnsupportedVersion(version string) bool {
 	v := normalizeVersion(version)
-	return semver.IsValid(v) && semver.Compare(v, firstUnsupportedPocketIDVersion) >= 0
+	if !semver.IsValid(v) {
+		return false
+	}
+	return semver.Compare(semver.MajorMinor(v), semver.MajorMinor(firstUnsupportedPocketIDVersion)) >= 0
 }
 
 // haltIfUnsupportedVersion terminates the operator process when an instance reports
