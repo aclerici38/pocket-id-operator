@@ -20,25 +20,25 @@ url = "https://github.com/orhun/git-cliff/releases/download/v2.13.1/git-cliff-2.
 url_api = "https://api.github.com/repos/orhun/git-cliff/releases/assets/405849885"
 
 [[tools."aqua:sholdee/crd-schema-publisher"]]
-version = "2026.721.161952"
+version = "2026.811.141253"
 backend = "aqua:sholdee/crd-schema-publisher"
 
 [tools."aqua:sholdee/crd-schema-publisher"."platforms.linux-arm64"]
-checksum = "sha256:7241e79c4485904d9bb049bb04ca82421ae39555c67e1ae6ee212de01b9b79ab"
-url = "https://github.com/sholdee/crd-schema-publisher/releases/download/v2026.721.161952/crd-schema-publisher-linux-arm64"
-url_api = "https://api.github.com/repos/sholdee/crd-schema-publisher/releases/assets/484899545"
+checksum = "sha256:6c9b2862ef3117092d541795d45202ee51564bdc1d093942b776e824db6f197b"
+url = "https://github.com/sholdee/crd-schema-publisher/releases/download/v2026.811.141253/crd-schema-publisher-linux-arm64"
+url_api = "https://api.github.com/repos/sholdee/crd-schema-publisher/releases/assets/510230099"
 provenance = "github-attestations"
 
 [tools."aqua:sholdee/crd-schema-publisher"."platforms.linux-x64"]
-checksum = "sha256:7f2a48655a6465eb53e80d98f9727e94621952553e2ff532d11191bcbab3700d"
-url = "https://github.com/sholdee/crd-schema-publisher/releases/download/v2026.721.161952/crd-schema-publisher-linux-amd64"
-url_api = "https://api.github.com/repos/sholdee/crd-schema-publisher/releases/assets/484899523"
+checksum = "sha256:3f0ad140d149cacb120a848a94215280e3dff1130f38b36522890fca735dc479"
+url = "https://github.com/sholdee/crd-schema-publisher/releases/download/v2026.811.141253/crd-schema-publisher-linux-amd64"
+url_api = "https://api.github.com/repos/sholdee/crd-schema-publisher/releases/assets/510230092"
 provenance = "github-attestations"
 
 [tools."aqua:sholdee/crd-schema-publisher"."platforms.macos-arm64"]
-checksum = "sha256:d8877cb73c16c0c90e1a7d36b67e5e085e2b971fb4863a06d44cbfc6fe48e4f6"
-url = "https://github.com/sholdee/crd-schema-publisher/releases/download/v2026.721.161952/crd-schema-publisher-darwin-arm64"
-url_api = "https://api.github.com/repos/sholdee/crd-schema-publisher/releases/assets/484899527"
+checksum = "sha256:0d6e83eac964af9c64c84e6cb115c4a60aff77558fb4bd0a1fcf3a27073a55c4"
+url = "https://github.com/sholdee/crd-schema-publisher/releases/download/v2026.811.141253/crd-schema-publisher-darwin-arm64"
+url_api = "https://api.github.com/repos/sholdee/crd-schema-publisher/releases/assets/510230087"
 provenance = "github-attestations"
 
 [[tools.go]]
