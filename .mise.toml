@@ -32,7 +32,7 @@ kubectl = "1.36.3"
 helm = "4.2.4"
 
 # CRD → JSON schema conversion
-"aqua:sholdee/crd-schema-publisher" = "2026.811.141253"
+"aqua:sholdee/crd-schema-publisher" = "2026.815.170632"
 
 # Git hooks
 lefthook = "2.1.10"
