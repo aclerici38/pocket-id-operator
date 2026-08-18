@@ -52,6 +52,8 @@ spec:
 | `spec.permissions[].key` | Permission identifier requested as a token scope, e.g. `read:orders`. Must be a valid RFC 6749 scope token (printable ASCII, no space/quote/backslash) and must not reuse a reserved OIDC scope/claim (`openid`, `profile`, `email`, `email_verified`, `groups`, `offline_access`). Up to 100 permissions per API. |
 | `spec.permissions[].name` | Human-friendly label for the permission. |
 | `spec.permissions[].description` | Optional description. |
+| `spec.permissions[].cimdAccess` | Lets CIMD clients request this permission. Only takes effect while `spec.cimdAccess` is true. |
+| `spec.cimdAccess` | Grants every Client ID Metadata Document client access to this API. Unset means disabled. |
 | `spec.instanceSelector` | Selects the `PocketIDInstance` to reconcile against. Optional when exactly one instance exists. |
 
 `spec.resource` is immutable: to change it, delete and recreate the resource. Because
@@ -86,12 +88,44 @@ Notes:
 - The client is the **sole owner** of its API access in Pocket-ID. While `spec.apiAccess`
   is set the operator keeps the access in sync and clears it if the field is later
   emptied. When it was never set, access configured out-of-band is left untouched.
-- `clientPermissions` (machine-to-machine) require a **confidential** client
-  (`spec.isPublic: false`), since M2M needs a client secret. This is enforced at admission.
+- `delegatedAccess` and `clientAccess` grant a flow with no permissions selected, for a
+  client that requests a resource without any scopes. Both default to true when the
+  matching permission list is non-empty, so existing grants are unaffected.
+- `clientPermissions` and `clientAccess` (machine-to-machine) require a **confidential**
+  client (`spec.isPublic: false`), since M2M needs a client secret. This is enforced at
+  admission.
 - Permission keys are resolved to Pocket-ID permission IDs from the referenced API's
   status, so the `PocketIDAPI` must be `Ready` before the grant can be applied.
 - A `PocketIDAPI` referenced by a client cannot be deleted until the client removes the
   reference, preventing dangling grants.
+
+## Granting Metadata Document Clients
+
+Clients registered through an OAuth **Client ID Metadata Document** (CIMD) register
+themselves, so there is no `PocketIDOIDCClient` to attach a grant to. `spec.cimdAccess`
+grants them access at the API instead, which is what makes an MCP server usable without
+an admin registering every client that wants to reach it:
+
+```yaml
+spec:
+  resource: https://orders.example.com
+  cimdAccess: true
+  permissions:
+    - key: read:orders
+      name: Read orders
+      cimdAccess: true
+    - key: write:orders
+      name: Write orders
+```
+
+Notes:
+
+- The operator owns this setting like it owns the permission set: removing `cimdAccess`
+  disables CIMD access in Pocket-ID rather than leaving it as it was.
+- With no permission marked, CIMD clients get access with no permissions, which a client
+  requesting a resource without any scopes needs.
+- `spec.cimdAccess: false` leaves the per-permission marks in place, so turning it back on
+  restores the same selection.
 
 ## Migrating from an existing setup
 
@@ -109,4 +143,6 @@ reconciles to avoid dropping permissions that existing clients rely on.
 | `status.apiID` | The ID assigned by Pocket-ID. |
 | `status.resource` | The resolved audience identifier. |
 | `status.permissions` | Permissions resolved from Pocket-ID, including their IDs. Used to resolve permission keys referenced by OIDC clients. |
+| `status.permissions[].cimdAccess` | Whether CIMD clients may request the permission. |
+| `status.cimdAccess` | Whether CIMD clients may reach this API. |
 | `status.conditions` | Standard conditions; `Ready` reflects sync state. |

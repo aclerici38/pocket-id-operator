@@ -41,6 +41,14 @@ spec:
           spec:
             description: spec defines the desired state of PocketIDAPI
             properties:
+              cimdAccess:
+                description: |-
+                  CIMDAccess grants every client registered through an OAuth Client ID Metadata
+                  Document access to this API, so dynamically-registered clients do not each need
+                  an explicit grant. Which permissions they may request is marked per permission;
+                  with none marked they get access with no permissions. Leaving this unset disables
+                  CIMD access in Pocket-ID: the operator owns the setting.
+                type: boolean
               instanceSelector:
                 description: |-
                   InstanceSelector selects the PocketIDInstance to reconcile against.
@@ -105,6 +113,11 @@ spec:
                   description: APIPermission defines a single scoped permission offered
                     by an API.
                   properties:
+                    cimdAccess:
+                      description: |-
+                        CIMDAccess lets clients registered through a Client ID Metadata Document request
+                        this permission. Only takes effect while spec.cimdAccess is true.
+                      type: boolean
                     description:
                       description: Description optionally explains what the permission
                         grants.
@@ -156,6 +169,10 @@ spec:
               apiID:
                 description: APIID is the ID assigned by Pocket-ID.
                 type: string
+              cimdAccess:
+                description: CIMDAccess reports whether CIMD clients may reach this
+                  API.
+                type: boolean
               conditions:
                 description: Conditions represent the current state of the PocketIDAPI
                   resource.
@@ -231,6 +248,10 @@ spec:
                   description: ObservedAPIPermission is a permission resolved from
                     Pocket-ID, including its ID.
                   properties:
+                    cimdAccess:
+                      description: CIMDAccess reports whether CIMD clients may request
+                        this permission.
+                      type: boolean
                     id:
                       description: ID is the Pocket-ID identifier for the permission.
                       type: string

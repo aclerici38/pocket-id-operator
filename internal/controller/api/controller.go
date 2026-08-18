@@ -249,7 +249,8 @@ func (r *Reconciler) pushAPIState(ctx context.Context, api *pocketidinternalv1al
 
 	nameChanged := desiredName != current.Name
 	permsChanged := !permissionsEqual(desiredPerms, current.Permissions)
-	if !nameChanged && !permsChanged {
+	cimdDrift, _ := cimdAccessDrift(api, current)
+	if !nameChanged && !permsChanged && !cimdDrift {
 		log.V(1).Info("API state is in sync, skipping update")
 		return false, nil
 	}
@@ -261,8 +262,20 @@ func (r *Reconciler) pushAPIState(ctx context.Context, api *pocketidinternalv1al
 		}
 	}
 	if permsChanged {
-		if _, err := apiClient.UpdateAPIPermissions(ctx, api.Status.APIID, desiredPerms); err != nil {
+		updated, err := apiClient.UpdateAPIPermissions(ctx, api.Status.APIID, desiredPerms)
+		if err != nil {
 			return false, fmt.Errorf("update API permissions: %w", err)
+		}
+		// Permissions created just now carry no CIMD flag and have IDs only Pocket-ID knows,
+		// so the CIMD state has to be resolved against the API as it stands after the update.
+		current = updated
+	}
+
+	// Pocket-ID leaves allowedForCimdClients false on permissions it just created, so this
+	// runs after the permission update rather than alongside it.
+	if drift, permissionIDs := cimdAccessDrift(api, current); drift {
+		if _, err := apiClient.SetAPICIMDAccess(ctx, api.Status.APIID, api.Spec.CIMDAccess, permissionIDs); err != nil {
+			return false, fmt.Errorf("set API CIMD access: %w", err)
 		}
 	}
 
@@ -305,6 +318,7 @@ func (r *Reconciler) updateAPIStatus(ctx context.Context, api *pocketidinternalv
 	api.Status.Name = current.Name
 	api.Status.Resource = current.Resource
 	api.Status.CreatedAt = current.CreatedAt
+	api.Status.CIMDAccess = current.AllowCIMDClients
 	api.Status.Permissions = observedPermissions(current.Permissions)
 	return r.Status().Patch(ctx, api, client.MergeFrom(base))
 }

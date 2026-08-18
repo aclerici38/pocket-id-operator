@@ -136,6 +136,52 @@ func TestPushAPIState_CreatesDeclaredPermissions(t *testing.T) {
 	}
 }
 
+// A permission and the CIMD grant referencing it can arrive in the same edit, so the key
+// only becomes resolvable after Pocket-ID creates the permission.
+func TestPushAPIState_GrantsCIMDAccessToPermissionCreatedInSameEdit(t *testing.T) {
+	api := &pocketidinternalv1alpha1.PocketIDAPI{
+		ObjectMeta: metav1.ObjectMeta{Name: "orders", Namespace: "default"},
+		Spec: pocketidinternalv1alpha1.PocketIDAPISpec{
+			Name:     "Orders",
+			Resource: "https://orders.example.com",
+			Permissions: []pocketidinternalv1alpha1.APIPermission{
+				{Key: "read:orders", Name: "Read", CIMDAccess: true},
+			},
+			CIMDAccess: true,
+		},
+		Status: pocketidinternalv1alpha1.PocketIDAPIStatus{APIID: "api-1"},
+	}
+
+	var cimdBody map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/apis/api-1/permissions":
+			// Pocket-ID assigns the ID here; before this call the key cannot be resolved.
+			writeJSON(w, apiJSON{ID: "api-1", Name: "Orders", Resource: "https://orders.example.com",
+				Permissions: []permissionRow{{ID: "p-read", Key: "read:orders", Name: "Read"}}})
+		case "/api/apis/api-1/cimd-access":
+			_ = json.NewDecoder(r.Body).Decode(&cimdBody)
+			writeJSON(w, apiJSON{ID: "api-1", Name: "Orders", Resource: "https://orders.example.com"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	r := newReconciler(t, api)
+	current := &pocketid.API{ID: "api-1", Name: "Orders", Resource: "https://orders.example.com"}
+
+	if _, err := r.pushAPIState(context.Background(), api, pocketClient(t, ts.URL), current); err != nil {
+		t.Fatalf("pushAPIState: %v", err)
+	}
+	if cimdBody == nil {
+		t.Fatal("CIMD access was never pushed")
+	}
+	if cimdBody["enabled"] != true || !reflect.DeepEqual(cimdBody["permissionIds"], []any{"p-read"}) {
+		t.Fatalf("unexpected CIMD payload: %+v", cimdBody)
+	}
+}
+
 func TestPushAPIState_ReplacesExternalPermissions(t *testing.T) {
 	api := &pocketidinternalv1alpha1.PocketIDAPI{
 		ObjectMeta: metav1.ObjectMeta{Name: "orders", Namespace: "default"},

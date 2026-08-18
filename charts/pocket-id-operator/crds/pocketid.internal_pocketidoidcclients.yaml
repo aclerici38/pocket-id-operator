@@ -123,6 +123,11 @@ spec:
                       required:
                       - name
                       type: object
+                    clientAccess:
+                      description: |-
+                        ClientAccess grants the client-credentials flow even with no permissions selected.
+                        Defaults to true when clientPermissions is non-empty, and requires a confidential client.
+                      type: boolean
                     clientPermissions:
                       description: |-
                         ClientPermissions are permission keys granted for the client-credentials
@@ -130,6 +135,12 @@ spec:
                       items:
                         type: string
                       type: array
+                    delegatedAccess:
+                      description: |-
+                        DelegatedAccess grants the user-delegated flow even with no permissions selected,
+                        e.g. a client requesting a resource that doesn't need any scopes.
+                        Defaults to true when delegatedPermissions is non-empty.
+                      type: boolean
                     delegatedPermissions:
                       description: |-
                         DelegatedPermissions are permission keys granted for the user-delegated
@@ -551,10 +562,11 @@ spec:
                 is false
               rule: '!has(self.clientSecretRotation) || !self.clientSecretRotation.enabled
                 || !has(self.secret) || !has(self.secret.storeClientSecret) || self.secret.storeClientSecret'
-            - message: clientPermissions require a confidential client (isPublic must
-                be false)
+            - message: clientPermissions and clientAccess require a confidential client
+                (isPublic must be false)
               rule: '!self.isPublic || !has(self.apiAccess) || self.apiAccess.all(a,
-                !has(a.clientPermissions) || size(a.clientPermissions) == 0)'
+                (!has(a.clientPermissions) || size(a.clientPermissions) == 0) && (!has(a.clientAccess)
+                || !a.clientAccess))'
             - message: clientSecretRef requires a confidential client (isPublic must
                 be false)
               rule: '!has(self.clientSecretRef) || !self.isPublic'
@@ -577,11 +589,11 @@ spec:
               rule: '!(has(self.clientID) && self.clientID.startsWith(''https://''))
                 || (!has(self.clientSecretRef) && (!has(self.clientSecretRotation)
                 || !self.clientSecretRotation.enabled))'
-            - message: clientPermissions require a confidential client, and a CIMD
-                client is always public
+            - message: clientPermissions and clientAccess require a confidential client,
+                and a CIMD client is always public
               rule: '!(has(self.clientID) && self.clientID.startsWith(''https://''))
-                || !has(self.apiAccess) || self.apiAccess.all(a, !has(a.clientPermissions)
-                || size(a.clientPermissions) == 0)'
+                || !has(self.apiAccess) || self.apiAccess.all(a, (!has(a.clientPermissions)
+                || size(a.clientPermissions) == 0) && (!has(a.clientAccess) || !a.clientAccess))'
           status:
             description: status defines the observed state of PocketIDOIDCClient
             properties:

@@ -235,10 +235,12 @@ var _ = Describe("PocketIDAPI Client Access", Ordered, func() {
 	})
 
 	It("should reflect the delegated/client split in Pocket-ID's database", func() {
-		body := getFromPocketID("verify-access", userNS, "/api/api-access/"+clientID)
+		body := getFromPocketID("verify-access", userNS, "/api/api-access/"+clientID+"/apis")
 		// read:data was granted for the user-delegated flow, sync:data for client-credentials.
 		Expect(body).To(ContainSubstring(fmt.Sprintf(`"userDelegatedPermissionIds":["%s"]`, readID)))
 		Expect(body).To(ContainSubstring(fmt.Sprintf(`"clientPermissionIds":["%s"]`, syncID)))
+		Expect(body).To(ContainSubstring(`"userDelegatedAccess":true`))
+		Expect(body).To(ContainSubstring(`"clientAccess":true`))
 	})
 
 	It("should update access in Pocket-ID when the grant changes", func() {
@@ -254,9 +256,10 @@ var _ = Describe("PocketIDAPI Client Access", Ordered, func() {
 		waitForReconciled("pocketidoidcclient", clientName, userNS)
 
 		By("verifying Pocket-ID moved sync:data to the delegated bucket and cleared client permissions")
-		body := getFromPocketID("verify-access-update", userNS, "/api/api-access/"+clientID)
+		body := getFromPocketID("verify-access-update", userNS, "/api/api-access/"+clientID+"/apis")
 		// clientPermissionIds empty + both IDs present proves both are now user-delegated.
 		Expect(body).To(ContainSubstring(`"clientPermissionIds":[]`))
+		Expect(body).To(ContainSubstring(`"clientAccess":false`))
 		Expect(body).To(ContainSubstring(readID))
 		Expect(body).To(ContainSubstring(syncID))
 	})
@@ -278,9 +281,130 @@ var _ = Describe("PocketIDAPI Client Access", Ordered, func() {
 		}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
 		By("confirming Pocket-ID's database has no access for the client")
-		body := getFromPocketID("verify-access-clear", userNS, "/api/api-access/"+clientID)
+		body := getFromPocketID("verify-access-clear", userNS, "/api/api-access/"+clientID+"/apis")
 		Expect(body).NotTo(ContainSubstring(readID))
 		Expect(body).NotTo(ContainSubstring(syncID))
+	})
+
+	AfterAll(func() {
+		kubectlDelete("pocketidoidcclient", clientName, userNS)
+		_ = kubectlDeleteWait("pocketidapi", apiName, userNS, time.Minute)
+	})
+})
+
+var _ = Describe("PocketIDAPI CIMD Access", Ordered, func() {
+	// spec.cimdAccess grants every client registered through a Client ID Metadata Document
+	// access to the API, so dynamically-registered clients need no individual grant.
+	const (
+		apiName  = "cimd-access-api"
+		resource = "https://cimd-access.e2e.example.com"
+	)
+	var apiID, readID string
+
+	BeforeAll(func() {
+		createAPIAndWaitReady(APIOptions{
+			Name: apiName, Resource: resource,
+			Permissions: []APIPermissionOption{
+				{Key: "read:data", Name: "Read data", CIMDAccess: true},
+				{Key: "write:data", Name: "Write data"},
+			},
+			CIMDAccess: true,
+		})
+		apiID = waitForStatusFieldNotEmpty("pocketidapi", apiName, userNS, ".status.apiID")
+		readID = permIDFromStatus(apiName, "read:data")
+	})
+
+	It("should enable CIMD access with only the selected permission", func() {
+		Eventually(func(g Gomega) {
+			body := getFromPocketID("verify-cimd", userNS, "/api/apis/"+apiID)
+			g.Expect(body).To(ContainSubstring(`"allowCimdClients":true`))
+			g.Expect(body).To(ContainSubstring(fmt.Sprintf(`"id":"%s","key":"read:data","name":"Read data","allowedForCimdClients":true`, readID)))
+			g.Expect(body).To(ContainSubstring(`"key":"write:data","name":"Write data"`))
+			g.Expect(body).NotTo(ContainSubstring(`"key":"write:data","name":"Write data","allowedForCimdClients":true`))
+		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+	})
+
+	It("should mirror the resolved state into status", func() {
+		waitForStatusField("pocketidapi", apiName, userNS, ".status.cimdAccess", "true")
+	})
+
+	// A permission added in the same edit that grants it has no ID until Pocket-ID creates
+	// it, so this only works if the CIMD push runs after the permission update.
+	It("should grant a permission added in the same edit as the grant", func() {
+		createAPI(APIOptions{
+			Name: apiName, Resource: resource,
+			Permissions: []APIPermissionOption{
+				{Key: "read:data", Name: "Read data", CIMDAccess: true},
+				{Key: "write:data", Name: "Write data"},
+				{Key: "sync:data", Name: "Sync data", CIMDAccess: true},
+			},
+			CIMDAccess: true,
+		})
+		waitForReconciled("pocketidapi", apiName, userNS)
+
+		Eventually(func(g Gomega) {
+			syncID := permIDFromStatus(apiName, "sync:data")
+			body := getFromPocketID("verify-cimd-added", userNS, "/api/apis/"+apiID)
+			g.Expect(body).To(ContainSubstring(fmt.Sprintf(`"id":"%s","key":"sync:data","name":"Sync data","allowedForCimdClients":true`, syncID)))
+		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+	})
+
+	It("should disable CIMD access when the field is removed", func() {
+		createAPI(APIOptions{
+			Name: apiName, Resource: resource,
+			Permissions: []APIPermissionOption{
+				{Key: "read:data", Name: "Read data"},
+				{Key: "write:data", Name: "Write data"},
+				{Key: "sync:data", Name: "Sync data"},
+			},
+			// CIMDAccess intentionally absent: the operator owns the setting.
+		})
+		waitForReconciled("pocketidapi", apiName, userNS)
+
+		Eventually(func(g Gomega) {
+			body := getFromPocketID("verify-cimd-off", userNS, "/api/apis/"+apiID)
+			g.Expect(body).NotTo(ContainSubstring(`"allowCimdClients":true`))
+			g.Expect(body).NotTo(ContainSubstring(`"allowedForCimdClients":true`))
+		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+	})
+
+	AfterAll(func() {
+		_ = kubectlDeleteWait("pocketidapi", apiName, userNS, time.Minute)
+	})
+})
+
+var _ = Describe("PocketIDAPI Scopeless Client Grant", Ordered, func() {
+	// A client may be granted a resource without any scopes, which is what the MCP spec
+	// expects. The grant exists even though no permission is selected.
+	const (
+		apiName    = "scopeless-api"
+		resource   = "https://scopeless.e2e.example.com"
+		clientName = "scopeless-client"
+	)
+	var clientID string
+
+	BeforeAll(func() {
+		createAPIAndWaitReady(APIOptions{
+			Name: apiName, Resource: resource,
+			Permissions: []APIPermissionOption{{Key: "read:data", Name: "Read data"}},
+		})
+		createOIDCClientAndWaitReady(OIDCClientOptions{
+			Name:         clientName,
+			CallbackURLs: []string{"https://scopeless.e2e.example.com/callback"},
+			APIAccess: []APIAccessGrant{{
+				APIRefName:      apiName,
+				DelegatedAccess: boolPtr(true),
+			}},
+		})
+		clientID = waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
+	})
+
+	It("should grant delegated access with no permissions", func() {
+		Eventually(func(g Gomega) {
+			body := getFromPocketID("verify-scopeless", userNS, "/api/api-access/"+clientID+"/apis")
+			g.Expect(body).To(ContainSubstring(`"userDelegatedAccess":true`))
+			g.Expect(body).To(ContainSubstring(`"userDelegatedPermissionIds":[]`))
+		}, 2*time.Minute, 2*time.Second).Should(Succeed())
 	})
 
 	AfterAll(func() {

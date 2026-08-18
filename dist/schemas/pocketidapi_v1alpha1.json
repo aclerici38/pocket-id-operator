@@ -25,6 +25,13 @@
       "additionalProperties": false,
       "description": "spec defines the desired state of PocketIDAPI",
       "properties": {
+        "cimdAccess": {
+          "description": "CIMDAccess grants every client registered through an OAuth Client ID Metadata\nDocument access to this API, so dynamically-registered clients do not each need\nan explicit grant. Which permissions they may request is marked per permission;\nwith none marked they get access with no permissions. Leaving this unset disables\nCIMD access in Pocket-ID: the operator owns the setting.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "instanceSelector": {
           "additionalProperties": false,
           "description": "InstanceSelector selects the PocketIDInstance to reconcile against.\nIf omitted, the controller expects exactly one instance in the cluster.",
@@ -99,6 +106,13 @@
             "additionalProperties": false,
             "description": "APIPermission defines a single scoped permission offered by an API.",
             "properties": {
+              "cimdAccess": {
+                "description": "CIMDAccess lets clients registered through a Client ID Metadata Document request\nthis permission. Only takes effect while spec.cimdAccess is true.",
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
               "description": {
                 "description": "Description optionally explains what the permission grants.",
                 "maxLength": 500,
@@ -170,6 +184,13 @@
           "description": "APIID is the ID assigned by Pocket-ID.",
           "type": [
             "string",
+            "null"
+          ]
+        },
+        "cimdAccess": {
+          "description": "CIMDAccess reports whether CIMD clients may reach this API.",
+          "type": [
+            "boolean",
             "null"
           ]
         },
@@ -259,6 +280,13 @@
             "additionalProperties": false,
             "description": "ObservedAPIPermission is a permission resolved from Pocket-ID, including its ID.",
             "properties": {
+              "cimdAccess": {
+                "description": "CIMDAccess reports whether CIMD clients may request this permission.",
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
               "id": {
                 "description": "ID is the Pocket-ID identifier for the permission.",
                 "type": "string"

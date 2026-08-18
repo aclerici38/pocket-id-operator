@@ -4754,6 +4754,13 @@
                       ],
                       "type": "object"
                     },
+                    "clientAccess": {
+                      "description": "ClientAccess grants the client-credentials flow even with no permissions selected.\nDefaults to true when clientPermissions is non-empty, and requires a confidential client.",
+                      "type": [
+                        "boolean",
+                        "null"
+                      ]
+                    },
                     "clientPermissions": {
                       "description": "ClientPermissions are permission keys granted for the client-credentials\n(machine-to-machine) flow. These require a confidential client.",
                       "items": {
@@ -4761,6 +4768,13 @@
                       },
                       "type": [
                         "array",
+                        "null"
+                      ]
+                    },
+                    "delegatedAccess": {
+                      "description": "DelegatedAccess grants the user-delegated flow even with no permissions selected,\ne.g. a client requesting a resource that doesn't need any scopes.\nDefaults to true when delegatedPermissions is non-empty.",
+                      "type": [
+                        "boolean",
                         "null"
                       ]
                     },
@@ -5366,8 +5380,8 @@
                 "rule": "!has(self.clientSecretRotation) || !self.clientSecretRotation.enabled || !has(self.secret) || !has(self.secret.storeClientSecret) || self.secret.storeClientSecret"
               },
               {
-                "message": "clientPermissions require a confidential client (isPublic must be false)",
-                "rule": "!self.isPublic || !has(self.apiAccess) || self.apiAccess.all(a, !has(a.clientPermissions) || size(a.clientPermissions) == 0)"
+                "message": "clientPermissions and clientAccess require a confidential client (isPublic must be false)",
+                "rule": "!self.isPublic || !has(self.apiAccess) || self.apiAccess.all(a, (!has(a.clientPermissions) || size(a.clientPermissions) == 0) && (!has(a.clientAccess) || !a.clientAccess))"
               },
               {
                 "message": "clientSecretRef requires a confidential client (isPublic must be false)",
@@ -5390,8 +5404,8 @@
                 "rule": "!(has(self.clientID) && self.clientID.startsWith('https://')) || (!has(self.clientSecretRef) && (!has(self.clientSecretRotation) || !self.clientSecretRotation.enabled))"
               },
               {
-                "message": "clientPermissions require a confidential client, and a CIMD client is always public",
-                "rule": "!(has(self.clientID) && self.clientID.startsWith('https://')) || !has(self.apiAccess) || self.apiAccess.all(a, !has(a.clientPermissions) || size(a.clientPermissions) == 0)"
+                "message": "clientPermissions and clientAccess require a confidential client, and a CIMD client is always public",
+                "rule": "!(has(self.clientID) && self.clientID.startsWith('https://')) || !has(self.apiAccess) || self.apiAccess.all(a, (!has(a.clientPermissions) || size(a.clientPermissions) == 0) && (!has(a.clientAccess) || !a.clientAccess))"
               }
             ]
           }
@@ -5431,6 +5445,13 @@
             "additionalProperties": false,
             "description": "spec defines the desired state of PocketIDAPI",
             "properties": {
+              "cimdAccess": {
+                "description": "CIMDAccess grants every client registered through an OAuth Client ID Metadata\nDocument access to this API, so dynamically-registered clients do not each need\nan explicit grant. Which permissions they may request is marked per permission;\nwith none marked they get access with no permissions. Leaving this unset disables\nCIMD access in Pocket-ID: the operator owns the setting.",
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
               "instanceSelector": {
                 "additionalProperties": false,
                 "description": "InstanceSelector selects the PocketIDInstance to reconcile against.\nIf omitted, the controller expects exactly one instance in the cluster.",
@@ -5505,6 +5526,13 @@
                   "additionalProperties": false,
                   "description": "APIPermission defines a single scoped permission offered by an API.",
                   "properties": {
+                    "cimdAccess": {
+                      "description": "CIMDAccess lets clients registered through a Client ID Metadata Document request\nthis permission. Only takes effect while spec.cimdAccess is true.",
+                      "type": [
+                        "boolean",
+                        "null"
+                      ]
+                    },
                     "description": {
                       "description": "Description optionally explains what the permission grants.",
                       "maxLength": 500,

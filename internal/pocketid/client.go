@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -368,9 +369,24 @@ func NewClient(baseURL string, apiKey string, opts ...ClientOption) (*Client, er
 		)
 	}
 
+	// Every operation declares a default error response, so go-swagger deserializes
+	// error bodies instead of just recording the status code.
+	for _, mime := range []string{runtime.TextMime, runtime.HTMLMime, runtime.DefaultMime} {
+		transport.Consumers[mime] = discardingConsumer{}
+	}
+
 	c.raw = apiclient.New(transport, strfmt.Default)
 
 	return c, nil
+}
+
+// discardingConsumer drains a response body without decoding it, so the surrounding
+// response type (and its status code) survives a body it cannot parse.
+type discardingConsumer struct{}
+
+func (discardingConsumer) Consume(reader io.Reader, _ any) error {
+	_, err := io.Copy(io.Discard, reader)
+	return err
 }
 
 // --- Version Operations ---
@@ -901,19 +917,21 @@ func (c *Client) DeleteSCIMServiceProvider(ctx context.Context, id string) error
 
 // API represents a Pocket-ID API (a protected resource / token audience).
 type API struct {
-	ID          string
-	Name        string
-	Resource    string
-	CreatedAt   string
-	Permissions []APIPermission
+	ID               string
+	Name             string
+	Resource         string
+	CreatedAt        string
+	AllowCIMDClients bool
+	Permissions      []APIPermission
 }
 
 // APIPermission represents a scoped permission offered by an API.
 type APIPermission struct {
-	ID          string
-	Key         string
-	Name        string
-	Description string
+	ID                    string
+	Key                   string
+	Name                  string
+	Description           string
+	AllowedForCIMDClients bool
 }
 
 // APIInput contains the fields for creating an API.
@@ -929,11 +947,21 @@ type APIPermissionInput struct {
 	Description string
 }
 
-// ClientAPIAccess represents the API permissions granted to an OIDC client,
-// split by the flow they apply to.
-type ClientAPIAccess struct {
+// APIClientGrant represents an OIDC client's access to a single API, split by the flow
+// it applies to. Access granted through an API's CIMD setting is owned by the API and is
+// not represented here.
+type APIClientGrant struct {
+	APIID                      string
+	ClientAccess               bool
+	UserDelegatedAccess        bool
 	ClientPermissionIDs        []string
 	UserDelegatedPermissionIDs []string
+}
+
+// IsEmpty reports whether the grant conveys no access at all.
+func (g APIClientGrant) IsEmpty() bool {
+	return !g.ClientAccess && !g.UserDelegatedAccess &&
+		len(g.ClientPermissionIDs) == 0 && len(g.UserDelegatedPermissionIDs) == 0
 }
 
 // ListAPIs returns a list of APIs matching the search term (matched against name
@@ -1042,35 +1070,105 @@ func (c *Client) UpdateAPIPermissions(ctx context.Context, id string, permission
 	return apiFromDTO(resp.Payload), nil
 }
 
-// GetClientAPIAccess returns the API permissions currently granted to an OIDC client.
-func (c *Client) GetClientAPIAccess(ctx context.Context, clientID string) (*ClientAPIAccess, error) {
-	params := apis.NewGetAPIAPIAccessClientIDParams().WithClientID(clientIDPathParam(clientID))
-
-	start := time.Now()
-	resp, err := c.raw.Apis.GetAPIAPIAccessClientIDContext(ctx, params)
-	recordCall("get_client_api_access", err, time.Since(start))
-	if err != nil {
-		return nil, fmt.Errorf("get client API access failed: %w", err)
+// SetAPICIMDAccess replaces which permissions of an API every client registered through a
+// Client ID Metadata Document may request. Pocket-ID retains the permission IDs while
+// enabled is false, so switching access off and back on preserves the selection.
+func (c *Client) SetAPICIMDAccess(ctx context.Context, apiID string, enabled bool, permissionIDs []string) (*API, error) {
+	if permissionIDs == nil {
+		permissionIDs = []string{}
 	}
-	return clientAPIAccessFromDTO(resp.Payload.ClientPermissionIds, resp.Payload.UserDelegatedPermissionIds), nil
-}
-
-// UpdateClientAPIAccess replaces the full set of API permissions granted to an OIDC client.
-func (c *Client) UpdateClientAPIAccess(ctx context.Context, clientID string, access ClientAPIAccess) (*ClientAPIAccess, error) {
-	params := apis.NewPutAPIAPIAccessClientIDParams().
-		WithClientID(clientIDPathParam(clientID)).
-		WithAccess(&models.APIClientAPIAccessUpdateDto{
-			ClientPermissionIds:        access.ClientPermissionIDs,
-			UserDelegatedPermissionIds: access.UserDelegatedPermissionIDs,
+	params := apis.NewPutAPIApisIDCimdAccessParams().
+		WithID(apiID).
+		WithAccess(&models.APIAPICimdAccessUpdateDto{
+			Enabled:       enabled,
+			PermissionIds: permissionIDs,
 		})
 
 	start := time.Now()
-	resp, err := c.raw.Apis.PutAPIAPIAccessClientIDContext(ctx, params)
-	recordCall("update_client_api_access", err, time.Since(start))
+	resp, err := c.raw.Apis.PutAPIApisIDCimdAccessContext(ctx, params)
+	recordCall("set_api_cimd_access", err, time.Since(start))
 	if err != nil {
-		return nil, fmt.Errorf("update client API access failed: %w", err)
+		return nil, fmt.Errorf("set API CIMD access failed: %w", err)
 	}
-	return clientAPIAccessFromDTO(resp.Payload.ClientPermissionIds, resp.Payload.UserDelegatedPermissionIds), nil
+	return apiFromDTO(resp.Payload), nil
+}
+
+// ListAPIClientGrants returns the client's own grant on every API it may reach. APIs the
+// client reaches solely through their CIMD setting are omitted: that access belongs to the
+// API, not the client.
+func (c *Client) ListAPIClientGrants(ctx context.Context, clientID string) ([]APIClientGrant, error) {
+	params := apis.NewGetAPIAPIAccessClientIDApisParams().WithClientID(clientIDPathParam(clientID))
+
+	start := time.Now()
+	resp, err := c.raw.Apis.GetAPIAPIAccessClientIDApisContext(ctx, params)
+	recordCall("list_api_client_grants", err, time.Since(start))
+	if err != nil {
+		return nil, fmt.Errorf("list API client grants failed: %w", err)
+	}
+
+	grants := make([]APIClientGrant, 0, len(resp.Payload))
+	for _, dto := range resp.Payload {
+		if dto == nil || dto.API == nil {
+			continue
+		}
+		grant := APIClientGrant{
+			APIID:                      dto.API.ID,
+			ClientAccess:               dto.ClientAccess,
+			UserDelegatedAccess:        dto.UserDelegatedAccess,
+			ClientPermissionIDs:        dto.ClientPermissionIds,
+			UserDelegatedPermissionIDs: dto.UserDelegatedPermissionIds,
+		}
+		if grant.IsEmpty() {
+			continue
+		}
+		grants = append(grants, grant)
+	}
+	return grants, nil
+}
+
+// SetAPIClientGrant replaces the client's grant on a single API and returns the grant
+// Pocket-ID applied, which may be narrower than requested: unknown permission IDs are
+// dropped, and a public client never keeps client-credentials access.
+func (c *Client) SetAPIClientGrant(ctx context.Context, apiID, clientID string, grant APIClientGrant) (*APIClientGrant, error) {
+	params := apis.NewPutAPIApisIDClientsClientIDParams().
+		WithID(apiID).
+		WithClientID(clientIDPathParam(clientID)).
+		WithAccess(&models.APIAPIClientGrantUpdateDto{
+			ClientAccess:               grant.ClientAccess,
+			UserDelegatedAccess:        grant.UserDelegatedAccess,
+			ClientPermissionIds:        grant.ClientPermissionIDs,
+			UserDelegatedPermissionIds: grant.UserDelegatedPermissionIDs,
+		})
+
+	start := time.Now()
+	resp, err := c.raw.Apis.PutAPIApisIDClientsClientIDContext(ctx, params)
+	recordCall("set_api_client_grant", err, time.Since(start))
+	if err != nil {
+		return nil, fmt.Errorf("set API client grant failed: %w", err)
+	}
+	return &APIClientGrant{
+		APIID:                      apiID,
+		ClientAccess:               resp.Payload.ClientAccess,
+		UserDelegatedAccess:        resp.Payload.UserDelegatedAccess,
+		ClientPermissionIDs:        resp.Payload.ClientPermissionIds,
+		UserDelegatedPermissionIDs: resp.Payload.UserDelegatedPermissionIds,
+	}, nil
+}
+
+// RemoveAPIClientGrant revokes every grant the client holds on one API. A grant that is
+// already gone is treated as removed.
+func (c *Client) RemoveAPIClientGrant(ctx context.Context, apiID, clientID string) error {
+	params := apis.NewDeleteAPIApisIDClientsClientIDParams().
+		WithID(apiID).
+		WithClientID(clientIDPathParam(clientID))
+
+	start := time.Now()
+	_, err := c.raw.Apis.DeleteAPIApisIDClientsClientIDContext(ctx, params)
+	recordCall("remove_api_client_grant", err, time.Since(start))
+	if err != nil && !IsNotFoundError(err) {
+		return fmt.Errorf("remove API client grant failed: %w", err)
+	}
+	return nil
 }
 
 // --- User Group Operations ---
@@ -1406,25 +1504,20 @@ func apiFromDTO(dto *models.APIAPIResponseDto) *API {
 			continue
 		}
 		permissions = append(permissions, APIPermission{
-			ID:          p.ID,
-			Key:         p.Key,
-			Name:        p.Name,
-			Description: p.Description,
+			ID:                    p.ID,
+			Key:                   p.Key,
+			Name:                  p.Name,
+			Description:           p.Description,
+			AllowedForCIMDClients: p.AllowedForCimdClients,
 		})
 	}
 	return &API{
-		ID:          dto.ID,
-		Name:        dto.Name,
-		Resource:    dto.Resource,
-		CreatedAt:   dto.CreatedAt,
-		Permissions: permissions,
-	}
-}
-
-func clientAPIAccessFromDTO(clientPermissionIDs, userDelegatedPermissionIDs []string) *ClientAPIAccess {
-	return &ClientAPIAccess{
-		ClientPermissionIDs:        clientPermissionIDs,
-		UserDelegatedPermissionIDs: userDelegatedPermissionIDs,
+		ID:               dto.ID,
+		Name:             dto.Name,
+		Resource:         dto.Resource,
+		CreatedAt:        dto.CreatedAt,
+		AllowCIMDClients: dto.AllowCimdClients,
+		Permissions:      permissions,
 	}
 }
 
