@@ -1057,6 +1057,11 @@ func (in *PocketIDOIDCClientStatus) DeepCopyInto(out *PocketIDOIDCClientStatus) 
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.CIMDGrantedAPIs != nil {
+		in, out := &in.CIMDGrantedAPIs, &out.CIMDGrantedAPIs
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.PKCESupported != nil {
 		in, out := &in.PKCESupported, &out.PKCESupported
 		*out = new(bool)

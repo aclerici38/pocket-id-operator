@@ -404,7 +404,9 @@ see [PocketIDAPI](pocketidapi.md#granting-client-access) for the full semantics.
 
 For clients that register themselves through a Client ID Metadata Document there is no CR
 to grant from, so access is granted at the API instead via
-[`spec.cimdAccess`](pocketidapi.md#granting-metadata-document-clients).
+[`spec.cimdAccess`](pocketidapi.md#granting-metadata-document-clients). That access is owned
+by the API: `status.cimdGrantedAPIs` reports which API resources a `cimd` client reaches
+this way, and removing an `apiAccess` entry does not revoke it.
 
 ## Logo Auto-Generation
 

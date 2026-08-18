@@ -951,7 +951,11 @@ type APIPermissionInput struct {
 // it applies to. Access granted through an API's CIMD setting is owned by the API and is
 // not represented here.
 type APIClientGrant struct {
-	APIID                      string
+	APIID    string
+	Resource string
+	// CIMDGranted reports access the API grants to every CIMD client. It is owned by the
+	// API, not the client, so it is reported but never reconciled from this side.
+	CIMDGranted                bool
 	ClientAccess               bool
 	UserDelegatedAccess        bool
 	ClientPermissionIDs        []string
@@ -1093,9 +1097,8 @@ func (c *Client) SetAPICIMDAccess(ctx context.Context, apiID string, enabled boo
 	return apiFromDTO(resp.Payload), nil
 }
 
-// ListAPIClientGrants returns the client's own grant on every API it may reach. APIs the
-// client reaches solely through their CIMD setting are omitted: that access belongs to the
-// API, not the client.
+// ListAPIClientGrants returns the client's grant on every API it may reach. An entry whose
+// grant IsEmpty is reachable only through the API's CIMD setting.
 func (c *Client) ListAPIClientGrants(ctx context.Context, clientID string) ([]APIClientGrant, error) {
 	params := apis.NewGetAPIAPIAccessClientIDApisParams().WithClientID(clientIDPathParam(clientID))
 
@@ -1111,17 +1114,15 @@ func (c *Client) ListAPIClientGrants(ctx context.Context, clientID string) ([]AP
 		if dto == nil || dto.API == nil {
 			continue
 		}
-		grant := APIClientGrant{
+		grants = append(grants, APIClientGrant{
 			APIID:                      dto.API.ID,
+			Resource:                   dto.API.Resource,
+			CIMDGranted:                dto.CimdGrantedAccess || len(dto.CimdGrantedPermissionIds) > 0,
 			ClientAccess:               dto.ClientAccess,
 			UserDelegatedAccess:        dto.UserDelegatedAccess,
 			ClientPermissionIDs:        dto.ClientPermissionIds,
 			UserDelegatedPermissionIDs: dto.UserDelegatedPermissionIds,
-		}
-		if grant.IsEmpty() {
-			continue
-		}
-		grants = append(grants, grant)
+		})
 	}
 	return grants, nil
 }

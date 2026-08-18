@@ -509,6 +509,13 @@ type PocketIDOIDCClientStatus struct {
 	// +optional
 	ManagedAPIPermissionIDs []string `json:"managedAPIPermissionIDs,omitempty"`
 
+	// CIMDGrantedAPIs are the API resources this client can reach because the API grants
+	// every Client ID Metadata Document client access, rather than because of spec.apiAccess.
+	// Removing an apiAccess entry does not revoke access listed here; that is turned off on
+	// the PocketIDAPI. Only ever set for a cimd client.
+	// +optional
+	CIMDGrantedAPIs []string `json:"cimdGrantedAPIs,omitempty"`
+
 	// PKCESupported indicates Pocket-ID observed the client using PKCE during an
 	// authorization flow while spec.pkceEnabled is false, signalling PKCE can be enabled.
 	// +optional

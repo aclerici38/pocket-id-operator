@@ -802,6 +802,16 @@
             "null"
           ]
         },
+        "cimdGrantedAPIs": {
+          "description": "CIMDGrantedAPIs are the API resources this client can reach because the API grants\nevery Client ID Metadata Document client access, rather than because of spec.apiAccess.\nRemoving an apiAccess entry does not revoke access listed here; that is turned off on\nthe PocketIDAPI. Only ever set for a cimd client.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "clientID": {
           "description": "ClientID is the ID assigned by Pocket-ID",
           "type": [

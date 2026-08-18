@@ -140,9 +140,9 @@ func TestAPIClientGrants_ListSetRemove(t *testing.T) {
 					"clientPermissionIds":        []string{"c1"},
 					"userDelegatedPermissionIds": []string{"d1", "d2"},
 				},
-				// Reachable only through the API's CIMD setting, so it is not the client's grant.
+				// Reachable only through the API's CIMD setting, so it carries no grant of its own.
 				{
-					"api":               map[string]any{"id": "api-2"},
+					"api":               map[string]any{"id": "api-2", "resource": "https://api-2.example.com"},
 					"cimdGrantedAccess": true,
 				},
 			})
@@ -165,8 +165,14 @@ func TestAPIClientGrants_ListSetRemove(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListAPIClientGrants: %v", err)
 	}
-	if len(grants) != 1 || grants[0].APIID != "api-1" {
-		t.Fatalf("expected only the client's own grant, got %+v", grants)
+	if len(grants) != 2 || grants[0].APIID != "api-1" {
+		t.Fatalf("unexpected grants: %+v", grants)
+	}
+	if grants[0].CIMDGranted || grants[0].IsEmpty() {
+		t.Fatalf("the client's own grant must not read as CIMD-granted: %+v", grants[0])
+	}
+	if !grants[1].CIMDGranted || !grants[1].IsEmpty() || grants[1].Resource != "https://api-2.example.com" {
+		t.Fatalf("unexpected CIMD-granted entry: %+v", grants[1])
 	}
 	if !grants[0].ClientAccess || !grants[0].UserDelegatedAccess ||
 		!reflect.DeepEqual(grants[0].ClientPermissionIDs, []string{"c1"}) ||

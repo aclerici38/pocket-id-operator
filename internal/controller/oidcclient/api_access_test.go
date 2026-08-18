@@ -250,7 +250,8 @@ func TestReconcileAPIAccess_RevokesDroppedAPI(t *testing.T) {
 	}
 }
 
-// A CIMD-granted API belongs to the API, not the client, so it must not be revoked.
+// A CIMD-granted API belongs to the API, not the client, so it must not be revoked, and it
+// is reported in status so a dropped apiAccess entry does not look like revoked access.
 func TestReconcileAPIAccess_LeavesCIMDGrantedAPIAlone(t *testing.T) {
 	s := apiAccessScheme(t)
 	oidcClient := clientWithAccess(nil)
@@ -261,7 +262,7 @@ func TestReconcileAPIAccess_LeavesCIMDGrantedAPIAlone(t *testing.T) {
 		switch r.Method {
 		case http.MethodGet:
 			writeJSON(w, []map[string]any{{
-				"api":                      map[string]any{"id": "api-1"},
+				"api":                      map[string]any{"id": "api-1", "resource": "https://orders.example.com"},
 				"cimdGrantedAccess":        true,
 				"cimdGrantedPermissionIds": []string{"p-read"},
 			}})
@@ -281,6 +282,58 @@ func TestReconcileAPIAccess_LeavesCIMDGrantedAPIAlone(t *testing.T) {
 	}
 	if deleted {
 		t.Fatal("revoked an API the client only reaches through its CIMD setting")
+	}
+	if !reflect.DeepEqual(oidcClient.Status.CIMDGrantedAPIs, []string{"https://orders.example.com"}) {
+		t.Fatalf("cimdGrantedAPIs = %v", oidcClient.Status.CIMDGrantedAPIs)
+	}
+}
+
+// With no apiAccess and nothing managed there is nothing to reconcile, but a cimd client can
+// still hold access granted by an API, so status has to keep reporting it.
+func TestReconcileAPIAccess_ReportsCIMDGrantWhenNothingManaged(t *testing.T) {
+	s := apiAccessScheme(t)
+	oidcClient := clientWithAccess(nil)
+	oidcClient.Status.ClientType = pocketid.ClientTypeCIMD
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("unexpected %s to %s", r.Method, r.URL.Path)
+		}
+		writeJSON(w, []map[string]any{{
+			"api":               map[string]any{"id": "api-1", "resource": "https://orders.example.com"},
+			"cimdGrantedAccess": true,
+		}})
+	}))
+	defer ts.Close()
+
+	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(oidcClient).WithStatusSubresource(oidcClient).Build()}
+
+	if err := r.ReconcileAPIAccess(context.Background(), oidcClient, mustPocketClient(t, ts.URL)); err != nil {
+		t.Fatalf("ReconcileAPIAccess: %v", err)
+	}
+	if !reflect.DeepEqual(oidcClient.Status.CIMDGrantedAPIs, []string{"https://orders.example.com"}) {
+		t.Fatalf("cimdGrantedAPIs = %v", oidcClient.Status.CIMDGrantedAPIs)
+	}
+}
+
+// A standard client can never hold CIMD-granted access, so it must not cost an extra call.
+func TestReconcileAPIAccess_StandardClientNotFetchedWhenNothingManaged(t *testing.T) {
+	s := apiAccessScheme(t)
+	oidcClient := clientWithAccess(nil)
+	called := false
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		writeJSON(w, []any{})
+	}))
+	defer ts.Close()
+
+	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(oidcClient).WithStatusSubresource(oidcClient).Build()}
+
+	if err := r.ReconcileAPIAccess(context.Background(), oidcClient, mustPocketClient(t, ts.URL)); err != nil {
+		t.Fatalf("ReconcileAPIAccess: %v", err)
+	}
+	if called {
+		t.Fatal("a standard client with nothing managed must not reach Pocket-ID")
 	}
 }
 

@@ -120,8 +120,16 @@ spec:
 
 Notes:
 
+- CIMD must be enabled on the instance first: a client only exists once its URL is on
+  [`spec.cimdUrlAllowlist`](pocketidinstance.md#client-id-metadata-documents). With an empty
+  allowlist `cimdAccess` is accepted and reconciled but grants nobody anything.
 - The operator owns this setting like it owns the permission set: removing `cimdAccess`
   disables CIMD access in Pocket-ID rather than leaving it as it was.
+- This grants **every** CIMD client. A grant to one specific client goes on that client's
+  `spec.apiAccess` instead.
+- Access granted here is not visible from a client's `spec.apiAccess`, so removing an
+  `apiAccess` entry for an API that also sets `cimdAccess` does **not** revoke the client's
+  access. The client's `status.cimdGrantedAPIs` lists what it reaches this way.
 - With no permission marked, CIMD clients get access with no permissions, which a client
   requesting a resource without any scopes needs.
 - `spec.cimdAccess: false` leaves the per-permission marks in place, so turning it back on
