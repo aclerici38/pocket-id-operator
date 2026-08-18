@@ -66,15 +66,7 @@ const (
 	// firstUnsupportedPocketIDVersion is the lowest pocket-id version that introduces
 	// breaking changes this operator cannot manage. Detecting this version or newer
 	// on an instance crashloops the operator to prevent unwanted changes via an incompatible api
-	//
-	// v2.14.0 replaces the single-secret OIDC client endpoints
-	// (GET/POST /oidc/clients/:id/secret) with the multi-secret
-	// /oidc/clients/:id/secrets collection, which this operator does not speak:
-	// https://github.com/pocket-id/pocket-id/commit/155a1fcba09fa09262af24d712f8da39d16836e6
-	firstUnsupportedPocketIDVersion = "v2.14.0"
-
-	// TODO: revert after v2.14 is released
-	// firstUnsupportedPocketIDVersion = "v3.0.0"
+	firstUnsupportedPocketIDVersion = "v3.0.0"
 
 	// Environment variable mapping
 	envEncryptionKey      = "ENCRYPTION_KEY"
