@@ -732,11 +732,8 @@ spec:
                   type: string
                 type: array
               managedAPIs:
-                description: |-
-                  ManagedAPIs are the Pocket-ID API IDs the operator last granted this client. Used to
-                  detect when spec.apiAccess is emptied so the access can be revoked. Permission IDs
-                  cannot serve that purpose: a grant that conveys a flow without selecting any
-                  permissions records none.
+                description: ManagedAPIs are the Pocket-ID API IDs the operator last
+                  granted this client.
                 items:
                   type: string
                 type: array
