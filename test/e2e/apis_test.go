@@ -308,13 +308,12 @@ var _ = Describe("PocketIDAPI CIMD Access", Ordered, func() {
 				{Key: "read:data", Name: "Read data", CIMDAccess: true},
 				{Key: "write:data", Name: "Write data"},
 			},
-			CIMDAccess: true,
 		})
 		apiID = waitForStatusFieldNotEmpty("pocketidapi", apiName, userNS, ".status.apiID")
 		readID = permIDFromStatus(apiName, "read:data")
 	})
 
-	It("should enable CIMD access with only the selected permission", func() {
+	It("should enable CIMD access from the permission mark alone", func() {
 		Eventually(func(g Gomega) {
 			body := getFromPocketID("verify-cimd", userNS, "/api/apis/"+apiID)
 			g.Expect(body).To(ContainSubstring(`"allowCimdClients":true`))
@@ -338,7 +337,6 @@ var _ = Describe("PocketIDAPI CIMD Access", Ordered, func() {
 				{Key: "write:data", Name: "Write data"},
 				{Key: "sync:data", Name: "Sync data", CIMDAccess: true},
 			},
-			CIMDAccess: true,
 		})
 		waitForReconciled("pocketidapi", apiName, userNS)
 
@@ -349,7 +347,7 @@ var _ = Describe("PocketIDAPI CIMD Access", Ordered, func() {
 		}, 2*time.Minute, 2*time.Second).Should(Succeed())
 	})
 
-	It("should disable CIMD access when the field is removed", func() {
+	It("should disable CIMD access when the marks are removed", func() {
 		createAPI(APIOptions{
 			Name: apiName, Resource: resource,
 			Permissions: []APIPermissionOption{
@@ -357,7 +355,7 @@ var _ = Describe("PocketIDAPI CIMD Access", Ordered, func() {
 				{Key: "write:data", Name: "Write data"},
 				{Key: "sync:data", Name: "Sync data"},
 			},
-			// CIMDAccess intentionally absent: the operator owns the setting.
+			// No permission marked and no explicit flag: the operator turns access off.
 		})
 		waitForReconciled("pocketidapi", apiName, userNS)
 

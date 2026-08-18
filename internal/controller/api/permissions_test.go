@@ -68,18 +68,21 @@ func TestCIMDAccessDrift(t *testing.T) {
 		},
 	}
 
+	yes, no := true, false
 	tests := []struct {
-		name    string
-		enabled bool
-		cimd    []string
-		want    bool
-		wantIDs []string
+		name        string
+		enabled     *bool
+		cimd        []string
+		want        bool
+		wantEnabled bool
+		wantIDs     []string
 	}{
-		{name: "in sync", enabled: true, cimd: []string{"read"}, want: false, wantIDs: []string{"p-read"}},
-		{name: "permission added", enabled: true, cimd: []string{"read", "write"}, want: true, wantIDs: []string{"p-read", "p-write"}},
-		{name: "permission dropped", enabled: true, want: true, wantIDs: []string{}},
-		{name: "disabled keeps permissions", cimd: []string{"read"}, want: true, wantIDs: []string{"p-read"}},
-		{name: "unset means off", want: true, wantIDs: []string{}},
+		{name: "derived on, in sync", cimd: []string{"read"}, want: false, wantEnabled: true, wantIDs: []string{"p-read"}},
+		{name: "permission added", cimd: []string{"read", "write"}, want: true, wantEnabled: true, wantIDs: []string{"p-read", "p-write"}},
+		{name: "permission dropped", want: true, wantIDs: []string{}},
+		{name: "explicit true with no permissions", enabled: &yes, want: true, wantEnabled: true, wantIDs: []string{}},
+		{name: "explicit false keeps marks", enabled: &no, cimd: []string{"read"}, want: true, wantIDs: []string{"p-read"}},
+		{name: "nothing marked means off", want: true, wantIDs: []string{}},
 	}
 
 	for _, tt := range tests {
@@ -90,9 +93,12 @@ func TestCIMDAccessDrift(t *testing.T) {
 					Permissions: apiPermissions(tt.cimd, "read", "write"),
 				},
 			}
-			drift, ids := cimdAccessDrift(api, current)
+			drift, enabled, ids := cimdAccessDrift(api, current)
 			if drift != tt.want {
 				t.Errorf("drift = %v, want %v", drift, tt.want)
+			}
+			if enabled != tt.wantEnabled {
+				t.Errorf("enabled = %v, want %v", enabled, tt.wantEnabled)
 			}
 			if !reflect.DeepEqual(ids, tt.wantIDs) {
 				t.Errorf("permissionIDs = %v, want %v", ids, tt.wantIDs)
@@ -106,11 +112,10 @@ func TestCIMDAccessDrift(t *testing.T) {
 func TestCIMDAccessDrift_IgnoresPermissionNotYetCreated(t *testing.T) {
 	api := &pocketidinternalv1alpha1.PocketIDAPI{
 		Spec: pocketidinternalv1alpha1.PocketIDAPISpec{
-			CIMDAccess:  true,
 			Permissions: apiPermissions([]string{"sync"}, "sync"),
 		},
 	}
-	drift, ids := cimdAccessDrift(api, &pocketid.API{AllowCIMDClients: true})
+	drift, _, ids := cimdAccessDrift(api, &pocketid.API{AllowCIMDClients: true})
 	if drift || len(ids) != 0 {
 		t.Fatalf("drift = %v, ids = %v; want no push until the permission exists", drift, ids)
 	}

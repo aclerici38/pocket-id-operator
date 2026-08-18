@@ -53,7 +53,7 @@ spec:
 | `spec.permissions[].name` | Human-friendly label for the permission. |
 | `spec.permissions[].description` | Optional description. |
 | `spec.permissions[].cimdAccess` | Lets CIMD clients request this permission. Only takes effect while `spec.cimdAccess` is true. |
-| `spec.cimdAccess` | Grants every Client ID Metadata Document client access to this API. Unset means disabled. |
+| `spec.cimdAccess` | Grants every Client ID Metadata Document client access to this API. Defaults to true when any permission sets `cimdAccess`. |
 | `spec.instanceSelector` | Selects the `PocketIDInstance` to reconcile against. Optional when exactly one instance exists. |
 
 `spec.resource` is immutable: to change it, delete and recreate the resource. Because
@@ -109,7 +109,6 @@ an admin registering every client that wants to reach it:
 ```yaml
 spec:
   resource: https://orders.example.com
-  cimdAccess: true
   permissions:
     - key: read:orders
       name: Read orders
@@ -118,22 +117,28 @@ spec:
       name: Write orders
 ```
 
+Marking a permission is enough — `spec.cimdAccess` defaults from the marks, and is only
+needed for the two cases they cannot express:
+
+| `spec.cimdAccess` | Permissions marked | Result |
+|-------------------|--------------------|--------|
+| unset | one or more | Access to the marked permissions |
+| unset | none | No access |
+| `true` | none | Access with no permissions, for a client requesting a resource without any scopes |
+| `false` | one or more | No access, marks kept so it can be turned back on |
+
 Notes:
 
 - CIMD must be enabled on the instance first: a client only exists once its URL is on
   [`spec.cimdUrlAllowlist`](pocketidinstance.md#client-id-metadata-documents). With an empty
   allowlist `cimdAccess` is accepted and reconciled but grants nobody anything.
-- The operator owns this setting like it owns the permission set: removing `cimdAccess`
-  disables CIMD access in Pocket-ID rather than leaving it as it was.
+- The operator owns this setting like it owns the permission set: unmarking every
+  permission disables CIMD access in Pocket-ID rather than leaving it as it was.
 - This grants **every** CIMD client. A grant to one specific client goes on that client's
   `spec.apiAccess` instead.
 - Access granted here is not visible from a client's `spec.apiAccess`, so removing an
   `apiAccess` entry for an API that also sets `cimdAccess` does **not** revoke the client's
   access. The client's `status.cimdGrantedAPIs` lists what it reaches this way.
-- With no permission marked, CIMD clients get access with no permissions, which a client
-  requesting a resource without any scopes needs.
-- `spec.cimdAccess: false` leaves the per-permission marks in place, so turning it back on
-  restores the same selection.
 
 ## Migrating from an existing setup
 

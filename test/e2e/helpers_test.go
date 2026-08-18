@@ -616,7 +616,7 @@ type APIOptions struct {
 	Resource         string // audience identifier (immutable); defaults from Name when empty
 	Permissions      []APIPermissionOption
 	InstanceSelector map[string]string
-	CIMDAccess       bool
+	CIMDAccess       *bool
 }
 
 // APIPermissionOption configures a spec.permissions entry.
@@ -669,8 +669,8 @@ func buildAPIYAML(opts APIOptions) string {
 		}
 	}
 
-	if opts.CIMDAccess {
-		spec.WriteString("  cimdAccess: true\n")
+	if opts.CIMDAccess != nil {
+		spec.WriteString(fmt.Sprintf("  cimdAccess: %t\n", *opts.CIMDAccess))
 	}
 
 	return fmt.Sprintf(`apiVersion: pocketid.internal/v1alpha1

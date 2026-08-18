@@ -147,7 +147,6 @@ func TestPushAPIState_GrantsCIMDAccessToPermissionCreatedInSameEdit(t *testing.T
 			Permissions: []pocketidinternalv1alpha1.APIPermission{
 				{Key: "read:orders", Name: "Read", CIMDAccess: true},
 			},
-			CIMDAccess: true,
 		},
 		Status: pocketidinternalv1alpha1.PocketIDAPIStatus{APIID: "api-1"},
 	}

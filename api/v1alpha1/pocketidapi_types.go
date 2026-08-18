@@ -82,12 +82,13 @@ type PocketIDAPISpec struct {
 	Permissions []APIPermission `json:"permissions,omitempty"`
 
 	// CIMDAccess grants every client registered through an OAuth Client ID Metadata
-	// Document access to this API, so dynamically-registered clients do not each need
-	// an explicit grant. Which permissions they may request is marked per permission;
-	// with none marked they get access with no permissions. Leaving this unset disables
-	// CIMD access in Pocket-ID: the operator owns the setting.
+	// Document access to this API, so dynamically-registered clients do not each need an
+	// explicit grant. Defaults to true when any permission sets cimdAccess. Set it to true
+	// explicitly to grant access with no permissions, which is what a client requesting a
+	// resource without any scopes needs, or to false to revoke access while keeping the
+	// per-permission marks.
 	// +optional
-	CIMDAccess bool `json:"cimdAccess,omitempty"`
+	CIMDAccess *bool `json:"cimdAccess,omitempty"`
 }
 
 // ObservedAPIPermission is a permission resolved from Pocket-ID, including its ID.
