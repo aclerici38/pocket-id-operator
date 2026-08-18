@@ -40,7 +40,7 @@
       "description": "Go version across the project",
       "matchPackageNames": ["go", "docker.io/library/golang"],
       "groupName": "golang",
-      "minimumGroupSize": 3
+      "minimumGroupSize": 2
     },
     {
       "matchPackageNames": ["kubernetes/kubernetes", "/^k8s\\.io//", "/^sigs\\.k8s\\.io//"],
