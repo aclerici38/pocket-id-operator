@@ -846,7 +846,7 @@ func (c *Client) GetOIDCClientSCIMServiceProvider(ctx context.Context, oidcClien
 // CreateSCIMServiceProvider creates a new SCIM service provider.
 func (c *Client) CreateSCIMServiceProvider(ctx context.Context, input SCIMServiceProviderInput) (*SCIMServiceProvider, error) {
 	params := scim.NewPostAPIScimServiceProviderParams().
-		WithServiceProvider(&models.GithubComPocketIDPocketIDBackendInternalDtoScimServiceProviderCreateDTO{
+		WithServiceProvider(&models.ScimsyncScimServiceProviderCreateDTO{
 			Endpoint:     &input.Endpoint,
 			OidcClientID: &input.OIDCClientID,
 			Token:        input.Token,
@@ -866,7 +866,7 @@ func (c *Client) CreateSCIMServiceProvider(ctx context.Context, input SCIMServic
 func (c *Client) UpdateSCIMServiceProvider(ctx context.Context, id string, input SCIMServiceProviderInput) (*SCIMServiceProvider, error) {
 	params := scim.NewPutAPIScimServiceProviderIDParams().
 		WithID(id).
-		WithServiceProvider(&models.GithubComPocketIDPocketIDBackendInternalDtoScimServiceProviderCreateDTO{
+		WithServiceProvider(&models.ScimsyncScimServiceProviderCreateDTO{
 			Endpoint:     &input.Endpoint,
 			OidcClientID: &input.OIDCClientID,
 			Token:        input.Token,
@@ -1428,7 +1428,7 @@ func clientAPIAccessFromDTO(clientPermissionIDs, userDelegatedPermissionIDs []st
 	}
 }
 
-func scimFromDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoScimServiceProviderDTO) *SCIMServiceProvider {
+func scimFromDTO(dto *models.ScimsyncScimServiceProviderDTO) *SCIMServiceProvider {
 	if dto == nil {
 		return nil
 	}
