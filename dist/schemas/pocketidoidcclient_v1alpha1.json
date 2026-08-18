@@ -953,7 +953,17 @@
           ]
         },
         "managedAPIPermissionIDs": {
-          "description": "ManagedAPIPermissionIDs are the Pocket-ID API permission IDs the operator last\npushed as this client's API access (both delegated and client-credentials).\nUsed to detect when spec.apiAccess is emptied so the access can be cleared.",
+          "description": "ManagedAPIPermissionIDs are the Pocket-ID API permission IDs the operator last\npushed as this client's API access (both delegated and client-credentials).",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "managedAPIs": {
+          "description": "ManagedAPIs are the Pocket-ID API IDs the operator last granted this client. Used to\ndetect when spec.apiAccess is emptied so the access can be revoked. Permission IDs\ncannot serve that purpose: a grant that conveys a flow without selecting any\npermissions records none.",
           "items": {
             "type": "string"
           },

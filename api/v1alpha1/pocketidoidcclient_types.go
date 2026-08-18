@@ -505,9 +505,12 @@ type PocketIDOIDCClientStatus struct {
 
 	// ManagedAPIPermissionIDs are the Pocket-ID API permission IDs the operator last
 	// pushed as this client's API access (both delegated and client-credentials).
-	// Used to detect when spec.apiAccess is emptied so the access can be cleared.
 	// +optional
 	ManagedAPIPermissionIDs []string `json:"managedAPIPermissionIDs,omitempty"`
+
+	// ManagedAPIs are the Pocket-ID API IDs the operator last granted this client.
+	// +optional
+	ManagedAPIs []string `json:"managedAPIs,omitempty"`
 
 	// CIMDGrantedAPIs are the API resources this client can reach because the API grants
 	// every Client ID Metadata Document client access, rather than because of spec.apiAccess.

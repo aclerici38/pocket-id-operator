@@ -398,7 +398,8 @@ set `delegatedAccess` or `clientAccess` instead of listing permissions:
 ```
 
 Both default to true when the matching permission list is non-empty, so existing grants
-keep working unchanged. `clientPermissions` and `clientAccess` require a confidential
+keep working unchanged. Removing the entry revokes the grant either way — the operator
+tracks the APIs it granted, not just the permissions. `clientPermissions` and `clientAccess` require a confidential
 client (`isPublic: false`). The client is the sole owner of its API access in Pocket-ID;
 see [PocketIDAPI](pocketidapi.md#granting-client-access) for the full semantics.
 

@@ -39,7 +39,11 @@ func (r *Reconciler) ReconcileAPIAccess(ctx context.Context, oidcClient *pocketi
 
 	// A cimd client is fetched even when nothing is managed, so status keeps reporting the
 	// access its APIs grant it. Only a cimd client can hold that access.
-	manage := len(oidcClient.Spec.APIAccess) > 0 || len(oidcClient.Status.ManagedAPIPermissionIDs) > 0
+	// ManagedAPIPermissionIDs is still consulted so a client reconciled by an older operator
+	// version, which recorded no ManagedAPIs, stays under management across the upgrade.
+	manage := len(oidcClient.Spec.APIAccess) > 0 ||
+		len(oidcClient.Status.ManagedAPIs) > 0 ||
+		len(oidcClient.Status.ManagedAPIPermissionIDs) > 0
 	isCIMD := oidcClient.Status.ClientType == pocketid.ClientTypeCIMD
 	if !manage && !isCIMD {
 		return nil
@@ -76,7 +80,8 @@ func (r *Reconciler) ReconcileAPIAccess(ctx context.Context, oidcClient *pocketi
 
 	changed := false
 	if !manage {
-		return r.patchAPIAccessStatus(ctx, oidcClient, oidcClient.Status.ManagedAPIPermissionIDs, cimdGranted)
+		return r.patchAPIAccessStatus(ctx, oidcClient, oidcClient.Status.ManagedAPIPermissionIDs,
+			oidcClient.Status.ManagedAPIs, cimdGranted)
 	}
 
 	for _, apiID := range sortedKeysOfGrants(desired) {
@@ -103,19 +108,22 @@ func (r *Reconciler) ReconcileAPIAccess(ctx context.Context, oidcClient *pocketi
 		metrics.ResourceOperations.WithLabelValues("PocketIDOIDCClient", "updated").Inc()
 	}
 
-	// Persist the managed permission IDs so the access can be cleared if spec.apiAccess is emptied.
-	return r.patchAPIAccessStatus(ctx, oidcClient, managedPermissionIDs(desired), cimdGranted)
+	// Persist what was granted so the access can be revoked if spec.apiAccess is emptied.
+	return r.patchAPIAccessStatus(ctx, oidcClient, managedPermissionIDs(desired),
+		sortedKeysOfGrants(desired), cimdGranted)
 }
 
 // patchAPIAccessStatus records what the operator manages and what the client reaches through
 // its APIs' CIMD setting, in one patch.
-func (r *Reconciler) patchAPIAccessStatus(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, managed, cimdGranted []string) error {
+func (r *Reconciler) patchAPIAccessStatus(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, managed, managedAPIs, cimdGranted []string) error {
 	if pocketid.SortedEqual(managed, oidcClient.Status.ManagedAPIPermissionIDs) &&
+		pocketid.SortedEqual(managedAPIs, oidcClient.Status.ManagedAPIs) &&
 		pocketid.SortedEqual(cimdGranted, oidcClient.Status.CIMDGrantedAPIs) {
 		return nil
 	}
 	base := oidcClient.DeepCopy()
 	oidcClient.Status.ManagedAPIPermissionIDs = managed
+	oidcClient.Status.ManagedAPIs = managedAPIs
 	oidcClient.Status.CIMDGrantedAPIs = cimdGranted
 	if err := r.Status().Patch(ctx, oidcClient, client.MergeFrom(base)); err != nil {
 		return fmt.Errorf("update API access status: %w", err)
@@ -220,6 +228,7 @@ func managedPermissionIDs(grants map[string]pocketid.APIClientGrant) []string {
 	return mergeSorted(all...)
 }
 
+// sortedKeysOfGrants returns the API IDs of the grants, sorted.
 func sortedKeysOfGrants(grants map[string]pocketid.APIClientGrant) []string {
 	keys := make([]string, 0, len(grants))
 	for k := range grants {

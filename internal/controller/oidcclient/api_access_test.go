@@ -212,12 +212,16 @@ func TestReconcileAPIAccess_PushesOnDrift(t *testing.T) {
 	if !reflect.DeepEqual(oidcClient.Status.ManagedAPIPermissionIDs, []string{"p-read"}) {
 		t.Fatalf("expected managed status p-read, got %v", oidcClient.Status.ManagedAPIPermissionIDs)
 	}
+	if !reflect.DeepEqual(oidcClient.Status.ManagedAPIs, []string{"api-1"}) {
+		t.Fatalf("expected managed API api-1, got %v", oidcClient.Status.ManagedAPIs)
+	}
 }
 
 func TestReconcileAPIAccess_RevokesDroppedAPI(t *testing.T) {
 	s := apiAccessScheme(t)
 	oidcClient := clientWithAccess(nil)
 	oidcClient.Status.ManagedAPIPermissionIDs = []string{"p-read"}
+	oidcClient.Status.ManagedAPIs = []string{"api-1"}
 
 	deleted := ""
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -245,8 +249,46 @@ func TestReconcileAPIAccess_RevokesDroppedAPI(t *testing.T) {
 	if deleted != "/api/apis/api-1/clients/client-1" {
 		t.Fatalf("expected the dropped API grant to be revoked, got %q", deleted)
 	}
-	if oidcClient.Status.ManagedAPIPermissionIDs != nil {
-		t.Fatalf("expected managed IDs cleared, got %v", oidcClient.Status.ManagedAPIPermissionIDs)
+	if oidcClient.Status.ManagedAPIPermissionIDs != nil || oidcClient.Status.ManagedAPIs != nil {
+		t.Fatalf("expected managed state cleared, got %v / %v",
+			oidcClient.Status.ManagedAPIPermissionIDs, oidcClient.Status.ManagedAPIs)
+	}
+}
+
+// A grant that conveys a flow without selecting permissions records no permission IDs, so
+// only the managed API IDs can tell the operator it still owns the grant once spec drops it.
+func TestReconcileAPIAccess_RevokesDroppedScopelessGrant(t *testing.T) {
+	s := apiAccessScheme(t)
+	oidcClient := clientWithAccess(nil)
+	oidcClient.Status.ManagedAPIs = []string{"api-1"}
+
+	deleted := ""
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			writeJSON(w, []map[string]any{{
+				"api":                 map[string]any{"id": "api-1"},
+				"userDelegatedAccess": true,
+			}})
+		case http.MethodDelete:
+			deleted = r.URL.Path
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(oidcClient).WithStatusSubresource(oidcClient).Build()}
+
+	if err := r.ReconcileAPIAccess(context.Background(), oidcClient, mustPocketClient(t, ts.URL)); err != nil {
+		t.Fatalf("ReconcileAPIAccess: %v", err)
+	}
+	if deleted != "/api/apis/api-1/clients/client-1" {
+		t.Fatalf("expected the scopeless grant to be revoked, got %q", deleted)
+	}
+	if oidcClient.Status.ManagedAPIs != nil {
+		t.Fatalf("expected managed APIs cleared, got %v", oidcClient.Status.ManagedAPIs)
 	}
 }
 
