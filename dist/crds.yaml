@@ -40,6 +40,15 @@ spec:
           spec:
             description: spec defines the desired state of PocketIDAPI
             properties:
+              cimdAccess:
+                description: |-
+                  CIMDAccess grants every client registered through an OAuth Client ID Metadata
+                  Document access to this API, so dynamically-registered clients do not each need an
+                  explicit grant. Defaults to true when any permission sets cimdAccess. Set it to true
+                  explicitly to grant access with no permissions, which is what a client requesting a
+                  resource without any scopes needs, or to false to revoke access while keeping the
+                  per-permission marks.
+                type: boolean
               instanceSelector:
                 description: |-
                   InstanceSelector selects the PocketIDInstance to reconcile against.
@@ -104,6 +113,11 @@ spec:
                   description: APIPermission defines a single scoped permission offered
                     by an API.
                   properties:
+                    cimdAccess:
+                      description: |-
+                        CIMDAccess lets clients registered through a Client ID Metadata Document request
+                        this permission. Only takes effect while spec.cimdAccess is true.
+                      type: boolean
                     description:
                       description: Description optionally explains what the permission
                         grants.
@@ -155,6 +169,10 @@ spec:
               apiID:
                 description: APIID is the ID assigned by Pocket-ID.
                 type: string
+              cimdAccess:
+                description: CIMDAccess reports whether CIMD clients may reach this
+                  API.
+                type: boolean
               conditions:
                 description: Conditions represent the current state of the PocketIDAPI
                   resource.
@@ -230,6 +248,10 @@ spec:
                   description: ObservedAPIPermission is a permission resolved from
                     Pocket-ID, including its ID.
                   properties:
+                    cimdAccess:
+                      description: CIMDAccess reports whether CIMD clients may request
+                        this permission.
+                      type: boolean
                     id:
                       description: ID is the Pocket-ID identifier for the permission.
                       type: string
@@ -3378,6 +3400,11 @@ spec:
                       required:
                       - name
                       type: object
+                    clientAccess:
+                      description: |-
+                        ClientAccess grants the client-credentials flow even with no permissions selected.
+                        Defaults to true when clientPermissions is non-empty, and requires a confidential client.
+                      type: boolean
                     clientPermissions:
                       description: |-
                         ClientPermissions are permission keys granted for the client-credentials
@@ -3385,6 +3412,12 @@ spec:
                       items:
                         type: string
                       type: array
+                    delegatedAccess:
+                      description: |-
+                        DelegatedAccess grants the user-delegated flow even with no permissions selected,
+                        e.g. a client requesting a resource that doesn't need any scopes.
+                        Defaults to true when delegatedPermissions is non-empty.
+                      type: boolean
                     delegatedPermissions:
                       description: |-
                         DelegatedPermissions are permission keys granted for the user-delegated
@@ -3806,10 +3839,11 @@ spec:
                 is false
               rule: '!has(self.clientSecretRotation) || !self.clientSecretRotation.enabled
                 || !has(self.secret) || !has(self.secret.storeClientSecret) || self.secret.storeClientSecret'
-            - message: clientPermissions require a confidential client (isPublic must
-                be false)
+            - message: clientPermissions and clientAccess require a confidential client
+                (isPublic must be false)
               rule: '!self.isPublic || !has(self.apiAccess) || self.apiAccess.all(a,
-                !has(a.clientPermissions) || size(a.clientPermissions) == 0)'
+                (!has(a.clientPermissions) || size(a.clientPermissions) == 0) && (!has(a.clientAccess)
+                || !a.clientAccess))'
             - message: clientSecretRef requires a confidential client (isPublic must
                 be false)
               rule: '!has(self.clientSecretRef) || !self.isPublic'
@@ -3832,11 +3866,11 @@ spec:
               rule: '!(has(self.clientID) && self.clientID.startsWith(''https://''))
                 || (!has(self.clientSecretRef) && (!has(self.clientSecretRotation)
                 || !self.clientSecretRotation.enabled))'
-            - message: clientPermissions require a confidential client, and a CIMD
-                client is always public
+            - message: clientPermissions and clientAccess require a confidential client,
+                and a CIMD client is always public
               rule: '!(has(self.clientID) && self.clientID.startsWith(''https://''))
-                || !has(self.apiAccess) || self.apiAccess.all(a, !has(a.clientPermissions)
-                || size(a.clientPermissions) == 0)'
+                || !has(self.apiAccess) || self.apiAccess.all(a, (!has(a.clientPermissions)
+                || size(a.clientPermissions) == 0) && (!has(a.clientAccess) || !a.clientAccess))'
           status:
             description: status defines the observed state of PocketIDOIDCClient
             properties:
@@ -3848,6 +3882,15 @@ spec:
                 type: array
               callbackUrls:
                 description: CallbackURLs are the current callback URLs from Pocket-ID
+                items:
+                  type: string
+                type: array
+              cimdGrantedAPIs:
+                description: |-
+                  CIMDGrantedAPIs are the API resources this client can reach because the API grants
+                  every Client ID Metadata Document client access, rather than because of spec.apiAccess.
+                  Removing an apiAccess entry does not revoke access listed here; that is turned off on
+                  the PocketIDAPI. Only ever set for a cimd client.
                 items:
                   type: string
                 type: array
@@ -3962,7 +4005,12 @@ spec:
                 description: |-
                   ManagedAPIPermissionIDs are the Pocket-ID API permission IDs the operator last
                   pushed as this client's API access (both delegated and client-credentials).
-                  Used to detect when spec.apiAccess is emptied so the access can be cleared.
+                items:
+                  type: string
+                type: array
+              managedAPIs:
+                description: ManagedAPIs are the Pocket-ID API IDs the operator last
+                  granted this client.
                 items:
                   type: string
                 type: array

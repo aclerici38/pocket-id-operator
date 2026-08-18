@@ -736,7 +736,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 					APIRef:            pocketidinternalv1alpha1.NamespacedAPIReference{Name: "my-api"},
 					ClientPermissions: []string{"read"},
 				}}
-			}), "clientPermissions require a confidential client")
+			}), "clientPermissions and clientAccess require a confidential client")
 		})
 
 		It("accepts apiAccess delegatedPermissions on a CIMD client", func() {

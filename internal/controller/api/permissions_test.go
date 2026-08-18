@@ -2,6 +2,7 @@ package api
 
 import (
 	"reflect"
+	"slices"
 	"testing"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
@@ -56,4 +57,79 @@ func TestObservedPermissions(t *testing.T) {
 	if len(got) != 1 || got[0].ID != "1" || got[0].Key != "k" || got[0].Name != "N" {
 		t.Fatalf("observedPermissions unexpected: %+v", got)
 	}
+}
+
+func TestCIMDAccessDrift(t *testing.T) {
+	current := &pocketid.API{
+		AllowCIMDClients: true,
+		Permissions: []pocketid.APIPermission{
+			{ID: "p-read", Key: "read", AllowedForCIMDClients: true},
+			{ID: "p-write", Key: "write"},
+		},
+	}
+
+	yes, no := true, false
+	tests := []struct {
+		name        string
+		enabled     *bool
+		cimd        []string
+		want        bool
+		wantEnabled bool
+		wantIDs     []string
+	}{
+		{name: "derived on, in sync", cimd: []string{"read"}, want: false, wantEnabled: true, wantIDs: []string{"p-read"}},
+		{name: "permission added", cimd: []string{"read", "write"}, want: true, wantEnabled: true, wantIDs: []string{"p-read", "p-write"}},
+		{name: "permission dropped", want: true, wantIDs: []string{}},
+		{name: "explicit true with no permissions", enabled: &yes, want: true, wantEnabled: true, wantIDs: []string{}},
+		{name: "explicit false keeps marks", enabled: &no, cimd: []string{"read"}, want: true, wantIDs: []string{"p-read"}},
+		{name: "nothing marked means off", want: true, wantIDs: []string{}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			api := &pocketidinternalv1alpha1.PocketIDAPI{
+				Spec: pocketidinternalv1alpha1.PocketIDAPISpec{
+					CIMDAccess:  tt.enabled,
+					Permissions: apiPermissions(tt.cimd, "read", "write"),
+				},
+			}
+			drift, enabled, ids := cimdAccessDrift(api, current)
+			if drift != tt.want {
+				t.Errorf("drift = %v, want %v", drift, tt.want)
+			}
+			if enabled != tt.wantEnabled {
+				t.Errorf("enabled = %v, want %v", enabled, tt.wantEnabled)
+			}
+			if !reflect.DeepEqual(ids, tt.wantIDs) {
+				t.Errorf("permissionIDs = %v, want %v", ids, tt.wantIDs)
+			}
+		})
+	}
+}
+
+// A permission marked for CIMD but not yet created in Pocket-ID contributes no ID, so the
+// push has to wait for the permission update rather than resolving against stale state.
+func TestCIMDAccessDrift_IgnoresPermissionNotYetCreated(t *testing.T) {
+	api := &pocketidinternalv1alpha1.PocketIDAPI{
+		Spec: pocketidinternalv1alpha1.PocketIDAPISpec{
+			Permissions: apiPermissions([]string{"sync"}, "sync"),
+		},
+	}
+	drift, _, ids := cimdAccessDrift(api, &pocketid.API{AllowCIMDClients: true})
+	if drift || len(ids) != 0 {
+		t.Fatalf("drift = %v, ids = %v; want no push until the permission exists", drift, ids)
+	}
+}
+
+// apiPermissions builds spec permissions for keys, marking those listed in cimd.
+func apiPermissions(cimd []string, keys ...string) []pocketidinternalv1alpha1.APIPermission {
+	perms := make([]pocketidinternalv1alpha1.APIPermission, 0, len(keys))
+	for _, key := range keys {
+		perms = append(perms, pocketidinternalv1alpha1.APIPermission{
+			Key:        key,
+			Name:       key,
+			CIMDAccess: slices.Contains(cimd, key),
+		})
+	}
+	return perms
 }

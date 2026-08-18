@@ -167,10 +167,20 @@ func TestOIDCClientOperations_UseEncodedPathForMetadataDocumentIDs(t *testing.T)
 
 		// API access lives on its own route prefix, so it needs encoding independently of
 		// the /api/oidc/clients ones.
-		if apiAccess := "/api/api-access/" + encoded; path == apiAccess {
+		if path == "/api/api-access/"+encoded+"/apis" {
 			seen[r.Method+" api-access"] = true
+			_ = json.NewEncoder(w).Encode([]any{})
+			return
+		}
+		if path == "/api/apis/api-1/clients/"+encoded {
+			seen[r.Method+" api-clients"] = true
+			if r.Method == http.MethodDelete {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"clientPermissionIds": []string{}, "userDelegatedPermissionIds": []string{},
+				"userDelegatedAccess":        true,
+				"userDelegatedPermissionIds": []string{"perm-1"},
 			})
 			return
 		}
@@ -224,13 +234,17 @@ func TestOIDCClientOperations_UseEncodedPathForMetadataDocumentIDs(t *testing.T)
 		t.Errorf("SetOIDCClientSecret: %v", err)
 	}
 	// Reachable for CIMD: admission allows apiAccess.delegatedPermissions on one.
-	if _, err := client.GetClientAPIAccess(ctx, metadataURL); err != nil {
-		t.Errorf("GetClientAPIAccess: %v", err)
+	if _, err := client.ListAPIClientGrants(ctx, metadataURL); err != nil {
+		t.Errorf("ListAPIClientGrants: %v", err)
 	}
-	if _, err := client.UpdateClientAPIAccess(ctx, metadataURL, ClientAPIAccess{
+	if _, err := client.SetAPIClientGrant(ctx, "api-1", metadataURL, APIClientGrant{
+		UserDelegatedAccess:        true,
 		UserDelegatedPermissionIDs: []string{"perm-1"},
 	}); err != nil {
-		t.Errorf("UpdateClientAPIAccess: %v", err)
+		t.Errorf("SetAPIClientGrant: %v", err)
+	}
+	if err := client.RemoveAPIClientGrant(ctx, "api-1", metadataURL); err != nil {
+		t.Errorf("RemoveAPIClientGrant: %v", err)
 	}
 	if err := client.DeleteOIDCClient(ctx, metadataURL); err != nil {
 		t.Errorf("DeleteOIDCClient: %v", err)
@@ -239,7 +253,7 @@ func TestOIDCClientOperations_UseEncodedPathForMetadataDocumentIDs(t *testing.T)
 	for _, want := range []string{
 		"GET ", "POST /refresh", "PUT ", "PUT /allowed-user-groups", "DELETE ",
 		"GET /scim-service-provider", "POST /secret",
-		"GET api-access", "PUT api-access",
+		"GET api-access", "PUT api-clients", "DELETE api-clients",
 	} {
 		if !seen[want] {
 			t.Errorf("no request reached the encoded route for %q (seen: %v)", want, seen)

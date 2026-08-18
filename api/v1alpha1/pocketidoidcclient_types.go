@@ -100,6 +100,17 @@ type OIDCClientAPIAccess struct {
 	// (machine-to-machine) flow. These require a confidential client.
 	// +optional
 	ClientPermissions []string `json:"clientPermissions,omitempty"`
+
+	// DelegatedAccess grants the user-delegated flow even with no permissions selected,
+	// e.g. a client requesting a resource that doesn't need any scopes.
+	// Defaults to true when delegatedPermissions is non-empty.
+	// +optional
+	DelegatedAccess *bool `json:"delegatedAccess,omitempty"`
+
+	// ClientAccess grants the client-credentials flow even with no permissions selected.
+	// Defaults to true when clientPermissions is non-empty, and requires a confidential client.
+	// +optional
+	ClientAccess *bool `json:"clientAccess,omitempty"`
 }
 
 // OIDCClientFederatedIdentity defines a federated identity for OIDC client credentials.
@@ -278,13 +289,13 @@ type SCIMSpec struct {
 // PocketIDOIDCClientSpec defines the desired state of PocketIDOIDCClient
 // +kubebuilder:validation:XValidation:rule="has(self.clientID) == has(oldSelf.clientID) && (!has(self.clientID) || self.clientID == oldSelf.clientID)",message="clientID is immutable"
 // +kubebuilder:validation:XValidation:rule="!has(self.clientSecretRotation) || !self.clientSecretRotation.enabled || !has(self.secret) || !has(self.secret.storeClientSecret) || self.secret.storeClientSecret",message="clientSecretRotation cannot be enabled when secret.storeClientSecret is false"
-// +kubebuilder:validation:XValidation:rule="!self.isPublic || !has(self.apiAccess) || self.apiAccess.all(a, !has(a.clientPermissions) || size(a.clientPermissions) == 0)",message="clientPermissions require a confidential client (isPublic must be false)"
+// +kubebuilder:validation:XValidation:rule="!self.isPublic || !has(self.apiAccess) || self.apiAccess.all(a, (!has(a.clientPermissions) || size(a.clientPermissions) == 0) && (!has(a.clientAccess) || !a.clientAccess))",message="clientPermissions and clientAccess require a confidential client (isPublic must be false)"
 // +kubebuilder:validation:XValidation:rule="!has(self.clientSecretRef) || !self.isPublic",message="clientSecretRef requires a confidential client (isPublic must be false)"
 // +kubebuilder:validation:XValidation:rule="!has(self.clientSecretRef) || !has(self.clientSecretRotation) || !self.clientSecretRotation.enabled",message="clientSecretRotation cannot be enabled when clientSecretRef is set"
 // +kubebuilder:validation:XValidation:rule="!has(self.clientID) || self.clientID.startsWith('https://') || self.clientID.size() <= 128",message="clientID must be at most 128 characters unless it is a client ID metadata document URL"
 // +kubebuilder:validation:XValidation:rule="!(has(self.clientID) && self.clientID.startsWith('https://')) || (!has(self.name) && !has(self.callbackUrls) && !has(self.logoutCallbackUrls) && !has(self.federatedIdentities) && !self.isPublic && !self.pkceEnabled)",message="name, callbackUrls, logoutCallbackUrls, federatedIdentities, isPublic, and pkceEnabled are owned by the client ID metadata document and must not be set on a CIMD client"
 // +kubebuilder:validation:XValidation:rule="!(has(self.clientID) && self.clientID.startsWith('https://')) || (!has(self.clientSecretRef) && (!has(self.clientSecretRotation) || !self.clientSecretRotation.enabled))",message="a CIMD client is always public and has no client secret, so clientSecretRef and clientSecretRotation are not supported"
-// +kubebuilder:validation:XValidation:rule="!(has(self.clientID) && self.clientID.startsWith('https://')) || !has(self.apiAccess) || self.apiAccess.all(a, !has(a.clientPermissions) || size(a.clientPermissions) == 0)",message="clientPermissions require a confidential client, and a CIMD client is always public"
+// +kubebuilder:validation:XValidation:rule="!(has(self.clientID) && self.clientID.startsWith('https://')) || !has(self.apiAccess) || self.apiAccess.all(a, (!has(a.clientPermissions) || size(a.clientPermissions) == 0) && (!has(a.clientAccess) || !a.clientAccess))",message="clientPermissions and clientAccess require a confidential client, and a CIMD client is always public"
 type PocketIDOIDCClientSpec struct {
 	// Name of the oidc client to create in Pocket ID.
 	// If omitted, defaults to metadata.name of the oidcclient resource.
@@ -494,9 +505,19 @@ type PocketIDOIDCClientStatus struct {
 
 	// ManagedAPIPermissionIDs are the Pocket-ID API permission IDs the operator last
 	// pushed as this client's API access (both delegated and client-credentials).
-	// Used to detect when spec.apiAccess is emptied so the access can be cleared.
 	// +optional
 	ManagedAPIPermissionIDs []string `json:"managedAPIPermissionIDs,omitempty"`
+
+	// ManagedAPIs are the Pocket-ID API IDs the operator last granted this client.
+	// +optional
+	ManagedAPIs []string `json:"managedAPIs,omitempty"`
+
+	// CIMDGrantedAPIs are the API resources this client can reach because the API grants
+	// every Client ID Metadata Document client access, rather than because of spec.apiAccess.
+	// Removing an apiAccess entry does not revoke access listed here; that is turned off on
+	// the PocketIDAPI. Only ever set for a cimd client.
+	// +optional
+	CIMDGrantedAPIs []string `json:"cimdGrantedAPIs,omitempty"`
 
 	// PKCESupported indicates Pocket-ID observed the client using PKCE during an
 	// authorization flow while spec.pkceEnabled is false, signalling PKCE can be enabled.

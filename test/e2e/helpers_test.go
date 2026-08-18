@@ -380,6 +380,8 @@ type APIAccessGrant struct {
 	APIRefNamespace      string
 	DelegatedPermissions []string
 	ClientPermissions    []string
+	DelegatedAccess      *bool
+	ClientAccess         *bool
 }
 
 // OIDCLogoConfig configures the logo spec for an OIDCClient.
@@ -534,6 +536,12 @@ func buildOIDCClientYAML(opts OIDCClientOptions) string {
 					spec.WriteString(fmt.Sprintf("    - %s\n", key))
 				}
 			}
+			if grant.DelegatedAccess != nil {
+				spec.WriteString(fmt.Sprintf("    delegatedAccess: %t\n", *grant.DelegatedAccess))
+			}
+			if grant.ClientAccess != nil {
+				spec.WriteString(fmt.Sprintf("    clientAccess: %t\n", *grant.ClientAccess))
+			}
 		}
 	}
 
@@ -608,6 +616,7 @@ type APIOptions struct {
 	Resource         string // audience identifier (immutable); defaults from Name when empty
 	Permissions      []APIPermissionOption
 	InstanceSelector map[string]string
+	CIMDAccess       *bool
 }
 
 // APIPermissionOption configures a spec.permissions entry.
@@ -615,6 +624,7 @@ type APIPermissionOption struct {
 	Key         string
 	Name        string
 	Description string
+	CIMDAccess  bool
 }
 
 func (o APIOptions) withDefaults() APIOptions {
@@ -653,7 +663,14 @@ func buildAPIYAML(opts APIOptions) string {
 			if p.Description != "" {
 				spec.WriteString(fmt.Sprintf("    description: %s\n", p.Description))
 			}
+			if p.CIMDAccess {
+				spec.WriteString("    cimdAccess: true\n")
+			}
 		}
+	}
+
+	if opts.CIMDAccess != nil {
+		spec.WriteString(fmt.Sprintf("  cimdAccess: %t\n", *opts.CIMDAccess))
 	}
 
 	return fmt.Sprintf(`apiVersion: pocketid.internal/v1alpha1

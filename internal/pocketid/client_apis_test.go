@@ -126,21 +126,32 @@ func TestUpdateAPIPermissions_SendsFullList(t *testing.T) {
 	}
 }
 
-func TestClientAPIAccess_GetAndUpdate(t *testing.T) {
-	var sent map[string][]string
+func TestAPIClientGrants_ListSetRemove(t *testing.T) {
+	var sent map[string]any
+	removed := false
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/api/api-access/client-1":
-			writeJSON(w, map[string][]string{
-				"clientPermissionIds":        {"c1"},
-				"userDelegatedPermissionIds": {"d1", "d2"},
+		case r.Method == http.MethodGet && r.URL.Path == "/api/api-access/client-1/apis":
+			writeJSON(w, []map[string]any{
+				{
+					"api":                        map[string]any{"id": "api-1"},
+					"clientAccess":               true,
+					"userDelegatedAccess":        true,
+					"clientPermissionIds":        []string{"c1"},
+					"userDelegatedPermissionIds": []string{"d1", "d2"},
+				},
+				// Reachable only through the API's CIMD setting, so it carries no grant of its own.
+				{
+					"api":               map[string]any{"id": "api-2", "resource": "https://api-2.example.com"},
+					"cimdGrantedAccess": true,
+				},
 			})
-		case r.Method == http.MethodPut && r.URL.Path == "/api/api-access/client-1":
+		case r.Method == http.MethodPut && r.URL.Path == "/api/apis/api-1/clients/client-1":
 			_ = json.NewDecoder(r.Body).Decode(&sent)
-			writeJSON(w, map[string][]string{
-				"clientPermissionIds":        sent["clientPermissionIds"],
-				"userDelegatedPermissionIds": sent["userDelegatedPermissionIds"],
-			})
+			writeJSON(w, sent)
+		case r.Method == http.MethodDelete && r.URL.Path == "/api/apis/api-1/clients/client-1":
+			removed = true
+			w.WriteHeader(http.StatusNoContent)
 		default:
 			http.NotFound(w, r)
 		}
@@ -148,26 +159,46 @@ func TestClientAPIAccess_GetAndUpdate(t *testing.T) {
 	defer ts.Close()
 
 	c := mustClient(t, ts.URL)
+	ctx := context.Background()
 
-	got, err := c.GetClientAPIAccess(context.Background(), "client-1")
+	grants, err := c.ListAPIClientGrants(ctx, "client-1")
 	if err != nil {
-		t.Fatalf("GetClientAPIAccess: %v", err)
+		t.Fatalf("ListAPIClientGrants: %v", err)
 	}
-	if !reflect.DeepEqual(got.ClientPermissionIDs, []string{"c1"}) ||
-		!reflect.DeepEqual(got.UserDelegatedPermissionIDs, []string{"d1", "d2"}) {
-		t.Fatalf("unexpected access: %+v", got)
+	if len(grants) != 2 || grants[0].APIID != "api-1" {
+		t.Fatalf("unexpected grants: %+v", grants)
+	}
+	if grants[0].CIMDGranted || grants[0].IsEmpty() {
+		t.Fatalf("the client's own grant must not read as CIMD-granted: %+v", grants[0])
+	}
+	if !grants[1].CIMDGranted || !grants[1].IsEmpty() || grants[1].Resource != "https://api-2.example.com" {
+		t.Fatalf("unexpected CIMD-granted entry: %+v", grants[1])
+	}
+	if !grants[0].ClientAccess || !grants[0].UserDelegatedAccess ||
+		!reflect.DeepEqual(grants[0].ClientPermissionIDs, []string{"c1"}) ||
+		!reflect.DeepEqual(grants[0].UserDelegatedPermissionIDs, []string{"d1", "d2"}) {
+		t.Fatalf("unexpected grant: %+v", grants[0])
 	}
 
-	_, err = c.UpdateClientAPIAccess(context.Background(), "client-1", ClientAPIAccess{
-		ClientPermissionIDs:        []string{"c2"},
-		UserDelegatedPermissionIDs: []string{"d3"},
+	applied, err := c.SetAPIClientGrant(ctx, "api-1", "client-1", APIClientGrant{
+		ClientAccess:        true,
+		ClientPermissionIDs: []string{"c2"},
 	})
 	if err != nil {
-		t.Fatalf("UpdateClientAPIAccess: %v", err)
+		t.Fatalf("SetAPIClientGrant: %v", err)
 	}
-	if !reflect.DeepEqual(sent["clientPermissionIds"], []string{"c2"}) ||
-		!reflect.DeepEqual(sent["userDelegatedPermissionIds"], []string{"d3"}) {
+	if sent["clientAccess"] != true || !reflect.DeepEqual(sent["clientPermissionIds"], []any{"c2"}) {
 		t.Fatalf("unexpected update payload: %+v", sent)
+	}
+	if applied.APIID != "api-1" || !applied.ClientAccess {
+		t.Fatalf("unexpected applied grant: %+v", applied)
+	}
+
+	if err := c.RemoveAPIClientGrant(ctx, "api-1", "client-1"); err != nil {
+		t.Fatalf("RemoveAPIClientGrant: %v", err)
+	}
+	if !removed {
+		t.Fatal("RemoveAPIClientGrant did not call the endpoint")
 	}
 }
 
@@ -204,4 +235,52 @@ func mustClient(t *testing.T, url string) *Client {
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+func TestSetAPICIMDAccess(t *testing.T) {
+	var sent map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut || r.URL.Path != "/api/apis/api-1/cimd-access" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewDecoder(r.Body).Decode(&sent)
+		writeJSON(w, map[string]any{
+			"id":               "api-1",
+			"allowCimdClients": sent["enabled"],
+			"permissions": []map[string]any{
+				{"id": "p-read", "key": "read", "allowedForCimdClients": true},
+			},
+		})
+	}))
+	defer ts.Close()
+
+	got, err := mustClient(t, ts.URL).SetAPICIMDAccess(context.Background(), "api-1", true, []string{"p-read"})
+	if err != nil {
+		t.Fatalf("SetAPICIMDAccess: %v", err)
+	}
+	if sent["enabled"] != true || !reflect.DeepEqual(sent["permissionIds"], []any{"p-read"}) {
+		t.Fatalf("unexpected payload: %+v", sent)
+	}
+	if !got.AllowCIMDClients || !got.Permissions[0].AllowedForCIMDClients {
+		t.Fatalf("unexpected API: %+v", got)
+	}
+}
+
+// An enabled API with no permissions is a valid grant, so the empty list must be sent
+// rather than omitted: Pocket-ID requires the field.
+func TestSetAPICIMDAccess_SendsEmptyPermissionList(t *testing.T) {
+	var raw map[string]json.RawMessage
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&raw)
+		writeJSON(w, map[string]any{"id": "api-1", "allowCimdClients": true})
+	}))
+	defer ts.Close()
+
+	if _, err := mustClient(t, ts.URL).SetAPICIMDAccess(context.Background(), "api-1", true, nil); err != nil {
+		t.Fatalf("SetAPICIMDAccess: %v", err)
+	}
+	if string(raw["permissionIds"]) != "[]" {
+		t.Fatalf("permissionIds = %s, want []", raw["permissionIds"])
+	}
 }

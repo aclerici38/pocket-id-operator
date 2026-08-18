@@ -61,10 +61,44 @@ func observedPermissions(permissions []pocketid.APIPermission) []pocketidinterna
 	observed := make([]pocketidinternalv1alpha1.ObservedAPIPermission, 0, len(permissions))
 	for _, p := range permissions {
 		observed = append(observed, pocketidinternalv1alpha1.ObservedAPIPermission{
-			ID:   p.ID,
-			Key:  p.Key,
-			Name: p.Name,
+			ID:         p.ID,
+			Key:        p.Key,
+			Name:       p.Name,
+			CIMDAccess: p.AllowedForCIMDClients,
 		})
 	}
 	return observed
+}
+
+// cimdAccessDrift reports whether the API's CIMD access differs from spec, along with the
+// resolved enabled state and the permission IDs to push. Access defaults to on when any
+// permission is marked, so the API-level field is only needed to grant access with no
+// permissions or to revoke it. Keys resolve against the API's live permissions, so this must
+// run after any permission update: a permission created in the same edit has no ID until then.
+func cimdAccessDrift(api *pocketidinternalv1alpha1.PocketIDAPI, current *pocketid.API) (drift, enabled bool, permissionIDs []string) {
+	wanted := make(map[string]bool, len(api.Spec.Permissions))
+	marked := false
+	for _, p := range api.Spec.Permissions {
+		wanted[p.Key] = p.CIMDAccess
+		marked = marked || p.CIMDAccess
+	}
+
+	enabled = marked
+	if api.Spec.CIMDAccess != nil {
+		enabled = *api.Spec.CIMDAccess
+	}
+
+	desiredIDs := []string{}
+	var currentIDs []string
+	for _, p := range current.Permissions {
+		if wanted[p.Key] {
+			desiredIDs = append(desiredIDs, p.ID)
+		}
+		if p.AllowedForCIMDClients {
+			currentIDs = append(currentIDs, p.ID)
+		}
+	}
+
+	drift = enabled != current.AllowCIMDClients || !pocketid.SortedEqual(desiredIDs, currentIDs)
+	return drift, enabled, desiredIDs
 }

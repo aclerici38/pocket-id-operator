@@ -42,6 +42,11 @@ type APIPermission struct {
 	// +kubebuilder:validation:MaxLength=500
 	// +optional
 	Description string `json:"description,omitempty"`
+
+	// CIMDAccess lets clients registered through a Client ID Metadata Document request
+	// this permission. Only takes effect while spec.cimdAccess is true.
+	// +optional
+	CIMDAccess bool `json:"cimdAccess,omitempty"`
 }
 
 // PocketIDAPISpec defines the desired state of PocketIDAPI
@@ -75,6 +80,15 @@ type PocketIDAPISpec struct {
 	// +kubebuilder:validation:MaxItems=100
 	// +optional
 	Permissions []APIPermission `json:"permissions,omitempty"`
+
+	// CIMDAccess grants every client registered through an OAuth Client ID Metadata
+	// Document access to this API, so dynamically-registered clients do not each need an
+	// explicit grant. Defaults to true when any permission sets cimdAccess. Set it to true
+	// explicitly to grant access with no permissions, which is what a client requesting a
+	// resource without any scopes needs, or to false to revoke access while keeping the
+	// per-permission marks.
+	// +optional
+	CIMDAccess *bool `json:"cimdAccess,omitempty"`
 }
 
 // ObservedAPIPermission is a permission resolved from Pocket-ID, including its ID.
@@ -88,6 +102,10 @@ type ObservedAPIPermission struct {
 	// Name is the human-friendly label from Pocket-ID.
 	// +optional
 	Name string `json:"name,omitempty"`
+
+	// CIMDAccess reports whether CIMD clients may request this permission.
+	// +optional
+	CIMDAccess bool `json:"cimdAccess,omitempty"`
 }
 
 // PocketIDAPIStatus defines the observed state of PocketIDAPI.
@@ -107,6 +125,10 @@ type PocketIDAPIStatus struct {
 	// CreatedAt is the creation timestamp from Pocket-ID.
 	// +optional
 	CreatedAt string `json:"createdAt,omitempty"`
+
+	// CIMDAccess reports whether CIMD clients may reach this API.
+	// +optional
+	CIMDAccess bool `json:"cimdAccess,omitempty"`
 
 	// Permissions are the permissions resolved from Pocket-ID, including their IDs.
 	// This is the lookup table PocketIDOIDCClients use to resolve permission keys.

@@ -387,9 +387,27 @@ spec:
         - sync:orders
 ```
 
-`clientPermissions` require a confidential client (`isPublic: false`). The client is the
-sole owner of its API access in Pocket-ID; see [PocketIDAPI](pocketidapi.md#granting-client-access)
-for the full semantics.
+To grant a resource without any scopes — what a client following the MCP spec requests —
+set `delegatedAccess` or `clientAccess` instead of listing permissions:
+
+```yaml
+  apiAccess:
+    - apiRef:
+        name: orders-api
+      delegatedAccess: true
+```
+
+Both default to true when the matching permission list is non-empty, so existing grants
+keep working unchanged. Removing the entry revokes the grant either way — the operator
+tracks the APIs it granted, not just the permissions. `clientPermissions` and `clientAccess` require a confidential
+client (`isPublic: false`). The client is the sole owner of its API access in Pocket-ID;
+see [PocketIDAPI](pocketidapi.md#granting-client-access) for the full semantics.
+
+For clients that register themselves through a Client ID Metadata Document there is no CR
+to grant from, so access is granted at the API instead via
+[`spec.cimdAccess`](pocketidapi.md#granting-metadata-document-clients). That access is owned
+by the API: `status.cimdGrantedAPIs` reports which API resources a `cimd` client reaches
+this way, and removing an `apiAccess` entry does not revoke it.
 
 ## Logo Auto-Generation
 

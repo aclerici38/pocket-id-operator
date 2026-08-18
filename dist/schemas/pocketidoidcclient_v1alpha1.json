@@ -123,6 +123,13 @@
                 ],
                 "type": "object"
               },
+              "clientAccess": {
+                "description": "ClientAccess grants the client-credentials flow even with no permissions selected.\nDefaults to true when clientPermissions is non-empty, and requires a confidential client.",
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
               "clientPermissions": {
                 "description": "ClientPermissions are permission keys granted for the client-credentials\n(machine-to-machine) flow. These require a confidential client.",
                 "items": {
@@ -130,6 +137,13 @@
                 },
                 "type": [
                   "array",
+                  "null"
+                ]
+              },
+              "delegatedAccess": {
+                "description": "DelegatedAccess grants the user-delegated flow even with no permissions selected,\ne.g. a client requesting a resource that doesn't need any scopes.\nDefaults to true when delegatedPermissions is non-empty.",
+                "type": [
+                  "boolean",
                   "null"
                 ]
               },
@@ -735,8 +749,8 @@
           "rule": "!has(self.clientSecretRotation) || !self.clientSecretRotation.enabled || !has(self.secret) || !has(self.secret.storeClientSecret) || self.secret.storeClientSecret"
         },
         {
-          "message": "clientPermissions require a confidential client (isPublic must be false)",
-          "rule": "!self.isPublic || !has(self.apiAccess) || self.apiAccess.all(a, !has(a.clientPermissions) || size(a.clientPermissions) == 0)"
+          "message": "clientPermissions and clientAccess require a confidential client (isPublic must be false)",
+          "rule": "!self.isPublic || !has(self.apiAccess) || self.apiAccess.all(a, (!has(a.clientPermissions) || size(a.clientPermissions) == 0) \u0026\u0026 (!has(a.clientAccess) || !a.clientAccess))"
         },
         {
           "message": "clientSecretRef requires a confidential client (isPublic must be false)",
@@ -759,8 +773,8 @@
           "rule": "!(has(self.clientID) \u0026\u0026 self.clientID.startsWith('https://')) || (!has(self.clientSecretRef) \u0026\u0026 (!has(self.clientSecretRotation) || !self.clientSecretRotation.enabled))"
         },
         {
-          "message": "clientPermissions require a confidential client, and a CIMD client is always public",
-          "rule": "!(has(self.clientID) \u0026\u0026 self.clientID.startsWith('https://')) || !has(self.apiAccess) || self.apiAccess.all(a, !has(a.clientPermissions) || size(a.clientPermissions) == 0)"
+          "message": "clientPermissions and clientAccess require a confidential client, and a CIMD client is always public",
+          "rule": "!(has(self.clientID) \u0026\u0026 self.clientID.startsWith('https://')) || !has(self.apiAccess) || self.apiAccess.all(a, (!has(a.clientPermissions) || size(a.clientPermissions) == 0) \u0026\u0026 (!has(a.clientAccess) || !a.clientAccess))"
         }
       ]
     },
@@ -780,6 +794,16 @@
         },
         "callbackUrls": {
           "description": "CallbackURLs are the current callback URLs from Pocket-ID",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "cimdGrantedAPIs": {
+          "description": "CIMDGrantedAPIs are the API resources this client can reach because the API grants\nevery Client ID Metadata Document client access, rather than because of spec.apiAccess.\nRemoving an apiAccess entry does not revoke access listed here; that is turned off on\nthe PocketIDAPI. Only ever set for a cimd client.",
           "items": {
             "type": "string"
           },
@@ -929,7 +953,17 @@
           ]
         },
         "managedAPIPermissionIDs": {
-          "description": "ManagedAPIPermissionIDs are the Pocket-ID API permission IDs the operator last\npushed as this client's API access (both delegated and client-credentials).\nUsed to detect when spec.apiAccess is emptied so the access can be cleared.",
+          "description": "ManagedAPIPermissionIDs are the Pocket-ID API permission IDs the operator last\npushed as this client's API access (both delegated and client-credentials).",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "managedAPIs": {
+          "description": "ManagedAPIs are the Pocket-ID API IDs the operator last granted this client.",
           "items": {
             "type": "string"
           },
