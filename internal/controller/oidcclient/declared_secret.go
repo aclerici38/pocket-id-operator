@@ -90,11 +90,15 @@ func (r *Reconciler) SyncDeclaredClientSecret(ctx context.Context, oidcClient *p
 	missing := !clientSecretPresent(secret, observed)
 
 	var minted *pocketid.OIDCClientSecret
+	var versionErr error
 	if version != oidcClient.Status.ClientSecretSourceVersion || missing {
 		logf.FromContext(ctx).Info("Setting declared client secret",
 			"name", oidcClient.Name, "clientID", oidcClient.Status.ClientID, "restoring", missing)
 
-		if err := r.makeRoomForClientSecret(ctx, oidcClient, apiClient, secret, observed); err != nil {
+		// Nothing this client holds is irreplaceable: the declared value lives in the referenced
+		// Secret, and the push about to happen restores it. Reserving a slot for it would only
+		// wedge that push once the client is full.
+		if err := r.makeRoomForClientSecret(ctx, oidcClient, apiClient, "", observed); err != nil {
 			return err
 		}
 
@@ -110,13 +114,16 @@ func (r *Reconciler) SyncDeclaredClientSecret(ctx context.Context, oidcClient *p
 
 		base := oidcClient.DeepCopy()
 		oidcClient.Status.ClientSecretSourceVersion = version
-		if err := r.Status().Patch(ctx, oidcClient, client.MergeFrom(base)); err != nil {
-			return err
-		}
+		// Held rather than returned: until this lands every reconcile pushes again, and skipping
+		// the retirement below on each of them is what fills the client's secret slots.
+		versionErr = r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
 		minted = &created
 	}
 
 	// Safe to retire immediately: the declared value's durability is the referenced Secret's
 	// concern. Also runs without a push, to finish a retirement the overlap was holding open.
-	return r.reconcileClientSecretRetention(ctx, oidcClient, apiClient, observed, minted, secret)
+	if err := r.reconcileClientSecretRetention(ctx, oidcClient, apiClient, observed, minted, secret); err != nil {
+		return err
+	}
+	return versionErr
 }

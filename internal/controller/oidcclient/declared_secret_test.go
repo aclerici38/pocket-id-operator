@@ -88,36 +88,82 @@ func declaredSecretReconciler(t *testing.T, objs ...client.Object) *Reconciler {
 	return r
 }
 
-// A declared push that cannot free a slot must not attempt the create: Pocket-ID would reject it
-// at the cap anyway, and the failure the user needs to see is the one explaining why.
-func TestSyncDeclaredClientSecret_StopsWhenNoRoomCanBeMade(t *testing.T) {
-	oidcClient := declaredClient("app-creds", "secret")
-	src := sourceSecret("app-creds", map[string][]byte{"secret": []byte(declaredSecretValue)})
-	r := declaredSecretReconciler(t, oidcClient, src)
-
-	// Every secret shares the declared value's prefix, so none can be ruled out as the one in use.
-	atCap := make([]pocketid.OIDCClientSecret, 0, pocketid.MaxOIDCClientSecrets)
+// declaredSecretsAtCap fills a client with secrets that all carry the declared value's prefix, the
+// shape repeated pushes of one value produce.
+func declaredSecretsAtCap() []pocketid.OIDCClientSecret {
+	secrets := make([]pocketid.OIDCClientSecret, 0, pocketid.MaxOIDCClientSecrets)
 	for i := range pocketid.MaxOIDCClientSecrets {
-		atCap = append(atCap, pocketid.OIDCClientSecret{
+		secrets = append(secrets, pocketid.OIDCClientSecret{
 			ID:        fmt.Sprintf("held-%d", i),
 			Prefix:    pocketid.SecretPrefix(declaredSecretValue),
 			CreatedAt: time.Now().Add(-time.Duration(i) * time.Hour),
 			IsActive:  true,
 		})
 	}
+	return secrets
+}
+
+// A declared value can always be pushed again from the referenced Secret, so a full client is not a
+// dead end the way it would be for a generated one: the oldest is retired and the push proceeds.
+func TestSyncDeclaredClientSecret_PushesThroughAFullClient(t *testing.T) {
+	oidcClient := declaredClient("app-creds", "secret")
+	src := sourceSecret("app-creds", map[string][]byte{"secret": []byte(declaredSecretValue)})
+	r := declaredSecretReconciler(t, oidcClient, src)
+	atCap := declaredSecretsAtCap()
 	api := &fakeClientSecretAPI{secrets: atCap}
 
-	if err := r.SyncDeclaredClientSecret(context.Background(), oidcClient, api, atCap); err == nil {
-		t.Fatal("expected the push to fail rather than attempt a create at the cap")
+	if err := r.SyncDeclaredClientSecret(context.Background(), oidcClient, api, atCap); err != nil {
+		t.Fatalf("SyncDeclaredClientSecret: %v", err)
 	}
-	if len(api.calls) != 0 {
-		t.Fatalf("expected no create to be attempted, got %v", api.calls)
+	if len(api.calls) != 1 {
+		t.Fatalf("expected the push to go through, got %d creates", len(api.calls))
+	}
+	// The oldest goes to free a slot, then retirement takes the rest.
+	if api.deleted[0] != fmt.Sprintf("held-%d", pocketid.MaxOIDCClientSecrets-1) {
+		t.Fatalf("expected the oldest secret retired first, got %v", api.deleted)
+	}
+	if len(api.secrets) != 1 {
+		t.Fatalf("expected only the pushed secret to remain, got %+v", api.secrets)
 	}
 }
 
-// The recorded source revision is the only thing that stops the next reconcile pushing again, so a
-// failed write has to fail the reconcile rather than fall through to retirement.
-func TestSyncDeclaredClientSecret_SurfacesAFailedVersionWrite(t *testing.T) {
+// Both halves of the push depend on retiring secrets, so a Pocket-ID that will not delete has to
+// stop the reconcile rather than press on: making room and cleaning up afterwards are the only
+// things keeping the client under Pocket-ID's limit.
+func TestSyncDeclaredClientSecret_StopsWhenRetirementFails(t *testing.T) {
+	src := sourceSecret("app-creds", map[string][]byte{"secret": []byte(declaredSecretValue)})
+
+	t.Run("making room", func(t *testing.T) {
+		oidcClient := declaredClient("app-creds", "secret")
+		r := declaredSecretReconciler(t, oidcClient, src)
+		atCap := declaredSecretsAtCap()
+		api := &fakeClientSecretAPI{deleteErr: errors.New("pocket-id unavailable"), secrets: atCap}
+
+		if err := r.SyncDeclaredClientSecret(context.Background(), oidcClient, api, atCap); err == nil {
+			t.Fatal("expected the push to stop when no slot could be freed")
+		}
+		if len(api.calls) != 0 {
+			t.Fatalf("expected no create at a full client, got %v", api.calls)
+		}
+	})
+
+	t.Run("cleaning up", func(t *testing.T) {
+		oidcClient := declaredClient("app-creds", "secret")
+		r := declaredSecretReconciler(t, oidcClient, src)
+		api := &fakeClientSecretAPI{
+			deleteErr: errors.New("pocket-id unavailable"),
+			secrets:   []pocketid.OIDCClientSecret{secretWithPrefix("superseded", "zzzz", time.Hour)},
+		}
+
+		if err := r.SyncDeclaredClientSecret(context.Background(), oidcClient, api, api.secrets); err == nil {
+			t.Fatal("expected the failed retirement to be reported")
+		}
+	})
+}
+
+// Until the source revision is recorded, every reconcile pushes again. Skipping retirement on each
+// of those is what fills the client's slots, so the failure is reported only after cleanup has run.
+func TestSyncDeclaredClientSecret_RetiresEvenWhenTheVersionWriteFails(t *testing.T) {
 	oidcClient := declaredClient("app-creds", "secret")
 	src := sourceSecret("app-creds", map[string][]byte{"secret": []byte(declaredSecretValue)})
 	r := declaredSecretReconcilerWithFailingStatus(t, oidcClient, src)
@@ -129,8 +175,29 @@ func TestSyncDeclaredClientSecret_SurfacesAFailedVersionWrite(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected the failed status write to be reported")
 	}
-	if len(api.deleted) != 0 {
-		t.Fatalf("retirement must not run once the push could not be recorded, retired %v", api.deleted)
+	if len(api.secrets) != 1 {
+		t.Fatalf("the copy each retry leaves behind must be retired, held %+v", api.secrets)
+	}
+}
+
+// The same failure repeated: without cleanup this is what walks a client into Pocket-ID's limit.
+func TestSyncDeclaredClientSecret_RepeatedVersionFailuresDoNotAccumulate(t *testing.T) {
+	oidcClient := declaredClient("app-creds", "secret")
+	src := sourceSecret("app-creds", map[string][]byte{"secret": []byte(declaredSecretValue)})
+	r := declaredSecretReconcilerWithFailingStatus(t, oidcClient, src)
+	api := &fakeClientSecretAPI{}
+
+	for i := range 5 {
+		// Each reconcile re-reads the resource, so a version the previous attempt failed to
+		// persist is not carried into this one.
+		oidcClient.Status.ClientSecretSourceVersion = ""
+
+		if err := r.SyncDeclaredClientSecret(context.Background(), oidcClient, api, api.secrets); err == nil {
+			t.Fatalf("reconcile %d: expected the failed status write to be reported", i)
+		}
+		if len(api.secrets) != 1 {
+			t.Fatalf("reconcile %d: expected one secret to be held, got %+v", i, api.secrets)
+		}
 	}
 }
 

@@ -224,7 +224,8 @@ func (r *Reconciler) retireSupersededClientSecrets(
 // makeRoomForClientSecret retires secrets ahead of their overlap when the client has hit Pocket-ID's
 // cap, which would reject the secret about to be created.
 //
-// Only secrets ruled out as the stored credential are eligible, which is stricter than retirement's
+// Only secrets ruled out as the stored credential are eligible — an empty storedValue means the
+// caller can restore whatever it loses, so nothing is protected. That is stricter than retirement's
 // "everything but current": at the cap the caller is usually about to replace a credential it could
 // not identify, and deleting a candidate would revoke the value the cluster is authenticating with
 // before its replacement exists. When every secret is a candidate there is no safe move, so the
