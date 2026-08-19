@@ -48,7 +48,7 @@ postinstall = "command -v lefthook >/dev/null 2>&1 && lefthook install || true"
 [env]
 # Default image for the docker/deploy tasks. Override with `IMG=… mise run …`.
 # Kept separate from IMG so it never leaks into the e2e suite's image logic.
-DEFAULT_IMG = "ghcr.io/aclerici38/pocket-id-operator:v0.13.1@sha256:63b4ef346945c27282adcbdf3e1d22891b40a1bf873cb599881d9ca50fe0ea4b"
+DEFAULT_IMG = "ghcr.io/aclerici38/pocket-id-operator:v0.14.0@sha256:3687ebd40380b4825aa56cdb8ab2897c43ef963207ecc2e8a6e71fad4fb826c7"
 KIND_CLUSTER = "pocket-id-operator-test-e2e"
 CONTAINER_TOOL = "docker"
 PLATFORMS = "linux/arm64,linux/amd64,linux/s390x,linux/ppc64le"
