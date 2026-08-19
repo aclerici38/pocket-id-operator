@@ -94,8 +94,7 @@ func (r *Reconciler) SyncDeclaredClientSecret(ctx context.Context, oidcClient *p
 		logf.FromContext(ctx).Info("Setting declared client secret",
 			"name", oidcClient.Name, "clientID", oidcClient.Status.ClientID, "restoring", missing)
 
-		if err := r.makeRoomForClientSecret(ctx, oidcClient, apiClient,
-			resolveClientSecret(secret, observed), observed); err != nil {
+		if err := r.makeRoomForClientSecret(ctx, oidcClient, apiClient, secret, observed); err != nil {
 			return err
 		}
 

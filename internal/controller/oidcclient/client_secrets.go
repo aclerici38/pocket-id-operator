@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"sort"
 	"time"
 
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -49,14 +48,13 @@ func resolveClientSecret(storedValue string, secrets []pocketid.OIDCClientSecret
 	}
 
 	var byPrefix, byMissingPrefix []pocketid.OIDCClientSecret
-	prefix := pocketid.SecretPrefix(storedValue)
 	for _, secret := range secrets {
 		switch {
-		case !secret.IsActive:
-			// Expired out-of-band: Pocket-ID rejects it, so it cannot be the live credential.
+		case !couldHoldClientSecret(secret, storedValue):
+			// Expired, or a prefix that rules it out.
 		case secret.Prefix == "":
 			byMissingPrefix = append(byMissingPrefix, secret)
-		case prefix != "" && secret.Prefix == prefix:
+		default:
 			byPrefix = append(byPrefix, secret)
 		}
 	}
@@ -73,36 +71,44 @@ func resolveClientSecret(storedValue string, secrets []pocketid.OIDCClientSecret
 	return &candidates[0]
 }
 
+// couldHoldClientSecret reports whether secret is consistent with holding value: still accepted by
+// Pocket-ID, and carrying either value's clear-text prefix or none at all. This is the candidate
+// set resolveClientSecret picks from, and the set nothing may delete on a guess.
+func couldHoldClientSecret(secret pocketid.OIDCClientSecret, value string) bool {
+	if !secret.IsActive {
+		return false
+	}
+	return secret.Prefix == "" || secret.Prefix == pocketid.SecretPrefix(value)
+}
+
 // clientSecretPresent reports whether value could still be one of the client's secrets. Unlike
 // resolveClientSecret it tolerates ambiguity, which is what makes it safe to drive a re-push:
 // secrets sharing a prefix are unresolvable but present, and re-pushing would add one every
 // reconcile.
 func clientSecretPresent(value string, secrets []pocketid.OIDCClientSecret) bool {
-	prefix := pocketid.SecretPrefix(value)
-	for _, secret := range secrets {
-		if !secret.IsActive {
-			continue
-		}
-		if secret.Prefix == "" || (prefix != "" && secret.Prefix == prefix) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(secrets, func(secret pocketid.OIDCClientSecret) bool {
+		return couldHoldClientSecret(secret, value)
+	})
 }
 
 // supersededClientSecrets returns the secrets that are not current, oldest first.
-func supersededClientSecrets(current *pocketid.OIDCClientSecret, secrets []pocketid.OIDCClientSecret) []pocketid.OIDCClientSecret {
+func supersededClientSecrets(current pocketid.OIDCClientSecret, secrets []pocketid.OIDCClientSecret) []pocketid.OIDCClientSecret {
 	superseded := make([]pocketid.OIDCClientSecret, 0, len(secrets))
 	for _, secret := range secrets {
-		if current != nil && secret.ID == current.ID {
-			continue
+		if secret.ID != current.ID {
+			superseded = append(superseded, secret)
 		}
-		superseded = append(superseded, secret)
 	}
-	sort.SliceStable(superseded, func(i, j int) bool {
-		return superseded[i].CreatedAt.Before(superseded[j].CreatedAt)
+	return oldestFirst(superseded)
+}
+
+// oldestFirst orders secrets by creation, so a retirement run cut short leaves the most recently
+// issued alive longest.
+func oldestFirst(secrets []pocketid.OIDCClientSecret) []pocketid.OIDCClientSecret {
+	slices.SortStableFunc(secrets, func(a, b pocketid.OIDCClientSecret) int {
+		return a.CreatedAt.Compare(b.CreatedAt)
 	})
-	return superseded
+	return secrets
 }
 
 // reconcileClientSecretRetention reduces the client's secret set to the credential in storedValue.
@@ -152,7 +158,7 @@ func (r *Reconciler) retireSupersededClientSecrets(
 		return nil
 	}
 
-	superseded := supersededClientSecrets(current, secrets)
+	superseded := supersededClientSecrets(*current, secrets)
 	if len(superseded) == 0 {
 		return nil
 	}
@@ -167,29 +173,40 @@ func (r *Reconciler) retireSupersededClientSecrets(
 	return r.deleteClientSecrets(ctx, oidcClient, apiClient, superseded, "superseded")
 }
 
-// makeRoomForClientSecret retires superseded secrets ahead of their overlap when the client has hit
-// Pocket-ID's cap, which would reject the secret about to be created. current is never eligible, so
-// a live credential the caller could identify survives a create that fails. When it could not be
-// identified there is nothing to protect and nothing to lose: the cap has to be cleared either way,
-// and the oldest secret is the least likely to be in use.
+// makeRoomForClientSecret retires secrets ahead of their overlap when the client has hit Pocket-ID's
+// cap, which would reject the secret about to be created.
+//
+// Only secrets ruled out as the stored credential are eligible, which is stricter than retirement's
+// "everything but current": at the cap the caller is usually about to replace a credential it could
+// not identify, and deleting a candidate would revoke the value the cluster is authenticating with
+// before its replacement exists. When every secret is a candidate there is no safe move, so the
+// reconcile stops and says so rather than freeing a slot by guessing.
 func (r *Reconciler) makeRoomForClientSecret(
 	ctx context.Context,
 	oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient,
 	apiClient clientSecretRetentionAPI,
-	current *pocketid.OIDCClientSecret,
+	storedValue string,
 	secrets []pocketid.OIDCClientSecret,
 ) error {
 	if len(secrets) < pocketid.MaxOIDCClientSecrets {
 		return nil
 	}
 
-	superseded := supersededClientSecrets(current, secrets)
-	needed := min(len(secrets)-pocketid.MaxOIDCClientSecrets+1, len(superseded))
+	retirable := make([]pocketid.OIDCClientSecret, 0, len(secrets))
+	for _, secret := range secrets {
+		if !couldHoldClientSecret(secret, storedValue) {
+			retirable = append(retirable, secret)
+		}
+	}
+	if len(retirable) == 0 {
+		return fmt.Errorf("client holds %d secrets, Pocket-ID's maximum, and none can be ruled out as the one in use", len(secrets))
+	}
 
+	needed := min(len(secrets)-pocketid.MaxOIDCClientSecrets+1, len(retirable))
 	logf.FromContext(ctx).Info("Retiring superseded client secrets early to stay within Pocket-ID's per-client limit",
 		"name", oidcClient.Name, "clientID", oidcClient.Status.ClientID, "held", len(secrets), "retiring", needed)
 
-	return r.deleteClientSecrets(ctx, oidcClient, apiClient, superseded[:needed], "cap")
+	return r.deleteClientSecrets(ctx, oidcClient, apiClient, oldestFirst(retirable)[:needed], "cap")
 }
 
 func (r *Reconciler) deleteClientSecrets(

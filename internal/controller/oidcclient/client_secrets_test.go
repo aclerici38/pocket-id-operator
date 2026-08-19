@@ -339,9 +339,8 @@ func TestMakeRoomForClientSecret(t *testing.T) {
 		r := retentionReconciler(t, oidcClient)
 		secrets := atCap()
 		api := &fakeClientSecretAPI{secrets: secrets}
-		current := resolveClientSecret(storedSecretValue, secrets)
 
-		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api, current, secrets); err != nil {
+		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api, storedSecretValue, secrets); err != nil {
 			t.Fatalf("makeRoomForClientSecret: %v", err)
 		}
 		// One is enough to get under the cap, and the overlap does not protect a secret that
@@ -354,13 +353,33 @@ func TestMakeRoomForClientSecret(t *testing.T) {
 		}
 	})
 
+	// Freeing a slot means deleting a secret before its replacement exists, so a candidate for the
+	// stored credential is never eligible — one of them is the value the cluster is using, and a
+	// failed create would leave it revoked with nothing to fall back on.
+	t.Run("refuses when no secret can be ruled out", func(t *testing.T) {
+		oidcClient := retentionClient(nil)
+		r := retentionReconciler(t, oidcClient)
+		secrets := make([]pocketid.OIDCClientSecret, 0, pocketid.MaxOIDCClientSecrets)
+		for i := range pocketid.MaxOIDCClientSecrets {
+			secrets = append(secrets, secretWithPrefix("collides-"+string(rune('a'+i)), prefix, time.Duration(i)*time.Hour))
+		}
+		api := &fakeClientSecretAPI{secrets: secrets}
+
+		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api, storedSecretValue, secrets); err == nil {
+			t.Fatal("expected an error when every secret could be the one in use")
+		}
+		if len(api.deleted) != 0 {
+			t.Fatalf("expected nothing retired when no secret can be ruled out, got %v", api.deleted)
+		}
+	})
+
 	t.Run("does nothing below the cap", func(t *testing.T) {
 		oidcClient := retentionClient(nil)
 		r := retentionReconciler(t, oidcClient)
 		secrets := []pocketid.OIDCClientSecret{secretWithPrefix("ours", prefix, 0)}
 		api := &fakeClientSecretAPI{secrets: secrets}
 
-		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api, &secrets[0], secrets); err != nil {
+		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api, storedSecretValue, secrets); err != nil {
 			t.Fatalf("makeRoomForClientSecret: %v", err)
 		}
 		if len(api.deleted) != 0 {
