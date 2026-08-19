@@ -119,6 +119,13 @@ spec:
 				".status.clientSecretSourceVersion")
 			Expect(version).To(HavePrefix(fmt.Sprintf("%s/%s@", sourceSecretName, sourceKey)),
 				"status should identify the source Secret name and key")
+
+			// Pocket-ID generates a secret of its own unless it honours the supplied value, and
+			// stores every secret hashed, so authenticating is the only proof the declared value
+			// is what it actually kept.
+			By("verifying Pocket-ID accepts the declared value as the client secret")
+			clientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
+			Expect(clientSecretAuthResult("auth-declared", userNS, clientID, declaredValue)).To(Equal("ok"))
 		})
 
 		It("should re-push after the source Secret changes", func() {
@@ -140,6 +147,19 @@ spec:
 				return kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
 					"-o", "jsonpath={.status.clientSecretSourceVersion}")
 			}, time.Minute, 2*time.Second).ShouldNot(Equal(before))
+
+			// A push appends rather than replaces, so without retirement the value the user
+			// rotated away from would keep authenticating indefinitely.
+			By("verifying the new value works and the one it replaced was retired")
+			clientID := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
+				"-o", "jsonpath={.status.clientID}")
+			Eventually(func() []string {
+				return clientSecretIDsFromPocketID(
+					fmt.Sprintf("list-declared-%d", time.Now().UnixNano()), userNS, clientID)
+			}, time.Minute, 10*time.Second).Should(HaveLen(1))
+			Expect(clientSecretAuthResult("auth-declared-new", userNS, clientID, rotatedValue)).To(Equal("ok"))
+			Expect(clientSecretAuthResult("auth-declared-old", userNS, clientID, declaredValue)).
+				To(Equal("invalid_client"))
 		})
 
 		It("should ignore the regenerate-client-secret annotation", func() {

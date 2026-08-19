@@ -2,6 +2,7 @@ package oidcclient
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -19,6 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
+	"github.com/aclerici38/pocket-id-operator/internal/metrics"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
@@ -323,6 +326,53 @@ func TestReconcileClientSecretRetention_TrustsTheMintedSecret(t *testing.T) {
 	}
 }
 
+// A retirement that cannot be completed has to surface. The credential is already stored by this
+// point, so the client keeps working and the reconcile retries — but silently swallowing it would
+// let a client drift up to Pocket-ID's cap with nothing to show why.
+func TestReconcileClientSecretRetention_SurfacesAFailedRetirement(t *testing.T) {
+	oidcClient := retentionClient(nil)
+	r := retentionReconciler(t, oidcClient)
+	prefix := pocketid.SecretPrefix(storedSecretValue)
+	api := &fakeClientSecretAPI{
+		deleteErr: errors.New("pocket-id unavailable"),
+		secrets: []pocketid.OIDCClientSecret{
+			secretWithPrefix("old", "aaaa", 30*24*time.Hour),
+			secretWithPrefix("older", "bbbb", 60*24*time.Hour),
+			secretWithPrefix("ours", prefix, 0),
+		},
+	}
+
+	err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api, api.secrets, nil, storedSecretValue)
+	if err == nil {
+		t.Fatal("expected the failed retirement to be reported")
+	}
+	if !strings.Contains(err.Error(), "older") {
+		t.Fatalf("expected the error to name the secret that could not be retired, got %v", err)
+	}
+}
+
+// The reason label is what tells an early cap-driven retirement apart from an overlap elapsing, so
+// the values here are the ones documented for the metric.
+func TestDeleteClientSecrets_CountsRetirementsByReason(t *testing.T) {
+	oidcClient := retentionClient(nil)
+	oidcClient.Name = "retired-counter"
+	r := retentionReconciler(t, oidcClient)
+	api := &fakeClientSecretAPI{}
+	before := testutil.ToFloat64(
+		metrics.OIDCClientSecretsRetired.WithLabelValues(testNamespace, oidcClient.Name, "superseded"))
+
+	secrets := []pocketid.OIDCClientSecret{secretWithPrefix("a", "aaaa", time.Hour), secretWithPrefix("b", "bbbb", 0)}
+	if err := r.deleteClientSecrets(context.Background(), oidcClient, api, secrets, "superseded"); err != nil {
+		t.Fatalf("deleteClientSecrets: %v", err)
+	}
+
+	got := testutil.ToFloat64(
+		metrics.OIDCClientSecretsRetired.WithLabelValues(testNamespace, oidcClient.Name, "superseded"))
+	if got-before != 2 {
+		t.Fatalf("expected both retirements counted, got %v", got-before)
+	}
+}
+
 func TestMakeRoomForClientSecret(t *testing.T) {
 	prefix := pocketid.SecretPrefix(storedSecretValue)
 
@@ -370,6 +420,19 @@ func TestMakeRoomForClientSecret(t *testing.T) {
 		}
 		if len(api.deleted) != 0 {
 			t.Fatalf("expected nothing retired when no secret can be ruled out, got %v", api.deleted)
+		}
+	})
+
+	// The create that follows would be rejected anyway, but the point is that the caller never
+	// reaches it: a mint attempted at the cap burns nothing and reports nothing useful.
+	t.Run("propagates a retirement that fails", func(t *testing.T) {
+		oidcClient := retentionClient(nil)
+		r := retentionReconciler(t, oidcClient)
+		secrets := atCap()
+		api := &fakeClientSecretAPI{deleteErr: errors.New("pocket-id unavailable"), secrets: secrets}
+
+		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api, storedSecretValue, secrets); err == nil {
+			t.Fatal("expected the failed retirement to stop the caller before it mints")
 		}
 	})
 

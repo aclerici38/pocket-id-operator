@@ -15,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
@@ -27,12 +28,13 @@ const declaredSecretValue = "declared-secret-value"
 // leaves every other method nil, so an unexpected call panics rather than silently passing.
 type fakeClientSecretAPI struct {
 	PocketIDOIDCClientAPI
-	calls   []string // values passed to CreateOIDCClientSecret
-	deleted []string // secret IDs passed to DeleteOIDCClientSecret
-	secrets []pocketid.OIDCClientSecret
-	returns string // when non-empty, stored instead of the requested value
-	err     error
-	nextID  int
+	calls     []string // values passed to CreateOIDCClientSecret
+	deleted   []string // secret IDs passed to DeleteOIDCClientSecret
+	secrets   []pocketid.OIDCClientSecret
+	returns   string // when non-empty, stored instead of the requested value
+	err       error
+	deleteErr error
+	nextID    int
 }
 
 func (f *fakeClientSecretAPI) CreateOIDCClientSecret(_ context.Context, _, secret string) (pocketid.OIDCClientSecret, string, error) {
@@ -56,6 +58,9 @@ func (f *fakeClientSecretAPI) CreateOIDCClientSecret(_ context.Context, _, secre
 }
 
 func (f *fakeClientSecretAPI) DeleteOIDCClientSecret(_ context.Context, _, secretID string) error {
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
 	f.deleted = append(f.deleted, secretID)
 	f.secrets = slices.DeleteFunc(f.secrets, func(s pocketid.OIDCClientSecret) bool { return s.ID == secretID })
 	return nil
@@ -73,6 +78,70 @@ func declaredSecretReconciler(t *testing.T, objs ...client.Object) *Reconciler {
 	fc := fake.NewClientBuilder().WithScheme(s).WithObjects(objs...).WithStatusSubresource(objs...).Build()
 	r := &Reconciler{Client: fc, APIReader: fc, Scheme: s}
 	r.EnsureClient(fc)
+	return r
+}
+
+// A declared push that cannot free a slot must not attempt the create: Pocket-ID would reject it
+// at the cap anyway, and the failure the user needs to see is the one explaining why.
+func TestSyncDeclaredClientSecret_StopsWhenNoRoomCanBeMade(t *testing.T) {
+	oidcClient := declaredClient("app-creds", "secret")
+	src := sourceSecret("app-creds", map[string][]byte{"secret": []byte(declaredSecretValue)})
+	r := declaredSecretReconciler(t, oidcClient, src)
+
+	// Every secret shares the declared value's prefix, so none can be ruled out as the one in use.
+	atCap := make([]pocketid.OIDCClientSecret, 0, pocketid.MaxOIDCClientSecrets)
+	for i := range pocketid.MaxOIDCClientSecrets {
+		atCap = append(atCap, pocketid.OIDCClientSecret{
+			ID:        fmt.Sprintf("held-%d", i),
+			Prefix:    pocketid.SecretPrefix(declaredSecretValue),
+			CreatedAt: time.Now().Add(-time.Duration(i) * time.Hour),
+			IsActive:  true,
+		})
+	}
+	api := &fakeClientSecretAPI{secrets: atCap}
+
+	if err := r.SyncDeclaredClientSecret(context.Background(), oidcClient, api, atCap); err == nil {
+		t.Fatal("expected the push to fail rather than attempt a create at the cap")
+	}
+	if len(api.calls) != 0 {
+		t.Fatalf("expected no create to be attempted, got %v", api.calls)
+	}
+}
+
+// The recorded source revision is the only thing that stops the next reconcile pushing again, so a
+// failed write has to fail the reconcile rather than fall through to retirement.
+func TestSyncDeclaredClientSecret_SurfacesAFailedVersionWrite(t *testing.T) {
+	oidcClient := declaredClient("app-creds", "secret")
+	src := sourceSecret("app-creds", map[string][]byte{"secret": []byte(declaredSecretValue)})
+	r := declaredSecretReconcilerWithFailingStatus(t, oidcClient, src)
+	api := &fakeClientSecretAPI{secrets: []pocketid.OIDCClientSecret{
+		secretWithPrefix("superseded", "zzzz", time.Hour),
+	}}
+
+	err := r.SyncDeclaredClientSecret(context.Background(), oidcClient, api, api.secrets)
+	if err == nil {
+		t.Fatal("expected the failed status write to be reported")
+	}
+	if len(api.deleted) != 0 {
+		t.Fatalf("retirement must not run once the push could not be recorded, retired %v", api.deleted)
+	}
+}
+
+// declaredSecretReconcilerWithFailingStatus rejects every PocketIDOIDCClient status write, standing
+// in for a transient API failure at the moment a push is recorded.
+func declaredSecretReconcilerWithFailingStatus(t *testing.T, objs ...client.Object) *Reconciler {
+	t.Helper()
+	r := declaredSecretReconciler(t, objs...)
+	failing := interceptor.NewClient(r.Client.(client.WithWatch), interceptor.Funcs{
+		SubResourcePatch: func(ctx context.Context, c client.Client, _ string, obj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error {
+			if _, ok := obj.(*pocketidinternalv1alpha1.PocketIDOIDCClient); ok {
+				return fmt.Errorf("simulated status patch failure")
+			}
+			return c.Status().Patch(ctx, obj, patch, opts...)
+		},
+	})
+	r.Client = failing
+	r.APIReader = failing
 	return r
 }
 

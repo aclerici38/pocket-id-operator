@@ -141,7 +141,7 @@ func (r *Reconciler) reconcileClientSecretRetention(
 		return nil
 	}
 
-	return r.retireSupersededClientSecrets(ctx, oidcClient, apiClient, current, secrets)
+	return r.retireSupersededClientSecrets(ctx, oidcClient, apiClient, *current, secrets)
 }
 
 // retireSupersededClientSecrets deletes every secret other than current. The overlap runs from when
@@ -151,14 +151,10 @@ func (r *Reconciler) retireSupersededClientSecrets(
 	ctx context.Context,
 	oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient,
 	apiClient clientSecretRetentionAPI,
-	current *pocketid.OIDCClientSecret,
+	current pocketid.OIDCClientSecret,
 	secrets []pocketid.OIDCClientSecret,
 ) error {
-	if current == nil {
-		return nil
-	}
-
-	superseded := supersededClientSecrets(*current, secrets)
+	superseded := supersededClientSecrets(current, secrets)
 	if len(superseded) == 0 {
 		return nil
 	}

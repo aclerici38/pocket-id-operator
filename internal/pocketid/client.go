@@ -840,9 +840,8 @@ func (c *Client) CreateOIDCClientSecret(ctx context.Context, id, secret string) 
 	if err != nil {
 		return OIDCClientSecret{}, "", fmt.Errorf("create OIDC client secret failed: %w", err)
 	}
-	if resp.Payload == nil {
-		return OIDCClientSecret{}, "", fmt.Errorf("create OIDC client secret returned no payload")
-	}
+	// The generated reader always allocates Payload and tolerates an empty body, so an unusable
+	// response shows up as a missing value rather than a nil payload.
 	if resp.Payload.Secret == "" {
 		return OIDCClientSecret{}, "", fmt.Errorf("create OIDC client secret returned no secret value")
 	}

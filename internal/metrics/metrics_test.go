@@ -88,16 +88,19 @@ func TestDeleteOIDCClientRotationMetrics_ClearsAllGauges(t *testing.T) {
 
 	SetOIDCClientRotationEnabled(ns, name, true)
 	SetOIDCClientRotationSchedule(ns, name, 3600, 1_699_000_000, 1_700_000_000)
+	OIDCClientSecretCount.WithLabelValues(ns, name).Set(3)
 
 	DeleteOIDCClientRotationMetrics(ns, name)
 
-	// All four gauges should have no series left. Don't call ToFloat64/WithLabelValues here,
-	// as that would re-create the series at 0 and defeat the assertion.
+	// Every gauge should have no series left; a deleted client must not go on reporting a secret
+	// count forever. Don't call ToFloat64/WithLabelValues here, as that would re-create the series
+	// at 0 and defeat the assertion.
 	for n, c := range map[string]int{
-		"enabled":  testutil.CollectAndCount(OIDCClientRotationEnabled),
-		"interval": testutil.CollectAndCount(OIDCClientRotationIntervalSeconds),
-		"last":     testutil.CollectAndCount(OIDCClientLastRotationTimestamp),
-		"next":     testutil.CollectAndCount(OIDCClientNextRotationTimestamp),
+		"enabled":     testutil.CollectAndCount(OIDCClientRotationEnabled),
+		"interval":    testutil.CollectAndCount(OIDCClientRotationIntervalSeconds),
+		"last":        testutil.CollectAndCount(OIDCClientLastRotationTimestamp),
+		"next":        testutil.CollectAndCount(OIDCClientNextRotationTimestamp),
+		"secretCount": testutil.CollectAndCount(OIDCClientSecretCount),
 	} {
 		if c != 0 {
 			t.Errorf("%s series = %d, want 0 after delete", n, c)

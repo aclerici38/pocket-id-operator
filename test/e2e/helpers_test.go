@@ -14,6 +14,7 @@ import (
 	"math/big"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -1148,6 +1149,80 @@ if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "204" ]; then
 fi
 echo "User group deleted"`,
 		apiKeyBase64, formatInstanceURL(), groupID)
+
+	applyYAML(createCurlPodYAML(podName, namespace, script))
+	waitForPodSucceeded(podName, namespace)
+}
+
+// clientSecretAuthResult reports what Pocket-ID makes of a client_id/client_secret pair, by asking
+// its token endpoint for a client_credentials grant. It answers "ok" when a token comes back and
+// the OAuth error code otherwise — "invalid_client" being the one that means the secret is not
+// accepted. This is the only way to tell that a secret Pocket-ID still lists is actually usable,
+// and that a retired one really stopped working.
+func clientSecretAuthResult(podName, namespace, clientID, clientSecret string) string {
+	script := fmt.Sprintf(`BODY=$(curl -s -u '%s:%s'   -d 'grant_type=client_credentials' %s/api/oidc/token)
+if echo "$BODY" | grep -q '"access_token"'; then
+  echo ok
+else
+  echo "$BODY" | grep -o '"error":"[^"]*"' | head -1 | sed 's/"error":"//;s/"//'
+fi`, clientID, clientSecret, formatInstanceURL())
+
+	applyYAML(createCurlPodYAML(podName, namespace, script))
+	return getPodLogs(podName, namespace)
+}
+
+// clientSecretsSectionFromPocketID returns the credentials.secrets array of a client, as read from
+// the same endpoint the operator reconciles from. Reading it here rather than from the dedicated
+// /secrets endpoint is deliberate: the operator derives the whole secret set from this one client
+// GET, so a release that stopped embedding it would break every retirement decision, and this is
+// what notices. Secret entries hold only scalars, so the array ends at the first "]".
+func clientSecretsSectionFromPocketID(podName, namespace, clientID string) string {
+	body := getFromPocketID(podName, namespace, "/api/oidc/clients/"+clientID)
+	section := regexp.MustCompile(`"secrets":\[[^\]]*\]`).FindString(body)
+	Expect(section).NotTo(BeEmpty(),
+		"a client read must carry credentials.secrets; the operator has no other source for them: %s", body)
+	return section
+}
+
+// clientSecretIDsFromPocketID returns the IDs of the secrets Pocket-ID holds for a client, in the
+// order the API reports them.
+func clientSecretIDsFromPocketID(podName, namespace, clientID string) []string {
+	return matchAllInClientSecrets(clientSecretsSectionFromPocketID(podName, namespace, clientID), "id")
+}
+
+// clientSecretPrefixesFromPocketID returns the clear-text prefixes Pocket-ID recorded for a
+// client's secrets. The operator identifies its own credential by matching these, so how much of
+// the value they carry is a contract with Pocket-ID rather than an implementation detail.
+func clientSecretPrefixesFromPocketID(podName, namespace, clientID string) []string {
+	return matchAllInClientSecrets(clientSecretsSectionFromPocketID(podName, namespace, clientID), "prefix")
+}
+
+func matchAllInClientSecrets(section, field string) []string {
+	var values []string
+	for _, match := range regexp.MustCompile(`"`+field+`":"([^"]*)"`).FindAllStringSubmatch(section, -1) {
+		values = append(values, match[1])
+	}
+	return values
+}
+
+// deleteClientSecretInPocketID removes a client secret directly via the Pocket-ID API, simulating
+// one revoked through the UI or by another cluster.
+func deleteClientSecretInPocketID(podName, namespace, clientID, secretID string) {
+	staticSecretName := instanceName + "-static-api-key"
+
+	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
+		"-o", "jsonpath={.data.token}")
+	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
+
+	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
+HTTP_CODE=$(curl -s -o /dev/null -w '%%{http_code}' -X DELETE \
+  -H "X-API-KEY: $API_KEY" %s/api/oidc/clients/%s/secrets/%s)
+if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "204" ]; then
+  echo "Failed to delete client secret: HTTP $HTTP_CODE" >&2
+  exit 1
+fi
+echo "Client secret deleted"`,
+		apiKeyBase64, formatInstanceURL(), clientID, secretID)
 
 	applyYAML(createCurlPodYAML(podName, namespace, script))
 	waitForPodSucceeded(podName, namespace)
