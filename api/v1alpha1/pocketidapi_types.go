@@ -105,7 +105,7 @@ type ObservedAPIPermission struct {
 
 	// CIMDAccess reports whether CIMD clients may request this permission.
 	// +optional
-	CIMDAccess bool `json:"cimdAccess,omitempty"`
+	CIMDAccess bool `json:"cimdAccess"`
 }
 
 // PocketIDAPIStatus defines the observed state of PocketIDAPI.
@@ -128,7 +128,7 @@ type PocketIDAPIStatus struct {
 
 	// CIMDAccess reports whether CIMD clients may reach this API.
 	// +optional
-	CIMDAccess bool `json:"cimdAccess,omitempty"`
+	CIMDAccess bool `json:"cimdAccess"`
 
 	// Permissions are the permissions resolved from Pocket-ID, including their IDs.
 	// This is the lookup table PocketIDOIDCClients use to resolve permission keys.
