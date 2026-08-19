@@ -121,7 +121,7 @@ var _ = BeforeSuite(func() {
 
 	pocketIDServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"currentVersion":"2.8.0"}`))
+		_, _ = w.Write([]byte(`{"currentVersion":"2.14.0"}`))
 	}))
 
 	err = (&instance.Reconciler{

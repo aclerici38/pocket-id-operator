@@ -63,6 +63,9 @@ const (
 	// renovate: datasource=docker depName=ghcr.io/pocket-id/pocket-id
 	latestTestedPocketIDVersion = "v2.14.0"
 
+	// minimumSupportedPocketIDVersion is the oldest pocket-id version this operator can manage. Detecting anything older on an instance crashloops the operator to prevent unwanted changes via an incompatible api.
+	minimumSupportedPocketIDVersion = "v2.14.0"
+
 	// firstUnsupportedPocketIDVersion is the lowest pocket-id version that introduces
 	// breaking changes this operator cannot manage. Detecting this version or newer
 	// on an instance crashloops the operator to prevent unwanted changes via an incompatible api
@@ -944,13 +947,13 @@ func normalizeVersion(version string) string {
 	return version
 }
 
+// Both bounds compare at major.minor granularity so pre-releases of a cutoff minor
+// (v2.14.0-beta.1, and the rolling `next` builds that carry a pre-release suffix) land
+// on the same side as the release itself: plain semver ordering sorts them below
+// v2.14.0 even though they already carry that release's API changes.
+
 // isUnsupportedVersion reports whether the given pocket-id version is at or above
 // firstUnsupportedPocketIDVersion. Invalid/empty versions are treated as supported.
-//
-// The comparison is done at major.minor granularity so pre-releases of the cutoff
-// minor (v2.14.0-beta.1, and the rolling `next` builds that carry a pre-release
-// suffix) are caught too: plain semver ordering sorts them below v2.14.0 even
-// though they already carry the breaking API change.
 func isUnsupportedVersion(version string) bool {
 	v := normalizeVersion(version)
 	if !semver.IsValid(v) {
@@ -959,18 +962,38 @@ func isUnsupportedVersion(version string) bool {
 	return semver.Compare(semver.MajorMinor(v), semver.MajorMinor(firstUnsupportedPocketIDVersion)) >= 0
 }
 
+// isBelowMinimumVersion reports whether the given pocket-id version is older than
+// minimumSupportedPocketIDVersion. Invalid/empty versions are treated as supported.
+func isBelowMinimumVersion(version string) bool {
+	v := normalizeVersion(version)
+	if !semver.IsValid(v) {
+		return false
+	}
+	return semver.Compare(semver.MajorMinor(v), semver.MajorMinor(minimumSupportedPocketIDVersion)) < 0
+}
+
 // haltIfUnsupportedVersion terminates the operator process when an instance reports
-// a pocket-id version the operator cannot manage. Exiting causes the pod to crash loop.
+// a pocket-id version the operator cannot manage, on either end of the supported
+// range. Exiting causes the pod to crash loop.
 func haltIfUnsupportedVersion(log logr.Logger, instance *pocketidinternalv1alpha1.PocketIDInstance, version string) {
-	if !isUnsupportedVersion(version) {
+	switch {
+	case isBelowMinimumVersion(version):
+		log.Error(nil, "Pocket-id version is older than the minimum supported by this operator; halting. Upgrade pocket-id, or downgrade the operator to a version that supports this pocket-id release: https://github.com/aclerici38/pocket-id-operator",
+			"namespace", instance.Namespace,
+			"name", instance.Name,
+			"detectedVersion", version,
+			"minimumSupportedVersion", minimumSupportedPocketIDVersion,
+		)
+	case isUnsupportedVersion(version):
+		log.Error(nil, "Pocket-id version is unsupported by this operator; halting. Upgrade the operator to a version that supports this pocket-id release: https://github.com/aclerici38/pocket-id-operator",
+			"namespace", instance.Namespace,
+			"name", instance.Name,
+			"detectedVersion", version,
+			"firstUnsupportedVersion", firstUnsupportedPocketIDVersion,
+		)
+	default:
 		return
 	}
-	log.Error(nil, "Pocket-id version is unsupported by this operator; halting. Upgrade the operator to a version that supports this pocket-id release: https://github.com/aclerici38/pocket-id-operator",
-		"namespace", instance.Namespace,
-		"name", instance.Name,
-		"detectedVersion", version,
-		"firstUnsupportedVersion", firstUnsupportedPocketIDVersion,
-	)
 	os.Exit(1)
 }
 

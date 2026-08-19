@@ -88,7 +88,7 @@ func TestReconcileExternal_Reachable(t *testing.T) {
 	ctx := context.Background()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"currentVersion":"2.8.0"}`))
+		_, _ = w.Write([]byte(`{"currentVersion":"2.14.0"}`))
 	}))
 	defer srv.Close()
 
@@ -110,8 +110,8 @@ func TestReconcileExternal_Reachable(t *testing.T) {
 	if cond.Reason != "Ready" {
 		t.Errorf("reason: got %q, want %q", cond.Reason, "Ready")
 	}
-	if got.Status.Version != "2.8.0" {
-		t.Errorf("version: got %q, want %q", got.Status.Version, "2.8.0")
+	if got.Status.Version != "2.14.0" {
+		t.Errorf("version: got %q, want %q", got.Status.Version, "2.14.0")
 	}
 	if got.Status.StaticAPIKeySecretName != "" {
 		t.Errorf("StaticAPIKeySecretName should be cleared for external instances, got %q", got.Status.StaticAPIKeySecretName)
