@@ -320,15 +320,17 @@ curl -sf -H "X-API-KEY: $TOKEN" %s/api/users/me | grep -q '"username":"%s"'`,
 		})
 
 		// Pocket-ID derives the login code's length from the TTL requested when minting
-		// it: a TTL of 15m or less yields a 6-character code built for the email login
-		// flow, anything longer yields the 16-character link code. The page behind
+		// it: a TTL of 15m or less yields the short 6-character code built for the email
+		// login flow, anything longer yields the long link code. The page behind
 		// status.oneTimeLoginURL only submits a 6-character code when
 		// emailOneTimeAccessAsUnauthenticatedEnabled is on, so a short code leaves the
 		// link unusable in a browser even though the exchange endpoint still accepts it.
 		// That is why the session-exchange test below cannot catch this on its own.
-		It("should issue a 16-character login code", func() {
+		It("should issue the long link login code", func() {
 			const userName = "test-login-code-length"
 			const podName = "login-code-config-check"
+			// Pocket-ID's shortTokenLength, the code the browser login page cannot submit.
+			const shortLoginCodeLength = 6
 
 			createUserAndWaitReady(UserOptions{Name: userName})
 
@@ -339,10 +341,11 @@ curl -sf -H "X-API-KEY: $TOKEN" %s/api/users/me | grep -q '"username":"%s"'`,
 			Expect(getAppConfigFieldFromPocketID(podName, userNS,
 				"emailOneTimeAccessAsUnauthenticatedEnabled")).To(Equal("false"))
 
-			Expect(token).To(HaveLen(16),
-				"expected the 16-character link code; a 6-character code means either "+
+			Expect(len(token)).To(BeNumerically(">", shortLoginCodeLength),
+				"expected the long link code; a %d-character code means either "+
 					"DefaultLoginTokenExpiryMin dropped to Pocket-ID's short-code threshold "+
-					"or Pocket-ID raised that threshold past the TTL we request")
+					"or Pocket-ID raised that threshold past the TTL we request",
+				shortLoginCodeLength)
 		})
 
 		It("should exchange the one-time access token for a session", func() {
