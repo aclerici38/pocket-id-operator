@@ -34,6 +34,15 @@ func externalTestScheme(t *testing.T) *runtime.Scheme {
 	return s
 }
 
+// The API key Secret an external instance points at. apiKeySecret must agree with
+// newExternalInstance's APIKeySecretRef or the client lookup fails, so both read the
+// same constants rather than repeating the strings.
+const (
+	apiKeySecretName  = "admin-token"
+	apiKeySecretKey   = "token"
+	apiKeySecretValue = "api-key"
+)
+
 func newExternalInstance(url string) *pocketidinternalv1alpha1.PocketIDInstance {
 	return &pocketidinternalv1alpha1.PocketIDInstance{
 		ObjectMeta: metav1.ObjectMeta{Name: "adopted", Namespace: "pocket-id"},
@@ -41,18 +50,18 @@ func newExternalInstance(url string) *pocketidinternalv1alpha1.PocketIDInstance 
 			External: &pocketidinternalv1alpha1.ExternalInstanceConfig{
 				URL: url,
 				APIKeySecretRef: corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{Name: "admin-token"},
-					Key:                  "token",
+					LocalObjectReference: corev1.LocalObjectReference{Name: apiKeySecretName},
+					Key:                  apiKeySecretKey,
 				},
 			},
 		},
 	}
 }
 
-func apiKeySecret(name, key, value string) *corev1.Secret {
+func apiKeySecret() *corev1.Secret {
 	return &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "pocket-id"},
-		Data:       map[string][]byte{key: []byte(value)},
+		ObjectMeta: metav1.ObjectMeta{Name: apiKeySecretName, Namespace: "pocket-id"},
+		Data:       map[string][]byte{apiKeySecretKey: []byte(apiKeySecretValue)},
 	}
 }
 
@@ -93,7 +102,7 @@ func TestReconcileExternal_Reachable(t *testing.T) {
 	defer srv.Close()
 
 	instance := newExternalInstance(srv.URL)
-	r := newReconcilerFor(t, instance, apiKeySecret("admin-token", "token", "api-key"))
+	r := newReconcilerFor(t, instance, apiKeySecret())
 
 	if _, err := r.reconcileExternal(ctx, instance); err != nil {
 		t.Fatalf("reconcileExternal: %v", err)
@@ -127,7 +136,7 @@ func TestReconcileExternal_Unreachable(t *testing.T) {
 	defer srv.Close()
 
 	instance := newExternalInstance(srv.URL)
-	r := newReconcilerFor(t, instance, apiKeySecret("admin-token", "token", "api-key"))
+	r := newReconcilerFor(t, instance, apiKeySecret())
 
 	if _, err := r.reconcileExternal(ctx, instance); err != nil {
 		t.Fatalf("reconcileExternal should not return an error on unreachable instance: %v", err)
@@ -170,7 +179,7 @@ func TestReconcile_ExternalSkipsWorkload(t *testing.T) {
 	// Pointed at an unreachable URL on purpose (connection refused, fails fast): the
 	// workload-skipping behavior must hold regardless of reachability.
 	instance := newExternalInstance("http://127.0.0.1:1")
-	r := newReconcilerFor(t, instance, apiKeySecret("admin-token", "token", "api-key"))
+	r := newReconcilerFor(t, instance, apiKeySecret())
 
 	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(instance)}); err != nil {
 		t.Fatalf("Reconcile: %v", err)

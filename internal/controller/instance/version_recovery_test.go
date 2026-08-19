@@ -141,7 +141,7 @@ func TestReconcileExternal_HaltsOnOldVersionWithNoWorkloadToPatch(t *testing.T) 
 
 	halted := 0
 	inst := newExternalInstance(srv.URL)
-	r := newReconcilerFor(t, inst, apiKeySecret("admin-token", "token", "api-key"))
+	r := newReconcilerFor(t, inst, apiKeySecret())
 	r.Exit = func(int) { halted++ }
 
 	if _, err := r.reconcileExternal(ctx, inst); err != nil {
