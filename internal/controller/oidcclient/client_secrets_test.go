@@ -326,6 +326,126 @@ func TestReconcileClientSecretRetention_TrustsTheMintedSecret(t *testing.T) {
 	}
 }
 
+// The prefix is the only handle a later reconcile has on which secret is which, so a mint that
+// collides with a secret already held would leave the client with two working secrets and no way to
+// tell them apart. It is thrown away and replaced instead.
+func TestMintClientSecret(t *testing.T) {
+	prefix := pocketid.SecretPrefix(storedSecretValue)
+
+	t.Run("keeps a mint whose prefix is free", func(t *testing.T) {
+		oidcClient := retentionClient(nil)
+		r := retentionReconciler(t, oidcClient)
+		api := &fakeClientSecretAPI{secrets: []pocketid.OIDCClientSecret{secretWithPrefix("ours", prefix, time.Hour)}}
+
+		created, value, err := r.mintClientSecret(context.Background(), oidcClient, api, api.secrets)
+		if err != nil {
+			t.Fatalf("mintClientSecret: %v", err)
+		}
+		if len(api.calls) != 1 {
+			t.Fatalf("expected a single create, got %d", len(api.calls))
+		}
+		if len(api.deleted) != 0 {
+			t.Fatalf("expected nothing discarded, got %v", api.deleted)
+		}
+		if created.ID == "" || value == "" {
+			t.Fatalf("expected the created secret and its value, got %+v / %q", created, value)
+		}
+	})
+
+	t.Run("discards a colliding mint and takes the next", func(t *testing.T) {
+		oidcClient := retentionClient(nil)
+		r := retentionReconciler(t, oidcClient)
+		// The first generated value shares the held secret's prefix; the second does not.
+		api := &fakeClientSecretAPI{
+			generated: []string{storedSecretValue + "-collides", "zzzz-distinct-value"},
+			secrets:   []pocketid.OIDCClientSecret{secretWithPrefix("held", prefix, time.Hour)},
+		}
+
+		created, value, err := r.mintClientSecret(context.Background(), oidcClient, api, api.secrets)
+		if err != nil {
+			t.Fatalf("mintClientSecret: %v", err)
+		}
+		if len(api.calls) != 2 {
+			t.Fatalf("expected the colliding mint to be retried, got %d creates", len(api.calls))
+		}
+		if len(api.deleted) != 1 || api.deleted[0] != "created-1" {
+			t.Fatalf("expected the colliding secret to be discarded, got %v", api.deleted)
+		}
+		if value != "zzzz-distinct-value" || created.ID != "created-2" {
+			t.Fatalf("expected the second mint to be returned, got %+v / %q", created, value)
+		}
+		// What is left behind is what a later reconcile has to work from.
+		if resolveClientSecret(value, api.secrets) == nil {
+			t.Fatal("the surviving set must be resolvable from the value that was kept")
+		}
+	})
+
+	// An expired secret cannot be mistaken for the live credential, so its prefix is not taken.
+	t.Run("ignores a collision with an expired secret", func(t *testing.T) {
+		oidcClient := retentionClient(nil)
+		r := retentionReconciler(t, oidcClient)
+		api := &fakeClientSecretAPI{
+			generated: []string{storedSecretValue + "-collides"},
+			secrets:   []pocketid.OIDCClientSecret{expiredSecret(secretWithPrefix("stale", prefix, time.Hour))},
+		}
+
+		if _, _, err := r.mintClientSecret(context.Background(), oidcClient, api, api.secrets); err != nil {
+			t.Fatalf("mintClientSecret: %v", err)
+		}
+		if len(api.calls) != 1 {
+			t.Fatalf("expected no retry against an expired secret, got %d creates", len(api.calls))
+		}
+	})
+
+	t.Run("propagates a failed create", func(t *testing.T) {
+		oidcClient := retentionClient(nil)
+		r := retentionReconciler(t, oidcClient)
+		api := &fakeClientSecretAPI{err: errors.New("pocket-id unavailable")}
+
+		if _, _, err := r.mintClientSecret(context.Background(), oidcClient, api, nil); err == nil {
+			t.Fatal("expected the create failure to propagate")
+		}
+	})
+
+	// A collider that cannot be discarded would be left behind to cause the ambiguity the retry
+	// exists to prevent, so the caller has to hear about it rather than carry on to a second mint.
+	t.Run("stops when a collider cannot be discarded", func(t *testing.T) {
+		oidcClient := retentionClient(nil)
+		r := retentionReconciler(t, oidcClient)
+		api := &fakeClientSecretAPI{
+			deleteErr: errors.New("pocket-id unavailable"),
+			generated: []string{storedSecretValue + "-collides", "zzzz-distinct-value"},
+			secrets:   []pocketid.OIDCClientSecret{secretWithPrefix("held", prefix, time.Hour)},
+		}
+
+		if _, _, err := r.mintClientSecret(context.Background(), oidcClient, api, api.secrets); err == nil {
+			t.Fatal("expected the failed discard to be reported")
+		}
+		if len(api.calls) != 1 {
+			t.Fatalf("expected no second mint after a failed discard, got %d", len(api.calls))
+		}
+	})
+
+	t.Run("gives up rather than minting forever", func(t *testing.T) {
+		oidcClient := retentionClient(nil)
+		r := retentionReconciler(t, oidcClient)
+		api := &fakeClientSecretAPI{
+			generated: []string{storedSecretValue + "-1", storedSecretValue + "-2", storedSecretValue + "-3", storedSecretValue + "-4"},
+			secrets:   []pocketid.OIDCClientSecret{secretWithPrefix("held", prefix, time.Hour)},
+		}
+
+		if _, _, err := r.mintClientSecret(context.Background(), oidcClient, api, api.secrets); err == nil {
+			t.Fatal("expected mintClientSecret to give up")
+		}
+		if len(api.calls) != maxClientSecretMintAttempts {
+			t.Fatalf("expected %d attempts, got %d", maxClientSecretMintAttempts, len(api.calls))
+		}
+		if len(api.deleted) != maxClientSecretMintAttempts {
+			t.Fatalf("expected every discarded attempt to be cleaned up, got %v", api.deleted)
+		}
+	})
+}
+
 // A retirement that cannot be completed has to surface. The credential is already stored by this
 // point, so the client keeps working and the reconcile retries — but silently swallowing it would
 // let a client drift up to Pocket-ID's cap with nothing to show why.
@@ -598,9 +718,9 @@ func TestReconcileSecret_MintsWhenTheStoredSecretExpired(t *testing.T) {
 	}
 }
 
-// collidingSecretServer answers like Pocket-ID for a client that already holds existingID, and
-// mints secrets sharing its prefix so the tie-break between them is what decides the outcome.
-func collidingSecretServer(t *testing.T, existingID, prefix, minted string, deleted *[]string) *httptest.Server {
+// mintSequenceServer answers like Pocket-ID for a client that already holds existingID, handing out
+// mints in the given order so a test can decide which of them collide with prefix.
+func mintSequenceServer(t *testing.T, existingID, prefix string, mints []string, deleted *[]string) *httptest.Server {
 	t.Helper()
 	var mu sync.Mutex
 	ids := []string{existingID}
@@ -609,6 +729,13 @@ func collidingSecretServer(t *testing.T, existingID, prefix, minted string, dele
 		defer mu.Unlock()
 		switch r.Method {
 		case http.MethodPost:
+			if len(mints) == 0 {
+				t.Errorf("unexpected create: the server ran out of values to mint")
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			var minted string
+			minted, mints = mints[0], mints[1:]
 			ids = append(ids, "created-"+minted)
 			writeCreatedClientSecret(w, minted)
 		case http.MethodDelete:
@@ -643,7 +770,7 @@ func TestReconcileSecret_KeepsWorkingCredentialAfterAnUnstoredMint(t *testing.T)
 	// The set a reconcile leaves behind when it mints and then fails before the Secret write: the
 	// credential the cluster still holds, plus an orphan sharing its prefix.
 	var deleted []string
-	ts := collidingSecretServer(t, "in-use", prefix, "unreachable", &deleted)
+	ts := mintSequenceServer(t, "in-use", prefix, []string{"unreachable"}, &deleted)
 	defer ts.Close()
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
@@ -667,38 +794,42 @@ func TestReconcileSecret_KeepsWorkingCredentialAfterAnUnstoredMint(t *testing.T)
 	}
 }
 
-// A replacement can share the prefix of the secret it supersedes, and then the prefix alone points
-// at both. Recording the new secret's ID before retirement runs is what stops it resolving to the
-// older one and deleting the credential that was just stored, which no later reconcile could undo.
-func TestReconcileSecret_RotationSurvivesAPrefixCollision(t *testing.T) {
+// A rotation whose replacement happens to share the superseded secret's prefix takes another,
+// leaving the client with one working secret and a set the next reconcile can still read.
+func TestReconcileSecret_RotationRetriesACollidingMint(t *testing.T) {
 	ctx := context.Background()
-	const mintedValue = "stored-secret-replacement" // shares storedSecretValue's prefix
+	const (
+		collidingValue = "stored-secret-replacement" // shares storedSecretValue's prefix
+		distinctValue  = "zzzz-secret-replacement"
+	)
 
 	oidcClient := retentionClient(nil)
 	oidcClient.Annotations = map[string]string{regenerateClientSecretAnnotation: "true"}
 	instance := retentionInstance()
 	r := retentionReconciler(t, oidcClient, instance, credentialsSecret())
 
+	prefix := pocketid.SecretPrefix(storedSecretValue)
 	var deleted []string
-	ts := collidingSecretServer(t, "superseded", pocketid.SecretPrefix(storedSecretValue), mintedValue, &deleted)
+	ts := mintSequenceServer(t, "superseded", prefix, []string{collidingValue, distinctValue}, &deleted)
 	defer ts.Close()
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
-	observed := []pocketid.OIDCClientSecret{secretWithPrefix("superseded", pocketid.SecretPrefix(storedSecretValue), time.Hour)}
+	observed := []pocketid.OIDCClientSecret{secretWithPrefix("superseded", prefix, time.Hour)}
 	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient, observed); err != nil {
 		t.Fatalf("ReconcileSecret: %v", err)
 	}
 
-	if !slices.Equal(deleted, []string{"superseded"}) {
-		t.Fatalf("expected only the superseded secret to be retired, got %v", deleted)
+	// The colliding mint goes first, then the secret it replaced; nothing else is left.
+	if !slices.Equal(deleted, []string{"created-" + collidingValue, "superseded"}) {
+		t.Fatalf("expected the colliding mint and the superseded secret to be retired, got %v", deleted)
 	}
 
 	stored := &corev1.Secret{}
 	if err := r.Get(ctx, client.ObjectKey{Name: "my-client-oidc-credentials", Namespace: testNamespace}, stored); err != nil {
 		t.Fatalf("get credentials secret: %v", err)
 	}
-	if got := string(stored.Data["client_secret"]); got != mintedValue {
-		t.Fatalf("expected the replacement to be stored, got %q", got)
+	if got := string(stored.Data["client_secret"]); got != distinctValue {
+		t.Fatalf("expected the non-colliding replacement to be stored, got %q", got)
 	}
 }
 

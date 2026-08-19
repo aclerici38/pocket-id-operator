@@ -31,7 +31,8 @@ type fakeClientSecretAPI struct {
 	calls     []string // values passed to CreateOIDCClientSecret
 	deleted   []string // secret IDs passed to DeleteOIDCClientSecret
 	secrets   []pocketid.OIDCClientSecret
-	returns   string // when non-empty, stored instead of the requested value
+	returns   string   // when non-empty, stored instead of the requested value
+	generated []string // values to hand out for generated mints, in order
 	err       error
 	deleteErr error
 	nextID    int
@@ -43,8 +44,14 @@ func (f *fakeClientSecretAPI) CreateOIDCClientSecret(_ context.Context, _, secre
 		return pocketid.OIDCClientSecret{}, "", f.err
 	}
 	stored := secret
-	if f.returns != "" {
+	switch {
+	case f.returns != "":
 		stored = f.returns
+	case secret == "" && len(f.generated) > 0:
+		// Generated mints take their value from the queue, so a test can force a prefix collision.
+		stored, f.generated = f.generated[0], f.generated[1:]
+	case secret == "":
+		stored = fmt.Sprintf("generated-secret-%d", f.nextID+1)
 	}
 	f.nextID++
 	created := pocketid.OIDCClientSecret{

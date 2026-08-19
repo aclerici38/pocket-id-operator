@@ -12,9 +12,11 @@ A client can hold up to 20 secrets, all valid until deleted. The operator presen
 credential, so it keeps the secret whose value is in the credentials Secret and deletes the rest,
 including any added outside the operator — [`spec.clientSecretOverlap`](#client-secret-overlap)
 being the one exception. It identifies its own secret by the first four characters of the value,
-which Pocket-ID records in clear text. In the rare event that two of a client's secrets share those
-four characters, the operator cannot tell them apart and leaves both in place rather than risk
-retiring the live one; the next rotation, whose secret it knows outright, clears them up.
+which Pocket-ID records in clear text. A generated secret that would share those four characters
+with one the client already holds is discarded and replaced, so the operator never leaves a client
+holding two secrets it cannot tell apart. If such a pair appears anyway — the same
+`clientSecretRef` value pushed twice, or a secret added by hand that happens to collide — it leaves
+both in place rather than risk retiring the live one, and the next rotation clears them up.
 
 A secret deleted in Pocket-ID is replaced on the next reconcile, including when every secret on
 the client is gone. With [`spec.clientSecretRef`](#declarative-client-secret) the declared value is

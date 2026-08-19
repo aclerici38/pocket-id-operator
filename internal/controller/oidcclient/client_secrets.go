@@ -28,6 +28,16 @@ type clientSecretRetentionAPI interface {
 	DeleteOIDCClientSecret(ctx context.Context, id, secretID string) error
 }
 
+type clientSecretMintAPI interface {
+	clientSecretRetentionAPI
+	CreateOIDCClientSecret(ctx context.Context, id, secret string) (pocketid.OIDCClientSecret, string, error)
+}
+
+// maxClientSecretMintAttempts bounds the retry in mintClientSecret. A collision is a 1-in-62^4
+// event, so a second attempt should never be needed; the bound is only so that a Pocket-ID which
+// stopped recording prefixes could not spin.
+const maxClientSecretMintAttempts = 3
+
 func clientSecretOverlap(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) time.Duration {
 	if oidcClient.Spec.ClientSecretOverlap == nil {
 		return 0
@@ -79,6 +89,48 @@ func couldHoldClientSecret(secret pocketid.OIDCClientSecret, value string) bool 
 		return false
 	}
 	return secret.Prefix == "" || secret.Prefix == pocketid.SecretPrefix(value)
+}
+
+// mintClientSecret creates a secret whose prefix no other secret on the client shares.
+//
+// The prefix is how a later reconcile works out which secret the stored credential is, so two that
+// share one are indistinguishable, and the operator would have to leave both in place rather than
+// risk retiring the live one — leaving a client with two working secrets when the user asked for a
+// roll. Rather than reason about that state, don't create it: discard a colliding value and ask
+// Pocket-ID for another.
+func (r *Reconciler) mintClientSecret(
+	ctx context.Context,
+	oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient,
+	apiClient clientSecretMintAPI,
+	observed []pocketid.OIDCClientSecret,
+) (pocketid.OIDCClientSecret, string, error) {
+	for attempt := 1; attempt <= maxClientSecretMintAttempts; attempt++ {
+		created, value, err := apiClient.CreateOIDCClientSecret(ctx, oidcClient.Status.ClientID, "")
+		if err != nil {
+			return pocketid.OIDCClientSecret{}, "", err
+		}
+		if !clientSecretPrefixTaken(created.Prefix, observed) {
+			return created, value, nil
+		}
+
+		// Discard it here rather than leaving it to retirement: its value was never stored, so
+		// nothing can use it, and leaving it would recreate the ambiguity if the caller then
+		// failed to store the replacement.
+		logf.FromContext(ctx).Info("Discarding a minted client secret that collides with one the client already holds",
+			"name", oidcClient.Name, "clientID", oidcClient.Status.ClientID, "attempt", attempt)
+		if err := apiClient.DeleteOIDCClientSecret(ctx, oidcClient.Status.ClientID, created.ID); err != nil {
+			return pocketid.OIDCClientSecret{}, "", fmt.Errorf("discard colliding client secret: %w", err)
+		}
+	}
+	return pocketid.OIDCClientSecret{}, "", fmt.Errorf("could not mint a client secret with a distinct prefix in %d attempts", maxClientSecretMintAttempts)
+}
+
+// clientSecretPrefixTaken reports whether an active secret already carries prefix. Prefixless
+// secrets do not collide: a prefix match always wins over them, so one stays resolvable.
+func clientSecretPrefixTaken(prefix string, secrets []pocketid.OIDCClientSecret) bool {
+	return prefix != "" && slices.ContainsFunc(secrets, func(secret pocketid.OIDCClientSecret) bool {
+		return secret.IsActive && secret.Prefix == prefix
+	})
 }
 
 // clientSecretPresent reports whether value could still be one of the client's secrets. Unlike

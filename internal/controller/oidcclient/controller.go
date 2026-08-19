@@ -1432,7 +1432,7 @@ func (r *Reconciler) reconcileClientSecretData(
 	logf.FromContext(ctx).Info("Rotating client secret",
 		"name", oidcClient.Name, "clientID", oidcClient.Status.ClientID, "trigger", decision.trigger)
 
-	created, clientSecret, err := apiClient.CreateOIDCClientSecret(ctx, oidcClient.Status.ClientID, "")
+	created, clientSecret, err := r.mintClientSecret(ctx, oidcClient, apiClient, observed)
 	if err != nil {
 		metrics.OIDCClientSecretRotations.WithLabelValues(oidcClient.Namespace, oidcClient.Name, "error", decision.trigger).Inc()
 		return nil, false, fmt.Errorf("failed to create client secret: %w", err)
