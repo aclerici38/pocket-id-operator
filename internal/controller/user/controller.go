@@ -252,6 +252,7 @@ func userGroupHasUserRef(group *pocketidinternalv1alpha1.PocketIDUserGroup, user
 // ReconcileDelete handles user deletion
 func (r *Reconciler) ReconcileDelete(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
+	r.EnsureClient(r.Client)
 
 	// Check if user is referenced by user groups
 	referencedByUserGroup, err := r.isUserReferencedByUserGroup(ctx, user.Name, user.Namespace)
@@ -261,6 +262,8 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, user *pocketidinternal
 	}
 	if referencedByUserGroup {
 		log.Info("User is referenced by PocketIDUserGroup, blocking deletion", "user", user.Name)
+		// The resource still exists in Pocket-ID, so it must stay Ready for dependents to resolve it.
+		_ = r.SetReadyCondition(ctx, user, metav1.ConditionTrue, "DeletionBlocked", "Deletion is blocked while referenced by a PocketIDUserGroup")
 		if _, err := helpers.EnsureFinalizer(ctx, r.Client, user, UserGroupUserFinalizer); err != nil {
 			return ctrl.Result{}, err
 		}

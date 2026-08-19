@@ -378,6 +378,8 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, api *pocketidinternalv
 	}
 	if referencedByOIDCClient {
 		logf.FromContext(ctx).Info("API is referenced by PocketIDOIDCClient, blocking deletion", "api", api.Name)
+		// The resource still exists in Pocket-ID, so it must stay Ready for dependents to resolve it.
+		_ = r.SetReadyCondition(ctx, api, metav1.ConditionTrue, "DeletionBlocked", "Deletion is blocked while referenced by a PocketIDOIDCClient")
 		if _, err := helpers.EnsureFinalizer(ctx, r.Client, api, OIDCClientAPIFinalizer); err != nil {
 			return ctrl.Result{}, err
 		}
