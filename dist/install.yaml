@@ -3456,8 +3456,7 @@ spec:
                 description: |-
                   ClientSecretOverlap is how long the client-secret a replacement supersedes stays valid in
                   Pocket-ID, giving consumers that cached it time to pick up the new one. It covers every
-                  replacement: scheduled rotations, the regenerate-client-secret annotation, and
-                  clientSecretRef updates.
+                  replacement: scheduled rotations, the regenerate-client-secret annotation, and clientSecretRef updates.
 
                   When unset or zero the previous secret is deleted as soon as the replacement is stored,
                   so exactly one secret is ever valid. Must not exceed 168h, nor clientSecretRotation.interval if set.
