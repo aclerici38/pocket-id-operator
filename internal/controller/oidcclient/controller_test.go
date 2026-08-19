@@ -875,6 +875,7 @@ func TestReconcileSecret_StoreClientSecretDisabled(t *testing.T) {
 			fakeClient := fake.NewClientBuilder().
 				WithScheme(scheme).
 				WithObjects(objs...).
+				WithStatusSubresource(oidcClient).
 				Build()
 
 			reconciler := &Reconciler{

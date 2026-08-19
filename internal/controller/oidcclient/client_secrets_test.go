@@ -18,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
@@ -188,8 +189,8 @@ func TestClientSecretPresent(t *testing.T) {
 	}
 }
 
-// retentionReconciler builds a reconciler whose client status the retention step can patch.
-func retentionReconciler(t *testing.T, objs ...client.Object) *Reconciler {
+// retentionFakeClient builds the cluster the retention tests reconcile against.
+func retentionFakeClient(t *testing.T, objs ...client.Object) (client.WithWatch, *runtime.Scheme) {
 	t.Helper()
 	s := runtime.NewScheme()
 	if err := corev1.AddToScheme(s); err != nil {
@@ -198,10 +199,14 @@ func retentionReconciler(t *testing.T, objs ...client.Object) *Reconciler {
 	if err := pocketidinternalv1alpha1.AddToScheme(s); err != nil {
 		t.Fatalf("add pocketid scheme: %v", err)
 	}
-	fc := fake.NewClientBuilder().WithScheme(s).WithObjects(objs...).WithStatusSubresource(objs...).Build()
-	r := &Reconciler{Client: fc, APIReader: fc, Scheme: s}
-	r.EnsureClient(fc)
-	return r
+	return fake.NewClientBuilder().WithScheme(s).WithObjects(objs...).WithStatusSubresource(objs...).Build(), s
+}
+
+// retentionReconciler builds a reconciler whose client status the retention step can patch.
+func retentionReconciler(t *testing.T, objs ...client.Object) *Reconciler {
+	t.Helper()
+	fc, s := retentionFakeClient(t, objs...)
+	return &Reconciler{Client: fc, APIReader: fc, Scheme: s}
 }
 
 func retentionClient(overlap *metav1.Duration) *pocketidinternalv1alpha1.PocketIDOIDCClient {
@@ -551,6 +556,56 @@ func collidingSecretServer(t *testing.T, existingID, prefix, minted string, dele
 			_, _ = fmt.Fprintf(w, "[%s]", strings.Join(entries, ","))
 		}
 	}))
+}
+
+// retentionReconcilerWithFailingStatus rejects every PocketIDOIDCClient status write, standing in
+// for a transient API failure at the moment a mint is recorded.
+func retentionReconcilerWithFailingStatus(t *testing.T, objs ...client.Object) *Reconciler {
+	t.Helper()
+	fc, scheme := retentionFakeClient(t, objs...)
+	failing := interceptor.NewClient(fc, interceptor.Funcs{
+		SubResourcePatch: func(ctx context.Context, c client.Client, _ string, obj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error {
+			if _, ok := obj.(*pocketidinternalv1alpha1.PocketIDOIDCClient); ok {
+				return fmt.Errorf("simulated status patch failure")
+			}
+			return c.Status().Patch(ctx, obj, patch, opts...)
+		},
+	})
+	return &Reconciler{Client: failing, APIReader: failing, Scheme: scheme}
+}
+
+// The tie-break is only durable if the status write lands. A mint whose ID could not be recorded is
+// abandoned rather than stored: keeping it would leave the next reconcile resolving to the secret
+// it replaced and retiring the live credential, which nothing afterwards could detect or undo.
+func TestReconcileSecret_AbandonsAMintItCannotRecord(t *testing.T) {
+	ctx := context.Background()
+
+	oidcClient := retentionClient(nil)
+	oidcClient.Status.ClientSecretID = "superseded"
+	oidcClient.Annotations = map[string]string{regenerateClientSecretAnnotation: "true"}
+	instance := retentionInstance()
+	r := retentionReconcilerWithFailingStatus(t, oidcClient, instance, credentialsSecret())
+
+	var deleted []string
+	ts := collidingSecretServer(t, "superseded", pocketid.SecretPrefix(storedSecretValue), "stored-secret-replacement", &deleted)
+	defer ts.Close()
+	apiClient, _ := pocketid.NewClient(ts.URL, "")
+
+	observed := []pocketid.OIDCClientSecret{secretWithPrefix("superseded", pocketid.SecretPrefix(storedSecretValue), time.Hour)}
+	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient, observed); err == nil {
+		t.Fatal("expected ReconcileSecret to fail when the client secret ID cannot be recorded")
+	}
+	if len(deleted) != 0 {
+		t.Fatalf("expected nothing to be retired against an unrecorded mint, got %v", deleted)
+	}
+
+	stored := &corev1.Secret{}
+	if err := r.Get(ctx, client.ObjectKey{Name: "my-client-oidc-credentials", Namespace: testNamespace}, stored); err != nil {
+		t.Fatalf("get credentials secret: %v", err)
+	}
+	if got := string(stored.Data["client_secret"]); got != storedSecretValue {
+		t.Fatalf("expected the working credential to be left in place, got %q", got)
+	}
 }
 
 // A replacement can share the prefix of the secret it supersedes, and then the prefix alone points

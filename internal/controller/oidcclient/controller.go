@@ -1442,10 +1442,14 @@ func (r *Reconciler) reconcileClientSecretData(
 	metrics.OIDCClientSecretRotations.WithLabelValues(oidcClient.Namespace, oidcClient.Name, "success", decision.trigger).Inc()
 	secretData[keys.ClientSecret] = []byte(clientSecret)
 
-	// Point status at the replacement before retirement runs. Prefix matching alone cannot
-	// separate it from a superseded secret that happens to share its prefix, and without the
-	// tie-break retirement would resolve to the older one and delete the value just stored.
-	r.recordClientSecretID(ctx, oidcClient, created.ID)
+	// Point status at the replacement before it is stored. Prefix matching alone cannot separate
+	// it from a superseded secret that happens to share its prefix, and without the tie-break
+	// retirement would resolve to the older one and delete the value just stored. Failing here
+	// abandons the new secret rather than storing a credential the operator cannot identify
+	// later; it is retired as superseded once a subsequent mint records its own ID.
+	if err := r.recordClientSecretID(ctx, oidcClient, created.ID); err != nil {
+		return nil, false, err
+	}
 
 	now := metav1.NewTime(time.Now())
 	return &now, scheduledRotation, nil

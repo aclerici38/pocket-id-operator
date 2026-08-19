@@ -149,7 +149,9 @@ func (r *Reconciler) reconcileClientSecretRetention(
 		return nil
 	}
 
-	r.recordClientSecretID(ctx, oidcClient, current.ID)
+	if err := r.recordClientSecretID(ctx, oidcClient, current.ID); err != nil {
+		return err
+	}
 
 	return r.retireSupersededClientSecrets(ctx, oidcClient, apiClient, current, secrets)
 }
@@ -227,17 +229,21 @@ func (r *Reconciler) deleteClientSecrets(
 	return nil
 }
 
-// recordClientSecretID notes which secret the credentials Secret mirrors. A failed write is logged
-// rather than propagated: nothing reads it but the tie-break, and failing here after the secret was
-// created would mint another on the retry.
-func (r *Reconciler) recordClientSecretID(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, id string) {
+// recordClientSecretID notes which secret the credentials Secret mirrors.
+//
+// A failed write has to stop the reconcile. It is the only tie-break between secrets sharing a
+// prefix, and it is written when the secret is minted — the one moment the two can be told apart.
+// Carrying on would leave the next reconcile resolving against the ID of the secret this one
+// replaced, and retirement would delete the live credential to preserve the obsolete one, with
+// nothing left afterwards to tell that it happened.
+func (r *Reconciler) recordClientSecretID(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, id string) error {
 	if oidcClient.Status.ClientSecretID == id {
-		return
+		return nil
 	}
 	base := oidcClient.DeepCopy()
 	oidcClient.Status.ClientSecretID = id
 	if err := r.Status().Patch(ctx, oidcClient, client.MergeFrom(base)); err != nil {
-		logf.FromContext(ctx).Error(err, "Failed to record the client secret ID in status",
-			"name", oidcClient.Name, "secretID", id)
+		return fmt.Errorf("record client secret %s in status: %w", id, err)
 	}
+	return nil
 }
