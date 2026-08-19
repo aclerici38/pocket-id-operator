@@ -20,9 +20,9 @@ import (
 // spec.clientSecretOverlap first.
 //
 // Which secret is the operator's is derived from the stored value, matched against the clear-text
-// prefix Pocket-ID records for each secret, rather than from status.clientSecretID. That is what
-// keeps a crash between the credentials Secret write and the status write from retiring the secret
-// the cluster is now using.
+// prefix Pocket-ID records for each secret. status.clientSecretID only breaks a tie between
+// secrets sharing a prefix, so a crash between the credentials Secret write and the status write
+// cannot cause the secret the cluster is now using to be retired.
 
 type clientSecretRetentionAPI interface {
 	DeleteOIDCClientSecret(ctx context.Context, id, secretID string) error
@@ -52,6 +52,8 @@ func resolveClientSecret(statusID, storedValue string, secrets []pocketid.OIDCCl
 	prefix := pocketid.SecretPrefix(storedValue)
 	for _, secret := range secrets {
 		switch {
+		case !secret.IsActive:
+			// Expired out-of-band: Pocket-ID rejects it, so it cannot be the live credential.
 		case secret.Prefix == "":
 			byMissingPrefix = append(byMissingPrefix, secret)
 		case prefix != "" && secret.Prefix == prefix:
@@ -89,6 +91,9 @@ func onlyOrStatusMatch(candidates []pocketid.OIDCClientSecret, statusID string) 
 func clientSecretPresent(value string, secrets []pocketid.OIDCClientSecret) bool {
 	prefix := pocketid.SecretPrefix(value)
 	for _, secret := range secrets {
+		if !secret.IsActive {
+			continue
+		}
 		if secret.Prefix == "" || (prefix != "" && secret.Prefix == prefix) {
 			return true
 		}
@@ -114,8 +119,8 @@ func supersededClientSecrets(current *pocketid.OIDCClientSecret, secrets []pocke
 // reconcileClientSecretRetention reduces the client's secret set to the credential in storedValue.
 // Callers must reach it only once that value is durably stored.
 //
-// observed is the set as of this reconcile's client read, re-read only when a mint or an earlier
-// retirement may have moved it on.
+// observed is the set as of this reconcile's client read, which is current unless this reconcile
+// minted a secret of its own.
 func (r *Reconciler) reconcileClientSecretRetention(
 	ctx context.Context,
 	oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient,
@@ -129,13 +134,12 @@ func (r *Reconciler) reconcileClientSecretRetention(
 	}
 
 	secrets := observed
-	if minted || len(observed) > 1 {
+	if minted {
 		fresh, err := apiClient.ListOIDCClientSecrets(ctx, oidcClient.Status.ClientID)
 		if err != nil {
 			return fmt.Errorf("list client secrets: %w", err)
 		}
 		secrets = fresh
-		metrics.OIDCClientSecretCount.WithLabelValues(oidcClient.Namespace, oidcClient.Name).Set(float64(len(secrets)))
 	}
 
 	current := resolveClientSecret(oidcClient.Status.ClientSecretID, storedValue, secrets)
@@ -181,7 +185,9 @@ func (r *Reconciler) retireSupersededClientSecrets(
 
 // makeRoomForClientSecret retires superseded secrets ahead of their overlap when the client has hit
 // Pocket-ID's cap, which would reject the secret about to be created. current is never eligible, so
-// the live credential survives a create that fails.
+// a live credential the caller could identify survives a create that fails. When it could not be
+// identified there is nothing to protect and nothing to lose: the cap has to be cleared either way,
+// and the oldest secret is the least likely to be in use.
 func (r *Reconciler) makeRoomForClientSecret(
 	ctx context.Context,
 	oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient,
@@ -194,13 +200,7 @@ func (r *Reconciler) makeRoomForClientSecret(
 	}
 
 	superseded := supersededClientSecrets(current, secrets)
-	needed := len(secrets) - pocketid.MaxOIDCClientSecrets + 1
-	if needed > len(superseded) {
-		needed = len(superseded)
-	}
-	if needed == 0 {
-		return fmt.Errorf("client holds %d secrets, Pocket-ID's maximum, and none can be retired to make room", len(secrets))
-	}
+	needed := min(len(secrets)-pocketid.MaxOIDCClientSecrets+1, len(superseded))
 
 	logf.FromContext(ctx).Info("Retiring superseded client secrets early to stay within Pocket-ID's per-client limit",
 		"name", oidcClient.Name, "clientID", oidcClient.Status.ClientID, "held", len(secrets), "retiring", needed)

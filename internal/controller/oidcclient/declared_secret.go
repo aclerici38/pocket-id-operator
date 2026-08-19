@@ -102,6 +102,8 @@ func (r *Reconciler) SyncDeclaredClientSecret(ctx context.Context, oidcClient *p
 		if err != nil {
 			return fmt.Errorf("create client secret: %w", err)
 		}
+		// The declared value is what gets mirrored into the managed Secret, so a Pocket-ID that
+		// stored something else would leave the two disagreeing with nothing to detect it later.
 		if returned != secret {
 			return fmt.Errorf("pocket-id stored a generated client secret instead of the declared one")
 		}

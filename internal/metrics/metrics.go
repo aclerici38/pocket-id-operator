@@ -270,9 +270,10 @@ var (
 		[]string{"namespace", "name", "result", "trigger"},
 	)
 
-	// OIDCClientSecretCount tracks how many secrets Pocket-ID holds for a client as of the last
-	// reconcile, expired ones included. Climbing towards Pocket-ID's per-client cap means
-	// superseded secrets are not being retired.
+	// OIDCClientSecretCount tracks how many secrets Pocket-ID holds for a confidential client,
+	// expired ones included, as read at the start of the last reconcile — so a mint or a
+	// retirement during that reconcile shows up on the next one. Climbing towards Pocket-ID's
+	// per-client cap means superseded secrets are not being retired.
 	// Labels:
 	//
 	//	namespace - Kubernetes namespace of the PocketIDOIDCClient

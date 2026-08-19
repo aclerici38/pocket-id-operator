@@ -611,9 +611,10 @@ dashboard's event timeline and from the rate-based alerts below.
 **Type:** Gauge
 **Labels:** `namespace`, `name`
 
-How many secrets Pocket-ID holds for the client as of the last reconcile, expired ones included.
-Pocket-ID caps this at 20 per client, so a value climbing towards that means superseded secrets are
-not being retired — usually repeated retirement failures.
+How many secrets Pocket-ID holds for the client, expired ones included, as read at the start of the
+last reconcile — a mint or a retirement during that reconcile is reflected on the next one. Only
+confidential clients report it. Pocket-ID caps the count at 20 per client, so a value climbing
+towards that means superseded secrets are not being retired — usually repeated retirement failures.
 
 A `0` means every secret was deleted outside the operator. Unless the secret is managed externally
 (`spec.secret.storeClientSecret: false`) the operator mints a replacement on the next reconcile, so

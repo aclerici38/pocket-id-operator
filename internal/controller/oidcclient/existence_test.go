@@ -76,7 +76,7 @@ func (m *mockPocketIDOIDCClientClient) ListOIDCClientSecrets(_ context.Context, 
 }
 
 func (m *mockPocketIDOIDCClientClient) CreateOIDCClientSecret(_ context.Context, _, secret string) (pocketid.OIDCClientSecret, string, error) {
-	return pocketid.OIDCClientSecret{ID: "secret-1", Prefix: pocketid.SecretPrefix(secret)}, secret, nil
+	return pocketid.OIDCClientSecret{ID: "secret-1", Prefix: pocketid.SecretPrefix(secret), IsActive: true}, secret, nil
 }
 
 func (m *mockPocketIDOIDCClientClient) DeleteOIDCClientSecret(_ context.Context, _, _ string) error {

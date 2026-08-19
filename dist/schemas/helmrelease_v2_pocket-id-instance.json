@@ -6128,7 +6128,7 @@
                         ]
                       },
                       "clientSecretOverlap": {
-                        "description": "ClientSecretOverlap is how long the client-secret a regeneration replaced stays valid in\nPocket-ID, giving consumers that cached it time to pick up the new one.\n\nWhen unset or zero the previous secret is deleted as soon as the replacement is stored,\nso exactly one secret is ever valid. Must not exceed 168h, nor clientSecretRotation.interval if set.",
+                        "description": "ClientSecretOverlap is how long the client-secret a replacement supersedes stays valid in\nPocket-ID, giving consumers that cached it time to pick up the new one. It covers every\nreplacement: scheduled rotations, the regenerate-client-secret annotation, and\nclientSecretRef updates.\n\nWhen unset or zero the previous secret is deleted as soon as the replacement is stored,\nso exactly one secret is ever valid. Must not exceed 168h, nor clientSecretRotation.interval if set.",
                         "type": [
                           "string",
                           "null"

@@ -9,6 +9,7 @@ import (
 	"path"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -31,6 +32,13 @@ func secretWithPrefix(id, prefix string, age time.Duration) pocketid.OIDCClientS
 		CreatedAt: time.Now().Add(-age),
 		IsActive:  true,
 	}
+}
+
+// expiredSecret marks a secret Pocket-ID no longer accepts. The operator never asks for an expiry,
+// so this only happens when one is set out of band.
+func expiredSecret(secret pocketid.OIDCClientSecret) pocketid.OIDCClientSecret {
+	secret.IsActive = false
+	return secret
 }
 
 // observedSecretFor returns the steady-state secret set for a client whose stored credential is
@@ -89,6 +97,18 @@ func TestResolveClientSecret(t *testing.T) {
 			wantID:  "",
 		},
 		{
+			name:    "ignores an expired secret that shares the prefix",
+			stored:  storedSecretValue,
+			secrets: []pocketid.OIDCClientSecret{expiredSecret(secretWithPrefix("stale", prefix, time.Hour)), secretWithPrefix("ours", prefix, 0)},
+			wantID:  "ours",
+		},
+		{
+			name:    "reports nothing when the only match expired",
+			stored:  storedSecretValue,
+			secrets: []pocketid.OIDCClientSecret{expiredSecret(secretWithPrefix("ours", prefix, time.Hour))},
+			wantID:  "",
+		},
+		{
 			name:    "reports nothing when the stored value matches none",
 			stored:  storedSecretValue,
 			secrets: []pocketid.OIDCClientSecret{secretWithPrefix("other", "abcd", 0)},
@@ -111,6 +131,58 @@ func TestResolveClientSecret(t *testing.T) {
 				t.Fatalf("expected %q, got no match", tt.wantID)
 			case tt.wantID != "" && got.ID != tt.wantID:
 				t.Fatalf("expected %q, got %q", tt.wantID, got.ID)
+			}
+		})
+	}
+}
+
+// clientSecretPresent decides whether a credential needs replacing, so it must tolerate the
+// ambiguity resolveClientSecret refuses: a value that cannot be pinned to one secret is still a
+// value that works, and replacing it would mint another secret on every reconcile.
+func TestClientSecretPresent(t *testing.T) {
+	prefix := pocketid.SecretPrefix(storedSecretValue)
+
+	tests := []struct {
+		name    string
+		secrets []pocketid.OIDCClientSecret
+		want    bool
+	}{
+		{
+			name:    "present when a secret carries the prefix",
+			secrets: []pocketid.OIDCClientSecret{secretWithPrefix("other", "abcd", 0), secretWithPrefix("ours", prefix, 0)},
+			want:    true,
+		},
+		{
+			name:    "present when secrets share the prefix and none can be singled out",
+			secrets: []pocketid.OIDCClientSecret{secretWithPrefix("a", prefix, 0), secretWithPrefix("b", prefix, 0)},
+			want:    true,
+		},
+		{
+			name:    "present when a prefixless secret could still be it",
+			secrets: []pocketid.OIDCClientSecret{secretWithPrefix("migrated", "", time.Hour)},
+			want:    true,
+		},
+		{
+			name:    "absent once the matching secret expires",
+			secrets: []pocketid.OIDCClientSecret{expiredSecret(secretWithPrefix("ours", prefix, time.Hour))},
+			want:    false,
+		},
+		{
+			name:    "absent when nothing matches",
+			secrets: []pocketid.OIDCClientSecret{secretWithPrefix("other", "abcd", 0)},
+			want:    false,
+		},
+		{
+			name:    "absent when the client holds no secrets",
+			secrets: nil,
+			want:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := clientSecretPresent(storedSecretValue, tt.secrets); got != tt.want {
+				t.Fatalf("expected %v, got %v", tt.want, got)
 			}
 		})
 	}
@@ -386,6 +458,136 @@ func TestReconcileSecret_MintsWhenStoredSecretNoLongerExists(t *testing.T) {
 		t.Fatalf("get credentials secret: %v", err)
 	}
 	if got := string(stored.Data["client_secret"]); got != "minted-secret" {
+		t.Fatalf("expected the replacement to be stored, got %q", got)
+	}
+}
+
+// The self-heal asks whether the stored value is still present, not which secret it is. Two
+// secrets sharing its prefix cannot be told apart, but one of them works — replacing it would mint
+// a secret every reconcile, forever, and walk the client into Pocket-ID's cap.
+func TestReconcileSecret_KeepsAnAmbiguousButPresentSecret(t *testing.T) {
+	ctx := context.Background()
+	oidcClient := retentionClient(nil)
+	instance := retentionInstance()
+	r := retentionReconciler(t, oidcClient, instance, credentialsSecret())
+
+	creates := 0
+	ts := clientSecretServer(t, "must-not-be-minted", &creates)
+	defer ts.Close()
+	apiClient, _ := pocketid.NewClient(ts.URL, "")
+
+	prefix := pocketid.SecretPrefix(storedSecretValue)
+	observed := []pocketid.OIDCClientSecret{secretWithPrefix("a", prefix, time.Hour), secretWithPrefix("b", prefix, 0)}
+	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient, observed); err != nil {
+		t.Fatalf("ReconcileSecret: %v", err)
+	}
+	if creates != 0 {
+		t.Fatalf("expected a present credential to be kept, got %d creates", creates)
+	}
+
+	stored := &corev1.Secret{}
+	if err := r.Get(ctx, client.ObjectKey{Name: "my-client-oidc-credentials", Namespace: testNamespace}, stored); err != nil {
+		t.Fatalf("get credentials secret: %v", err)
+	}
+	if got := string(stored.Data["client_secret"]); got != storedSecretValue {
+		t.Fatalf("expected the existing credential to be kept, got %q", got)
+	}
+}
+
+// An expiry set out of band leaves a secret Pocket-ID rejects. It still occupies a slot and still
+// carries the stored value's prefix, so nothing but its active flag says the client is broken.
+func TestReconcileSecret_MintsWhenTheStoredSecretExpired(t *testing.T) {
+	ctx := context.Background()
+	oidcClient := retentionClient(nil)
+	instance := retentionInstance()
+	r := retentionReconciler(t, oidcClient, instance, credentialsSecret())
+
+	creates := 0
+	ts := clientSecretServer(t, "minted-secret", &creates)
+	defer ts.Close()
+	apiClient, _ := pocketid.NewClient(ts.URL, "")
+
+	observed := []pocketid.OIDCClientSecret{expiredSecret(secretWithPrefix("ours", pocketid.SecretPrefix(storedSecretValue), time.Hour))}
+	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient, observed); err != nil {
+		t.Fatalf("ReconcileSecret: %v", err)
+	}
+	if creates != 1 {
+		t.Fatalf("expected the expired credential to be replaced once, got %d creates", creates)
+	}
+
+	stored := &corev1.Secret{}
+	if err := r.Get(ctx, client.ObjectKey{Name: "my-client-oidc-credentials", Namespace: testNamespace}, stored); err != nil {
+		t.Fatalf("get credentials secret: %v", err)
+	}
+	if got := string(stored.Data["client_secret"]); got != "minted-secret" {
+		t.Fatalf("expected the replacement to be stored, got %q", got)
+	}
+}
+
+// collidingSecretServer answers like Pocket-ID for a client that already holds existingID, and
+// mints secrets sharing its prefix so the tie-break between them is what decides the outcome.
+func collidingSecretServer(t *testing.T, existingID, prefix, minted string, deleted *[]string) *httptest.Server {
+	t.Helper()
+	var mu sync.Mutex
+	ids := []string{existingID}
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch r.Method {
+		case http.MethodPost:
+			ids = append(ids, "created-"+minted)
+			writeCreatedClientSecret(w, minted)
+		case http.MethodDelete:
+			id := path.Base(r.URL.Path)
+			*deleted = append(*deleted, id)
+			ids = slices.DeleteFunc(ids, func(existing string) bool { return existing == id })
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			entries := make([]string, 0, len(ids))
+			for _, id := range ids {
+				entries = append(entries, fmt.Sprintf(`{"id":%q,"prefix":%q,"isActive":true}`, id, prefix))
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprintf(w, "[%s]", strings.Join(entries, ","))
+		}
+	}))
+}
+
+// A replacement can share the prefix of the secret it supersedes, and then the prefix alone points
+// at both. Recording the new secret's ID before retirement runs is what stops it resolving to the
+// older one and deleting the credential that was just stored, which no later reconcile could undo.
+func TestReconcileSecret_RotationSurvivesAPrefixCollision(t *testing.T) {
+	ctx := context.Background()
+	const mintedValue = "stored-secret-replacement" // shares storedSecretValue's prefix
+
+	oidcClient := retentionClient(nil)
+	oidcClient.Status.ClientSecretID = "superseded"
+	oidcClient.Annotations = map[string]string{regenerateClientSecretAnnotation: "true"}
+	instance := retentionInstance()
+	r := retentionReconciler(t, oidcClient, instance, credentialsSecret())
+
+	var deleted []string
+	ts := collidingSecretServer(t, "superseded", pocketid.SecretPrefix(storedSecretValue), mintedValue, &deleted)
+	defer ts.Close()
+	apiClient, _ := pocketid.NewClient(ts.URL, "")
+
+	observed := []pocketid.OIDCClientSecret{secretWithPrefix("superseded", pocketid.SecretPrefix(storedSecretValue), time.Hour)}
+	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient, observed); err != nil {
+		t.Fatalf("ReconcileSecret: %v", err)
+	}
+
+	if !slices.Equal(deleted, []string{"superseded"}) {
+		t.Fatalf("expected only the superseded secret to be retired, got %v", deleted)
+	}
+	if want := "created-" + mintedValue; oidcClient.Status.ClientSecretID != want {
+		t.Fatalf("expected status to name the replacement %q, got %q", want, oidcClient.Status.ClientSecretID)
+	}
+
+	stored := &corev1.Secret{}
+	if err := r.Get(ctx, client.ObjectKey{Name: "my-client-oidc-credentials", Namespace: testNamespace}, stored); err != nil {
+		t.Fatalf("get credentials secret: %v", err)
+	}
+	if got := string(stored.Data["client_secret"]); got != mintedValue {
 		t.Fatalf("expected the replacement to be stored, got %q", got)
 	}
 }

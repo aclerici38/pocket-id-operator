@@ -120,8 +120,8 @@ type OIDCClientSecret struct {
 	// migrated from the single-secret column it used before v2.14.0.
 	Prefix    string
 	CreatedAt time.Time
-	ExpiresAt *time.Time
 	// IsActive reports whether Pocket-ID still accepts the secret, i.e. it has not expired.
+	// An inactive secret authenticates nothing but still counts against MaxOIDCClientSecrets.
 	IsActive bool
 }
 
@@ -1452,7 +1452,6 @@ func oidcClientSecretsFromDTO(dtos []*models.GithubComPocketIDPocketIDBackendInt
 			ID:        dto.ID,
 			Prefix:    dto.Prefix,
 			CreatedAt: parseAPITime(dto.CreatedAt),
-			ExpiresAt: parseOptionalAPITime(dto.ExpiresAt),
 			IsActive:  dto.IsActive,
 		})
 	}
@@ -1464,7 +1463,6 @@ func oidcClientSecretFromCreatedDTO(dto *models.GithubComPocketIDPocketIDBackend
 		ID:        dto.ID,
 		Prefix:    dto.Prefix,
 		CreatedAt: parseAPITime(dto.CreatedAt),
-		ExpiresAt: parseOptionalAPITime(dto.ExpiresAt),
 		IsActive:  dto.IsActive,
 	}
 }
@@ -1480,14 +1478,6 @@ func parseAPITime(value string) time.Time {
 		return time.Time{}
 	}
 	return parsed
-}
-
-func parseOptionalAPITime(value string) *time.Time {
-	parsed := parseAPITime(value)
-	if parsed.IsZero() {
-		return nil
-	}
-	return &parsed
 }
 
 func oidcClientFromListDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientWithAllowedGroupsCountDto) *OIDCClient {

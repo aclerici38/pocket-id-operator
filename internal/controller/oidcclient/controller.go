@@ -207,6 +207,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
+	if !isPublicClient(oidcClient) {
+		metrics.OIDCClientSecretCount.WithLabelValues(oidcClient.Namespace, oidcClient.Name).Set(float64(len(current.Secrets)))
+	}
+
 	// Skip the push if this reconcile was triggered for post-update status refresh
 	key := client.ObjectKeyFromObject(oidcClient)
 	if r.skipUpdate[key] {
@@ -818,8 +822,10 @@ func (r *Reconciler) clearClientStatus(ctx context.Context, oidcClient *pocketid
 	return r.ClearStatusField(ctx, oidcClient, func() {
 		oidcClient.Status.ClientID = ""
 		// The replacement client is created without a secret, so a declared one must be
-		// pushed again rather than assumed still applied.
+		// pushed again rather than assumed still applied, and the secret the old client
+		// held no longer exists to be told apart from anything.
 		oidcClient.Status.ClientSecretSourceVersion = ""
+		oidcClient.Status.ClientSecretID = ""
 	})
 }
 
@@ -1342,8 +1348,6 @@ func (r *Reconciler) reconcileClientSecretData(
 	keys pocketidinternalv1alpha1.OIDCClientSecretKeys,
 	secretData map[string][]byte,
 ) (rotatedAt *metav1.Time, scheduledRotation bool, err error) {
-	metrics.OIDCClientSecretCount.WithLabelValues(oidcClient.Namespace, oidcClient.Name).Set(float64(len(observed)))
-
 	if hasDeclaredClientSecret(oidcClient) {
 		// SyncDeclaredClientSecret owns the value in Pocket-ID; here it only needs mirroring
 		// into the managed Secret. Rotation never applies, so report the schedule as disabled
@@ -1402,9 +1406,11 @@ func (r *Reconciler) reconcileClientSecretData(
 	live := resolveClientSecret(oidcClient.Status.ClientSecretID, stored, observed)
 
 	// The stored value matches none of the client's secrets, so it authenticates nothing and the
-	// client is broken until replaced — rotation gates do not apply. An externally-managed secret
-	// cannot reach here: storeClientSecret false returns above.
-	if !decision.regenerate && stored != "" && live == nil {
+	// client is broken until replaced — rotation gates do not apply. This asks whether the value
+	// is present rather than which secret it is: an unresolvable but present value would otherwise
+	// mint a replacement every reconcile. An externally-managed secret cannot reach here:
+	// storeClientSecret false returns above.
+	if !decision.regenerate && stored != "" && !clientSecretPresent(stored, observed) {
 		decision.regenerate, decision.trigger, decision.scheduled = true, "drift", false
 		scheduledRotation = false
 		logf.FromContext(ctx).Info("Stored client secret no longer exists in Pocket-ID; minting a replacement",
@@ -1436,6 +1442,9 @@ func (r *Reconciler) reconcileClientSecretData(
 	metrics.OIDCClientSecretRotations.WithLabelValues(oidcClient.Namespace, oidcClient.Name, "success", decision.trigger).Inc()
 	secretData[keys.ClientSecret] = []byte(clientSecret)
 
+	// Point status at the replacement before retirement runs. Prefix matching alone cannot
+	// separate it from a superseded secret that happens to share its prefix, and without the
+	// tie-break retirement would resolve to the older one and delete the value just stored.
 	r.recordClientSecretID(ctx, oidcClient, created.ID)
 
 	now := metav1.NewTime(time.Now())
