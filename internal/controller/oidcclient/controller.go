@@ -1425,7 +1425,9 @@ func (r *Reconciler) reconcileClientSecretData(
 		return nil, false, fmt.Errorf("apiClient is required to regenerate client secret")
 	}
 
-	if err := r.makeRoomForClientSecret(ctx, oidcClient, apiClient, stored, observed); err != nil {
+	// A generated secret exists only in the credentials Secret, so nothing that could be it may be
+	// retired to make space for its replacement.
+	if err := r.makeRoomForClientSecret(ctx, oidcClient, apiClient, stored, false, observed); err != nil {
 		return nil, false, err
 	}
 

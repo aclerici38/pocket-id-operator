@@ -161,6 +161,32 @@ func TestSyncDeclaredClientSecret_StopsWhenRetirementFails(t *testing.T) {
 	})
 }
 
+// Making room at a full client deletes before the replacement exists, so the copy holding the
+// declared value is the last thing to go: a create that then failed would otherwise leave the
+// client unable to authenticate until a later reconcile pushed it back.
+func TestSyncDeclaredClientSecret_FullClientKeepsTheLiveCopy(t *testing.T) {
+	oidcClient := declaredClient("app-creds", "secret")
+	src := sourceSecret("app-creds", map[string][]byte{"secret": []byte(declaredSecretValue)})
+	r := declaredSecretReconciler(t, oidcClient, src)
+
+	// The declared copy is the oldest, so an oldest-first rule alone would take it first.
+	secrets := []pocketid.OIDCClientSecret{
+		secretWithPrefix("live", pocketid.SecretPrefix(declaredSecretValue), 90*24*time.Hour),
+	}
+	for i := range pocketid.MaxOIDCClientSecrets - 1 {
+		secrets = append(secrets, secretWithPrefix("other-"+string(rune('a'+i)), "zzzz", time.Duration(i)*time.Hour))
+	}
+	api := &fakeClientSecretAPI{err: errors.New("pocket-id unavailable"), secrets: secrets}
+
+	if err := r.SyncDeclaredClientSecret(context.Background(), oidcClient, api, secrets); err == nil {
+		t.Fatal("expected the failed create to be reported")
+	}
+	// The create failed, so whatever was retired to make room is not coming back this reconcile.
+	if slices.Contains(api.deleted, "live") {
+		t.Fatalf("the declared value's copy must survive a create that fails, retired %v", api.deleted)
+	}
+}
+
 // Until the source revision is recorded, every reconcile pushes again. Skipping retirement on each
 // of those is what fills the client's slots, so the failure is reported only after cleanup has run.
 func TestSyncDeclaredClientSecret_RetiresEvenWhenTheVersionWriteFails(t *testing.T) {

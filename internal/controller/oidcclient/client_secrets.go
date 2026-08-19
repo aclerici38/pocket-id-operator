@@ -224,28 +224,34 @@ func (r *Reconciler) retireSupersededClientSecrets(
 // makeRoomForClientSecret retires secrets ahead of their overlap when the client has hit Pocket-ID's
 // cap, which would reject the secret about to be created.
 //
-// Only secrets ruled out as the stored credential are eligible — an empty storedValue means the
-// caller can restore whatever it loses, so nothing is protected. That is stricter than retirement's
-// "everything but current": at the cap the caller is usually about to replace a credential it could
-// not identify, and deleting a candidate would revoke the value the cluster is authenticating with
-// before its replacement exists. When every secret is a candidate there is no safe move, so the
-// reconcile stops and says so rather than freeing a slot by guessing.
+// Freeing a slot means deleting before the replacement exists, so secrets ruled out as the stored
+// credential go first and a candidate is only ever a last resort. Reaching for one at all takes
+// restorable: a declared value lives in the referenced Secret and can be pushed again, a generated
+// one is gone for good. Without it the reconcile stops rather than revoking the credential in use
+// to make space for its replacement.
 func (r *Reconciler) makeRoomForClientSecret(
 	ctx context.Context,
 	oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient,
 	apiClient clientSecretRetentionAPI,
 	storedValue string,
+	restorable bool,
 	secrets []pocketid.OIDCClientSecret,
 ) error {
 	if len(secrets) < pocketid.MaxOIDCClientSecrets {
 		return nil
 	}
 
-	retirable := make([]pocketid.OIDCClientSecret, 0, len(secrets))
+	var ruledOut, candidates []pocketid.OIDCClientSecret
 	for _, secret := range secrets {
-		if !couldHoldClientSecret(secret, storedValue) {
-			retirable = append(retirable, secret)
+		if couldHoldClientSecret(secret, storedValue) {
+			candidates = append(candidates, secret)
+		} else {
+			ruledOut = append(ruledOut, secret)
 		}
+	}
+	retirable := oldestFirst(ruledOut)
+	if restorable {
+		retirable = append(retirable, oldestFirst(candidates)...)
 	}
 	if len(retirable) == 0 {
 		return fmt.Errorf("client holds %d secrets, Pocket-ID's maximum, and none can be ruled out as the one in use", len(secrets))
@@ -255,7 +261,7 @@ func (r *Reconciler) makeRoomForClientSecret(
 	logf.FromContext(ctx).Info("Retiring superseded client secrets early to stay within Pocket-ID's per-client limit",
 		"name", oidcClient.Name, "clientID", oidcClient.Status.ClientID, "held", len(secrets), "retiring", needed)
 
-	return r.deleteClientSecrets(ctx, oidcClient, apiClient, oldestFirst(retirable)[:needed], "cap")
+	return r.deleteClientSecrets(ctx, oidcClient, apiClient, retirable[:needed], "cap")
 }
 
 func (r *Reconciler) deleteClientSecrets(

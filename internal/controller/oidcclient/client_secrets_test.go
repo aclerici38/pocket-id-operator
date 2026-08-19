@@ -510,7 +510,7 @@ func TestMakeRoomForClientSecret(t *testing.T) {
 		secrets := atCap()
 		api := &fakeClientSecretAPI{secrets: secrets}
 
-		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api, storedSecretValue, secrets); err != nil {
+		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api, storedSecretValue, false, secrets); err != nil {
 			t.Fatalf("makeRoomForClientSecret: %v", err)
 		}
 		// One is enough to get under the cap, and the overlap does not protect a secret that
@@ -535,7 +535,7 @@ func TestMakeRoomForClientSecret(t *testing.T) {
 		}
 		api := &fakeClientSecretAPI{secrets: secrets}
 
-		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api, storedSecretValue, secrets); err == nil {
+		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api, storedSecretValue, false, secrets); err == nil {
 			t.Fatal("expected an error when every secret could be the one in use")
 		}
 		if len(api.deleted) != 0 {
@@ -551,8 +551,46 @@ func TestMakeRoomForClientSecret(t *testing.T) {
 		secrets := atCap()
 		api := &fakeClientSecretAPI{deleteErr: errors.New("pocket-id unavailable"), secrets: secrets}
 
-		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api, storedSecretValue, secrets); err == nil {
+		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api, storedSecretValue, false, secrets); err == nil {
 			t.Fatal("expected the failed retirement to stop the caller before it mints")
+		}
+	})
+
+	// The point of the ordering: freeing a slot must not cost the credential in use when anything
+	// else could go instead.
+	t.Run("prefers a secret that cannot be the credential", func(t *testing.T) {
+		oidcClient := retentionClient(nil)
+		r := retentionReconciler(t, oidcClient)
+		// The oldest secret is a candidate, so an oldest-first rule alone would take it.
+		secrets := []pocketid.OIDCClientSecret{secretWithPrefix("in-use", prefix, 90*24*time.Hour)}
+		for i := range pocketid.MaxOIDCClientSecrets - 1 {
+			secrets = append(secrets, secretWithPrefix("other-"+string(rune('a'+i)), "aaaa", time.Duration(i)*time.Hour))
+		}
+		api := &fakeClientSecretAPI{secrets: secrets}
+
+		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api, storedSecretValue, true, secrets); err != nil {
+			t.Fatalf("makeRoomForClientSecret: %v", err)
+		}
+		if slices.Contains(api.deleted, "in-use") {
+			t.Fatalf("the credential in use must not be retired while anything else could be, got %v", api.deleted)
+		}
+	})
+
+	// Only reachable once nothing can be ruled out, and only for a value the caller can push back.
+	t.Run("retires a candidate as a last resort when the value can be restored", func(t *testing.T) {
+		oidcClient := retentionClient(nil)
+		r := retentionReconciler(t, oidcClient)
+		secrets := make([]pocketid.OIDCClientSecret, 0, pocketid.MaxOIDCClientSecrets)
+		for i := range pocketid.MaxOIDCClientSecrets {
+			secrets = append(secrets, secretWithPrefix("collides-"+string(rune('a'+i)), prefix, time.Duration(i)*time.Hour))
+		}
+		api := &fakeClientSecretAPI{secrets: secrets}
+
+		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api, storedSecretValue, true, secrets); err != nil {
+			t.Fatalf("makeRoomForClientSecret: %v", err)
+		}
+		if len(api.deleted) != 1 || api.deleted[0] != "collides-t" {
+			t.Fatalf("expected the oldest candidate retired, got %v", api.deleted)
 		}
 	})
 
@@ -562,7 +600,7 @@ func TestMakeRoomForClientSecret(t *testing.T) {
 		secrets := []pocketid.OIDCClientSecret{secretWithPrefix("ours", prefix, 0)}
 		api := &fakeClientSecretAPI{secrets: secrets}
 
-		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api, storedSecretValue, secrets); err != nil {
+		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api, storedSecretValue, false, secrets); err != nil {
 			t.Fatalf("makeRoomForClientSecret: %v", err)
 		}
 		if len(api.deleted) != 0 {

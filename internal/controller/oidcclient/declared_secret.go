@@ -95,10 +95,10 @@ func (r *Reconciler) SyncDeclaredClientSecret(ctx context.Context, oidcClient *p
 		logf.FromContext(ctx).Info("Setting declared client secret",
 			"name", oidcClient.Name, "clientID", oidcClient.Status.ClientID, "restoring", missing)
 
-		// Nothing this client holds is irreplaceable: the declared value lives in the referenced
-		// Secret, and the push about to happen restores it. Reserving a slot for it would only
-		// wedge that push once the client is full.
-		if err := r.makeRoomForClientSecret(ctx, oidcClient, apiClient, "", observed); err != nil {
+		// The declared value lives in the referenced Secret, so a copy of it retired to free the
+		// last slot can be pushed straight back. Reserving a slot for it instead would wedge the
+		// push once repeated retries have filled the client.
+		if err := r.makeRoomForClientSecret(ctx, oidcClient, apiClient, secret, true, observed); err != nil {
 			return err
 		}
 
