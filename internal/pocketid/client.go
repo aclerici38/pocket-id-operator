@@ -825,22 +825,6 @@ func (c *Client) UpdateOIDCClientAllowedGroups(ctx context.Context, id string, g
 	return lastErr
 }
 
-// ListOIDCClientSecrets returns the client's secrets without their values. Every OIDCClient read
-// already carries the same list, so this is only for callers needing a fresher one.
-func (c *Client) ListOIDCClientSecrets(ctx context.Context, id string) ([]OIDCClientSecret, error) {
-	params := oidc.NewGetAPIOidcClientsIDSecretsParams().
-		WithID(clientIDPathParam(id))
-
-	start := time.Now()
-	resp, err := c.raw.OIDc.GetAPIOidcClientsIDSecretsContext(ctx, params)
-	recordCall("list_oidc_client_secrets", err, time.Since(start))
-	if err != nil {
-		return nil, fmt.Errorf("list OIDC client secrets failed: %w", err)
-	}
-
-	return oidcClientSecretsFromDTO(resp.Payload), nil
-}
-
 // CreateOIDCClientSecret adds a secret and returns it alongside its value; an empty secret lets
 // Pocket-ID generate one. Existing secrets stay valid, so the caller decides when to retire them.
 // The value is only disclosed here — a dropped response leaves a secret that exists but is

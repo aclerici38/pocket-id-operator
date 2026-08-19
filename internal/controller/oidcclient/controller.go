@@ -284,7 +284,6 @@ type PocketIDOIDCClientAPI interface {
 	UpdateOIDCClient(ctx context.Context, id string, input pocketid.OIDCClientInput) (*pocketid.OIDCClient, error)
 	UpdateOIDCClientAllowedGroups(ctx context.Context, id string, groupIDs []string) error
 	RefreshOIDCClientMetadata(ctx context.Context, id string) error
-	ListOIDCClientSecrets(ctx context.Context, id string) ([]pocketid.OIDCClientSecret, error)
 	CreateOIDCClientSecret(ctx context.Context, id, secret string) (pocketid.OIDCClientSecret, string, error)
 	DeleteOIDCClientSecret(ctx context.Context, id, secretID string) error
 	GetOIDCClientSCIMServiceProvider(ctx context.Context, oidcClientID string) (*pocketid.SCIMServiceProvider, error)
@@ -1101,15 +1100,17 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 
 	// Include client_secret for non-public clients that store it.
 	// Only regenerate if the secret doesn't exist yet or if explicitly requested via annotation.
-	var rotatedAt *metav1.Time
+	var minted *pocketid.OIDCClientSecret
 	var scheduledRotation bool
 	if !isPublicClient(oidcClient) && oidcClient.Status.ClientID != "" {
 		var err error
-		rotatedAt, scheduledRotation, err = r.reconcileClientSecretData(ctx, oidcClient, instance, apiClient, observed, secretName, keys, secretData)
+		minted, scheduledRotation, err = r.reconcileClientSecretData(ctx, oidcClient, instance, apiClient, observed, secretName, keys, secretData)
 		if err != nil {
 			return err
 		}
 	}
+
+	rotatedAt := rotationTimestamp(minted)
 
 	appURL := instance.EffectiveAppURL()
 	if appURL != "" {
@@ -1194,8 +1195,8 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 	// Retirement waits until the credential is durably stored. The declared-secret path does its
 	// own, since it must also run when spec.secret.enabled is false.
 	if apiClient != nil && !hasDeclaredClientSecret(oidcClient) && !isPublicClient(oidcClient) {
-		if err := r.reconcileClientSecretRetention(ctx, oidcClient, apiClient, observed,
-			string(secretData[keys.ClientSecret]), rotatedAt != nil); err != nil {
+		if err := r.reconcileClientSecretRetention(ctx, oidcClient, apiClient, observed, minted,
+			string(secretData[keys.ClientSecret])); err != nil {
 			return fmt.Errorf("failed to retire superseded client secrets: %w", err)
 		}
 	}
@@ -1347,7 +1348,7 @@ func (r *Reconciler) reconcileClientSecretData(
 	secretName string,
 	keys pocketidinternalv1alpha1.OIDCClientSecretKeys,
 	secretData map[string][]byte,
-) (rotatedAt *metav1.Time, scheduledRotation bool, err error) {
+) (minted *pocketid.OIDCClientSecret, scheduledRotation bool, err error) {
 	if hasDeclaredClientSecret(oidcClient) {
 		// SyncDeclaredClientSecret owns the value in Pocket-ID; here it only needs mirroring
 		// into the managed Secret. Rotation never applies, so report the schedule as disabled
@@ -1403,7 +1404,6 @@ func (r *Reconciler) reconcileClientSecretData(
 	}
 
 	stored := string(decision.existing.Data[keys.ClientSecret])
-	live := resolveClientSecret(oidcClient.Status.ClientSecretID, stored, observed)
 
 	// The stored value matches none of the client's secrets, so it authenticates nothing and the
 	// client is broken until replaced — rotation gates do not apply. This asks whether the value
@@ -1427,6 +1427,7 @@ func (r *Reconciler) reconcileClientSecretData(
 		return nil, false, fmt.Errorf("apiClient is required to regenerate client secret")
 	}
 
+	live := resolveClientSecret(oidcClient.Status.ClientSecretID, stored, observed)
 	if err := r.makeRoomForClientSecret(ctx, oidcClient, apiClient, live, observed); err != nil {
 		return nil, false, err
 	}
@@ -1451,8 +1452,17 @@ func (r *Reconciler) reconcileClientSecretData(
 		return nil, false, err
 	}
 
+	return &created, scheduledRotation, nil
+}
+
+// rotationTimestamp stamps a rotation for the Secret's annotations and the instance aggregate. A
+// rotation is exactly a mint, so there is nothing to record when the stored credential was reused.
+func rotationTimestamp(minted *pocketid.OIDCClientSecret) *metav1.Time {
+	if minted == nil {
+		return nil
+	}
 	now := metav1.NewTime(time.Now())
-	return &now, scheduledRotation, nil
+	return &now
 }
 
 // regenDecision is the outcome of secretRegenDecision: whether to regenerate the client

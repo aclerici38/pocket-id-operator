@@ -3,6 +3,7 @@ package oidcclient
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 
@@ -26,11 +27,6 @@ import (
 
 type clientSecretRetentionAPI interface {
 	DeleteOIDCClientSecret(ctx context.Context, id, secretID string) error
-}
-
-type clientSecretRetentionReadAPI interface {
-	clientSecretRetentionAPI
-	ListOIDCClientSecrets(ctx context.Context, id string) ([]pocketid.OIDCClientSecret, error)
 }
 
 func clientSecretOverlap(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) time.Duration {
@@ -119,30 +115,27 @@ func supersededClientSecrets(current *pocketid.OIDCClientSecret, secrets []pocke
 // reconcileClientSecretRetention reduces the client's secret set to the credential in storedValue.
 // Callers must reach it only once that value is durably stored.
 //
-// observed is the set as of this reconcile's client read, which is current unless this reconcile
-// minted a secret of its own.
+// observed is the set as of this reconcile's client read; minted is the secret this reconcile
+// added to it, or nil. Creating a secret is the one moment the operator knows which one is its
+// own, so a mint is taken at its word instead of being matched back by prefix.
 func (r *Reconciler) reconcileClientSecretRetention(
 	ctx context.Context,
 	oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient,
-	apiClient clientSecretRetentionReadAPI,
+	apiClient clientSecretRetentionAPI,
 	observed []pocketid.OIDCClientSecret,
+	minted *pocketid.OIDCClientSecret,
 	storedValue string,
-	minted bool,
 ) error {
 	if storedValue == "" || oidcClient.Status.ClientID == "" {
 		return nil
 	}
 
-	secrets := observed
-	if minted {
-		fresh, err := apiClient.ListOIDCClientSecrets(ctx, oidcClient.Status.ClientID)
-		if err != nil {
-			return fmt.Errorf("list client secrets: %w", err)
-		}
-		secrets = fresh
+	secrets, current := observed, minted
+	if minted == nil {
+		current = resolveClientSecret(oidcClient.Status.ClientSecretID, storedValue, secrets)
+	} else {
+		secrets = append(slices.Clone(observed), *minted)
 	}
-
-	current := resolveClientSecret(oidcClient.Status.ClientSecretID, storedValue, secrets)
 	if current == nil {
 		logf.FromContext(ctx).Info("Cannot identify which Pocket-ID secret the stored client secret is; leaving the client's secrets untouched",
 			"name", oidcClient.Name, "clientID", oidcClient.Status.ClientID, "held", len(secrets))

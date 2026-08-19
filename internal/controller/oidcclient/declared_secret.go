@@ -88,8 +88,9 @@ func (r *Reconciler) SyncDeclaredClientSecret(ctx context.Context, oidcClient *p
 	// The source revision says whether the value needs pushing, but not whether it survived: one
 	// deleted out-of-band leaves the client unable to authenticate. Push again to restore it.
 	missing := !clientSecretPresent(secret, observed)
-	minted := version != oidcClient.Status.ClientSecretSourceVersion || missing
-	if minted {
+
+	var minted *pocketid.OIDCClientSecret
+	if version != oidcClient.Status.ClientSecretSourceVersion || missing {
 		logf.FromContext(ctx).Info("Setting declared client secret",
 			"name", oidcClient.Name, "clientID", oidcClient.Status.ClientID, "restoring", missing)
 
@@ -114,9 +115,10 @@ func (r *Reconciler) SyncDeclaredClientSecret(ctx context.Context, oidcClient *p
 		if err := r.Status().Patch(ctx, oidcClient, client.MergeFrom(base)); err != nil {
 			return err
 		}
+		minted = &created
 	}
 
 	// Safe to retire immediately: the declared value's durability is the referenced Secret's
 	// concern. Also runs without a push, to finish a retirement the overlap was holding open.
-	return r.reconcileClientSecretRetention(ctx, oidcClient, apiClient, observed, secret, minted)
+	return r.reconcileClientSecretRetention(ctx, oidcClient, apiClient, observed, minted, secret)
 }

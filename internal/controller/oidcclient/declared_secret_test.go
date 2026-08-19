@@ -32,7 +32,6 @@ type fakeClientSecretAPI struct {
 	secrets []pocketid.OIDCClientSecret
 	returns string // when non-empty, stored instead of the requested value
 	err     error
-	listErr error
 	nextID  int
 }
 
@@ -54,13 +53,6 @@ func (f *fakeClientSecretAPI) CreateOIDCClientSecret(_ context.Context, _, secre
 	}
 	f.secrets = append(f.secrets, created)
 	return created, stored, nil
-}
-
-func (f *fakeClientSecretAPI) ListOIDCClientSecrets(_ context.Context, _ string) ([]pocketid.OIDCClientSecret, error) {
-	if f.listErr != nil {
-		return nil, f.listErr
-	}
-	return slices.Clone(f.secrets), nil
 }
 
 func (f *fakeClientSecretAPI) DeleteOIDCClientSecret(_ context.Context, _, secretID string) error {

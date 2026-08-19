@@ -2,7 +2,6 @@ package oidcclient
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -227,7 +226,7 @@ func TestReconcileClientSecretRetention_RetiresEverythingElse(t *testing.T) {
 		secretWithPrefix("ours", prefix, 0),
 	}}
 
-	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api, api.secrets, storedSecretValue, true); err != nil {
+	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api, api.secrets, nil, storedSecretValue); err != nil {
 		t.Fatalf("reconcileClientSecretRetention: %v", err)
 	}
 
@@ -250,7 +249,7 @@ func TestReconcileClientSecretRetention_HoldsSupersededSecretForOverlap(t *testi
 		secretWithPrefix("ours", prefix, 10*time.Minute),
 	}}
 
-	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api, api.secrets, storedSecretValue, true); err != nil {
+	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api, api.secrets, nil, storedSecretValue); err != nil {
 		t.Fatalf("reconcileClientSecretRetention: %v", err)
 	}
 	if len(api.deleted) != 0 {
@@ -259,7 +258,7 @@ func TestReconcileClientSecretRetention_HoldsSupersededSecretForOverlap(t *testi
 
 	// Once the replacement is older than the overlap, the secret it superseded goes.
 	api.secrets[1] = secretWithPrefix("ours", prefix, 90*time.Minute)
-	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api, api.secrets, storedSecretValue, true); err != nil {
+	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api, api.secrets, nil, storedSecretValue); err != nil {
 		t.Fatalf("reconcileClientSecretRetention after overlap: %v", err)
 	}
 	if len(api.deleted) != 1 || api.deleted[0] != "superseded" {
@@ -278,7 +277,7 @@ func TestReconcileClientSecretRetention_OverlapMeasuredFromReplacement(t *testin
 		secretWithPrefix("ours", prefix, time.Minute),
 	}}
 
-	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api, api.secrets, storedSecretValue, true); err != nil {
+	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api, api.secrets, nil, storedSecretValue); err != nil {
 		t.Fatalf("reconcileClientSecretRetention: %v", err)
 	}
 	if len(api.deleted) != 0 {
@@ -294,7 +293,7 @@ func TestReconcileClientSecretRetention_LeavesSecretsAloneWhenUnidentifiable(t *
 		secretWithPrefix("b", "bbbb", time.Hour),
 	}}
 
-	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api, api.secrets, storedSecretValue, false); err != nil {
+	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api, api.secrets, nil, storedSecretValue); err != nil {
 		t.Fatalf("reconcileClientSecretRetention: %v", err)
 	}
 	if len(api.deleted) != 0 {
@@ -309,7 +308,7 @@ func TestReconcileClientSecretRetention_NoStoredValueRetiresNothing(t *testing.T
 	r := retentionReconciler(t, oidcClient)
 	api := &fakeClientSecretAPI{secrets: []pocketid.OIDCClientSecret{secretWithPrefix("external", "aaaa", time.Hour)}}
 
-	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api, api.secrets, "", false); err != nil {
+	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api, api.secrets, nil, ""); err != nil {
 		t.Fatalf("reconcileClientSecretRetention: %v", err)
 	}
 	if len(api.deleted) != 0 || len(api.calls) != 0 {
@@ -317,19 +316,26 @@ func TestReconcileClientSecretRetention_NoStoredValueRetiresNothing(t *testing.T
 	}
 }
 
-// One observed secret and no mint means nothing to retire, so no re-read is needed.
-func TestReconcileClientSecretRetention_SkipsListWhenNothingCanBeRetired(t *testing.T) {
+// Creating a secret is the one moment the operator knows which one is its own, so a mint is taken
+// at its word. Here the prefix points at both and status still names the secret being replaced, so
+// matching by prefix would retire the credential just stored.
+func TestReconcileClientSecretRetention_TrustsTheMintedSecret(t *testing.T) {
 	oidcClient := retentionClient(nil)
+	oidcClient.Status.ClientSecretID = "superseded"
 	r := retentionReconciler(t, oidcClient)
 	prefix := pocketid.SecretPrefix(storedSecretValue)
-	observed := []pocketid.OIDCClientSecret{secretWithPrefix("ours", prefix, time.Hour)}
-	api := &fakeClientSecretAPI{listErr: errors.New("must not be listed")}
+	observed := []pocketid.OIDCClientSecret{secretWithPrefix("superseded", prefix, time.Hour)}
+	minted := secretWithPrefix("replacement", prefix, 0)
+	api := &fakeClientSecretAPI{secrets: append(slices.Clone(observed), minted)}
 
-	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api, observed, storedSecretValue, false); err != nil {
+	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api, observed, &minted, storedSecretValue); err != nil {
 		t.Fatalf("reconcileClientSecretRetention: %v", err)
 	}
-	if oidcClient.Status.ClientSecretID != "ours" {
-		t.Fatalf("expected the secret to be adopted from the observed set, got %q", oidcClient.Status.ClientSecretID)
+	if len(api.deleted) != 1 || api.deleted[0] != "superseded" {
+		t.Fatalf("expected only the superseded secret to be retired, got %v", api.deleted)
+	}
+	if oidcClient.Status.ClientSecretID != "replacement" {
+		t.Fatalf("expected the mint to be recorded, got %q", oidcClient.Status.ClientSecretID)
 	}
 }
 
@@ -723,7 +729,7 @@ func TestReconcileSecret_RotationRetiresThePreviousSecret(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		switch req.Method {
 		case http.MethodPost:
-			held = append(held, secretWithPrefix("rotated", pocketid.SecretPrefix("rotated-secret"), 0))
+			held = append(held, secretWithPrefix("created-rotated-secret", pocketid.SecretPrefix("rotated-secret"), 0))
 			writeCreatedClientSecret(w, "rotated-secret")
 		case http.MethodDelete:
 			id := path.Base(req.URL.Path)
@@ -756,7 +762,7 @@ func TestReconcileSecret_RotationRetiresThePreviousSecret(t *testing.T) {
 	if len(deleted) != 1 || deleted[0] != "previous" {
 		t.Fatalf("expected the previous secret to be retired, got %v", deleted)
 	}
-	if oidcClient.Status.ClientSecretID != "rotated" {
+	if oidcClient.Status.ClientSecretID != "created-rotated-secret" {
 		t.Fatalf("expected the new secret to be recorded, got %q", oidcClient.Status.ClientSecretID)
 	}
 }

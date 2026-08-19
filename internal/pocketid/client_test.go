@@ -235,9 +235,6 @@ func TestOIDCClientOperations_UseEncodedPathForMetadataDocumentIDs(t *testing.T)
 	if _, err := client.GetOIDCClientSCIMServiceProvider(ctx, metadataURL); err != nil {
 		t.Errorf("GetOIDCClientSCIMServiceProvider: %v", err)
 	}
-	if _, err := client.ListOIDCClientSecrets(ctx, metadataURL); err != nil {
-		t.Errorf("ListOIDCClientSecrets: %v", err)
-	}
 	if _, _, err := client.CreateOIDCClientSecret(ctx, metadataURL, "a-declared-secret-value"); err != nil {
 		t.Errorf("CreateOIDCClientSecret: %v", err)
 	}
@@ -263,7 +260,7 @@ func TestOIDCClientOperations_UseEncodedPathForMetadataDocumentIDs(t *testing.T)
 
 	for _, want := range []string{
 		"GET ", "POST /refresh", "PUT ", "PUT /allowed-user-groups", "DELETE ",
-		"GET /scim-service-provider", "GET /secrets", "POST /secrets", "DELETE /secrets/secret-1",
+		"GET /scim-service-provider", "POST /secrets", "DELETE /secrets/secret-1",
 		"GET api-access", "PUT api-clients", "DELETE api-clients",
 	} {
 		if !seen[want] {
