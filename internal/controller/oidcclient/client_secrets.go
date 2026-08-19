@@ -7,7 +7,6 @@ import (
 	"sort"
 	"time"
 
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
@@ -20,10 +19,11 @@ import (
 // whose value is in the credentials Secret and deletes the rest, holding superseded ones for
 // spec.clientSecretOverlap first.
 //
-// Which secret is the operator's is derived from the stored value, matched against the clear-text
-// prefix Pocket-ID records for each secret. status.clientSecretID only breaks a tie between
-// secrets sharing a prefix, so a crash between the credentials Secret write and the status write
-// cannot cause the secret the cluster is now using to be retired.
+// Which secret is the operator's is known outright when this reconcile minted it, and otherwise
+// derived from the stored value, matched against the clear-text prefix Pocket-ID records for each
+// secret. Nothing else is consulted: any second record of which secret is live would be written
+// separately from the credential itself, and the two disagreeing is exactly what would retire the
+// secret the cluster is using.
 
 type clientSecretRetentionAPI interface {
 	DeleteOIDCClientSecret(ctx context.Context, id, secretID string) error
@@ -39,7 +39,11 @@ func clientSecretOverlap(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient
 // resolveClientSecret identifies the secret holding storedValue, or nil when it cannot be told
 // which one that is. Secrets with no prefix predate v2.14.0 and their values were never stored, so
 // a lone one is claimed — that is what lets an upgraded client keep its secret instead of rotating.
-func resolveClientSecret(statusID, storedValue string, secrets []pocketid.OIDCClientSecret) *pocketid.OIDCClientSecret {
+//
+// Two secrets sharing a prefix are indistinguishable here, and the caller is told so rather than
+// given a guess: retiring the wrong one destroys the live credential, and the prefix that made
+// them ambiguous would then match the survivor, so no later reconcile could even detect it.
+func resolveClientSecret(storedValue string, secrets []pocketid.OIDCClientSecret) *pocketid.OIDCClientSecret {
 	if storedValue == "" || len(secrets) == 0 {
 		return nil
 	}
@@ -57,27 +61,16 @@ func resolveClientSecret(statusID, storedValue string, secrets []pocketid.OIDCCl
 		}
 	}
 
-	if match := onlyOrStatusMatch(byPrefix, statusID); match != nil {
-		return match
+	// A prefix match is authoritative, so the prefixless secrets are only a fallback for the
+	// upgrade case where nothing carries a prefix at all.
+	candidates := byPrefix
+	if len(candidates) == 0 {
+		candidates = byMissingPrefix
 	}
-	return onlyOrStatusMatch(byMissingPrefix, statusID)
-}
-
-// onlyOrStatusMatch returns the sole candidate, or the one status already named. Ambiguity with no
-// tie-break yields nil rather than a guess, since naming the wrong secret retires a live credential.
-func onlyOrStatusMatch(candidates []pocketid.OIDCClientSecret, statusID string) *pocketid.OIDCClientSecret {
-	if len(candidates) == 1 {
-		return &candidates[0]
-	}
-	if statusID == "" {
+	if len(candidates) != 1 {
 		return nil
 	}
-	for i, candidate := range candidates {
-		if candidate.ID == statusID {
-			return &candidates[i]
-		}
-	}
-	return nil
+	return &candidates[0]
 }
 
 // clientSecretPresent reports whether value could still be one of the client's secrets. Unlike
@@ -132,7 +125,7 @@ func (r *Reconciler) reconcileClientSecretRetention(
 
 	secrets, current := observed, minted
 	if minted == nil {
-		current = resolveClientSecret(oidcClient.Status.ClientSecretID, storedValue, secrets)
+		current = resolveClientSecret(storedValue, secrets)
 	} else {
 		secrets = append(slices.Clone(observed), *minted)
 	}
@@ -140,10 +133,6 @@ func (r *Reconciler) reconcileClientSecretRetention(
 		logf.FromContext(ctx).Info("Cannot identify which Pocket-ID secret the stored client secret is; leaving the client's secrets untouched",
 			"name", oidcClient.Name, "clientID", oidcClient.Status.ClientID, "held", len(secrets))
 		return nil
-	}
-
-	if err := r.recordClientSecretID(ctx, oidcClient, current.ID); err != nil {
-		return err
 	}
 
 	return r.retireSupersededClientSecrets(ctx, oidcClient, apiClient, current, secrets)
@@ -218,25 +207,6 @@ func (r *Reconciler) deleteClientSecrets(
 		metrics.OIDCClientSecretsRetired.WithLabelValues(oidcClient.Namespace, oidcClient.Name, reason).Inc()
 		log.Info("Retired superseded client secret",
 			"name", oidcClient.Name, "clientID", oidcClient.Status.ClientID, "secretID", secret.ID, "reason", reason)
-	}
-	return nil
-}
-
-// recordClientSecretID notes which secret the credentials Secret mirrors.
-//
-// A failed write has to stop the reconcile. It is the only tie-break between secrets sharing a
-// prefix, and it is written when the secret is minted — the one moment the two can be told apart.
-// Carrying on would leave the next reconcile resolving against the ID of the secret this one
-// replaced, and retirement would delete the live credential to preserve the obsolete one, with
-// nothing left afterwards to tell that it happened.
-func (r *Reconciler) recordClientSecretID(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, id string) error {
-	if oidcClient.Status.ClientSecretID == id {
-		return nil
-	}
-	base := oidcClient.DeepCopy()
-	oidcClient.Status.ClientSecretID = id
-	if err := r.Status().Patch(ctx, oidcClient, client.MergeFrom(base)); err != nil {
-		return fmt.Errorf("record client secret %s in status: %w", id, err)
 	}
 	return nil
 }

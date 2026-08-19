@@ -3916,12 +3916,6 @@ spec:
               clientID:
                 description: ClientID is the ID assigned by Pocket-ID
                 type: string
-              clientSecretID:
-                description: |-
-                  ClientSecretID is the Pocket-ID ID of the secret whose value the operator holds in the
-                  credentials Secret. It breaks the tie when the clear-text prefix alone cannot separate the
-                  live credential from the superseded ones Pocket-ID keeps alongside it.
-                type: string
               clientSecretSourceVersion:
                 description: |-
                   ClientSecretSourceVersion identifies the spec.clientSecretRef source last pushed to

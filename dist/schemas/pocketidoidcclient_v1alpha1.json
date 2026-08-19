@@ -840,13 +840,6 @@
             "null"
           ]
         },
-        "clientSecretID": {
-          "description": "ClientSecretID is the Pocket-ID ID of the secret whose value the operator holds in the\ncredentials Secret. It breaks the tie when the clear-text prefix alone cannot separate the\nlive credential from the superseded ones Pocket-ID keeps alongside it.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "clientSecretSourceVersion": {
           "description": "ClientSecretSourceVersion identifies the spec.clientSecretRef source last pushed to\nPocket-ID. Pocket-ID stores the secret hashed and never returns it, so this is how the\noperator detects that the referenced Secret changed and needs pushing again.",
           "type": [

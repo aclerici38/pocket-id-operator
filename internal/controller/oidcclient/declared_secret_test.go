@@ -485,21 +485,19 @@ func TestReconcileClientSecretData_DeclaredSecretPropagatesResolveError(t *testi
 	}
 }
 
-// An externally deleted client is recreated without a secret, so both records of the one it used
-// to hold must be dropped: the version, or the declared secret would never be re-pushed, and the
-// secret ID, which now names a secret on a client that no longer exists.
-func TestClearClientStatus_ClearsClientSecretRecords(t *testing.T) {
+// An externally deleted client is recreated without a secret, so the recorded version must be
+// dropped or the declared secret would never be re-pushed.
+func TestClearClientStatus_ClearsClientSecretSourceVersion(t *testing.T) {
 	oidcClient := declaredClient("app-creds", "secret")
 	oidcClient.Status.ClientSecretSourceVersion = "app-creds/secret@42"
-	oidcClient.Status.ClientSecretID = "secret-of-the-deleted-client"
 	r := declaredSecretReconciler(t, oidcClient)
 
 	if err := r.clearClientStatus(context.Background(), oidcClient); err != nil {
 		t.Fatalf("clearClientStatus returned error: %v", err)
 	}
-	if oidcClient.Status.ClientID != "" || oidcClient.Status.ClientSecretSourceVersion != "" || oidcClient.Status.ClientSecretID != "" {
-		t.Fatalf("expected cleared status, got clientID=%q version=%q secretID=%q",
-			oidcClient.Status.ClientID, oidcClient.Status.ClientSecretSourceVersion, oidcClient.Status.ClientSecretID)
+	if oidcClient.Status.ClientID != "" || oidcClient.Status.ClientSecretSourceVersion != "" {
+		t.Fatalf("expected cleared status, got clientID=%q version=%q",
+			oidcClient.Status.ClientID, oidcClient.Status.ClientSecretSourceVersion)
 	}
 }
 
@@ -528,9 +526,6 @@ func TestSyncDeclaredClientSecret_RetiresTheReplacedSecret(t *testing.T) {
 	}
 	if len(api.deleted) != 1 || api.deleted[0] != "previous" {
 		t.Fatalf("expected the replaced secret to be retired, got %v", api.deleted)
-	}
-	if oidcClient.Status.ClientSecretID != "created-1" {
-		t.Fatalf("expected the new secret to be recorded, got %q", oidcClient.Status.ClientSecretID)
 	}
 }
 

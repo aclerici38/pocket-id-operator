@@ -95,7 +95,7 @@ func (r *Reconciler) SyncDeclaredClientSecret(ctx context.Context, oidcClient *p
 			"name", oidcClient.Name, "clientID", oidcClient.Status.ClientID, "restoring", missing)
 
 		if err := r.makeRoomForClientSecret(ctx, oidcClient, apiClient,
-			resolveClientSecret(oidcClient.Status.ClientSecretID, secret, observed), observed); err != nil {
+			resolveClientSecret(secret, observed), observed); err != nil {
 			return err
 		}
 
@@ -111,7 +111,6 @@ func (r *Reconciler) SyncDeclaredClientSecret(ctx context.Context, oidcClient *p
 
 		base := oidcClient.DeepCopy()
 		oidcClient.Status.ClientSecretSourceVersion = version
-		oidcClient.Status.ClientSecretID = created.ID
 		if err := r.Status().Patch(ctx, oidcClient, client.MergeFrom(base)); err != nil {
 			return err
 		}

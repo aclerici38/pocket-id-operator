@@ -821,10 +821,8 @@ func (r *Reconciler) clearClientStatus(ctx context.Context, oidcClient *pocketid
 	return r.ClearStatusField(ctx, oidcClient, func() {
 		oidcClient.Status.ClientID = ""
 		// The replacement client is created without a secret, so a declared one must be
-		// pushed again rather than assumed still applied, and the secret the old client
-		// held no longer exists to be told apart from anything.
+		// pushed again rather than assumed still applied.
 		oidcClient.Status.ClientSecretSourceVersion = ""
-		oidcClient.Status.ClientSecretID = ""
 	})
 }
 
@@ -1427,7 +1425,7 @@ func (r *Reconciler) reconcileClientSecretData(
 		return nil, false, fmt.Errorf("apiClient is required to regenerate client secret")
 	}
 
-	live := resolveClientSecret(oidcClient.Status.ClientSecretID, stored, observed)
+	live := resolveClientSecret(stored, observed)
 	if err := r.makeRoomForClientSecret(ctx, oidcClient, apiClient, live, observed); err != nil {
 		return nil, false, err
 	}
@@ -1442,15 +1440,6 @@ func (r *Reconciler) reconcileClientSecretData(
 	}
 	metrics.OIDCClientSecretRotations.WithLabelValues(oidcClient.Namespace, oidcClient.Name, "success", decision.trigger).Inc()
 	secretData[keys.ClientSecret] = []byte(clientSecret)
-
-	// Point status at the replacement before it is stored. Prefix matching alone cannot separate
-	// it from a superseded secret that happens to share its prefix, and without the tie-break
-	// retirement would resolve to the older one and delete the value just stored. Failing here
-	// abandons the new secret rather than storing a credential the operator cannot identify
-	// later; it is retired as superseded once a subsequent mint records its own ID.
-	if err := r.recordClientSecretID(ctx, oidcClient, created.ID); err != nil {
-		return nil, false, err
-	}
 
 	return &created, scheduledRotation, nil
 }

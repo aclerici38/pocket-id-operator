@@ -17,7 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
@@ -59,11 +58,10 @@ func TestResolveClientSecret(t *testing.T) {
 	}
 
 	tests := []struct {
-		name     string
-		statusID string
-		stored   string
-		secrets  []pocketid.OIDCClientSecret
-		wantID   string
+		name    string
+		stored  string
+		secrets []pocketid.OIDCClientSecret
+		wantID  string
 	}{
 		{
 			name:    "matches the secret carrying the stored value's prefix",
@@ -82,13 +80,6 @@ func TestResolveClientSecret(t *testing.T) {
 			stored:  storedSecretValue,
 			secrets: []pocketid.OIDCClientSecret{secretWithPrefix("migrated", "", time.Hour), secretWithPrefix("admin", "zzzz", 0)},
 			wantID:  "migrated",
-		},
-		{
-			name:     "breaks a prefix collision with the recorded ID",
-			statusID: "ours",
-			stored:   storedSecretValue,
-			secrets:  []pocketid.OIDCClientSecret{secretWithPrefix("ours", prefix, 0), secretWithPrefix("collides", prefix, 0)},
-			wantID:   "ours",
 		},
 		{
 			name:    "refuses to guess between colliding prefixes",
@@ -123,7 +114,7 @@ func TestResolveClientSecret(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := resolveClientSecret(tt.statusID, tt.stored, tt.secrets)
+			got := resolveClientSecret(tt.stored, tt.secrets)
 			switch {
 			case tt.wantID == "" && got != nil:
 				t.Fatalf("expected no match, got %q", got.ID)
@@ -234,9 +225,6 @@ func TestReconcileClientSecretRetention_RetiresEverythingElse(t *testing.T) {
 	if len(api.deleted) != 2 || api.deleted[0] != "older" || api.deleted[1] != "old" {
 		t.Fatalf("expected older then old to be retired, got %v", api.deleted)
 	}
-	if oidcClient.Status.ClientSecretID != "ours" {
-		t.Fatalf("expected the resolved secret to be recorded, got %q", oidcClient.Status.ClientSecretID)
-	}
 }
 
 func TestReconcileClientSecretRetention_HoldsSupersededSecretForOverlap(t *testing.T) {
@@ -321,7 +309,6 @@ func TestReconcileClientSecretRetention_NoStoredValueRetiresNothing(t *testing.T
 // matching by prefix would retire the credential just stored.
 func TestReconcileClientSecretRetention_TrustsTheMintedSecret(t *testing.T) {
 	oidcClient := retentionClient(nil)
-	oidcClient.Status.ClientSecretID = "superseded"
 	r := retentionReconciler(t, oidcClient)
 	prefix := pocketid.SecretPrefix(storedSecretValue)
 	observed := []pocketid.OIDCClientSecret{secretWithPrefix("superseded", prefix, time.Hour)}
@@ -333,9 +320,6 @@ func TestReconcileClientSecretRetention_TrustsTheMintedSecret(t *testing.T) {
 	}
 	if len(api.deleted) != 1 || api.deleted[0] != "superseded" {
 		t.Fatalf("expected only the superseded secret to be retired, got %v", api.deleted)
-	}
-	if oidcClient.Status.ClientSecretID != "replacement" {
-		t.Fatalf("expected the mint to be recorded, got %q", oidcClient.Status.ClientSecretID)
 	}
 }
 
@@ -355,7 +339,7 @@ func TestMakeRoomForClientSecret(t *testing.T) {
 		r := retentionReconciler(t, oidcClient)
 		secrets := atCap()
 		api := &fakeClientSecretAPI{secrets: secrets}
-		current := resolveClientSecret("", storedSecretValue, secrets)
+		current := resolveClientSecret(storedSecretValue, secrets)
 
 		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api, current, secrets); err != nil {
 			t.Fatalf("makeRoomForClientSecret: %v", err)
@@ -434,9 +418,6 @@ func TestReconcileSecret_AdoptsMigratedSecretWithoutRotating(t *testing.T) {
 	}
 	if got := string(stored.Data["client_secret"]); got != storedSecretValue {
 		t.Fatalf("expected the existing credential to be kept, got %q", got)
-	}
-	if oidcClient.Status.ClientSecretID != "migrated" {
-		t.Fatalf("expected the migrated secret to be adopted, got %q", oidcClient.Status.ClientSecretID)
 	}
 	if _, ok := stored.Annotations[lastRotatedAtAnnotation]; ok {
 		t.Error("adoption must not record a rotation")
@@ -564,45 +545,35 @@ func collidingSecretServer(t *testing.T, existingID, prefix, minted string, dele
 	}))
 }
 
-// retentionReconcilerWithFailingStatus rejects every PocketIDOIDCClient status write, standing in
-// for a transient API failure at the moment a mint is recorded.
-func retentionReconcilerWithFailingStatus(t *testing.T, objs ...client.Object) *Reconciler {
-	t.Helper()
-	fc, scheme := retentionFakeClient(t, objs...)
-	failing := interceptor.NewClient(fc, interceptor.Funcs{
-		SubResourcePatch: func(ctx context.Context, c client.Client, _ string, obj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error {
-			if _, ok := obj.(*pocketidinternalv1alpha1.PocketIDOIDCClient); ok {
-				return fmt.Errorf("simulated status patch failure")
-			}
-			return c.Status().Patch(ctx, obj, patch, opts...)
-		},
-	})
-	return &Reconciler{Client: failing, APIReader: failing, Scheme: scheme}
-}
-
-// The tie-break is only durable if the status write lands. A mint whose ID could not be recorded is
-// abandoned rather than stored: keeping it would leave the next reconcile resolving to the secret
-// it replaced and retiring the live credential, which nothing afterwards could detect or undo.
-func TestReconcileSecret_AbandonsAMintItCannotRecord(t *testing.T) {
+// The credential and any record of which Pocket-ID secret holds it cannot be written atomically,
+// so a reconcile that mints a secret and then fails to store it must leave the client working. The
+// replacement shares the prefix of the secret in use, so nothing distinguishes them afterwards —
+// retirement has to decline instead of guessing, or it would delete the credential still in the
+// Secret and the surviving prefix would make the loss undetectable.
+func TestReconcileSecret_KeepsWorkingCredentialAfterAnUnstoredMint(t *testing.T) {
 	ctx := context.Background()
+	prefix := pocketid.SecretPrefix(storedSecretValue)
 
 	oidcClient := retentionClient(nil)
-	oidcClient.Status.ClientSecretID = "superseded"
-	oidcClient.Annotations = map[string]string{regenerateClientSecretAnnotation: "true"}
 	instance := retentionInstance()
-	r := retentionReconcilerWithFailingStatus(t, oidcClient, instance, credentialsSecret())
+	r := retentionReconciler(t, oidcClient, instance, credentialsSecret())
 
+	// The set a reconcile leaves behind when it mints and then fails before the Secret write: the
+	// credential the cluster still holds, plus an orphan sharing its prefix.
 	var deleted []string
-	ts := collidingSecretServer(t, "superseded", pocketid.SecretPrefix(storedSecretValue), "stored-secret-replacement", &deleted)
+	ts := collidingSecretServer(t, "in-use", prefix, "unreachable", &deleted)
 	defer ts.Close()
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
-	observed := []pocketid.OIDCClientSecret{secretWithPrefix("superseded", pocketid.SecretPrefix(storedSecretValue), time.Hour)}
-	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient, observed); err == nil {
-		t.Fatal("expected ReconcileSecret to fail when the client secret ID cannot be recorded")
+	observed := []pocketid.OIDCClientSecret{
+		secretWithPrefix("in-use", prefix, 24*time.Hour),
+		secretWithPrefix("orphan", prefix, time.Minute),
+	}
+	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient, observed); err != nil {
+		t.Fatalf("ReconcileSecret: %v", err)
 	}
 	if len(deleted) != 0 {
-		t.Fatalf("expected nothing to be retired against an unrecorded mint, got %v", deleted)
+		t.Fatalf("expected an indistinguishable pair to be left alone, retired %v", deleted)
 	}
 
 	stored := &corev1.Secret{}
@@ -610,7 +581,7 @@ func TestReconcileSecret_AbandonsAMintItCannotRecord(t *testing.T) {
 		t.Fatalf("get credentials secret: %v", err)
 	}
 	if got := string(stored.Data["client_secret"]); got != storedSecretValue {
-		t.Fatalf("expected the working credential to be left in place, got %q", got)
+		t.Fatalf("expected the working credential to be kept, got %q", got)
 	}
 }
 
@@ -622,7 +593,6 @@ func TestReconcileSecret_RotationSurvivesAPrefixCollision(t *testing.T) {
 	const mintedValue = "stored-secret-replacement" // shares storedSecretValue's prefix
 
 	oidcClient := retentionClient(nil)
-	oidcClient.Status.ClientSecretID = "superseded"
 	oidcClient.Annotations = map[string]string{regenerateClientSecretAnnotation: "true"}
 	instance := retentionInstance()
 	r := retentionReconciler(t, oidcClient, instance, credentialsSecret())
@@ -640,9 +610,6 @@ func TestReconcileSecret_RotationSurvivesAPrefixCollision(t *testing.T) {
 	if !slices.Equal(deleted, []string{"superseded"}) {
 		t.Fatalf("expected only the superseded secret to be retired, got %v", deleted)
 	}
-	if want := "created-" + mintedValue; oidcClient.Status.ClientSecretID != want {
-		t.Fatalf("expected status to name the replacement %q, got %q", want, oidcClient.Status.ClientSecretID)
-	}
 
 	stored := &corev1.Secret{}
 	if err := r.Get(ctx, client.ObjectKey{Name: "my-client-oidc-credentials", Namespace: testNamespace}, stored); err != nil {
@@ -658,7 +625,6 @@ func TestReconcileSecret_RotationSurvivesAPrefixCollision(t *testing.T) {
 func TestReconcileSecret_MintsWhenAllSecretsDeleted(t *testing.T) {
 	ctx := context.Background()
 	oidcClient := retentionClient(nil)
-	oidcClient.Status.ClientSecretID = "deleted-out-of-band"
 	instance := retentionInstance()
 	r := retentionReconciler(t, oidcClient, instance, credentialsSecret())
 
@@ -761,8 +727,5 @@ func TestReconcileSecret_RotationRetiresThePreviousSecret(t *testing.T) {
 	}
 	if len(deleted) != 1 || deleted[0] != "previous" {
 		t.Fatalf("expected the previous secret to be retired, got %v", deleted)
-	}
-	if oidcClient.Status.ClientSecretID != "created-rotated-secret" {
-		t.Fatalf("expected the new secret to be recorded, got %q", oidcClient.Status.ClientSecretID)
 	}
 }

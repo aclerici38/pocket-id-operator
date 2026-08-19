@@ -572,12 +572,6 @@ type PocketIDOIDCClientStatus struct {
 	// operator detects that the referenced Secret changed and needs pushing again.
 	// +optional
 	ClientSecretSourceVersion string `json:"clientSecretSourceVersion,omitempty"`
-
-	// ClientSecretID is the Pocket-ID ID of the secret whose value the operator holds in the
-	// credentials Secret. It breaks the tie when the clear-text prefix alone cannot separate the
-	// live credential from the superseded ones Pocket-ID keeps alongside it.
-	// +optional
-	ClientSecretID string `json:"clientSecretID,omitempty"`
 }
 
 // +kubebuilder:object:root=true
