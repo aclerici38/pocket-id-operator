@@ -63,6 +63,9 @@ const (
 	// renovate: datasource=docker depName=ghcr.io/pocket-id/pocket-id
 	latestTestedPocketIDVersion = "v2.14.0"
 
+	// minimumSupportedPocketIDVersion is the oldest pocket-id version this operator can manage. Detecting anything older on an instance crashloops the operator to prevent unwanted changes via an incompatible api.
+	minimumSupportedPocketIDVersion = "v2.14.0"
+
 	// firstUnsupportedPocketIDVersion is the lowest pocket-id version that introduces
 	// breaking changes this operator cannot manage. Detecting this version or newer
 	// on an instance crashloops the operator to prevent unwanted changes via an incompatible api
@@ -99,6 +102,22 @@ type Reconciler struct {
 	// NewAPIClient builds the Pocket-ID API client for an instance. When nil it
 	// defaults to common.GetAPIClient; tests override it to avoid real network I/O.
 	NewAPIClient APIClientFactory
+
+	// Exit terminates the operator process when an instance reports an unsupported
+	// pocket-id version. When nil it defaults to os.Exit; tests override it to observe
+	// the halt without killing the test binary.
+	Exit func(code int)
+}
+
+// halt ends the operator process. Callers must treat it as terminal in production
+// even though an injected Exit in tests returns normally, so it is only ever called
+// as the last statement of a reconcile path.
+func (r *Reconciler) halt(code int) {
+	if r.Exit != nil {
+		r.Exit(code)
+		return
+	}
+	os.Exit(code)
 }
 
 // apiClientFor returns the Pocket-ID API client for the instance, using the
@@ -169,8 +188,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	// Fetch and store the deployed PocketID version; also updates InstanceInfo gauge.
+	//
+	// This must stay last: an out-of-range version halts the process, and the workload
+	// apply above is the only thing that writes the new spec.image.
 	if err := r.reconcileVersion(ctx, instance); err != nil {
-		log.Error(err, "Could not fetch PocketID version from API (endpoint added in v2.3.0)")
+		log.Error(err, "Could not fetch PocketID version from API")
 		// Still record info gauge with whatever version is currently known (may be empty).
 		deploymentType := instance.Spec.DeploymentType
 		if deploymentType == "" {
@@ -225,7 +247,7 @@ func (r *Reconciler) reconcileExternal(ctx context.Context, instance *pocketidin
 	metrics.RecordReadiness("PocketIDInstance", instance.Namespace, instance.Name, ready == metav1.ConditionTrue)
 	metrics.RecordInstanceInfo(instance.Namespace, instance.Name, instance.Status.Version, instance.Status.Version, "External", instance.Spec.External.URL)
 
-	haltIfUnsupportedVersion(log, instance, instance.Status.Version)
+	r.haltIfUnsupportedVersion(log, instance, instance.Status.Version)
 
 	return common.ApplyResync(ctrl.Result{}), nil
 }
@@ -931,7 +953,7 @@ func (r *Reconciler) reconcileVersion(ctx context.Context, instance *pocketidint
 
 	metrics.RecordInstanceInfo(instance.Namespace, instance.Name, oldVersion, version, deploymentType, instance.Spec.AppURL)
 
-	haltIfUnsupportedVersion(log, instance, version)
+	r.haltIfUnsupportedVersion(log, instance, version)
 
 	return nil
 }
@@ -944,13 +966,13 @@ func normalizeVersion(version string) string {
 	return version
 }
 
+// Both bounds compare at major.minor granularity so pre-releases of a cutoff minor
+// (v2.14.0-beta.1, and the rolling `next` builds that carry a pre-release suffix) land
+// on the same side as the release itself: plain semver ordering sorts them below
+// v2.14.0 even though they already carry that release's API changes.
+
 // isUnsupportedVersion reports whether the given pocket-id version is at or above
 // firstUnsupportedPocketIDVersion. Invalid/empty versions are treated as supported.
-//
-// The comparison is done at major.minor granularity so pre-releases of the cutoff
-// minor (v2.14.0-beta.1, and the rolling `next` builds that carry a pre-release
-// suffix) are caught too: plain semver ordering sorts them below v2.14.0 even
-// though they already carry the breaking API change.
 func isUnsupportedVersion(version string) bool {
 	v := normalizeVersion(version)
 	if !semver.IsValid(v) {
@@ -959,19 +981,39 @@ func isUnsupportedVersion(version string) bool {
 	return semver.Compare(semver.MajorMinor(v), semver.MajorMinor(firstUnsupportedPocketIDVersion)) >= 0
 }
 
+// isBelowMinimumVersion reports whether the given pocket-id version is older than
+// minimumSupportedPocketIDVersion. Invalid/empty versions are treated as supported.
+func isBelowMinimumVersion(version string) bool {
+	v := normalizeVersion(version)
+	if !semver.IsValid(v) {
+		return false
+	}
+	return semver.Compare(semver.MajorMinor(v), semver.MajorMinor(minimumSupportedPocketIDVersion)) < 0
+}
+
 // haltIfUnsupportedVersion terminates the operator process when an instance reports
-// a pocket-id version the operator cannot manage. Exiting causes the pod to crash loop.
-func haltIfUnsupportedVersion(log logr.Logger, instance *pocketidinternalv1alpha1.PocketIDInstance, version string) {
-	if !isUnsupportedVersion(version) {
+// a pocket-id version the operator cannot manage, on either end of the supported
+// range. Exiting causes the pod to crash loop.
+func (r *Reconciler) haltIfUnsupportedVersion(log logr.Logger, instance *pocketidinternalv1alpha1.PocketIDInstance, version string) {
+	switch {
+	case isBelowMinimumVersion(version):
+		log.Error(nil, "Pocket-id version is older than the minimum supported by this operator; halting. Upgrade pocket-id, or downgrade the operator to a version that supports this pocket-id release: https://github.com/aclerici38/pocket-id-operator",
+			"namespace", instance.Namespace,
+			"name", instance.Name,
+			"detectedVersion", version,
+			"minimumSupportedVersion", minimumSupportedPocketIDVersion,
+		)
+	case isUnsupportedVersion(version):
+		log.Error(nil, "Pocket-id version is unsupported by this operator; halting. Upgrade the operator to a version that supports this pocket-id release: https://github.com/aclerici38/pocket-id-operator",
+			"namespace", instance.Namespace,
+			"name", instance.Name,
+			"detectedVersion", version,
+			"firstUnsupportedVersion", firstUnsupportedPocketIDVersion,
+		)
+	default:
 		return
 	}
-	log.Error(nil, "Pocket-id version is unsupported by this operator; halting. Upgrade the operator to a version that supports this pocket-id release: https://github.com/aclerici38/pocket-id-operator",
-		"namespace", instance.Namespace,
-		"name", instance.Name,
-		"detectedVersion", version,
-		"firstUnsupportedVersion", firstUnsupportedPocketIDVersion,
-	)
-	os.Exit(1)
+	r.halt(1)
 }
 
 func (r *Reconciler) updateStatus(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {

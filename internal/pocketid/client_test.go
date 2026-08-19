@@ -1136,7 +1136,7 @@ func jsonStringSlice(m map[string]any, key string) []string {
 func TestWithTLSConfig_UsesSuppliedTrustStore(t *testing.T) {
 	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"currentVersion":"2.13.0"}`))
+		_, _ = w.Write([]byte(`{"currentVersion":"2.14.0"}`))
 	}))
 	defer ts.Close()
 
@@ -1158,7 +1158,7 @@ func TestWithTLSConfig_UsesSuppliedTrustStore(t *testing.T) {
 
 func TestWithTLSConfig_RejectsUntrustedCertificate(t *testing.T) {
 	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"currentVersion":"2.13.0"}`))
+		_, _ = w.Write([]byte(`{"currentVersion":"2.14.0"}`))
 	}))
 	defer ts.Close()
 
@@ -1175,7 +1175,7 @@ func TestWithTLSConfig_RejectsUntrustedCertificate(t *testing.T) {
 func TestWithTLSConfig_NilIsNoOp(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"currentVersion":"2.13.0"}`))
+		_, _ = w.Write([]byte(`{"currentVersion":"2.14.0"}`))
 	}))
 	defer ts.Close()
 

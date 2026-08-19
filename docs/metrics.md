@@ -438,7 +438,7 @@ label set is deleted and replaced so stale series do not accumulate.
 |-------|--------|
 | `namespace` | Kubernetes namespace of the `PocketIDInstance` |
 | `name` | Kubernetes name of the `PocketIDInstance` |
-| `version` | Pocket-ID version string (e.g. `v2.3.0`), empty if not yet fetched |
+| `version` | Pocket-ID version string (e.g. `v2.14.0`), empty if not yet fetched |
 | `deployment_type` | `Deployment` or `StatefulSet` |
 | `app_url` | Value of `spec.appUrl`, empty string if not set |
 

@@ -639,7 +639,7 @@ and instead manages OIDC clients, users, and groups on an existing Pocket-ID via
 All workload configuration (`spec.encryptionKey`, `spec.smtp`, `spec.persistence`, etc.) is
 ignored in this mode. `spec.external` and `spec.encryptionKey` are mutually exclusive. To migrate from an external instance to an internal one or vice versa, the instance must be recreated.
 
-Recent Pocket-ID versions ship a much more permissive rate limiter (100 req/s per IP, burst 300), so the operator no longer trips it during normal syncs. If you run an older Pocket-ID or manage a very large number of resources on an external instance, you can set `DISABLE_RATE_LIMITING=true` on it to be safe. Managed instances keep rate limiting on by default; opt out with `spec.rateLimitingDisabled: true`.
+Pocket-ID ships a permissive rate limiter (100 req/s per IP, burst 300), so the operator does not trip it during normal syncs. If you manage a very large number of resources on an external instance, you can set `DISABLE_RATE_LIMITING=true` on it to be safe. Managed instances keep rate limiting on by default; opt out with `spec.rateLimitingDisabled: true`.
 
 ```yaml
 apiVersion: v1

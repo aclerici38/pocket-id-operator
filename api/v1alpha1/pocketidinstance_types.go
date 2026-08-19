@@ -503,7 +503,7 @@ type PocketIDInstanceSpec struct {
 	Image string `json:"image,omitempty"`
 
 	// Encryption Key
-	// Required since Pocket-ID v2 when deploying an instance; omit for external instances.
+	// Required when deploying an instance; omit for external instances.
 	// See the official documentation for ENCRYPTION_KEY environment variable
 	// +optional
 	EncryptionKey *SensitiveValue `json:"encryptionKey,omitempty"`

@@ -128,6 +128,18 @@ jobs:
             --wait \
             --timeout 2m
 
+      # helm --wait only tracks workloads in the release manifest
+      - name: Wait for reconciliation after upgrade
+        env:
+          NS: pocket-id-operator-system
+        run: |
+          kubectl wait --for=create deployment/pocket-id -n "$NS" --timeout=2m
+          kubectl rollout status deployment/pocket-id -n "$NS" --timeout=5m
+          kubectl wait --for=condition=Ready pocketidinstance/pocket-id -n "$NS" --timeout=5m
+          kubectl wait --for=condition=Ready pocketiduser/test-user-1 -n "$NS" --timeout=2m
+          kubectl wait --for=condition=Ready pocketiduser/test-user-2 -n "$NS" --timeout=2m
+          kubectl wait --for=condition=Ready pocketidusergroup/test-group -n "$NS" --timeout=2m
+
       - name: Debug on failure
         if: failure()
         run: |

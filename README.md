@@ -39,6 +39,11 @@ Therefore, to use an up-to-date version of Pocket-id with this operator it is re
 
 If you have an issue with this or wuld like to suggest a different approach, feel free to ping me (@aclerici38) in a discussion or issue
 
+## Supported Pocket-ID Versions
+This operator supports Pocket-id `>=v2.14.0, <v3.0.0`.
+
+If an instance reports a version outside that range, the operator logs the detected version and exits, which crash loops the pod rather than issuing calls against an unsupported API. To run Pocket-id `<v2.14.0`, use a version `<=v0.13.1` of the operator.
+
 ## Development
 
 Tooling and Git hooks are managed by [mise](https://mise.jdx.dev) (`.mise.toml`);
