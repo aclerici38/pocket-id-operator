@@ -10,6 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -80,7 +81,7 @@ func TestReconcileDeleteWithPocketID_TolerantOfMissingResource(t *testing.T) {
 	if !called {
 		t.Fatal("the delete never reached Pocket-ID, so this proves nothing about a 404")
 	}
-	if result.RequeueAfter != 0 || result.Requeue {
+	if result != (ctrl.Result{}) {
 		t.Errorf("result: got %+v, want no requeue", result)
 	}
 
