@@ -97,7 +97,7 @@ var (
 	//
 	//	namespace       - Kubernetes namespace of the PocketIDInstance
 	//	name            - Kubernetes name of the PocketIDInstance
-	//	version         - Pocket-ID version string (e.g. "v2.3.0"), empty if not yet fetched
+	//	version         - Pocket-ID version string (e.g. "v2.14.0"), empty if not yet fetched
 	//	deployment_type - "Deployment" or "StatefulSet"
 	//	app_url         - value of spec.appUrl, empty if not set
 	InstanceInfo = prometheus.NewGaugeVec(

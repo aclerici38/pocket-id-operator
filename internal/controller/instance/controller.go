@@ -192,7 +192,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	// This must stay last: an out-of-range version halts the process, and the workload
 	// apply above is the only thing that writes the new spec.image.
 	if err := r.reconcileVersion(ctx, instance); err != nil {
-		log.Error(err, "Could not fetch PocketID version from API (endpoint added in v2.3.0)")
+		log.Error(err, "Could not fetch PocketID version from API")
 		// Still record info gauge with whatever version is currently known (may be empty).
 		deploymentType := instance.Spec.DeploymentType
 		if deploymentType == "" {

@@ -569,7 +569,7 @@
         },
         "encryptionKey": {
           "additionalProperties": false,
-          "description": "Encryption Key\nRequired since Pocket-ID v2 when deploying an instance; omit for external instances.\nSee the official documentation for ENCRYPTION_KEY environment variable",
+          "description": "Encryption Key\nRequired when deploying an instance; omit for external instances.\nSee the official documentation for ENCRYPTION_KEY environment variable",
           "properties": {
             "value": {
               "description": "Plain text value",
