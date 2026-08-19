@@ -1,0 +1,284 @@
+package oidcclient
+
+import (
+	"context"
+	"fmt"
+	"slices"
+	"time"
+
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+
+	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
+	"github.com/aclerici38/pocket-id-operator/internal/metrics"
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
+)
+
+// Since Pocket-ID v2.14.0 a client holds a set of secrets: creating one appends, and a secret only
+// stops working when deleted. The operator presents a single credential, so it keeps the secret
+// whose value is in the credentials Secret and deletes the rest, holding superseded ones for
+// spec.clientSecretOverlap first.
+//
+// Which secret is the operator's is known outright when this reconcile minted it, and otherwise
+// derived from the stored value, matched against the clear-text prefix Pocket-ID records for each
+// secret. Nothing else is consulted: any second record of which secret is live would be written
+// separately from the credential itself, and the two disagreeing is exactly what would retire the
+// secret the cluster is using.
+
+type clientSecretRetentionAPI interface {
+	DeleteOIDCClientSecret(ctx context.Context, id, secretID string) error
+}
+
+type clientSecretMintAPI interface {
+	clientSecretRetentionAPI
+	CreateOIDCClientSecret(ctx context.Context, id, secret string) (pocketid.OIDCClientSecret, string, error)
+}
+
+// maxClientSecretMintAttempts bounds the retry in mintClientSecret. A collision is a 1-in-62^4
+// event, so a second attempt should never be needed; the bound is only so that a Pocket-ID which
+// stopped recording prefixes could not spin.
+const maxClientSecretMintAttempts = 3
+
+func clientSecretOverlap(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) time.Duration {
+	if oidcClient.Spec.ClientSecretOverlap == nil {
+		return 0
+	}
+	return oidcClient.Spec.ClientSecretOverlap.Duration
+}
+
+// resolveClientSecret identifies the secret holding storedValue, or nil when it cannot be told
+// which one that is. Secrets with no prefix predate v2.14.0 and their values were never stored, so
+// a lone one is claimed — that is what lets an upgraded client keep its secret instead of rotating.
+//
+// Two secrets sharing a prefix are indistinguishable here, and the caller is told so rather than
+// given a guess: retiring the wrong one destroys the live credential, and the prefix that made
+// them ambiguous would then match the survivor, so no later reconcile could even detect it.
+func resolveClientSecret(storedValue string, secrets []pocketid.OIDCClientSecret) *pocketid.OIDCClientSecret {
+	if storedValue == "" || len(secrets) == 0 {
+		return nil
+	}
+
+	var byPrefix, byMissingPrefix []pocketid.OIDCClientSecret
+	for _, secret := range secrets {
+		switch {
+		case !couldHoldClientSecret(secret, storedValue):
+			// Expired, or a prefix that rules it out.
+		case secret.Prefix == "":
+			byMissingPrefix = append(byMissingPrefix, secret)
+		default:
+			byPrefix = append(byPrefix, secret)
+		}
+	}
+
+	// A prefix match is authoritative, so the prefixless secrets are only a fallback for the
+	// upgrade case where nothing carries a prefix at all.
+	candidates := byPrefix
+	if len(candidates) == 0 {
+		candidates = byMissingPrefix
+	}
+	if len(candidates) != 1 {
+		return nil
+	}
+	return &candidates[0]
+}
+
+// couldHoldClientSecret reports whether secret is consistent with holding value: still accepted by
+// Pocket-ID, and carrying either value's clear-text prefix or none at all. This is the candidate
+// set resolveClientSecret picks from, and the set nothing may delete on a guess.
+func couldHoldClientSecret(secret pocketid.OIDCClientSecret, value string) bool {
+	if !secret.IsActive {
+		return false
+	}
+	return secret.Prefix == "" || secret.Prefix == pocketid.SecretPrefix(value)
+}
+
+// mintClientSecret creates a secret whose prefix no other secret on the client shares.
+//
+// The prefix is how a later reconcile works out which secret the stored credential is, so two that
+// share one are indistinguishable, and the operator would have to leave both in place rather than
+// risk retiring the live one — leaving a client with two working secrets when the user asked for a
+// roll. Rather than reason about that state, don't create it: discard a colliding value and ask
+// Pocket-ID for another.
+func (r *Reconciler) mintClientSecret(
+	ctx context.Context,
+	oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient,
+	apiClient clientSecretMintAPI,
+	observed []pocketid.OIDCClientSecret,
+) (pocketid.OIDCClientSecret, string, error) {
+	for attempt := 1; attempt <= maxClientSecretMintAttempts; attempt++ {
+		created, value, err := apiClient.CreateOIDCClientSecret(ctx, oidcClient.Status.ClientID, "")
+		if err != nil {
+			return pocketid.OIDCClientSecret{}, "", err
+		}
+		if !clientSecretPrefixTaken(created.Prefix, observed) {
+			return created, value, nil
+		}
+
+		// Discard it here rather than leaving it to retirement: its value was never stored, so
+		// nothing can use it, and leaving it would recreate the ambiguity if the caller then
+		// failed to store the replacement.
+		logf.FromContext(ctx).Info("Discarding a minted client secret that collides with one the client already holds",
+			"name", oidcClient.Name, "clientID", oidcClient.Status.ClientID, "attempt", attempt)
+		if err := apiClient.DeleteOIDCClientSecret(ctx, oidcClient.Status.ClientID, created.ID); err != nil {
+			return pocketid.OIDCClientSecret{}, "", fmt.Errorf("discard colliding client secret: %w", err)
+		}
+	}
+	return pocketid.OIDCClientSecret{}, "", fmt.Errorf("could not mint a client secret with a distinct prefix in %d attempts", maxClientSecretMintAttempts)
+}
+
+// clientSecretPrefixTaken reports whether an active secret already carries prefix. Prefixless
+// secrets do not collide: a prefix match always wins over them, so one stays resolvable.
+func clientSecretPrefixTaken(prefix string, secrets []pocketid.OIDCClientSecret) bool {
+	return prefix != "" && slices.ContainsFunc(secrets, func(secret pocketid.OIDCClientSecret) bool {
+		return secret.IsActive && secret.Prefix == prefix
+	})
+}
+
+// clientSecretPresent reports whether value could still be one of the client's secrets. Unlike
+// resolveClientSecret it tolerates ambiguity, which is what makes it safe to drive a re-push:
+// secrets sharing a prefix are unresolvable but present, and re-pushing would add one every
+// reconcile.
+func clientSecretPresent(value string, secrets []pocketid.OIDCClientSecret) bool {
+	return slices.ContainsFunc(secrets, func(secret pocketid.OIDCClientSecret) bool {
+		return couldHoldClientSecret(secret, value)
+	})
+}
+
+// supersededClientSecrets returns the secrets that are not current, oldest first.
+func supersededClientSecrets(current pocketid.OIDCClientSecret, secrets []pocketid.OIDCClientSecret) []pocketid.OIDCClientSecret {
+	superseded := make([]pocketid.OIDCClientSecret, 0, len(secrets))
+	for _, secret := range secrets {
+		if secret.ID != current.ID {
+			superseded = append(superseded, secret)
+		}
+	}
+	return oldestFirst(superseded)
+}
+
+// oldestFirst orders secrets by creation, so a retirement run cut short leaves the most recently
+// issued alive longest.
+func oldestFirst(secrets []pocketid.OIDCClientSecret) []pocketid.OIDCClientSecret {
+	slices.SortStableFunc(secrets, func(a, b pocketid.OIDCClientSecret) int {
+		return a.CreatedAt.Compare(b.CreatedAt)
+	})
+	return secrets
+}
+
+// reconcileClientSecretRetention reduces the client's secret set to the credential in storedValue.
+// Callers must reach it only once that value is durably stored.
+//
+// observed is the set as of this reconcile's client read; minted is the secret this reconcile
+// added to it, or nil. Creating a secret is the one moment the operator knows which one is its
+// own, so a mint is taken at its word instead of being matched back by prefix.
+func (r *Reconciler) reconcileClientSecretRetention(
+	ctx context.Context,
+	oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient,
+	apiClient clientSecretRetentionAPI,
+	observed []pocketid.OIDCClientSecret,
+	minted *pocketid.OIDCClientSecret,
+	storedValue string,
+) error {
+	if storedValue == "" || oidcClient.Status.ClientID == "" {
+		return nil
+	}
+
+	secrets, current := observed, minted
+	if minted == nil {
+		current = resolveClientSecret(storedValue, secrets)
+	} else {
+		secrets = append(slices.Clone(observed), *minted)
+	}
+	if current == nil {
+		logf.FromContext(ctx).Info("Cannot identify which Pocket-ID secret the stored client secret is; leaving the client's secrets untouched",
+			"name", oidcClient.Name, "clientID", oidcClient.Status.ClientID, "held", len(secrets))
+		return nil
+	}
+
+	return r.retireSupersededClientSecrets(ctx, oidcClient, apiClient, *current, secrets)
+}
+
+// retireSupersededClientSecrets deletes every secret other than current. The overlap runs from when
+// current was created — the earliest a consumer could have seen it — since the secrets being retired
+// are older than the overlap by definition.
+func (r *Reconciler) retireSupersededClientSecrets(
+	ctx context.Context,
+	oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient,
+	apiClient clientSecretRetentionAPI,
+	current pocketid.OIDCClientSecret,
+	secrets []pocketid.OIDCClientSecret,
+) error {
+	superseded := supersededClientSecrets(current, secrets)
+	if len(superseded) == 0 {
+		return nil
+	}
+
+	overlap := clientSecretOverlap(oidcClient)
+	if retireAt := current.CreatedAt.Add(overlap); overlap > 0 && time.Now().Before(retireAt) {
+		logf.FromContext(ctx).V(1).Info("Holding superseded client secrets for the configured overlap",
+			"name", oidcClient.Name, "count", len(superseded), "retireAt", retireAt)
+		return nil
+	}
+
+	return r.deleteClientSecrets(ctx, oidcClient, apiClient, superseded, "superseded")
+}
+
+// makeRoomForClientSecret retires secrets ahead of their overlap when the client has hit Pocket-ID's
+// cap, which would reject the secret about to be created.
+//
+// Freeing a slot means deleting before the replacement exists, so secrets ruled out as the stored
+// credential go first and a candidate is only ever a last resort. Reaching for one at all takes
+// restorable: a declared value lives in the referenced Secret and can be pushed again, a generated
+// one is gone for good. Without it the reconcile stops rather than revoking the credential in use
+// to make space for its replacement.
+func (r *Reconciler) makeRoomForClientSecret(
+	ctx context.Context,
+	oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient,
+	apiClient clientSecretRetentionAPI,
+	storedValue string,
+	restorable bool,
+	secrets []pocketid.OIDCClientSecret,
+) error {
+	if len(secrets) < pocketid.MaxOIDCClientSecrets {
+		return nil
+	}
+
+	var ruledOut, candidates []pocketid.OIDCClientSecret
+	for _, secret := range secrets {
+		if couldHoldClientSecret(secret, storedValue) {
+			candidates = append(candidates, secret)
+		} else {
+			ruledOut = append(ruledOut, secret)
+		}
+	}
+	retirable := oldestFirst(ruledOut)
+	if restorable {
+		retirable = append(retirable, oldestFirst(candidates)...)
+	}
+	if len(retirable) == 0 {
+		return fmt.Errorf("client holds %d secrets, Pocket-ID's maximum, and none can be ruled out as the one in use", len(secrets))
+	}
+
+	needed := min(len(secrets)-pocketid.MaxOIDCClientSecrets+1, len(retirable))
+	logf.FromContext(ctx).Info("Retiring superseded client secrets early to stay within Pocket-ID's per-client limit",
+		"name", oidcClient.Name, "clientID", oidcClient.Status.ClientID, "held", len(secrets), "retiring", needed)
+
+	return r.deleteClientSecrets(ctx, oidcClient, apiClient, retirable[:needed], "cap")
+}
+
+func (r *Reconciler) deleteClientSecrets(
+	ctx context.Context,
+	oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient,
+	apiClient clientSecretRetentionAPI,
+	secrets []pocketid.OIDCClientSecret,
+	reason string,
+) error {
+	log := logf.FromContext(ctx)
+	for _, secret := range secrets {
+		if err := apiClient.DeleteOIDCClientSecret(ctx, oidcClient.Status.ClientID, secret.ID); err != nil {
+			return fmt.Errorf("retire client secret %s: %w", secret.ID, err)
+		}
+		metrics.OIDCClientSecretsRetired.WithLabelValues(oidcClient.Namespace, oidcClient.Name, reason).Inc()
+		log.Info("Retired superseded client secret",
+			"name", oidcClient.Name, "clientID", oidcClient.Status.ClientID, "secretID", secret.ID, "reason", reason)
+	}
+	return nil
+}

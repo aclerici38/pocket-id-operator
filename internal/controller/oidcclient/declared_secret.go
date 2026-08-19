@@ -9,6 +9,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
 // clientSecretMinLength mirrors Pocket-ID's minimum length for an explicitly set client secret.
@@ -60,12 +61,12 @@ func (r *Reconciler) resolveDeclaredClientSecret(ctx context.Context, oidcClient
 	return string(value), fmt.Sprintf("%s/%s@%s", ref.Name, ref.Key, source.ResourceVersion), nil
 }
 
-// SyncDeclaredClientSecret pushes the secret referenced by spec.clientSecretRef to Pocket-ID
-// whenever the referenced source revision differs from the one last pushed. Pocket-ID stores the
-// secret hashed and never returns it, so the recorded source revision is the only way to tell
-// that a push is needed. This runs independently of ReconcileSecret so the declared secret still
-// reaches Pocket-ID when spec.secret.enabled is false.
-func (r *Reconciler) SyncDeclaredClientSecret(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient PocketIDOIDCClientAPI) error {
+// SyncDeclaredClientSecret pushes the secret referenced by spec.clientSecretRef whenever the
+// source revision differs from the one last pushed. Pocket-ID stores the secret hashed and never
+// returns it, so that revision is the only way to tell a push is needed. This runs independently
+// of ReconcileSecret so the declared secret still reaches Pocket-ID when spec.secret.enabled is
+// false, which is also why it handles its own retirement.
+func (r *Reconciler) SyncDeclaredClientSecret(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient PocketIDOIDCClientAPI, observed []pocketid.OIDCClientSecret) error {
 	if !hasDeclaredClientSecret(oidcClient) {
 		// The ref was removed; drop the stale record so re-adding it pushes again.
 		if oidcClient.Status.ClientSecretSourceVersion != "" {
@@ -83,24 +84,46 @@ func (r *Reconciler) SyncDeclaredClientSecret(ctx context.Context, oidcClient *p
 	if err != nil {
 		return err
 	}
-	if version == oidcClient.Status.ClientSecretSourceVersion {
-		return nil
+
+	// The source revision says whether the value needs pushing, but not whether it survived: one
+	// deleted out-of-band leaves the client unable to authenticate. Push again to restore it.
+	missing := !clientSecretPresent(secret, observed)
+
+	var minted *pocketid.OIDCClientSecret
+	var versionErr error
+	if version != oidcClient.Status.ClientSecretSourceVersion || missing {
+		logf.FromContext(ctx).Info("Setting declared client secret",
+			"name", oidcClient.Name, "clientID", oidcClient.Status.ClientID, "restoring", missing)
+
+		// The declared value lives in the referenced Secret, so a copy of it retired to free the
+		// last slot can be pushed straight back. Reserving a slot for it instead would wedge the
+		// push once repeated retries have filled the client.
+		if err := r.makeRoomForClientSecret(ctx, oidcClient, apiClient, secret, true, observed); err != nil {
+			return err
+		}
+
+		created, returned, err := apiClient.CreateOIDCClientSecret(ctx, oidcClient.Status.ClientID, secret)
+		if err != nil {
+			return fmt.Errorf("create client secret: %w", err)
+		}
+		// The declared value is what gets mirrored into the managed Secret, so a Pocket-ID that
+		// stored something else would leave the two disagreeing with nothing to detect it later.
+		if returned != secret {
+			return fmt.Errorf("pocket-id stored a generated client secret instead of the declared one")
+		}
+
+		base := oidcClient.DeepCopy()
+		oidcClient.Status.ClientSecretSourceVersion = version
+		// Held rather than returned: until this lands every reconcile pushes again, and skipping
+		// the retirement below on each of them is what fills the client's secret slots.
+		versionErr = r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
+		minted = &created
 	}
 
-	logf.FromContext(ctx).Info("Setting declared client secret",
-		"name", oidcClient.Name, "clientID", oidcClient.Status.ClientID)
-
-	returned, err := apiClient.SetOIDCClientSecret(ctx, oidcClient.Status.ClientID, secret)
-	if err != nil {
-		return fmt.Errorf("set client secret: %w", err)
+	// Safe to retire immediately: the declared value's durability is the referenced Secret's
+	// concern. Also runs without a push, to finish a retirement the overlap was holding open.
+	if err := r.reconcileClientSecretRetention(ctx, oidcClient, apiClient, observed, minted, secret); err != nil {
+		return err
 	}
-	// Pocket-ID before v2.12.0 ignores the request body and generates a random secret, which
-	// would leave the cluster and Pocket-ID permanently disagreeing. Fail loudly instead.
-	if returned != secret {
-		return fmt.Errorf("pocket-id returned a generated client secret instead of the declared one; spec.clientSecretRef requires pocket-id v2.12.0 or newer")
-	}
-
-	base := oidcClient.DeepCopy()
-	oidcClient.Status.ClientSecretSourceVersion = version
-	return r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
+	return versionErr
 }

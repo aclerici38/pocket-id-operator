@@ -6133,9 +6133,22 @@
                               "null"
                             ]
                           },
+                          "clientSecretOverlap": {
+                            "description": "ClientSecretOverlap is how long the client-secret a replacement supersedes stays valid in\nPocket-ID, giving consumers that cached it time to pick up the new one. It covers every\nreplacement: scheduled rotations, the regenerate-client-secret annotation, and clientSecretRef updates.\n\nWhen unset or zero the previous secret is deleted as soon as the replacement is stored,\nso exactly one secret is ever valid. Must not exceed 168h, nor clientSecretRotation.interval if set.",
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "x-kubernetes-validations": [
+                              {
+                                "message": "clientSecretOverlap must not exceed 168h (7 days)",
+                                "rule": "duration(self) <= duration('168h')"
+                              }
+                            ]
+                          },
                           "clientSecretRef": {
                             "additionalProperties": false,
-                            "description": "ClientSecretRef references a Kubernetes Secret key holding the client secret to set in\nPocket-ID, instead of letting the operator generate one. The value must be at least 16\nprintable ASCII characters. While set, the operator never generates or rotates the secret:\nclientSecretRotation cannot be enabled and the regenerate-client-secret annotation is\nignored. Requires Pocket-ID v2.12.0 or newer.",
+                            "description": "ClientSecretRef references a Kubernetes Secret key holding the client secret to set in\nPocket-ID, instead of letting the operator generate one. The value must be at least 16\nprintable ASCII characters. While set, the operator never generates or rotates the secret:\nclientSecretRotation cannot be enabled and the regenerate-client-secret annotation is\nignored.",
                             "properties": {
                               "key": {
                                 "description": "The key of the secret to select from.  Must be a valid secret key.",
@@ -6721,6 +6734,14 @@
                           {
                             "message": "clientPermissions and clientAccess require a confidential client, and a CIMD client is always public",
                             "rule": "!(has(self.clientID) && self.clientID.startsWith('https://')) || !has(self.apiAccess) || self.apiAccess.all(a, (!has(a.clientPermissions) || size(a.clientPermissions) == 0) && (!has(a.clientAccess) || !a.clientAccess))"
+                          },
+                          {
+                            "message": "clientSecretOverlap must not exceed clientSecretRotation.interval",
+                            "rule": "!has(self.clientSecretOverlap) || !has(self.clientSecretRotation) || !has(self.clientSecretRotation.interval) || duration(self.clientSecretOverlap) <= duration(self.clientSecretRotation.interval)"
+                          },
+                          {
+                            "message": "clientSecretOverlap requires a confidential client (isPublic must be false)",
+                            "rule": "!has(self.clientSecretOverlap) || !self.isPublic"
                           }
                         ]
                       }

@@ -254,20 +254,50 @@ var (
 	)
 
 	// OIDCClientSecretRotations counts client-secret rotation attempts that actually reached the
-	// Pocket-ID regenerate call (i.e. the operator decided to rotate), partitioned by outcome and
+	// Pocket-ID create call (i.e. the operator decided to rotate), partitioned by outcome and
 	// what triggered them.
 	// Labels:
 	//
 	//	namespace - Kubernetes namespace of the PocketIDOIDCClient
 	//	name      - Kubernetes name of the PocketIDOIDCClient
 	//	result    - "success" or "error"
-	//	trigger   - "scheduled", "manual", or "initial"
+	//	trigger   - "scheduled", "manual", "initial", or "drift" (stored credential was deleted)
 	OIDCClientSecretRotations = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "pocketid_operator_oidcclient_secret_rotations_total",
 			Help: "Total client-secret rotations performed, partitioned by result and trigger.",
 		},
 		[]string{"namespace", "name", "result", "trigger"},
+	)
+
+	// OIDCClientSecretCount tracks how many secrets Pocket-ID holds for a confidential client,
+	// expired ones included, as read at the start of the last reconcile — so a mint or a
+	// retirement during that reconcile shows up on the next one. Climbing towards Pocket-ID's
+	// per-client cap means superseded secrets are not being retired.
+	// Labels:
+	//
+	//	namespace - Kubernetes namespace of the PocketIDOIDCClient
+	//	name      - Kubernetes name of the PocketIDOIDCClient
+	OIDCClientSecretCount = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "pocketid_operator_oidcclient_secrets",
+			Help: "Number of client secrets Pocket-ID holds for a PocketIDOIDCClient, including expired ones.",
+		},
+		[]string{"namespace", "name"},
+	)
+
+	// OIDCClientSecretsRetired counts superseded secrets the operator deleted from Pocket-ID.
+	// Labels:
+	//
+	//	namespace - Kubernetes namespace of the PocketIDOIDCClient
+	//	name      - Kubernetes name of the PocketIDOIDCClient
+	//	reason    - "superseded" (the overlap elapsed) or "cap" (room was needed to create one)
+	OIDCClientSecretsRetired = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "pocketid_operator_oidcclient_secrets_retired_total",
+			Help: "Total superseded client secrets the operator deleted from Pocket-ID, partitioned by reason.",
+		},
+		[]string{"namespace", "name", "reason"},
 	)
 
 	// OIDCClientRotationDeferred counts occasions where a scheduled rotation was due (its interval
@@ -307,6 +337,8 @@ func init() {
 		OIDCClientRotationWindowNextOpenTimestamp,
 		OIDCClientRotationWindowNextCloseTimestamp,
 		OIDCClientSecretRotations,
+		OIDCClientSecretCount,
+		OIDCClientSecretsRetired,
 		OIDCClientRotationDeferred,
 	)
 
@@ -379,7 +411,7 @@ func DeleteOIDCClientPKCESupported(namespace, name string) {
 // so its series can be pre-initialised to 0.
 var (
 	rotationResults  = []string{"success", "error"}
-	rotationTriggers = []string{"scheduled", "manual", "initial"}
+	rotationTriggers = []string{"scheduled", "manual", "initial", "drift"}
 )
 
 // InitOIDCClientRotationCounters ensures the OIDCClientSecretRotations series exist at 0 for every
@@ -467,5 +499,6 @@ func DeleteOIDCClientRotationSchedule(namespace, name string) {
 // left in place (matching ResourceOperations) so historical rates remain queryable.
 func DeleteOIDCClientRotationMetrics(namespace, name string) {
 	OIDCClientRotationEnabled.DeleteLabelValues(namespace, name)
+	OIDCClientSecretCount.DeleteLabelValues(namespace, name)
 	DeleteOIDCClientRotationSchedule(namespace, name)
 }

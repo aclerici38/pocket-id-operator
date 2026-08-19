@@ -71,8 +71,12 @@ func (m *mockPocketIDOIDCClientClient) RefreshOIDCClientMetadata(ctx context.Con
 	return nil
 }
 
-func (m *mockPocketIDOIDCClientClient) SetOIDCClientSecret(_ context.Context, _, secret string) (string, error) {
-	return secret, nil
+func (m *mockPocketIDOIDCClientClient) CreateOIDCClientSecret(_ context.Context, _, secret string) (pocketid.OIDCClientSecret, string, error) {
+	return pocketid.OIDCClientSecret{ID: "secret-1", Prefix: pocketid.SecretPrefix(secret), IsActive: true}, secret, nil
+}
+
+func (m *mockPocketIDOIDCClientClient) DeleteOIDCClientSecret(_ context.Context, _, _ string) error {
+	return nil
 }
 
 func (m *mockPocketIDOIDCClientClient) GetOIDCClientSCIMServiceProvider(_ context.Context, _ string) (*pocketid.SCIMServiceProvider, error) {

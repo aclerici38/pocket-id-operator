@@ -337,7 +337,7 @@ func TestReconcileSecret_CIMDClientSkipsSecretMinting(t *testing.T) {
 	}
 	r := declaredSecretReconciler(t, oidcClient, instance)
 
-	if err := r.ReconcileSecret(context.Background(), oidcClient, instance, nil); err != nil {
+	if err := r.ReconcileSecret(context.Background(), oidcClient, instance, nil, nil); err != nil {
 		t.Fatalf("ReconcileSecret returned error: %v", err)
 	}
 

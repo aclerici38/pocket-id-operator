@@ -195,8 +195,13 @@ func TestOIDCClientOperations_UseEncodedPathForMetadataDocumentIDs(t *testing.T)
 		switch {
 		case r.Method == http.MethodDelete:
 			w.WriteHeader(http.StatusNoContent)
-		case suffix == "/secret":
-			_ = json.NewEncoder(w).Encode(map[string]any{"secret": "a-declared-secret-value"})
+		case suffix == "/secrets" && r.Method == http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": "secret-1", "prefix": "a-de", "secret": "a-declared-secret-value", "isActive": true,
+			})
+		case suffix == "/secrets":
+			_ = json.NewEncoder(w).Encode([]any{map[string]any{"id": "secret-1", "isActive": true}})
 		case suffix == "/scim-service-provider":
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": "scim-1", "endpoint": "https://scim.example.com"})
 		default:
@@ -230,8 +235,11 @@ func TestOIDCClientOperations_UseEncodedPathForMetadataDocumentIDs(t *testing.T)
 	if _, err := client.GetOIDCClientSCIMServiceProvider(ctx, metadataURL); err != nil {
 		t.Errorf("GetOIDCClientSCIMServiceProvider: %v", err)
 	}
-	if _, err := client.SetOIDCClientSecret(ctx, metadataURL, "a-declared-secret-value"); err != nil {
-		t.Errorf("SetOIDCClientSecret: %v", err)
+	if _, _, err := client.CreateOIDCClientSecret(ctx, metadataURL, "a-declared-secret-value"); err != nil {
+		t.Errorf("CreateOIDCClientSecret: %v", err)
+	}
+	if err := client.DeleteOIDCClientSecret(ctx, metadataURL, "secret-1"); err != nil {
+		t.Errorf("DeleteOIDCClientSecret: %v", err)
 	}
 	// Reachable for CIMD: admission allows apiAccess.delegatedPermissions on one.
 	if _, err := client.ListAPIClientGrants(ctx, metadataURL); err != nil {
@@ -252,7 +260,7 @@ func TestOIDCClientOperations_UseEncodedPathForMetadataDocumentIDs(t *testing.T)
 
 	for _, want := range []string{
 		"GET ", "POST /refresh", "PUT ", "PUT /allowed-user-groups", "DELETE ",
-		"GET /scim-service-provider", "POST /secret",
+		"GET /scim-service-provider", "POST /secrets", "DELETE /secrets/secret-1",
 		"GET api-access", "PUT api-clients", "DELETE api-clients",
 	} {
 		if !seen[want] {

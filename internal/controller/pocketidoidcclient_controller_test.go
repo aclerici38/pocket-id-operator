@@ -510,6 +510,67 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 		})
 	})
 
+	Context("ClientSecretOverlap validation", func() {
+		newClient := func(name string, mutate func(*pocketidinternalv1alpha1.PocketIDOIDCClientSpec)) *pocketidinternalv1alpha1.PocketIDOIDCClient {
+			spec := pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+				ClientSecretOverlap: &metav1.Duration{Duration: time.Hour},
+			}
+			mutate(&spec)
+			return &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+				Spec:       spec,
+			}
+		}
+
+		It("should accept an overlap on a confidential client", func() {
+			resource := newClient("test-oidc-overlap", func(*pocketidinternalv1alpha1.PocketIDOIDCClientSpec) {})
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, resource) })
+		})
+
+		It("should reject an overlap on a public client, which has no secret to overlap", func() {
+			resource := newClient("test-oidc-overlap-public", func(s *pocketidinternalv1alpha1.PocketIDOIDCClientSpec) {
+				s.IsPublic = true
+			})
+			err := k8sClient.Create(ctx, resource)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("clientSecretOverlap requires a confidential client"))
+		})
+
+		It("should reject an overlap beyond 168h", func() {
+			resource := newClient("test-oidc-overlap-too-long", func(s *pocketidinternalv1alpha1.PocketIDOIDCClientSpec) {
+				s.ClientSecretOverlap = &metav1.Duration{Duration: 169 * time.Hour}
+			})
+			err := k8sClient.Create(ctx, resource)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("clientSecretOverlap must not exceed 168h"))
+		})
+
+		It("should reject an overlap longer than the rotation interval", func() {
+			resource := newClient("test-oidc-overlap-past-interval", func(s *pocketidinternalv1alpha1.PocketIDOIDCClientSpec) {
+				s.ClientSecretOverlap = &metav1.Duration{Duration: 2 * time.Hour}
+				s.ClientSecretRotation = &pocketidinternalv1alpha1.ClientSecretRotation{
+					Enabled:  true,
+					Interval: &metav1.Duration{Duration: time.Hour},
+				}
+			})
+			err := k8sClient.Create(ctx, resource)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("clientSecretOverlap must not exceed clientSecretRotation.interval"))
+		})
+
+		It("should accept an overlap within the rotation interval", func() {
+			resource := newClient("test-oidc-overlap-within-interval", func(s *pocketidinternalv1alpha1.PocketIDOIDCClientSpec) {
+				s.ClientSecretRotation = &pocketidinternalv1alpha1.ClientSecretRotation{
+					Enabled:  true,
+					Interval: &metav1.Duration{Duration: 720 * time.Hour},
+				}
+			})
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, resource) })
+		})
+	})
+
 	Context("AllowedUserGroups reference validation", func() {
 		newClient := func(name string, refs ...pocketidinternalv1alpha1.NamespacedUserGroupReference) *pocketidinternalv1alpha1.PocketIDOIDCClient {
 			return &pocketidinternalv1alpha1.PocketIDOIDCClient{
