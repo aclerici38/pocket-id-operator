@@ -128,7 +128,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		if err != nil {
 			log.Error(err, "Failed to create or adopt user")
 			_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "ReconcileError", err.Error())
-			return ctrl.Result{RequeueAfter: common.Requeue}, nil
+			return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 		}
 		if requeue {
 			return ctrl.Result{Requeue: true}, nil
@@ -148,7 +148,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			return ctrl.Result{Requeue: true}, nil
 		}
 		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "GetError", err.Error())
-		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 	}
 
 	if err := r.updateUserStatus(ctx, user, pUser); err != nil {
@@ -168,18 +168,18 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err != nil {
 		log.Error(err, "Failed to push user state")
 		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "ReconcileError", err.Error())
-		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 	}
 
 	if err := r.reconcileAPIKeys(ctx, user, apiClient, instance.Namespace, instance.Name); err != nil {
 		log.Error(err, "Failed to reconcile API keys")
 		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "APIKeyError", err.Error())
-		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 	}
 
 	if err := r.createOneTimeToken(ctx, user, apiClient, instance); err != nil {
 		log.Error(err, "Failed to create one-time login token")
-		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 	}
 
 	cleanupResult, err := r.cleanupOneTimeToken(ctx, user)
@@ -301,11 +301,16 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, user *pocketidinternal
 				return ctrl.Result{}, err
 			}
 			log.Info("Deleting user from Pocket-ID", "userID", user.Status.UserID)
+			// A user already gone from Pocket-ID must not hold the finalizer.
 			if err := apiClient.DeleteUser(ctx, user.Status.UserID); err != nil {
-				log.Error(err, "Failed to delete user from Pocket-ID")
-				return ctrl.Result{}, err
+				if !pocketid.IsNotFoundError(err) {
+					log.Error(err, "Failed to delete user from Pocket-ID")
+					return ctrl.Result{}, err
+				}
+				log.Info("User already absent from Pocket-ID, treating delete as complete", "userID", user.Status.UserID)
+			} else {
+				metrics.ResourceOperations.WithLabelValues("PocketIDUser", "deleted").Inc()
 			}
-			metrics.ResourceOperations.WithLabelValues("PocketIDUser", "deleted").Inc()
 		}
 	} else if user.Status.UserID != "" {
 		log.Info("Skipping Pocket-ID user deletion (annotation not set)", "userID", user.Status.UserID, "annotation", DeleteFromPocketIDAnnotation)

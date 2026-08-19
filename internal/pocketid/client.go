@@ -400,7 +400,7 @@ func NewClient(baseURL string, apiKey string, opts ...ClientOption) (*Client, er
 		opt(c)
 	}
 
-	transport := httptransport.NewWithClient(parsed.Host, "/", []string{parsed.Scheme}, c.httpClient)
+	transport := httptransport.NewWithClient(parsed.Host, "/", []string{parsed.Scheme}, errorCapturingClient(c.httpClient))
 
 	if apiKey != "" {
 		transport.DefaultAuthentication = runtime.ClientAuthInfoWriterFunc(
@@ -410,15 +410,30 @@ func NewClient(baseURL string, apiKey string, opts ...ClientOption) (*Client, er
 		)
 	}
 
-	// Every operation declares a default error response, so go-swagger deserializes
-	// error bodies instead of just recording the status code.
+	// Drain non-JSON bodies rather than letting go-swagger lose the status code behind a
+	// decode error.
 	for _, mime := range []string{runtime.TextMime, runtime.HTMLMime, runtime.DefaultMime} {
 		transport.Consumers[mime] = discardingConsumer{}
 	}
 
-	c.raw = apiclient.New(transport, strfmt.Default)
+	c.raw = apiclient.New(&classifyingTransport{inner: transport}, strfmt.Default)
 
 	return c, nil
+}
+
+// errorCapturingClient copies base so its round trips keep failed responses long enough
+// to classify. A nil base yields the client go-openapi would have built itself.
+func errorCapturingClient(base *http.Client) *http.Client {
+	var httpClient http.Client
+	if base != nil {
+		httpClient = *base
+	}
+	next := httpClient.Transport
+	if next == nil {
+		next = http.DefaultTransport
+	}
+	httpClient.Transport = &errorCapturingTransport{next: next}
+	return &httpClient
 }
 
 // discardingConsumer drains a response body without decoding it, so the surrounding

@@ -118,7 +118,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		if err != nil {
 			log.Error(err, "Failed to create or adopt user group")
 			_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "ReconcileError", err.Error())
-			return ctrl.Result{RequeueAfter: common.Requeue}, nil
+			return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 		}
 		if requeue {
 			return ctrl.Result{Requeue: true}, nil
@@ -138,7 +138,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			return ctrl.Result{Requeue: true}, nil
 		}
 		_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "GetError", err.Error())
-		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 	}
 
 	if err := r.updateUserGroupStatus(ctx, userGroup, current); err != nil {
@@ -158,7 +158,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err != nil {
 		log.Error(err, "Failed to push user group state")
 		_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "ReconcileError", err.Error())
-		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 	}
 
 	_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionTrue, "Reconciled", "User group is in sync")

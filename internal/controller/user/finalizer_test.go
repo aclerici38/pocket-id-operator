@@ -2,6 +2,8 @@ package user
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -458,6 +460,84 @@ func TestReconcileDelete_AttemptsPocketIDDeletionWithAnnotation(t *testing.T) {
 			t.Fatalf("expected finalizer to be removed, got %v", updatedUser.Finalizers)
 		}
 	} else if !errors.IsNotFound(err) {
+		t.Fatalf("failed to get updated user: %v", err)
+	}
+}
+
+// deletedInPocketIDServer answers the way pocket-id does for something already gone.
+func deletedInPocketIDServer(t *testing.T, calls *int) *httptest.Server {
+	t.Helper()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		*calls++
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Request-ID", "req-gone")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"User not found","code":"user_not_found","request_id":"req-gone"}`))
+	}))
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+// Deleting the user in Pocket-ID first and the resource second must not wedge the
+// finalizer.
+func TestReconcileDelete_UserAlreadyDeletedInPocketID(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	calls := 0
+	ts := deletedInPocketIDServer(t, &calls)
+
+	now := metav1.NewTime(time.Now())
+	user := &pocketidinternalv1alpha1.PocketIDUser{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "auth-user",
+			Namespace:         "default",
+			Finalizers:        []string{UserFinalizer},
+			DeletionTimestamp: &now,
+			Annotations:       map[string]string{DeleteFromPocketIDAnnotation: "true"},
+		},
+	}
+	user.Status.UserID = "already-gone"
+
+	instance := &pocketidinternalv1alpha1.PocketIDInstance{
+		ObjectMeta: metav1.ObjectMeta{Name: "instance", Namespace: "default"},
+		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+			External: &pocketidinternalv1alpha1.ExternalInstanceConfig{
+				URL: ts.URL,
+				APIKeySecretRef: corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: "admin-token"},
+					Key:                  "token",
+				},
+			},
+		},
+	}
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "admin-token", Namespace: "default"},
+		Data:       map[string][]byte{"token": []byte("key")},
+	}
+
+	k8s := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(user, instance, secret).
+		Build()
+
+	reconciler := &Reconciler{Client: k8s, APIReader: k8s, Scheme: scheme}
+	if _, err := reconciler.ReconcileDelete(context.Background(), user); err != nil {
+		t.Fatalf("ReconcileDelete returned error: %v", err)
+	}
+	if calls == 0 {
+		t.Fatal("the delete never reached Pocket-ID, so this proves nothing about a 404")
+	}
+
+	updatedUser := &pocketidinternalv1alpha1.PocketIDUser{}
+	err := k8s.Get(context.Background(), types.NamespacedName{Name: user.Name, Namespace: user.Namespace}, updatedUser)
+	switch {
+	case err == nil:
+		if containsFinalizer(updatedUser.Finalizers, UserFinalizer) {
+			t.Fatalf("finalizer still present after the user was already gone: %v", updatedUser.Finalizers)
+		}
+	case !errors.IsNotFound(err):
 		t.Fatalf("failed to get updated user: %v", err)
 	}
 }
