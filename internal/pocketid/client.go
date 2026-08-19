@@ -357,6 +357,15 @@ func orderedEqual(a, b []string) bool {
 	return true
 }
 
+// orEmpty returns s, or an empty slice when s is nil. Required list fields must serialize as
+// [] rather than null, which is what a nil slice marshals to.
+func orEmpty(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
+}
+
 // SortedEqual compares two string slices for equality regardless of order.
 func SortedEqual(a, b []string) bool {
 	if len(a) == 0 && len(b) == 0 {
@@ -1103,17 +1112,15 @@ func (c *Client) UpdateAPIPermissions(ctx context.Context, id string, permission
 }
 
 // SetAPICIMDAccess replaces which permissions of an API every client registered through a
-// Client ID Metadata Document may request. Pocket-ID retains the permission IDs while
-// enabled is false, so switching access off and back on preserves the selection.
+// Client ID Metadata Document may request. The permission IDs are sent even when enabled is
+// false, but whether Pocket-ID then retains them is not relied on: the caller re-sends the
+// selection from spec when access is turned back on.
 func (c *Client) SetAPICIMDAccess(ctx context.Context, apiID string, enabled bool, permissionIDs []string) (*API, error) {
-	if permissionIDs == nil {
-		permissionIDs = []string{}
-	}
 	params := apis.NewPutAPIApisIDCimdAccessParams().
 		WithID(apiID).
 		WithAccess(&models.APIAPICimdAccessUpdateDto{
 			Enabled:       enabled,
-			PermissionIds: permissionIDs,
+			PermissionIds: orEmpty(permissionIDs),
 		})
 
 	start := time.Now()
@@ -1159,14 +1166,15 @@ func (c *Client) ListAPIClientGrants(ctx context.Context, clientID string) ([]AP
 // Pocket-ID applied, which may be narrower than requested: unknown permission IDs are
 // dropped, and a public client never keeps client-credentials access.
 func (c *Client) SetAPIClientGrant(ctx context.Context, apiID, clientID string, grant APIClientGrant) (*APIClientGrant, error) {
+	// Both ID lists are required by the API, so a nil slice has to go out as [] rather than null.
 	params := apis.NewPutAPIApisIDClientsClientIDParams().
 		WithID(apiID).
 		WithClientID(clientIDPathParam(clientID)).
 		WithAccess(&models.APIAPIClientGrantUpdateDto{
 			ClientAccess:               grant.ClientAccess,
 			UserDelegatedAccess:        grant.UserDelegatedAccess,
-			ClientPermissionIds:        grant.ClientPermissionIDs,
-			UserDelegatedPermissionIds: grant.UserDelegatedPermissionIDs,
+			ClientPermissionIds:        orEmpty(grant.ClientPermissionIDs),
+			UserDelegatedPermissionIds: orEmpty(grant.UserDelegatedPermissionIDs),
 		})
 
 	start := time.Now()

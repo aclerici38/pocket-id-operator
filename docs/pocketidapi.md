@@ -125,7 +125,7 @@ needed for the two cases they cannot express:
 | unset | one or more | Access to the marked permissions |
 | unset | none | No access |
 | `true` | none | Access with no permissions, for a client requesting a resource without any scopes |
-| `false` | one or more | No access, marks kept so it can be turned back on |
+| `false` | one or more | No access; the marks stay in spec, so flipping it back restores them |
 
 Notes:
 
@@ -134,6 +134,9 @@ Notes:
   allowlist `cimdAccess` is accepted and reconciled but grants nobody anything.
 - The operator owns this setting like it owns the permission set: unmarking every
   permission disables CIMD access in Pocket-ID rather than leaving it as it was.
+- While access is off the marks reach nobody, so the operator stops reconciling them and
+  Pocket-ID may show them either way. Spec is the record: turning access back on pushes the
+  marks again from there.
 - This grants **every** CIMD client. A grant to one specific client goes on that client's
   `spec.apiAccess` instead.
 - Access granted here is not visible from a client's `spec.apiAccess`, so removing an

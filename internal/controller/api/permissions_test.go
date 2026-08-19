@@ -133,3 +133,68 @@ func apiPermissions(cimd []string, keys ...string) []pocketidinternalv1alpha1.AP
 	}
 	return perms
 }
+
+// The marks are pushed while access is off but never diffed, so the operator settles whether
+// Pocket-ID keeps them or clears them. Diffing them would re-push forever against a server
+// that clears the marks whenever access is disabled.
+func TestCIMDAccessDrift_SettlesWhileDisabled(t *testing.T) {
+	no := false
+	api := &pocketidinternalv1alpha1.PocketIDAPI{
+		Spec: pocketidinternalv1alpha1.PocketIDAPISpec{
+			CIMDAccess:  &no,
+			Permissions: apiPermissions([]string{"read"}, "read", "write"),
+		},
+	}
+
+	for _, tt := range []struct {
+		name    string
+		current *pocketid.API
+	}{
+		{
+			name: "server cleared the marks",
+			current: &pocketid.API{Permissions: []pocketid.APIPermission{
+				{ID: "p-read", Key: "read"},
+				{ID: "p-write", Key: "write"},
+			}},
+		},
+		{
+			name: "server kept the marks",
+			current: &pocketid.API{Permissions: []pocketid.APIPermission{
+				{ID: "p-read", Key: "read", AllowedForCIMDClients: true},
+				{ID: "p-write", Key: "write"},
+			}},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			drift, enabled, _ := cimdAccessDrift(api, tt.current)
+			if drift {
+				t.Error("drift = true, want false: access is already off, so there is nothing to push")
+			}
+			if enabled {
+				t.Error("enabled = true, want false")
+			}
+		})
+	}
+}
+
+// Turning access back on pushes the marks from spec, so it does not matter whether Pocket-ID
+// retained them while access was off.
+func TestCIMDAccessDrift_RepushesMarksOnReenable(t *testing.T) {
+	api := &pocketidinternalv1alpha1.PocketIDAPI{
+		Spec: pocketidinternalv1alpha1.PocketIDAPISpec{
+			Permissions: apiPermissions([]string{"read"}, "read", "write"),
+		},
+	}
+	current := &pocketid.API{Permissions: []pocketid.APIPermission{
+		{ID: "p-read", Key: "read"},
+		{ID: "p-write", Key: "write"},
+	}}
+
+	drift, enabled, ids := cimdAccessDrift(api, current)
+	if !drift || !enabled {
+		t.Fatalf("drift = %v, enabled = %v; want both true", drift, enabled)
+	}
+	if !reflect.DeepEqual(ids, []string{"p-read"}) {
+		t.Errorf("permissionIDs = %v, want [p-read]", ids)
+	}
+}

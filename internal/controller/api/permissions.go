@@ -75,6 +75,10 @@ func observedPermissions(permissions []pocketid.APIPermission) []pocketidinterna
 // permission is marked, so the API-level field is only needed to grant access with no
 // permissions or to revoke it. Keys resolve against the API's live permissions, so this must
 // run after any permission update: a permission created in the same edit has no ID until then.
+//
+// While access is off the marks reach nobody, so they are pushed but never diffed: Pocket-ID
+// is free to keep or clear them and either way the operator must settle. The marks live in
+// spec, so turning access back on pushes them again from there.
 func cimdAccessDrift(api *pocketidinternalv1alpha1.PocketIDAPI, current *pocketid.API) (drift, enabled bool, permissionIDs []string) {
 	wanted := make(map[string]bool, len(api.Spec.Permissions))
 	marked := false
@@ -99,6 +103,7 @@ func cimdAccessDrift(api *pocketidinternalv1alpha1.PocketIDAPI, current *pocketi
 		}
 	}
 
-	drift = enabled != current.AllowCIMDClients || !pocketid.SortedEqual(desiredIDs, currentIDs)
+	drift = enabled != current.AllowCIMDClients ||
+		(enabled && !pocketid.SortedEqual(desiredIDs, currentIDs))
 	return drift, enabled, desiredIDs
 }
