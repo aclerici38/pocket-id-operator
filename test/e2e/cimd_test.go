@@ -123,6 +123,68 @@ var _ = Describe("Client ID Metadata Documents", Ordered, func() {
 			waitForReady("pocketidoidcclient", clientName, userNS)
 		})
 
+		// A CIMD client is reached through the API's cimdAccess rather than its own
+		// spec.apiAccess, so status.cimdGrantedAPIs is the only place that access is visible
+		// from the client side. It also has to stay read-only: the operator must report the
+		// access without treating it as something it owns and revokes.
+		Context("reached through an API's CIMD access", Ordered, func() {
+			const (
+				apiName     = "cimd-granted-api"
+				apiResource = "https://cimd-granted.e2e.example.com"
+			)
+
+			BeforeAll(func() {
+				By("creating an API that grants every CIMD client one permission")
+				createAPIAndWaitReady(APIOptions{
+					Name: apiName, Resource: apiResource,
+					Permissions: []APIPermissionOption{
+						{Key: "read:cimd", Name: "Read", CIMDAccess: true},
+					},
+				})
+			})
+
+			It("reports the API in status without claiming to manage it", func() {
+				Eventually(func(g Gomega) {
+					g.Expect(kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
+						"-o", "jsonpath={.status.cimdGrantedAPIs[*]}")).To(Equal(apiResource))
+				}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+				By("verifying the operator claims no ownership of API-side access")
+				Expect(kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
+					"-o", "jsonpath={.status.managedAPIs[*]}")).To(BeEmpty())
+				Expect(kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
+					"-o", "jsonpath={.status.managedAPIPermissionIDs[*]}")).To(BeEmpty())
+			})
+
+			It("matches what Pocket-ID reports for the client", func() {
+				body := getFromPocketID("cimd-granted-verify", userNS,
+					"/api/api-access/"+encodeCIMDClientID(cimdMetadataURL)+"/apis")
+				Expect(body).To(ContainSubstring(apiResource))
+				Expect(body).To(ContainSubstring(`"cimdGrantedAccess":true`))
+			})
+
+			// The access is the API's to revoke. If the client reconcile ever tried to own it,
+			// this would keep reporting an API the client can no longer reach.
+			It("stops reporting the API once it revokes CIMD access", func() {
+				createAPI(APIOptions{
+					Name: apiName, Resource: apiResource,
+					Permissions: []APIPermissionOption{
+						{Key: "read:cimd", Name: "Read"},
+					},
+				})
+				waitForReconciled("pocketidapi", apiName, userNS)
+
+				Eventually(func(g Gomega) {
+					g.Expect(kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
+						"-o", "jsonpath={.status.cimdGrantedAPIs[*]}")).To(BeEmpty())
+				}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			})
+
+			AfterAll(func() {
+				_ = kubectlDeleteWait("pocketidapi", apiName, userNS, time.Minute)
+			})
+		})
+
 		AfterAll(func() {
 			kubectlDelete("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)

@@ -86,6 +86,10 @@ type NamespacedAPIReference struct {
 // OIDCClientAPIAccess grants a client scoped permissions on a referenced PocketIDAPI.
 // Permissions are referenced by their key; the controller resolves them to Pocket-ID
 // permission IDs via the PocketIDAPI status.
+// The access flags exist to grant a flow that selects no permissions, so setting one to false
+// alongside a permission list is rejected rather than silently ignoring the list.
+// +kubebuilder:validation:XValidation:rule="!has(self.delegatedAccess) || self.delegatedAccess || !has(self.delegatedPermissions) || size(self.delegatedPermissions) == 0",message="delegatedAccess: false conflicts with delegatedPermissions; drop the permissions to revoke the flow, or remove the flag to grant them"
+// +kubebuilder:validation:XValidation:rule="!has(self.clientAccess) || self.clientAccess || !has(self.clientPermissions) || size(self.clientPermissions) == 0",message="clientAccess: false conflicts with clientPermissions; drop the permissions to revoke the flow, or remove the flag to grant them"
 type OIDCClientAPIAccess struct {
 	// APIRef references the PocketIDAPI granting access.
 	// +kubebuilder:validation:Required

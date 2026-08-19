@@ -434,11 +434,15 @@ set `delegatedAccess` or `clientAccess` instead of listing permissions:
       delegatedAccess: true
 ```
 
-Both default to true when the matching permission list is non-empty, so existing grants
-keep working unchanged. Removing the entry revokes the grant either way — the operator
-tracks the APIs it granted, not just the permissions. `clientPermissions` and `clientAccess` require a confidential
-client (`isPublic: false`). The client is the sole owner of its API access in Pocket-ID;
-see [PocketIDAPI](pocketidapi.md#granting-client-access) for the full semantics.
+Both default to true when the matching permission list is non-empty, so existing grants keep
+working unchanged. They exist to grant a flow that selects *no* permissions, so setting one to
+`false` while listing permissions for that same flow is rejected at admission rather than
+silently ignoring the list — drop the permissions to revoke the flow instead.
+
+Removing the entry revokes the grant either way — the operator tracks the APIs it granted, not
+just the permissions. `clientPermissions` and `clientAccess` require a confidential client
+(`isPublic: false`). The client is the sole owner of its API access in Pocket-ID; see
+[PocketIDAPI](pocketidapi.md#granting-client-access) for the full semantics.
 
 For clients that register themselves through a Client ID Metadata Document there is no CR
 to grant from, so access is granted at the API instead via

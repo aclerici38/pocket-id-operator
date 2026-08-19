@@ -6046,7 +6046,7 @@
                             "description": "APIAccess grants this client permission to request scoped access on the\nreferenced PocketIDAPIs. The client is the sole owner of its API access in\nPocket-ID: while this field is set the operator keeps the access in sync and\nclears it if the field is later emptied. When never set, existing API access\nconfigured out-of-band is left untouched.",
                             "items": {
                               "additionalProperties": false,
-                              "description": "OIDCClientAPIAccess grants a client scoped permissions on a referenced PocketIDAPI.\nPermissions are referenced by their key; the controller resolves them to Pocket-ID\npermission IDs via the PocketIDAPI status.",
+                              "description": "OIDCClientAPIAccess grants a client scoped permissions on a referenced PocketIDAPI.\nPermissions are referenced by their key; the controller resolves them to Pocket-ID\npermission IDs via the PocketIDAPI status.\nThe access flags exist to grant a flow that selects no permissions, so setting one to false\nalongside a permission list is rejected rather than silently ignoring the list.",
                               "properties": {
                                 "apiRef": {
                                   "additionalProperties": false,
@@ -6107,7 +6107,17 @@
                               "required": [
                                 "apiRef"
                               ],
-                              "type": "object"
+                              "type": "object",
+                              "x-kubernetes-validations": [
+                                {
+                                  "message": "delegatedAccess: false conflicts with delegatedPermissions; drop the permissions to revoke the flow, or remove the flag to grant them",
+                                  "rule": "!has(self.delegatedAccess) || self.delegatedAccess || !has(self.delegatedPermissions) || size(self.delegatedPermissions) == 0"
+                                },
+                                {
+                                  "message": "clientAccess: false conflicts with clientPermissions; drop the permissions to revoke the flow, or remove the flag to grant them",
+                                  "rule": "!has(self.clientAccess) || self.clientAccess || !has(self.clientPermissions) || size(self.clientPermissions) == 0"
+                                }
+                              ]
                             },
                             "type": [
                               "array",

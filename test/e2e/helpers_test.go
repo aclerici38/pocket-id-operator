@@ -692,6 +692,22 @@ func applyYAML(yaml string) {
 	Expect(err).NotTo(HaveOccurred())
 }
 
+// applyYAMLExpectingError applies the manifest and returns kubectl's combined output and
+// error, for specs that assert admission rejects a spec rather than that it is accepted.
+func applyYAMLExpectingError(yaml string) (string, error) {
+	cmd := exec.Command("kubectl", "apply", "-f", "-")
+	cmd.Stdin = strings.NewReader(yaml)
+	return utils.Run(cmd)
+}
+
+// expectApplyRejected requires the manifest to be refused by admission with an error
+// mentioning wantMessage, so a CEL rule that silently stops matching is caught.
+func expectApplyRejected(yaml, wantMessage string) {
+	output, err := applyYAMLExpectingError(yaml)
+	Expect(err).To(HaveOccurred(), "apply should fail CEL validation")
+	Expect(output).To(ContainSubstring(wantMessage))
+}
+
 func kubectlGet(args ...string) string {
 	fullArgs := append([]string{"get"}, args...)
 	cmd := exec.Command("kubectl", fullArgs...)

@@ -347,6 +347,61 @@ var _ = Describe("PocketIDAPI CIMD Access", Ordered, func() {
 		}, 2*time.Minute, 2*time.Second).Should(Succeed())
 	})
 
+	// The one row of the spec.cimdAccess table with no coverage, and the only one where the
+	// operator's desired state is not directly observable: it pushes the marks while access is
+	// off, so if it also diffed them it would re-push on every resync against a Pocket-ID that
+	// clears them. Nothing in status or in Pocket-ID would look wrong while that happened.
+	It("should turn access off explicitly while the marks stay in spec", func() {
+		createAPI(APIOptions{
+			Name: apiName, Resource: resource,
+			Permissions: []APIPermissionOption{
+				{Key: "read:data", Name: "Read data", CIMDAccess: true},
+				{Key: "write:data", Name: "Write data"},
+				{Key: "sync:data", Name: "Sync data", CIMDAccess: true},
+			},
+			CIMDAccess: boolPtr(false),
+		})
+		waitForReconciled("pocketidapi", apiName, userNS)
+
+		By("verifying Pocket-ID revoked access despite the marks")
+		Eventually(func(g Gomega) {
+			body := getFromPocketID("verify-cimd-explicit-off", userNS, "/api/apis/"+apiID)
+			g.Expect(body).NotTo(ContainSubstring(`"allowCimdClients":true`))
+		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		waitForStatusField("pocketidapi", apiName, userNS, ".status.cimdAccess", "false")
+
+		By("letting several reconciles pass and confirming the state stopped moving")
+		before := getFromPocketID("verify-cimd-off-settle-1", userNS, "/api/apis/"+apiID)
+		time.Sleep(30 * time.Second)
+		after := getFromPocketID("verify-cimd-off-settle-2", userNS, "/api/apis/"+apiID)
+		Expect(after).To(Equal(before),
+			"an API with cimdAccess false and marked permissions must reach a stable state")
+		waitForReady("pocketidapi", apiName, userNS)
+	})
+
+	// What "marks kept so it can be turned back on" has to mean in practice.
+	It("should restore exactly the marked permissions when access is turned back on", func() {
+		createAPI(APIOptions{
+			Name: apiName, Resource: resource,
+			Permissions: []APIPermissionOption{
+				{Key: "read:data", Name: "Read data", CIMDAccess: true},
+				{Key: "write:data", Name: "Write data"},
+				{Key: "sync:data", Name: "Sync data", CIMDAccess: true},
+			},
+			// cimdAccess unset again: it derives back to true from the marks.
+		})
+		waitForReconciled("pocketidapi", apiName, userNS)
+
+		Eventually(func(g Gomega) {
+			syncID := permIDFromStatus(apiName, "sync:data")
+			body := getFromPocketID("verify-cimd-back-on", userNS, "/api/apis/"+apiID)
+			g.Expect(body).To(ContainSubstring(`"allowCimdClients":true`))
+			g.Expect(body).To(ContainSubstring(fmt.Sprintf(`"id":"%s","key":"read:data","name":"Read data","allowedForCimdClients":true`, readID)))
+			g.Expect(body).To(ContainSubstring(fmt.Sprintf(`"id":"%s","key":"sync:data","name":"Sync data","allowedForCimdClients":true`, syncID)))
+			g.Expect(body).NotTo(ContainSubstring(`"key":"write:data","name":"Write data","allowedForCimdClients":true`))
+		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+	})
+
 	It("should disable CIMD access when the marks are removed", func() {
 		createAPI(APIOptions{
 			Name: apiName, Resource: resource,
@@ -405,9 +460,208 @@ var _ = Describe("PocketIDAPI Scopeless Client Grant", Ordered, func() {
 		}, 2*time.Minute, 2*time.Second).Should(Succeed())
 	})
 
+	// A scopeless grant carries no permission IDs, so status.managedAPIs is the only record
+	// that the operator granted anything and the only thing that can revoke it later.
+	It("should record the API in status even though no permission was resolved", func() {
+		apiID := waitForStatusFieldNotEmpty("pocketidapi", apiName, userNS, ".status.apiID")
+		Eventually(func(g Gomega) {
+			g.Expect(kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
+				"-o", "jsonpath={.status.managedAPIs[*]}")).To(Equal(apiID))
+			g.Expect(kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
+				"-o", "jsonpath={.status.managedAPIPermissionIDs[*]}")).To(BeEmpty())
+		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+	})
+
+	It("should grant the client-credentials flow with no permissions", func() {
+		By("switching the scopeless grant from the delegated flow to client credentials")
+		createOIDCClient(OIDCClientOptions{
+			Name:         clientName,
+			CallbackURLs: []string{"https://scopeless.e2e.example.com/callback"},
+			APIAccess: []APIAccessGrant{{
+				APIRefName:   apiName,
+				ClientAccess: boolPtr(true),
+			}},
+		})
+		waitForReconciled("pocketidoidcclient", clientName, userNS)
+
+		Eventually(func(g Gomega) {
+			body := getFromPocketID("verify-scopeless-m2m", userNS, "/api/api-access/"+clientID+"/apis")
+			g.Expect(body).To(ContainSubstring(`"clientAccess":true`))
+			g.Expect(body).To(ContainSubstring(`"clientPermissionIds":[]`))
+			g.Expect(body).To(ContainSubstring(`"userDelegatedAccess":false`))
+		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+	})
+
+	// A scopeless grant is the case where desired and observed state are thinnest, so a
+	// mismatch the operator can never satisfy would show up as a silent re-push loop.
+	It("should settle instead of re-pushing the grant", func() {
+		before := getFromPocketID("verify-scopeless-settle-1", userNS, "/api/api-access/"+clientID+"/apis")
+		time.Sleep(30 * time.Second)
+		after := getFromPocketID("verify-scopeless-settle-2", userNS, "/api/api-access/"+clientID+"/apis")
+		Expect(after).To(Equal(before), "a scopeless grant must reach a stable state")
+		waitForReady("pocketidoidcclient", clientName, userNS)
+	})
+
+	It("should revoke the scopeless grant when the entry is removed", func() {
+		createOIDCClient(OIDCClientOptions{
+			Name:         clientName,
+			CallbackURLs: []string{"https://scopeless.e2e.example.com/callback"},
+			// APIAccess intentionally absent: nothing but status.managedAPIs records the grant.
+		})
+		waitForReconciled("pocketidoidcclient", clientName, userNS)
+
+		Eventually(func(g Gomega) {
+			g.Expect(kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
+				"-o", "jsonpath={.status.managedAPIs[*]}")).To(BeEmpty())
+			body := getFromPocketID("verify-scopeless-revoked", userNS, "/api/api-access/"+clientID+"/apis")
+			g.Expect(body).NotTo(ContainSubstring(`"clientAccess":true`))
+			g.Expect(body).NotTo(ContainSubstring(`"userDelegatedAccess":true`))
+		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+	})
+
 	AfterAll(func() {
 		kubectlDelete("pocketidoidcclient", clientName, userNS)
 		_ = kubectlDeleteWait("pocketidapi", apiName, userNS, time.Minute)
+	})
+})
+
+var _ = Describe("PocketIDAPI Multi-API Grants", Ordered, func() {
+	// Access is stored per API, so dropping one apiAccess entry has to revoke that API alone.
+	// A single-API client cannot tell a correct per-API revoke from one that clears everything.
+	const (
+		clientName  = "multi-api-client"
+		ordersName  = "multi-orders-api"
+		ordersRes   = "https://multi-orders.e2e.example.com"
+		billingName = "multi-billing-api"
+		billingRes  = "https://multi-billing.e2e.example.com"
+	)
+	var clientID, ordersID, billingID, ordersPermID, billingPermID string
+
+	BeforeAll(func() {
+		By("creating two APIs and a client granted access to both")
+		createAPIAndWaitReady(APIOptions{
+			Name: ordersName, Resource: ordersRes,
+			Permissions: []APIPermissionOption{{Key: "read:orders", Name: "Read orders"}},
+		})
+		createAPIAndWaitReady(APIOptions{
+			Name: billingName, Resource: billingRes,
+			Permissions: []APIPermissionOption{{Key: "read:billing", Name: "Read billing"}},
+		})
+		ordersID = waitForStatusFieldNotEmpty("pocketidapi", ordersName, userNS, ".status.apiID")
+		billingID = waitForStatusFieldNotEmpty("pocketidapi", billingName, userNS, ".status.apiID")
+		ordersPermID = permIDFromStatus(ordersName, "read:orders")
+		billingPermID = permIDFromStatus(billingName, "read:billing")
+
+		createOIDCClientAndWaitReady(OIDCClientOptions{
+			Name:         clientName,
+			CallbackURLs: []string{"https://multi.e2e.example.com/callback"},
+			APIAccess: []APIAccessGrant{
+				{APIRefName: ordersName, DelegatedPermissions: []string{"read:orders"}},
+				{APIRefName: billingName, ClientPermissions: []string{"read:billing"}},
+			},
+		})
+		clientID = waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
+	})
+
+	It("should grant both APIs independently", func() {
+		Eventually(func(g Gomega) {
+			body := getFromPocketID("verify-multi", userNS, "/api/api-access/"+clientID+"/apis")
+			g.Expect(body).To(ContainSubstring(fmt.Sprintf(`"userDelegatedPermissionIds":["%s"]`, ordersPermID)))
+			g.Expect(body).To(ContainSubstring(fmt.Sprintf(`"clientPermissionIds":["%s"]`, billingPermID)))
+		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+		By("verifying status tracks both API IDs")
+		Eventually(func(g Gomega) {
+			out := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
+				"-o", "jsonpath={.status.managedAPIs[*]}")
+			g.Expect(out).To(ContainSubstring(ordersID))
+			g.Expect(out).To(ContainSubstring(billingID))
+		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+	})
+
+	It("should revoke only the dropped API and leave the other grant intact", func() {
+		By("dropping the billing entry and keeping orders")
+		createOIDCClient(OIDCClientOptions{
+			Name:         clientName,
+			CallbackURLs: []string{"https://multi.e2e.example.com/callback"},
+			APIAccess: []APIAccessGrant{
+				{APIRefName: ordersName, DelegatedPermissions: []string{"read:orders"}},
+			},
+		})
+		waitForReconciled("pocketidoidcclient", clientName, userNS)
+
+		Eventually(func(g Gomega) {
+			body := getFromPocketID("verify-multi-revoked", userNS, "/api/api-access/"+clientID+"/apis")
+			g.Expect(body).NotTo(ContainSubstring(billingPermID),
+				"the dropped API's grant should be gone")
+			g.Expect(body).To(ContainSubstring(ordersPermID),
+				"the surviving entry must not be collateral damage")
+		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+		By("verifying status dropped only the revoked API")
+		Eventually(func(g Gomega) {
+			out := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
+				"-o", "jsonpath={.status.managedAPIs[*]}")
+			g.Expect(out).To(Equal(ordersID))
+		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+	})
+
+	AfterAll(func() {
+		kubectlDelete("pocketidoidcclient", clientName, userNS)
+		_ = kubectlDeleteWait("pocketidapi", ordersName, userNS, time.Minute)
+		_ = kubectlDeleteWait("pocketidapi", billingName, userNS, time.Minute)
+	})
+})
+
+var _ = Describe("PocketIDAPI Access Admission Validation", func() {
+	// The access flags grant a flow that selects no permissions. Combining a false flag with a
+	// permission list is contradictory, and admission is the only place it can be caught: the
+	// controller would resolve the permissions, push the flow as off, and drop them silently.
+	// The referenced API is never created: every spec here must be refused before any
+	// reconcile, so a rule that stops matching shows up as an accepted apply, not as a client
+	// that fails to resolve its permissions later.
+	const apiName = "admission-api"
+
+	// Removing a rule turns these applies into successful ones, so clean up the clients they
+	// would create rather than leaving them for later specs to trip over.
+	AfterEach(func() {
+		for _, name := range []string{"test-admission-delegated", "test-admission-client", "test-admission-public"} {
+			kubectlDelete("pocketidoidcclient", name, userNS)
+		}
+	})
+
+	grantYAML := func(name, extra string) string {
+		return fmt.Sprintf(`apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDOIDCClient
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  callbackUrls:
+  - https://admission.e2e.example.com/callback
+  apiAccess:
+  - apiRef:
+      name: %s
+%s
+`, name, userNS, apiName, extra)
+	}
+
+	It("should reject delegatedAccess false alongside delegatedPermissions", func() {
+		expectApplyRejected(
+			grantYAML("test-admission-delegated", "    delegatedPermissions:\n    - read:data\n    delegatedAccess: false"),
+			"delegatedAccess: false conflicts with delegatedPermissions")
+	})
+
+	It("should reject clientAccess false alongside clientPermissions", func() {
+		expectApplyRejected(
+			grantYAML("test-admission-client", "    clientPermissions:\n    - read:data\n    clientAccess: false"),
+			"clientAccess: false conflicts with clientPermissions")
+	})
+
+	It("should reject clientAccess on a public client", func() {
+		expectApplyRejected(
+			grantYAML("test-admission-public", "    clientAccess: true")+"  isPublic: true\n",
+			"require a confidential client (isPublic must be false)")
 	})
 })
 

@@ -29,6 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
@@ -717,6 +718,72 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 
 		It("rejects a window closesAfter below 5m", func() {
 			expectRejected(newClient("rot-cel-window-min", &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: true, Window: win(time.Minute)}))
+		})
+	})
+
+	// The access flags exist to grant a flow that selects no permissions. Pairing a false flag
+	// with a permission list is contradictory, and admission is the only place to catch it:
+	// the controller resolves the permissions, then pushes the flow as off and drops them, so
+	// the listed permissions would silently do nothing.
+	Context("apiAccess flow flag validation", func() {
+		newClient := func(name string, grant pocketidinternalv1alpha1.OIDCClientAPIAccess) *pocketidinternalv1alpha1.PocketIDOIDCClient {
+			grant.APIRef = pocketidinternalv1alpha1.NamespacedAPIReference{Name: "my-api"}
+			return &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+					CallbackURLs: []string{"https://flags.example.com/callback"},
+					APIAccess:    []pocketidinternalv1alpha1.OIDCClientAPIAccess{grant},
+				},
+			}
+		}
+		expectRejectedWith := func(resource *pocketidinternalv1alpha1.PocketIDOIDCClient, substring string) {
+			err := k8sClient.Create(ctx, resource)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring(substring))
+		}
+		expectAccepted := func(resource *pocketidinternalv1alpha1.PocketIDOIDCClient) {
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, resource) })
+		}
+
+		It("rejects delegatedAccess false alongside delegatedPermissions", func() {
+			expectRejectedWith(newClient("flags-cel-delegated", pocketidinternalv1alpha1.OIDCClientAPIAccess{
+				DelegatedPermissions: []string{"read"},
+				DelegatedAccess:      ptr.To(false),
+			}), "delegatedAccess: false conflicts with delegatedPermissions")
+		})
+
+		It("rejects clientAccess false alongside clientPermissions", func() {
+			expectRejectedWith(newClient("flags-cel-client", pocketidinternalv1alpha1.OIDCClientAPIAccess{
+				ClientPermissions: []string{"read"},
+				ClientAccess:      ptr.To(false),
+			}), "clientAccess: false conflicts with clientPermissions")
+		})
+
+		It("accepts a false flag on the flow that selects no permissions", func() {
+			expectAccepted(newClient("flags-cel-other-flow", pocketidinternalv1alpha1.OIDCClientAPIAccess{
+				DelegatedPermissions: []string{"read"},
+				ClientAccess:         ptr.To(false),
+			}))
+		})
+
+		It("accepts a true flag alongside permissions, which is the derived default", func() {
+			expectAccepted(newClient("flags-cel-true", pocketidinternalv1alpha1.OIDCClientAPIAccess{
+				DelegatedPermissions: []string{"read"},
+				DelegatedAccess:      ptr.To(true),
+			}))
+		})
+
+		It("accepts a flag on its own, which is the scopeless grant", func() {
+			expectAccepted(newClient("flags-cel-scopeless", pocketidinternalv1alpha1.OIDCClientAPIAccess{
+				DelegatedAccess: ptr.To(true),
+			}))
+		})
+
+		It("accepts a false flag on its own, which grants nothing", func() {
+			expectAccepted(newClient("flags-cel-false-alone", pocketidinternalv1alpha1.OIDCClientAPIAccess{
+				DelegatedAccess: ptr.To(false),
+			}))
 		})
 	})
 
