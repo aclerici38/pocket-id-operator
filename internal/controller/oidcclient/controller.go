@@ -1021,6 +1021,8 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, oidcClient *pocketidin
 	}
 	if referencedByUserGroup {
 		logf.FromContext(ctx).Info("OIDC client is referenced by PocketIDUserGroup, blocking deletion", "oidcClient", oidcClient.Name)
+		// The resource still exists in Pocket-ID, so it must stay Ready for dependents to resolve it.
+		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionTrue, "DeletionBlocked", "Deletion is blocked while referenced by a PocketIDUserGroup")
 		if _, err := helpers.EnsureFinalizer(ctx, r.Client, oidcClient, UserGroupOIDCClientFinalizer); err != nil {
 			return ctrl.Result{}, err
 		}
