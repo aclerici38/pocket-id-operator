@@ -190,11 +190,15 @@ func (r *BaseReconciler) ReconcileDeleteWithPocketID(
 		return ctrl.Result{}, err
 	}
 
-	// Delete from PocketID
+	// An object already gone from Pocket-ID is the outcome the delete wanted, so it must
+	// not hold the finalizer.
 	logger.Info("Deleting from PocketID", "statusID", statusID)
 	if err := deleteFunc(ctx, apiClient, statusID); err != nil {
-		logger.Error(err, "Failed to delete from PocketID")
-		return ctrl.Result{}, err
+		if !pocketid.IsNotFoundError(err) {
+			logger.Error(err, "Failed to delete from PocketID")
+			return ctrl.Result{}, err
+		}
+		logger.Info("Already absent from PocketID, treating delete as complete", "statusID", statusID)
 	}
 
 	// Remove finalizer

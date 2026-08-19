@@ -163,7 +163,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err := r.refreshClientMetadata(ctx, oidcClient, apiClient); err != nil {
 		log.Error(err, "Failed to refresh client metadata document")
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "MetadataRefreshError", err.Error())
-		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 	}
 
 	// No client ID yet, create or adopt
@@ -179,7 +179,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		if err != nil {
 			log.Error(err, "Failed to create or adopt OIDC client")
 			_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, reconcileErrorReason(err), err.Error())
-			return ctrl.Result{RequeueAfter: common.Requeue}, nil
+			return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 		}
 		if requeue {
 			return ctrl.Result{Requeue: true}, nil
@@ -199,7 +199,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			return ctrl.Result{Requeue: true}, nil
 		}
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "GetError", err.Error())
-		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 	}
 
 	if err := r.UpdateOIDCClientStatus(ctx, oidcClient, current); err != nil {
@@ -223,31 +223,31 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err != nil {
 		log.Error(err, "Failed to push OIDC client state")
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, reconcileErrorReason(err), err.Error())
-		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 	}
 
 	if err := r.ReconcileSCIM(ctx, oidcClient, apiClient); err != nil {
 		log.Error(err, "Failed to reconcile SCIM service provider")
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "SCIMReconcileError", err.Error())
-		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 	}
 
 	if err := r.ReconcileAPIAccess(ctx, oidcClient, apiClient); err != nil {
 		log.Error(err, "Failed to reconcile API access")
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "APIAccessReconcileError", err.Error())
-		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 	}
 
 	if err := r.SyncDeclaredClientSecret(ctx, oidcClient, apiClient, current.Secrets); err != nil {
 		log.Error(err, "Failed to sync declared client secret")
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "ClientSecretSyncError", err.Error())
-		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 	}
 
 	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient, current.Secrets); err != nil {
 		log.Error(err, "Failed to reconcile OIDC client secret")
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "SecretReconcileError", err.Error())
-		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 	}
 
 	if removed, err := helpers.CheckAndRemoveAnnotation(ctx, r.Client, oidcClient, regenerateClientSecretAnnotation, "true"); err != nil {
