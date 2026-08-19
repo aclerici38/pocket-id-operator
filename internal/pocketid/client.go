@@ -108,6 +108,37 @@ type OIDCClient struct {
 	AllowedUserGroupIDs                 []string
 	// ClientType is "standard" or "cimd". Read-only; Pocket-ID sets it at registration.
 	ClientType string
+	// Secrets is read-only; secrets are managed through the dedicated endpoints.
+	Secrets []OIDCClientSecret
+}
+
+// OIDCClientSecret is one of a client's secrets. Its value is only ever returned by the call
+// that creates it.
+type OIDCClientSecret struct {
+	ID string
+	// Prefix is the leading clear-text characters of the value, empty for secrets Pocket-ID
+	// migrated from the single-secret column it used before v2.14.0.
+	Prefix    string
+	CreatedAt time.Time
+	ExpiresAt *time.Time
+	// IsActive reports whether Pocket-ID still accepts the secret, i.e. it has not expired.
+	IsActive bool
+}
+
+const (
+	// MaxOIDCClientSecrets is Pocket-ID's cap on secrets per client, expired ones included.
+	MaxOIDCClientSecrets = 20
+
+	// OIDCClientSecretPrefixLength is how much of a secret Pocket-ID keeps in clear text.
+	OIDCClientSecretPrefixLength = 4
+)
+
+// SecretPrefix returns the prefix Pocket-ID would record for value, or "" if it is too short.
+func SecretPrefix(value string) string {
+	if len(value) <= OIDCClientSecretPrefixLength {
+		return ""
+	}
+	return value[:OIDCClientSecretPrefixLength]
 }
 
 // ClientTypeCIMD marks a client synthesized from an OAuth Client ID Metadata Document.
@@ -144,7 +175,8 @@ func clientIDPathParam(id string) string {
 }
 
 // ToInput converts an OIDCClient into an OIDCClientInput for comparison with desired state.
-// ID and Credentials are not included since they aren't returned by the GET API.
+// ID and Credentials are not included: federated identities aren't returned by the GET API, and
+// the secrets it carries have their own endpoints.
 // LogoURL and DarkLogoURL are write-only (not returned by the API); logo presence is
 // tracked via HasLogo/HasDarkLogo instead.
 // AllowedUserGroupIDs is managed separately and excluded from the input.
@@ -793,49 +825,62 @@ func (c *Client) UpdateOIDCClientAllowedGroups(ctx context.Context, id string, g
 	return lastErr
 }
 
-// RegenerateOIDCClientSecret regenerates the client secret and returns it.
-// This is the only way to retrieve the client secret from Pocket ID.
-// The secret is only returned once and cannot be retrieved later without re-generating
-func (c *Client) RegenerateOIDCClientSecret(ctx context.Context, id string) (string, error) {
-	return c.postOIDCClientSecret(ctx, "regenerate_oidc_client_secret", id, nil)
-}
-
-// SetOIDCClientSecret sets the client secret to an explicit value and returns the secret
-// Pocket-ID stored. Requires Pocket-ID v2.12.0 or newer; older versions ignore the request
-// body and generate a random secret instead, so callers must compare the returned value.
-func (c *Client) SetOIDCClientSecret(ctx context.Context, id, secret string) (string, error) {
-	return c.postOIDCClientSecret(ctx, "set_oidc_client_secret", id,
-		&models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientSecretDto{Secret: secret})
-}
-
-// postOIDCClientSecret calls the client-secret endpoint and extracts the returned secret. A nil
-// payload lets Pocket-ID generate one; a non-nil payload requests a specific value.
-func (c *Client) postOIDCClientSecret(ctx context.Context, operation, id string, payload *models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientSecretDto) (string, error) {
-	params := oidc.NewPostAPIOidcClientsIDSecretParams().
+// ListOIDCClientSecrets returns the client's secrets without their values. Every OIDCClient read
+// already carries the same list, so this is only for callers needing a fresher one.
+func (c *Client) ListOIDCClientSecrets(ctx context.Context, id string) ([]OIDCClientSecret, error) {
+	params := oidc.NewGetAPIOidcClientsIDSecretsParams().
 		WithID(clientIDPathParam(id))
-	if payload != nil {
-		params = params.WithPayload(payload)
-	}
 
 	start := time.Now()
-	resp, err := c.raw.OIDc.PostAPIOidcClientsIDSecretContext(ctx, params)
-	recordCall(operation, err, time.Since(start))
+	resp, err := c.raw.OIDc.GetAPIOidcClientsIDSecretsContext(ctx, params)
+	recordCall("list_oidc_client_secrets", err, time.Since(start))
 	if err != nil {
-		return "", fmt.Errorf("set OIDC client secret failed: %w", err)
+		return nil, fmt.Errorf("list OIDC client secrets failed: %w", err)
 	}
 
-	// The response payload is `any` type, so we need to type assert
-	responsePayload, ok := resp.GetPayload().(map[string]any)
-	if !ok {
-		return "", fmt.Errorf("unexpected response format")
+	return oidcClientSecretsFromDTO(resp.Payload), nil
+}
+
+// CreateOIDCClientSecret adds a secret and returns it alongside its value; an empty secret lets
+// Pocket-ID generate one. Existing secrets stay valid, so the caller decides when to retire them.
+// The value is only disclosed here — a dropped response leaves a secret that exists but is
+// unusable, deletable only by its ID.
+func (c *Client) CreateOIDCClientSecret(ctx context.Context, id, secret string) (OIDCClientSecret, string, error) {
+	params := oidc.NewPostAPIOidcClientsIDSecretsParams().
+		WithID(clientIDPathParam(id)).
+		WithPayload(&models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientSecretCreateDto{Secret: secret})
+
+	start := time.Now()
+	resp, err := c.raw.OIDc.PostAPIOidcClientsIDSecretsContext(ctx, params)
+	recordCall("create_oidc_client_secret", err, time.Since(start))
+	if err != nil {
+		return OIDCClientSecret{}, "", fmt.Errorf("create OIDC client secret failed: %w", err)
+	}
+	if resp.Payload == nil {
+		return OIDCClientSecret{}, "", fmt.Errorf("create OIDC client secret returned no payload")
+	}
+	if resp.Payload.Secret == "" {
+		return OIDCClientSecret{}, "", fmt.Errorf("create OIDC client secret returned no secret value")
 	}
 
-	returned, ok := responsePayload["secret"].(string)
-	if !ok {
-		return "", fmt.Errorf("secret not found in response")
+	return oidcClientSecretFromCreatedDTO(resp.Payload), resp.Payload.Secret, nil
+}
+
+// DeleteOIDCClientSecret makes a secret immediately unusable. One already gone counts as deleted,
+// so a retried retirement converges.
+func (c *Client) DeleteOIDCClientSecret(ctx context.Context, id, secretID string) error {
+	params := oidc.NewDeleteAPIOidcClientsIDSecretsSecretIDParams().
+		WithID(clientIDPathParam(id)).
+		WithSecretID(secretID)
+
+	start := time.Now()
+	_, err := c.raw.OIDc.DeleteAPIOidcClientsIDSecretsSecretIDContext(ctx, params)
+	recordCall("delete_oidc_client_secret", err, time.Since(start))
+	if err != nil && !IsNotFoundError(err) {
+		return fmt.Errorf("delete OIDC client secret failed: %w", err)
 	}
 
-	return returned, nil
+	return nil
 }
 
 // --- SCIM Service Provider Operations ---
@@ -1390,6 +1435,61 @@ func oidcCredentialsToDTO(credentials *OIDCClientCredentials) *models.GithubComP
 	}
 }
 
+func oidcClientSecretsFromCredentialsDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientCredentialsDto) []OIDCClientSecret {
+	if dto == nil {
+		return nil
+	}
+	return oidcClientSecretsFromDTO(dto.Secrets)
+}
+
+func oidcClientSecretsFromDTO(dtos []*models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientSecretDto) []OIDCClientSecret {
+	secrets := make([]OIDCClientSecret, 0, len(dtos))
+	for _, dto := range dtos {
+		if dto == nil || dto.ID == "" {
+			continue
+		}
+		secrets = append(secrets, OIDCClientSecret{
+			ID:        dto.ID,
+			Prefix:    dto.Prefix,
+			CreatedAt: parseAPITime(dto.CreatedAt),
+			ExpiresAt: parseOptionalAPITime(dto.ExpiresAt),
+			IsActive:  dto.IsActive,
+		})
+	}
+	return secrets
+}
+
+func oidcClientSecretFromCreatedDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientSecretCreatedDto) OIDCClientSecret {
+	return OIDCClientSecret{
+		ID:        dto.ID,
+		Prefix:    dto.Prefix,
+		CreatedAt: parseAPITime(dto.CreatedAt),
+		ExpiresAt: parseOptionalAPITime(dto.ExpiresAt),
+		IsActive:  dto.IsActive,
+	}
+}
+
+// parseAPITime reads one of Pocket-ID's RFC 3339 timestamps, typed as a plain string by the
+// generated models. An unparseable value yields the zero time, meaning "unknown".
+func parseAPITime(value string) time.Time {
+	if value == "" {
+		return time.Time{}
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return time.Time{}
+	}
+	return parsed
+}
+
+func parseOptionalAPITime(value string) *time.Time {
+	parsed := parseAPITime(value)
+	if parsed.IsZero() {
+		return nil
+	}
+	return &parsed
+}
+
 func oidcClientFromListDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientWithAllowedGroupsCountDto) *OIDCClient {
 	if dto == nil {
 		return nil
@@ -1414,6 +1514,7 @@ func oidcClientFromListDTO(dto *models.GithubComPocketIDPocketIDBackendInternalD
 		RefreshTokenDurationMinutes:         dto.RefreshTokenDurationMinutes,
 		AllowedUserGroupIDs:                 []string{},
 		ClientType:                          dto.ClientType,
+		Secrets:                             oidcClientSecretsFromCredentialsDTO(dto.Credentials),
 	}
 }
 
@@ -1448,6 +1549,7 @@ func oidcClientFromAllowedGroupsDTO(dto *models.GithubComPocketIDPocketIDBackend
 		RefreshTokenDurationMinutes:         dto.RefreshTokenDurationMinutes,
 		AllowedUserGroupIDs:                 groupIDs,
 		ClientType:                          dto.ClientType,
+		Secrets:                             oidcClientSecretsFromCredentialsDTO(dto.Credentials),
 	}
 }
 

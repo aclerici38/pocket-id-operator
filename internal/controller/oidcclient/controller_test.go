@@ -5,7 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path"
 	"reflect"
+	"slices"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -526,7 +530,7 @@ func TestReconcileSecret_UserAnnotationLifecycleNeverAltersManaged(t *testing.T)
 		if err := fakeClient.Update(ctx, oidcClient); err != nil {
 			t.Fatalf("[%s] update client: %v", phase, err)
 		}
-		if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, nil); err != nil {
+		if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, nil, observedSecretFor("old-secret")); err != nil {
 			t.Fatalf("[%s] ReconcileSecret: %v", phase, err)
 		}
 
@@ -573,7 +577,7 @@ func TestReconcileSecret_UserAnnotationLifecycleNeverAltersManaged(t *testing.T)
 	if err := fakeClient.Update(ctx, oidcClient); err != nil {
 		t.Fatalf("[clear] update client: %v", err)
 	}
-	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, nil); err != nil {
+	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, nil, observedSecretFor("old-secret")); err != nil {
 		t.Fatalf("[clear] ReconcileSecret: %v", err)
 	}
 	got := &corev1.Secret{}
@@ -673,7 +677,7 @@ func TestReconcileSecret_DeleteWhenDisabled(t *testing.T) {
 		Scheme: scheme,
 	}
 
-	err := reconciler.ReconcileSecret(ctx, oidcClient, instance, nil)
+	err := reconciler.ReconcileSecret(ctx, oidcClient, instance, nil, nil)
 	if err != nil {
 		t.Fatalf("ReconcileSecret returned error: %v", err)
 	}
@@ -725,7 +729,7 @@ func TestReconcileSecret_NoErrorWhenDisablingNonExistent(t *testing.T) {
 		Scheme: scheme,
 	}
 
-	err := reconciler.ReconcileSecret(ctx, oidcClient, instance, nil)
+	err := reconciler.ReconcileSecret(ctx, oidcClient, instance, nil, nil)
 	if err != nil {
 		t.Fatalf("ReconcileSecret returned error: %v", err)
 	}
@@ -773,7 +777,7 @@ func TestReconcileSecret_CreateForPublicClient(t *testing.T) {
 		Scheme: scheme,
 	}
 
-	err := reconciler.ReconcileSecret(ctx, oidcClient, instance, nil)
+	err := reconciler.ReconcileSecret(ctx, oidcClient, instance, nil, nil)
 	if err != nil {
 		t.Fatalf("ReconcileSecret returned error: %v", err)
 	}
@@ -888,16 +892,12 @@ func TestReconcileSecret_StoreClientSecretDisabled(t *testing.T) {
 			var apiClient *pocketid.Client
 			regenCalls := 0
 			if tc.pendingMint {
-				ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-					regenCalls++
-					w.Header().Set("Content-Type", "application/json")
-					_, _ = w.Write([]byte(`{"secret":"rotated-secret"}`))
-				}))
+				ts := clientSecretServer(t, "rotated-secret", &regenCalls)
 				defer ts.Close()
 				apiClient, _ = pocketid.NewClient(ts.URL, "")
 			}
 
-			if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient); err != nil {
+			if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient, nil); err != nil {
 				t.Fatalf("ReconcileSecret returned error: %v", err)
 			}
 
@@ -966,7 +966,7 @@ func TestReconcileSecret_StoreClientSecretDisabledClearsRotationGauges(t *testin
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(oidcClient, instance).Build()
 	reconciler := &Reconciler{Client: fakeClient, Scheme: scheme}
 
-	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, nil); err != nil {
+	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, nil, nil); err != nil {
 		t.Fatalf("ReconcileSecret returned error: %v", err)
 	}
 
@@ -1180,13 +1180,51 @@ func TestAdvanceInstanceRotationStatus(t *testing.T) {
 	}
 }
 
-// rotationSecretServer returns an httptest server that answers the regenerate-secret endpoint.
+// rotationSecretServer stands in for a client's secret endpoints.
 func rotationSecretServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"secret":"rotated-secret"}`))
+	return clientSecretServer(t, "rotated-secret", nil)
+}
+
+// clientSecretServer answers the client-secret endpoints the way Pocket-ID does — creates append
+// and return the value, lists omit values, deletes remove — so retirement runs against a set that
+// actually changes. creates, when non-nil, counts the creates.
+func clientSecretServer(t *testing.T, secret string, creates *int) *httptest.Server {
+	t.Helper()
+	var mu sync.Mutex
+	var ids []string
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch r.Method {
+		case http.MethodPost:
+			if creates != nil {
+				*creates++
+			}
+			ids = append(ids, "created-"+secret)
+			writeCreatedClientSecret(w, secret)
+		case http.MethodDelete:
+			deleted := path.Base(r.URL.Path)
+			ids = slices.DeleteFunc(ids, func(id string) bool { return id == deleted })
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			entries := make([]string, 0, len(ids))
+			for _, id := range ids {
+				entries = append(entries, fmt.Sprintf(`{"id":%q,"prefix":%q,"isActive":true}`, id, pocketid.SecretPrefix(secret)))
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprintf(w, "[%s]", strings.Join(entries, ","))
+		}
 	}))
+}
+
+// writeCreatedClientSecret answers a create the way Pocket-ID does: 201 with the new secret's ID
+// and the clear-text prefix the operator recognises it by.
+func writeCreatedClientSecret(w http.ResponseWriter, secret string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_, _ = fmt.Fprintf(w, `{"id":%q,"prefix":%q,"secret":%q,"isActive":true}`,
+		"created-"+secret, pocketid.SecretPrefix(secret), secret)
 }
 
 // TestReconcileSecret_ScheduledRotation verifies a scheduled rotation writes BOTH secret
@@ -1243,7 +1281,7 @@ func TestReconcileSecret_ScheduledRotation(t *testing.T) {
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	reconciler := &Reconciler{Client: fakeClient, APIReader: fakeClient, Scheme: scheme}
-	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient); err != nil {
+	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient, nil); err != nil {
 		t.Fatalf("ReconcileSecret returned error: %v", err)
 	}
 
@@ -1339,7 +1377,7 @@ func TestReconcileSecret_WindowDrivenRotation(t *testing.T) {
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	reconciler := &Reconciler{Client: fakeClient, APIReader: fakeClient, Scheme: scheme}
-	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient); err != nil {
+	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient, nil); err != nil {
 		t.Fatalf("ReconcileSecret returned error: %v", err)
 	}
 
@@ -1423,7 +1461,7 @@ func TestReconcileSecret_ManualRotation(t *testing.T) {
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	reconciler := &Reconciler{Client: fakeClient, APIReader: fakeClient, Scheme: scheme}
-	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient); err != nil {
+	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient, nil); err != nil {
 		t.Fatalf("ReconcileSecret returned error: %v", err)
 	}
 
@@ -1505,7 +1543,7 @@ func TestReconcileSecret_InitialCreationIsNotScheduled(t *testing.T) {
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	reconciler := &Reconciler{Client: fakeClient, APIReader: fakeClient, Scheme: scheme}
-	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient); err != nil {
+	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient, nil); err != nil {
 		t.Fatalf("ReconcileSecret returned error: %v", err)
 	}
 
@@ -1592,7 +1630,7 @@ func TestReconcileSecret_NotDuePreservesAnnotations(t *testing.T) {
 	// nil apiClient: the not-due path must never call the rotation endpoint. If it tries, the
 	// regenerate branch errors on the nil client and the test fails.
 	reconciler := &Reconciler{Client: fakeClient, APIReader: fakeClient, Scheme: scheme}
-	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, nil); err != nil {
+	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, nil, observedSecretFor("old-secret")); err != nil {
 		t.Fatalf("ReconcileSecret returned error: %v", err)
 	}
 
@@ -1957,7 +1995,7 @@ func TestReconcileSecret_InstanceStatusWriteFailureRequeues(t *testing.T) {
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	reconciler := &Reconciler{Client: failing, APIReader: failing, Scheme: scheme}
-	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient); err == nil {
+	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient, nil); err == nil {
 		t.Fatal("expected ReconcileSecret to return an error when the instance status write fails")
 	}
 }
@@ -2022,18 +2060,14 @@ func TestReconcileSecret_SelfHealsAfterLostInstanceWrite(t *testing.T) {
 
 	// Count secret regenerations to prove pass 2 does not rotate again.
 	var regenCalls int
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		regenCalls++
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"secret":"rotated-secret"}`))
-	}))
+	ts := clientSecretServer(t, "rotated-secret", &regenCalls)
 	defer ts.Close()
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	reconciler := &Reconciler{Client: healing, APIReader: healing, Scheme: scheme}
 
 	// Pass 1: rotation fires, secret + annotations are durable, but the aggregate write is lost.
-	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient); err == nil {
+	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient, observedSecretFor("old-secret")); err == nil {
 		t.Fatal("pass 1: expected error from the lost instance status write")
 	}
 
@@ -2054,7 +2088,7 @@ func TestReconcileSecret_SelfHealsAfterLostInstanceWrite(t *testing.T) {
 	}
 
 	// Pass 2: interval has not elapsed, so no re-rotation — but the aggregate heals from the annotation.
-	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient); err != nil {
+	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient, observedSecretFor("rotated-secret")); err != nil {
 		t.Fatalf("pass 2: unexpected error: %v", err)
 	}
 	if regenCalls != 1 {
@@ -2600,7 +2634,13 @@ func (f *fakeSCIMAPI) UpdateOIDCClientAllowedGroups(_ context.Context, _ string,
 func (f *fakeSCIMAPI) RefreshOIDCClientMetadata(_ context.Context, _ string) error {
 	panic("not implemented")
 }
-func (f *fakeSCIMAPI) SetOIDCClientSecret(_ context.Context, _, _ string) (string, error) {
+func (f *fakeSCIMAPI) ListOIDCClientSecrets(_ context.Context, _ string) ([]pocketid.OIDCClientSecret, error) {
+	panic("not implemented")
+}
+func (f *fakeSCIMAPI) CreateOIDCClientSecret(_ context.Context, _, _ string) (pocketid.OIDCClientSecret, string, error) {
+	panic("not implemented")
+}
+func (f *fakeSCIMAPI) DeleteOIDCClientSecret(_ context.Context, _, _ string) error {
 	panic("not implemented")
 }
 func (f *fakeSCIMAPI) GetOIDCClientSCIMServiceProvider(_ context.Context, oidcClientID string) (*pocketid.SCIMServiceProvider, error) {

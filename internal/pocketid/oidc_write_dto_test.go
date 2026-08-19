@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -16,7 +17,8 @@ import (
 // mapping in client.go forgets to populate leaves its key out of the request
 // body entirely. These tests send an input with every field set and assert the
 // serialized payload covers the generated DTOs, so a field added by a client
-// regen fails here instead of silently never being pushed.
+// regen fails here instead of silently never being pushed. Keys Pocket-ID
+// documents as read-only are exempt and listed as such.
 
 func TestCreateOIDCClient_PayloadCoversWriteDTO(t *testing.T) {
 	body := captureOIDCClientWrite(t, http.MethodPost, "/api/oidc/clients", func(c *Client, input OIDCClientInput) error {
@@ -110,20 +112,22 @@ func assertFederatedIdentityFieldsSet(t *testing.T, body map[string]any) {
 	if !ok {
 		t.Fatalf("expected credentials object in payload, got %v", body["credentials"])
 	}
-	assertDTOFieldsSet(t, models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientCredentialsDto{}, credentials, "credentials.")
+	// Secrets have their own endpoints; Pocket-ID ignores what a client write sends for them.
+	assertDTOFieldsSet(t, models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientCredentialsDto{}, credentials, "credentials.", "secrets")
 	assertDTOFieldsSet(t, models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientFederatedIdentityDto{},
 		firstFederatedIdentity(t, body), "credentials.federatedIdentities[0].")
 }
 
 // assertDTOFieldsSet reports every JSON key of dto's type that the payload
-// leaves out or sends as a zero value.
-func assertDTOFieldsSet(t *testing.T, dto any, payload map[string]any, prefix string) {
+// leaves out or sends as a zero value. Keys named in readOnly are skipped:
+// Pocket-ID owns them and discards what the payload carries.
+func assertDTOFieldsSet(t *testing.T, dto any, payload map[string]any, prefix string, readOnly ...string) {
 	t.Helper()
 
 	typ := reflect.TypeOf(dto)
 	for i := range typ.NumField() {
 		key, _, _ := strings.Cut(typ.Field(i).Tag.Get("json"), ",")
-		if key == "" || key == "-" {
+		if key == "" || key == "-" || slices.Contains(readOnly, key) {
 			continue
 		}
 		value, present := payload[key]

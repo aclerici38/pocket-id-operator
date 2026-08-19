@@ -296,6 +296,8 @@ type SCIMSpec struct {
 // +kubebuilder:validation:XValidation:rule="!(has(self.clientID) && self.clientID.startsWith('https://')) || (!has(self.name) && !has(self.callbackUrls) && !has(self.logoutCallbackUrls) && !has(self.federatedIdentities) && !self.isPublic && !self.pkceEnabled)",message="name, callbackUrls, logoutCallbackUrls, federatedIdentities, isPublic, and pkceEnabled are owned by the client ID metadata document and must not be set on a CIMD client"
 // +kubebuilder:validation:XValidation:rule="!(has(self.clientID) && self.clientID.startsWith('https://')) || (!has(self.clientSecretRef) && (!has(self.clientSecretRotation) || !self.clientSecretRotation.enabled))",message="a CIMD client is always public and has no client secret, so clientSecretRef and clientSecretRotation are not supported"
 // +kubebuilder:validation:XValidation:rule="!(has(self.clientID) && self.clientID.startsWith('https://')) || !has(self.apiAccess) || self.apiAccess.all(a, (!has(a.clientPermissions) || size(a.clientPermissions) == 0) && (!has(a.clientAccess) || !a.clientAccess))",message="clientPermissions and clientAccess require a confidential client, and a CIMD client is always public"
+// +kubebuilder:validation:XValidation:rule="!has(self.clientSecretOverlap) || !has(self.clientSecretRotation) || !has(self.clientSecretRotation.interval) || duration(self.clientSecretOverlap) <= duration(self.clientSecretRotation.interval)",message="clientSecretOverlap must not exceed clientSecretRotation.interval"
+// +kubebuilder:validation:XValidation:rule="!has(self.clientSecretOverlap) || !self.isPublic",message="clientSecretOverlap requires a confidential client (isPublic must be false)"
 type PocketIDOIDCClientSpec struct {
 	// Name of the oidc client to create in Pocket ID.
 	// If omitted, defaults to metadata.name of the oidcclient resource.
@@ -422,9 +424,18 @@ type PocketIDOIDCClientSpec struct {
 	// Pocket-ID, instead of letting the operator generate one. The value must be at least 16
 	// printable ASCII characters. While set, the operator never generates or rotates the secret:
 	// clientSecretRotation cannot be enabled and the regenerate-client-secret annotation is
-	// ignored. Requires Pocket-ID v2.12.0 or newer.
+	// ignored.
 	// +optional
 	ClientSecretRef *corev1.SecretKeySelector `json:"clientSecretRef,omitempty"`
+
+	// ClientSecretOverlap is how long the client-secret a regeneration replaced stays valid in
+	// Pocket-ID, giving consumers that cached it time to pick up the new one.
+	//
+	// When unset or zero the previous secret is deleted as soon as the replacement is stored,
+	// so exactly one secret is ever valid. Must not exceed 168h, nor clientSecretRotation.interval if set.
+	// +optional
+	// +kubebuilder:validation:XValidation:rule="duration(self) <= duration('168h')",message="clientSecretOverlap must not exceed 168h (7 days)"
+	ClientSecretOverlap *metav1.Duration `json:"clientSecretOverlap,omitempty"`
 }
 
 // RotationWindow restricts rotations to a recurring time window.
@@ -560,6 +571,12 @@ type PocketIDOIDCClientStatus struct {
 	// operator detects that the referenced Secret changed and needs pushing again.
 	// +optional
 	ClientSecretSourceVersion string `json:"clientSecretSourceVersion,omitempty"`
+
+	// ClientSecretID is the Pocket-ID ID of the secret whose value the operator holds in the
+	// credentials Secret, so the live credential can be told apart from the ones Pocket-ID
+	// keeps alongside it.
+	// +optional
+	ClientSecretID string `json:"clientSecretID,omitempty"`
 }
 
 // +kubebuilder:object:root=true

@@ -324,8 +324,8 @@ outcome. Use this to track error rates and call volumes for individual API opera
 `delete_user`, `create_api_key_for_user`, `delete_api_key`,
 `create_one_time_access_token`, `list_oidc_clients`, `create_oidc_client`,
 `update_oidc_client`, `get_oidc_client`, `delete_oidc_client`,
-`update_oidc_client_allowed_groups`, `regenerate_oidc_client_secret`,
-`set_oidc_client_secret`,
+`update_oidc_client_allowed_groups`, `list_oidc_client_secrets`,
+`create_oidc_client_secret`, `delete_oidc_client_secret`,
 `get_oidc_client_scim_service_provider`, `create_scim_service_provider`,
 `update_scim_service_provider`, `delete_scim_service_provider`,
 `list_user_groups`, `create_user_group`, `update_user_group`, `get_user_group`,
@@ -587,11 +587,11 @@ table. Only present for enabled clients that configure a window.
 **Type:** Counter
 **Labels:** `namespace`, `name`, `result`, `trigger`
 
-Counts client-secret rotations that actually reached the Pocket-ID regenerate call,
+Counts client-secret rotations that actually reached the Pocket-ID create call,
 partitioned by outcome and what triggered them. Use it to track rotation success/failure
 rates and to alert specifically on failed scheduled rotations.
 
-All six `result`×`trigger` series are seeded at `0` the first time the operator reconciles a
+All eight `result`×`trigger` series are seeded at `0` the first time the operator reconciles a
 secret-bearing client, so a client's first rotation of any kind shows up as a `0→1` step. This
 matters because `increase()`/`rate()` cannot measure a step that has no prior sample — without the
 seed, a one-off rotation (e.g. a single `manual` rotation) would be silently dropped from the
@@ -602,7 +602,44 @@ dashboard's event timeline and from the rate-based alerts below.
 | `namespace` | Kubernetes namespace of the `PocketIDOIDCClient` |
 | `name` | Kubernetes name of the `PocketIDOIDCClient` |
 | `result` | `success`, `error` |
-| `trigger` | `scheduled` (interval-driven or window-driven automatic rotation), `manual` (`regenerate-client-secret` annotation), `initial` (secret created/seeded) |
+| `trigger` | `scheduled` (interval-driven or window-driven automatic rotation), `manual` (`regenerate-client-secret` annotation), `initial` (secret created/seeded), `drift` (the stored secret was deleted in Pocket-ID, so a replacement was minted regardless of schedule) |
+
+---
+
+#### `pocketid_operator_oidcclient_secrets`
+
+**Type:** Gauge
+**Labels:** `namespace`, `name`
+
+How many secrets Pocket-ID holds for the client as of the last reconcile, expired ones included.
+Pocket-ID caps this at 20 per client, so a value climbing towards that means superseded secrets are
+not being retired — usually repeated retirement failures.
+
+A `0` means every secret was deleted outside the operator. Unless the secret is managed externally
+(`spec.secret.storeClientSecret: false`) the operator mints a replacement on the next reconcile, so
+this should not persist.
+
+| Label | Values |
+|-------|--------|
+| `namespace` | Kubernetes namespace of the `PocketIDOIDCClient` |
+| `name` | Kubernetes name of the `PocketIDOIDCClient` |
+
+---
+
+#### `pocketid_operator_oidcclient_secrets_retired_total`
+
+**Type:** Counter
+**Labels:** `namespace`, `name`, `reason`
+
+Counts superseded secrets the operator deleted from Pocket-ID. In steady state this tracks
+rotations one-for-one; a `cap` reason means the client hit Pocket-ID's 20-secret limit and secrets
+had to be retired ahead of their overlap to make room.
+
+| Label | Values |
+|-------|--------|
+| `namespace` | Kubernetes namespace of the `PocketIDOIDCClient` |
+| `name` | Kubernetes name of the `PocketIDOIDCClient` |
+| `reason` | `superseded` (the overlap elapsed), `cap` (room was needed to create a replacement) |
 
 ---
 

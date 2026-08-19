@@ -5,10 +5,19 @@ containing client credentials and metadata.
 
 ## Client Secret
 
-Pocket-ID does not expose the client-secret after it's created so the operator must regenerate it on 
-creation/adoption of an OIDC Client in order to store it in a Kubernetes Secret. This can lead to 
-inconsistent behavior as there is no way for the operator to know whether or not the client-secret 
-it created is up to date with the state of Pocket-ID. 
+Pocket-ID only discloses a client secret's value at the moment it is created, so the operator
+creates one when it creates or adopts an OIDC client in order to store it in a Kubernetes Secret.
+
+A client can hold up to 20 secrets, all valid until deleted. The operator presents a single
+credential, so it keeps the secret whose value is in the credentials Secret and deletes the rest,
+including any added outside the operator — [`spec.clientSecretOverlap`](#client-secret-overlap)
+being the one exception. It identifies its own secret by the first four characters of the value,
+which Pocket-ID records in clear text, and reports it in `status.clientSecretID`.
+
+A secret deleted in Pocket-ID is replaced on the next reconcile, including when every secret on
+the client is gone. With [`spec.clientSecretRef`](#declarative-client-secret) the declared value is
+pushed again instead. `spec.secret.storeClientSecret: false` is exempt: that secret is managed
+outside the cluster and is never minted over.
 
 If the client secret is managed outside the cluster (e.g. pasted into an app's UI), set
 `spec.secret.storeClientSecret: false`. The operator then never regenerates an **existing**
@@ -28,10 +37,6 @@ client secret:
 Instead of letting the operator generate a secret, you can supply one from a Kubernetes Secret
 with `spec.clientSecretRef`. This is useful when the secret is provisioned elsewhere (SOPS, External Secrets, Vault) and must
 match a value your application already has.
-
-Requires Pocket-ID **v2.12.0 or newer**. On older versions the request body is ignored and a
-random secret is generated instead; the operator detects this and fails with a clear error
-rather than leaving the cluster and Pocket-ID disagreeing.
 
 ```yaml
 spec:
@@ -84,6 +89,31 @@ metadata:
     pocketid.internal/regenerate-client-secret: "true"
 ```
 
+## Client Secret Overlap
+
+Replacing a client secret invalidates the old one at once, breaking any consumer that cached it and
+has not reloaded. `spec.clientSecretOverlap` keeps the superseded secret valid so both work during
+the handover:
+
+```yaml
+spec:
+  clientSecretOverlap: "15m"
+```
+
+It applies to every replacement — scheduled rotations, the `regenerate-client-secret` annotation,
+and `clientSecretRef` updates — and is measured from when the **replacement** was created, so a
+superseded secret always gets the full window however long it had been in service.
+
+Unset or `0` (the default) deletes the previous secret as soon as the replacement is written to the
+credentials Secret, so only one is ever valid. Retirement always follows that write, so a failed
+write cannot leave the cluster holding a secret Pocket-ID has stopped accepting.
+
+Retirement happens on a reconcile, so a secret goes within one resync interval (default 2 minutes)
+of its overlap elapsing rather than to the second. The maximum is `168h`, capped further at
+`clientSecretRotation.interval` when set: an overlap outlasting the rotation period would
+accumulate secrets against Pocket-ID's limit of 20. A client that reaches the limit anyway has its
+oldest superseded secrets retired early rather than wedging rotation.
+
 ## Client Secret Rotation
 
 **Note:** For an accurate cron schedule be sure to set the `TZ` environment variable to your local TZ.
@@ -106,6 +136,9 @@ order:
 
 A rotation only happens when all applicable gates pass on the same reconcile. The rotation
 **anchor** is the last rotation or the client's creation time when it has never rotated.
+
+Set [`spec.clientSecretOverlap`](#client-secret-overlap) to keep the replaced secret working for a
+while if your consumers do not pick up the new value immediately.
 
 ### Trigger modes
 

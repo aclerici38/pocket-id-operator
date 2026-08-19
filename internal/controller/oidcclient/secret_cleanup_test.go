@@ -49,7 +49,7 @@ func TestReconcileSecret_DisabledDeletesManagedSecret(t *testing.T) {
 	r := secretCleanupReconciler(t, oidcClient, managed)
 
 	// instance and apiClient are unused by the disabled-secret branch.
-	if err := r.ReconcileSecret(context.Background(), oidcClient, nil, nil); err != nil {
+	if err := r.ReconcileSecret(context.Background(), oidcClient, nil, nil, nil); err != nil {
 		t.Fatalf("ReconcileSecret returned error: %v", err)
 	}
 
@@ -82,7 +82,7 @@ func TestReconcileSecret_BackfillsManagedByLabelOnExistingSecret(t *testing.T) {
 
 	r := secretCleanupReconciler(t, oidcClient, instance, unlabelled)
 
-	if err := r.ReconcileSecret(context.Background(), oidcClient, instance, nil); err != nil {
+	if err := r.ReconcileSecret(context.Background(), oidcClient, instance, nil, nil); err != nil {
 		t.Fatalf("ReconcileSecret returned error: %v", err)
 	}
 
@@ -115,7 +115,7 @@ func TestReconcileSecret_DisabledPreservesUserOwnedSecret(t *testing.T) {
 
 	r := secretCleanupReconciler(t, oidcClient, userOwned)
 
-	if err := r.ReconcileSecret(context.Background(), oidcClient, nil, nil); err != nil {
+	if err := r.ReconcileSecret(context.Background(), oidcClient, nil, nil, nil); err != nil {
 		t.Fatalf("ReconcileSecret returned error: %v", err)
 	}
 
