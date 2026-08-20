@@ -23,7 +23,6 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -109,7 +108,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 	if updatedFinalizers {
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{RequeueAfter: common.RequeueImmediate}, nil
 	}
 
 	// Validate instance is ready using base reconciler
@@ -131,7 +130,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 		}
 		if requeue {
-			return ctrl.Result{Requeue: true}, nil
+			return ctrl.Result{RequeueAfter: common.RequeueImmediate}, nil
 		}
 		return common.ApplyResync(ctrl.Result{}), nil
 	}
@@ -145,7 +144,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			if err := r.clearUserStatus(ctx, user); err != nil {
 				return ctrl.Result{}, err
 			}
-			return ctrl.Result{Requeue: true}, nil
+			return ctrl.Result{RequeueAfter: common.RequeueImmediate}, nil
 		}
 		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "GetError", err.Error())
 		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
@@ -191,7 +190,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	_ = r.SetReadyCondition(ctx, user, metav1.ConditionTrue, "Reconciled", "User and API keys are in sync")
 
 	if updated {
-		return ctrl.Result{RequeueAfter: 100 * time.Millisecond}, nil
+		return ctrl.Result{RequeueAfter: common.RequeueImmediate}, nil
 	}
 
 	if cleanupResult.RequeueAfter > 0 {
@@ -273,12 +272,9 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, user *pocketidinternal
 	// Remove UserGroupUserFinalizer if not referenced by any user group
 	if controllerutil.ContainsFinalizer(user, UserGroupUserFinalizer) {
 		if err := helpers.RemoveFinalizers(ctx, r.Client, user, UserGroupUserFinalizer); err != nil {
-			if errors.IsConflict(err) {
-				return ctrl.Result{Requeue: true}, nil
-			}
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{RequeueAfter: common.RequeueImmediate}, nil
 	}
 
 	// Only delete user from Pocket-ID if the annotation is set to "true"
