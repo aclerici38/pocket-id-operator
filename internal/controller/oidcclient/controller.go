@@ -27,7 +27,6 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -141,7 +140,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 	if updatedFinalizers {
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{RequeueAfter: common.RequeueImmediate}, nil
 	}
 
 	instance, err := common.SelectInstance(ctx, r.Client, oidcClient.Spec.InstanceSelector)
@@ -182,7 +181,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 		}
 		if requeue {
-			return ctrl.Result{Requeue: true}, nil
+			return ctrl.Result{RequeueAfter: common.RequeueImmediate}, nil
 		}
 		return common.ApplyResync(ctrl.Result{}), nil
 	}
@@ -196,7 +195,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			if err := r.clearClientStatus(ctx, oidcClient); err != nil {
 				return ctrl.Result{}, err
 			}
-			return ctrl.Result{Requeue: true}, nil
+			return ctrl.Result{RequeueAfter: common.RequeueImmediate}, nil
 		}
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "GetError", err.Error())
 		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
@@ -270,7 +269,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	if updated {
 		r.markSkipUpdate(oidcClient)
-		return ctrl.Result{RequeueAfter: 100 * time.Millisecond}, nil
+		return ctrl.Result{RequeueAfter: common.RequeueImmediate}, nil
 	}
 
 	return common.ApplyResync(ctrl.Result{}), nil
@@ -1032,12 +1031,9 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, oidcClient *pocketidin
 	// Remove UserGroupOIDCClientFinalizer if not referenced
 	if controllerutil.ContainsFinalizer(oidcClient, UserGroupOIDCClientFinalizer) {
 		if err := helpers.RemoveFinalizers(ctx, r.Client, oidcClient, UserGroupOIDCClientFinalizer); err != nil {
-			if errors.IsConflict(err) {
-				return ctrl.Result{Requeue: true}, nil
-			}
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{RequeueAfter: common.RequeueImmediate}, nil
 	}
 
 	// SCIM service providers are cascade-deleted by pocket-id when the

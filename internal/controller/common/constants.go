@@ -9,6 +9,10 @@ const (
 	// Requeue is the standard requeue delay for consistent error handling across controllers
 	Requeue = 5 * time.Second
 
+	// RequeueImmediate is the delay used to re-reconcile as soon as practical after the
+	// controller itself changed state
+	RequeueImmediate = 100 * time.Millisecond
+
 	// OIDCClientAllowedGroupIndexKey is the index key for OIDC client allowed groups
 	OIDCClientAllowedGroupIndexKey = "pocketidoidcclient.allowedGroup"
 

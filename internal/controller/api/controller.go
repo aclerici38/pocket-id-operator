@@ -19,9 +19,7 @@ package api
 import (
 	"context"
 	"fmt"
-	"time"
 
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -90,7 +88,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 	if updatedFinalizers {
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{RequeueAfter: common.RequeueImmediate}, nil
 	}
 
 	instance, err := common.SelectInstance(ctx, r.Client, api.Spec.InstanceSelector)
@@ -118,7 +116,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 		}
 		if requeue {
-			return ctrl.Result{Requeue: true}, nil
+			return ctrl.Result{RequeueAfter: common.RequeueImmediate}, nil
 		}
 		return common.ApplyResync(ctrl.Result{}), nil
 	}
@@ -132,7 +130,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			if err := r.clearAPIStatus(ctx, api); err != nil {
 				return ctrl.Result{}, err
 			}
-			return ctrl.Result{Requeue: true}, nil
+			return ctrl.Result{RequeueAfter: common.RequeueImmediate}, nil
 		}
 		_ = r.SetReadyCondition(ctx, api, metav1.ConditionFalse, "GetError", err.Error())
 		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
@@ -161,7 +159,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	_ = r.SetReadyCondition(ctx, api, metav1.ConditionTrue, "Reconciled", "API is in sync")
 
 	if updated {
-		return ctrl.Result{RequeueAfter: 100 * time.Millisecond}, nil
+		return ctrl.Result{RequeueAfter: common.RequeueImmediate}, nil
 	}
 
 	return common.ApplyResync(ctrl.Result{}), nil
@@ -389,12 +387,9 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, api *pocketidinternalv
 	// Remove OIDCClientAPIFinalizer if no longer referenced.
 	if controllerutil.ContainsFinalizer(api, OIDCClientAPIFinalizer) {
 		if err := helpers.RemoveFinalizers(ctx, r.Client, api, OIDCClientAPIFinalizer); err != nil {
-			if errors.IsConflict(err) {
-				return ctrl.Result{Requeue: true}, nil
-			}
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{RequeueAfter: common.RequeueImmediate}, nil
 	}
 
 	result, err := r.ReconcileDeleteWithPocketID(
