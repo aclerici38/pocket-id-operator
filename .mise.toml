@@ -35,7 +35,7 @@ helm = "4.2.4"
 "aqua:sholdee/crd-schema-publisher" = "2026.815.170632"
 
 # Git hooks
-lefthook = "2.1.10"
+lefthook = "2.1.11"
 
 # Changelog generation
 "aqua:orhun/git-cliff" = "2.13.1"
