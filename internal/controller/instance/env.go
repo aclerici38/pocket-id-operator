@@ -378,7 +378,9 @@ func buildUserManagementEnv(instance *pocketidinternalv1alpha1.PocketIDInstance)
 		env = append(env, corev1.EnvVar{Name: "SIGNUP_DEFAULT_CUSTOM_CLAIMS", Value: um.SignupDefaultCustomClaims})
 	}
 	if len(um.SignupDefaultUserGroupIDs) > 0 {
-		env = append(env, corev1.EnvVar{Name: "SIGNUP_DEFAULT_USER_GROUP_IDS", Value: strings.Join(um.SignupDefaultUserGroupIDs, ",")})
+		// Pocket-ID reads SIGNUP_DEFAULT_USER_GROUP_IDS as a JSON-encoded array of strings.
+		groupIDs, _ := json.Marshal(um.SignupDefaultUserGroupIDs)
+		env = append(env, corev1.EnvVar{Name: "SIGNUP_DEFAULT_USER_GROUP_IDS", Value: string(groupIDs)})
 	}
 	return env
 }
