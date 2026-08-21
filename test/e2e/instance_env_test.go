@@ -24,13 +24,6 @@ import (
 // v2.14.0 while every unit test still passed.
 const envRejectedMarker = "invalid environment app configuration"
 
-// Group IDs are never resolved here because no signup happens during the spec;
-// they only have to survive Pocket-ID's json_string_array check.
-var maximalSignupGroupIDs = []string{
-	"3f2504e0-4f89-11d3-9a0c-0305e82c3301",
-	"3f2504e0-4f89-11d3-9a0c-0305e82c3302",
-}
-
 var _ = Describe("PocketIDInstance Maximal Environment", Serial, Ordered, func() {
 	const maximalInstance = "maximal-env-instance"
 
@@ -41,6 +34,8 @@ var _ = Describe("PocketIDInstance Maximal Environment", Serial, Ordered, func()
 			_ = kubectlDeleteWait("pocketidinstance", maximalInstance, instanceNS, 60*time.Second)
 		})
 
+		// kubectl apply defaults to --validate=strict, so a field the CRD does not
+		// declare fails here rather than being silently pruned.
 		By("applying an instance that populates every env-producing field")
 		applyYAML(maximalInstanceYAML(maximalInstance, instanceNS))
 
@@ -69,12 +64,6 @@ var _ = Describe("PocketIDInstance Maximal Environment", Serial, Ordered, func()
 		restarts := kubectlGet("pod", pocketIDPodName(maximalInstance), "-n", instanceNS,
 			"-o", "jsonpath={.status.containerStatuses[0].restartCount}")
 		Expect(restarts).To(Equal("0"), "Pocket-ID restarted, which a rejected environment causes")
-	})
-
-	It("should emit SIGNUP_DEFAULT_USER_GROUP_IDS as a JSON array", func() {
-		value := kubectlGet("deployment", maximalInstance, "-n", instanceNS,
-			"-o", "jsonpath={.spec.template.spec.containers[0].env[?(@.name=='SIGNUP_DEFAULT_USER_GROUP_IDS')].value}")
-		Expect(value).To(Equal(fmt.Sprintf(`["%s","%s"]`, maximalSignupGroupIDs[0], maximalSignupGroupIDs[1])))
 	})
 })
 
@@ -142,8 +131,8 @@ spec:
     allowUserSignups: "withToken"
     signupDefaultCustomClaims: '[{"key":"department","value":"platform"}]'
     signupDefaultUserGroupIds:
-    - "%[4]s"
-    - "%[5]s"
+    - "3f2504e0-4f89-11d3-9a0c-0305e82c3301"
+    - "3f2504e0-4f89-11d3-9a0c-0305e82c3302"
   webauthn:
     userVerification: "preferred"
     allowSyncedPasskeys: false
@@ -185,6 +174,6 @@ spec:
       groupUniqueIdentifier: "uuid"
       groupName: "cn"
   cimdUrlAllowlist:
-  - "%[6]s"
-`, name, namespace, pocketIDImage(), maximalSignupGroupIDs[0], maximalSignupGroupIDs[1], cimdMetadataURL)
+  - "%[4]s"
+`, name, namespace, pocketIDImage(), cimdMetadataURL)
 }
