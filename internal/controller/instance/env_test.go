@@ -601,7 +601,7 @@ func TestBuildEnvVars_UserManagement(t *testing.T) {
 	requireEnv(t, env, "ALLOW_OWN_ACCOUNT_EDIT", "false")
 	requireEnv(t, env, "ALLOW_USER_SIGNUPS", "withToken")
 	requireEnv(t, env, "SIGNUP_DEFAULT_CUSTOM_CLAIMS", `[{"key":"role","value":"user"}]`)
-	requireEnv(t, env, "SIGNUP_DEFAULT_USER_GROUP_IDS", "uuid-1,uuid-2")
+	requireEnv(t, env, "SIGNUP_DEFAULT_USER_GROUP_IDS", `["uuid-1","uuid-2"]`)
 }
 
 func TestBuildEnvVars_WebAuthn(t *testing.T) {
