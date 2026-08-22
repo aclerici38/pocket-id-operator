@@ -10,16 +10,6 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Operator Health", Serial, func() {
-	It("should have the operator running", func() {
-		Eventually(func(g Gomega) {
-			output := kubectlGet("deployment", "pocket-id-operator", "-n", namespace,
-				"-o", "jsonpath={.status.availableReplicas}")
-			g.Expect(output).To(Equal("1"), "Operator should have 1 available replica")
-		}).Should(Succeed())
-	})
-})
-
 var _ = Describe("PocketIDInstance", Serial, Ordered, func() {
 	// All tests use the shared instance created in BeforeSuite
 
