@@ -619,9 +619,9 @@ func (r *Reconciler) reconcileService(ctx context.Context, instance *pocketidint
 }
 
 // buildServiceSpec merges the optional user-provided spec.serviceTemplate with the
-// operator-managed Service fields. The operator's selector and http/metrics ports
-// always take precedence; any other fields and extra named ports the user sets pass
-// through untouched.
+// operator-managed Service fields. The operator's selector and the number, protocol
+// and appProtocol of the http/metrics ports always take precedence; a nodePort set on
+// those ports, any other field, and extra named ports all pass through untouched.
 func buildServiceSpec(instance *pocketidinternalv1alpha1.PocketIDInstance) corev1.ServiceSpec {
 	spec := corev1.ServiceSpec{}
 	if instance.Spec.ServiceTemplate != nil {
@@ -666,6 +666,9 @@ func buildServiceSpec(instance *pocketidinternalv1alpha1.PocketIDInstance) corev
 func setServicePort(ports *[]corev1.ServicePort, port corev1.ServicePort) {
 	for i := range *ports {
 		if (*ports)[i].Name == port.Name {
+			if port.NodePort == 0 {
+				port.NodePort = (*ports)[i].NodePort
+			}
 			(*ports)[i] = port
 			return
 		}

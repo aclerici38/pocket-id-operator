@@ -123,6 +123,51 @@ func TestBuildServiceSpec_OperatorFieldsWin(t *testing.T) {
 	}
 }
 
+func TestBuildServiceSpec_TemplateNodePortPreserved(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.Metrics = &pocketidinternalv1alpha1.MetricsConfig{Enabled: true}
+	inst.Spec.ServiceTemplate = &corev1.ServiceSpec{
+		Type: corev1.ServiceTypeNodePort,
+		Ports: []corev1.ServicePort{
+			// A pinned nodePort on an operator-managed port: the port number is still
+			// the operator's to set, but the nodePort is the user's.
+			{Name: "http", NodePort: 31411},
+			{Name: "metrics", NodePort: 31464},
+		},
+	}
+
+	spec := buildServiceSpec(inst)
+
+	http := findServicePort(spec.Ports, "http")
+	if http == nil {
+		t.Fatal("http port missing")
+	}
+	if http.NodePort != 31411 {
+		t.Errorf("http nodePort: got %d, want 31411", http.NodePort)
+	}
+	if http.Port != 1411 {
+		t.Errorf("operator http port should still win, got %d", http.Port)
+	}
+
+	metrics := findServicePort(spec.Ports, "metrics")
+	if metrics == nil {
+		t.Fatal("metrics port missing")
+	}
+	if metrics.NodePort != 31464 {
+		t.Errorf("metrics nodePort: got %d, want 31464", metrics.NodePort)
+	}
+}
+
+func TestBuildServiceSpec_NoNodePortStaysUnset(t *testing.T) {
+	// Without a template the apiserver must stay free to allocate, so nodePort has to
+	// marshal away rather than pinning port 0.
+	spec := buildServiceSpec(minimalInstance())
+
+	if http := findServicePort(spec.Ports, "http"); http == nil || http.NodePort != 0 {
+		t.Errorf("nodePort should be unset without a template, got %+v", http)
+	}
+}
+
 func TestBuildHTTPRouteSpec_DefaultRuleAlwaysFirst(t *testing.T) {
 	inst := minimalInstance()
 	inst.Spec.Route = &pocketidinternalv1alpha1.HTTPRouteConfig{
