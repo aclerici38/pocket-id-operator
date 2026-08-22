@@ -36,7 +36,7 @@ var _ = Describe("OIDC Client Token Lifetimes", Ordered, func() {
 		clientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
 
 		By("verifying Pocket-ID reports the configured lifetimes")
-		body := getOIDCClientFromPocketID("token-duration-verify", userNS, clientID)
+		body := getOIDCClientFromPocketID(clientID)
 		Expect(body).To(ContainSubstring(`"accessTokenDurationMinutes":15`))
 		Expect(body).To(ContainSubstring(`"refreshTokenDurationMinutes":1440`))
 	})
@@ -47,17 +47,16 @@ var _ = Describe("OIDC Client Token Lifetimes", Ordered, func() {
 	// against a live server instead of asking anyone to track upstream by hand.
 	It("should keep the CRD defaults in step with Pocket-ID's defaults", func() {
 		By("creating a client straight through the Pocket-ID API with both lifetimes omitted")
-		createOIDCClientInPocketID("token-default-probe", userNS, probeClientID, "Token Default Probe",
+		createOIDCClientInPocketID(probeClientID, "Token Default Probe",
 			[]string{"https://probe.example.com/callback"})
-		kubectlDelete("pod", "token-default-probe", userNS)
 
 		By("reading back the lifetimes Pocket-ID chose for it")
-		body := getOIDCClientFromPocketID("token-default-verify", userNS, probeClientID)
+		body := getOIDCClientFromPocketID(probeClientID)
 
 		By("comparing them against the CRD defaults")
 		for _, field := range []string{"accessTokenDurationMinutes", "refreshTokenDurationMinutes"} {
-			crdDefault := kubectlGet("crd", "pocketidoidcclients.pocketid.internal", "-o", fmt.Sprintf(
-				"jsonpath={.spec.versions[0].schema.openAPIV3Schema.properties.spec.properties.%s.default}", field))
+			crdDefault := getClusterField("crd", "pocketidoidcclients.pocketid.internal", fmt.Sprintf(
+				".spec.versions[0].schema.openAPIV3Schema.properties.spec.properties.%s.default", field))
 			Expect(body).To(ContainSubstring(fmt.Sprintf(`"%s":%s`, field, crdDefault)),
 				"Pocket-ID's default for %s no longer matches the CRD default of %s — update the "+
 					"+kubebuilder:default on PocketIDOIDCClientSpec and regenerate", field, crdDefault)
@@ -65,7 +64,7 @@ var _ = Describe("OIDC Client Token Lifetimes", Ordered, func() {
 	})
 
 	AfterAll(func() {
-		kubectlDelete("pocketidoidcclient", clientName, userNS)
+		deleteObject("pocketidoidcclient", clientName, userNS)
 		waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 	})
 })

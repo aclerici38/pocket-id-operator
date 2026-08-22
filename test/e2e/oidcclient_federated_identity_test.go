@@ -37,13 +37,13 @@ var _ = Describe("OIDC Client Federated Identity", Ordered, func() {
 		clientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
 
 		By("verifying Pocket-ID reports replayProtection: true for the federated identity")
-		body := getOIDCClientFromPocketID("federated-identity-verify", userNS, clientID)
+		body := getOIDCClientFromPocketID(clientID)
 		Expect(body).To(ContainSubstring(`"replayProtection":true`),
 			"Pocket-ID should persist and return replayProtection: true")
 	})
 
 	AfterAll(func() {
-		kubectlDelete("pocketidoidcclient", clientName, userNS)
+		deleteObject("pocketidoidcclient", clientName, userNS)
 		waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 	})
 })

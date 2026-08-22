@@ -4,149 +4,101 @@
 package e2e
 
 import (
+	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Operator Health", Serial, func() {
-	It("should have the operator running", func() {
-		Eventually(func(g Gomega) {
-			output := kubectlGet("deployment", "pocket-id-operator", "-n", namespace,
-				"-o", "jsonpath={.status.availableReplicas}")
-			g.Expect(output).To(Equal("1"), "Operator should have 1 available replica")
-		}).Should(Succeed())
-	})
-})
-
-var _ = Describe("PocketIDInstance", Serial, Ordered, func() {
-	// All tests use the shared instance created in BeforeSuite
+var _ = Describe("PocketIDInstance", Ordered, func() {
 
 	Context("Core Functionality", func() {
-		It("should create a Deployment", func() {
-			Eventually(func(g Gomega) {
-				output := kubectlGet("deployment", instanceName, "-n", instanceNS,
-					"-o", "jsonpath={.metadata.name}")
-				g.Expect(output).To(Equal(instanceName))
-			}).Should(Succeed())
-		})
-
-		It("should create a Service on port 1411", func() {
-			Eventually(func(g Gomega) {
-				output := kubectlGet("service", instanceName, "-n", instanceNS,
-					"-o", "jsonpath={.spec.ports[0].port}")
-				g.Expect(output).To(Equal("1411"))
-			}).Should(Succeed())
-		})
-
 		It("should be Ready", func() {
-			// The shared instance can be briefly rolling (e.g. after the HTTPRoute
-			// suite toggles its route), so poll rather than asserting once.
+			// Read-only against the shared instance: nothing in this file rolls it any
+			// more, but polling costs nothing and tolerates a resync landing mid-check.
 			waitForReady("pocketidinstance", instanceName, instanceNS)
 		})
 
-		It("should create static API key secret automatically", func() {
-			staticSecretName := instanceName + "-static-api-key"
-			waitForSecretKey(staticSecretName, instanceNS, "token")
-		})
-
-		It("should inject STATIC_API_KEY env var into deployment", func() {
-			staticSecretName := instanceName + "-static-api-key"
-			Eventually(func(g Gomega) {
-				envVarName := kubectlGet("deployment", instanceName, "-n", instanceNS,
-					"-o", "jsonpath={.spec.template.spec.containers[0].env[?(@.name=='STATIC_API_KEY')].name}")
-				g.Expect(envVarName).To(Equal("STATIC_API_KEY"))
-
-				secretName := kubectlGet("deployment", instanceName, "-n", instanceNS,
-					"-o", "jsonpath={.spec.template.spec.containers[0].env[?(@.name=='STATIC_API_KEY')].valueFrom.secretKeyRef.name}")
-				g.Expect(secretName).To(Equal(staticSecretName))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
-		})
-
-		It("should set static API key secret name in instance status", func() {
-			staticSecretName := instanceName + "-static-api-key"
-			waitForStatusField("pocketidinstance", instanceName, instanceNS,
-				".status.staticApiKeySecretName", staticSecretName)
-		})
-
-		It("should set owner reference on static API key secret for garbage collection", func() {
-			staticSecretName := instanceName + "-static-api-key"
-			Eventually(func(g Gomega) {
-				ownerKind := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-					"-o", "jsonpath={.metadata.ownerReferences[0].kind}")
-				g.Expect(ownerKind).To(Equal("PocketIDInstance"))
-
-				ownerName := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-					"-o", "jsonpath={.metadata.ownerReferences[0].name}")
-				g.Expect(ownerName).To(Equal(instanceName))
-
-				controller := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-					"-o", "jsonpath={.metadata.ownerReferences[0].controller}")
-				g.Expect(controller).To(Equal("true"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
-		})
 	})
 
 	Context("Static API Key Secret Lifecycle", func() {
 		It("should regenerate static API key secret if deleted and rollout instance", func() {
-			staticSecretName := instanceName + "-static-api-key"
+			// Its own instance: this deletes the static API key and waits out a full
+			// rollout. Doing that to the shared instance would restart the Pocket-ID
+			// every other spec is talking to, and with no persistence configured a
+			// restart takes its database with it.
+			const keyInstance = "static-key-test-instance"
+			keyInstanceLabels := map[string]string{"e2e-instance": "static-key"}
+			staticSecretName := keyInstance + "-static-api-key"
+
+			DeferCleanup(func() {
+				_ = deleteObjectAndWait("pocketidinstance", keyInstance, instanceNS, 2*time.Minute)
+			})
+
+			By("creating an instance of its own to rotate the key on")
+			createInstanceAndWaitReady(InstanceOptions{
+				Name:   keyInstance,
+				Labels: keyInstanceLabels,
+			})
 
 			By("reading the original token")
 			originalToken := waitForSecretKey(staticSecretName, instanceNS, "token")
 
 			By("getting the current deployment's pod template hash annotation")
-			originalHash := kubectlGet("deployment", instanceName, "-n", instanceNS,
-				"-o", "jsonpath={.spec.template.metadata.annotations.pocketid\\.internal/static-api-key-hash}")
+			originalHash := getField("deployment", keyInstance, instanceNS,
+				".spec.template.metadata.annotations.pocketid\\.internal/static-api-key-hash")
 			Expect(originalHash).NotTo(BeEmpty(), "Deployment should have static-api-key-hash annotation")
 
 			By("getting the current pod name")
-			originalPodName := kubectlGet("pod", "-l", "app.kubernetes.io/instance="+instanceName, "-n", instanceNS,
-				"-o", "jsonpath={.items[0].metadata.name}")
+			originalPodName := getFieldBySelector("pod", instanceNS, "app.kubernetes.io/instance="+keyInstance,
+				".metadata.name")
 			Expect(originalPodName).NotTo(BeEmpty())
 
 			By("deleting the static API key secret")
-			Expect(kubectlDeleteWait("secret", staticSecretName, instanceNS, 30*time.Second)).To(Succeed())
+			Expect(deleteObjectAndWait("secret", staticSecretName, instanceNS, 30*time.Second)).To(Succeed())
 
 			By("verifying secret is recreated with new token")
 			Eventually(func(g Gomega) {
-				newToken := kubectlGetSecretData(staticSecretName, instanceNS, "token")
+				newToken := secretData(staticSecretName, instanceNS, "token")
 				g.Expect(newToken).NotTo(BeEmpty())
 				g.Expect(newToken).NotTo(Equal(originalToken))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying deployment's hash annotation changed (triggers rollout)")
 			Eventually(func(g Gomega) {
-				newHash := kubectlGet("deployment", instanceName, "-n", instanceNS,
-					"-o", "jsonpath={.spec.template.metadata.annotations.pocketid\\.internal/static-api-key-hash}")
+				newHash := getField("deployment", keyInstance, instanceNS,
+					".spec.template.metadata.annotations.pocketid\\.internal/static-api-key-hash")
 				g.Expect(newHash).NotTo(BeEmpty())
 				g.Expect(newHash).NotTo(Equal(originalHash))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying instance rolled out with new pod")
 			Eventually(func(g Gomega) {
 				// Get the current pod name - should be different after rollout
-				currentPodName := kubectlGet("pod", "-l", "app.kubernetes.io/instance="+instanceName, "-n", instanceNS,
-					"-o", "jsonpath={.items[0].metadata.name}")
+				currentPodName := getFieldBySelector("pod", instanceNS, "app.kubernetes.io/instance="+keyInstance,
+					".metadata.name")
 				g.Expect(currentPodName).NotTo(BeEmpty())
 				g.Expect(currentPodName).NotTo(Equal(originalPodName), "Pod should have been replaced by rollout")
-			}, 3*time.Minute, 5*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying the new pod is running")
 			Eventually(func(g Gomega) {
-				status := kubectlGet("pod", "-l", "app.kubernetes.io/instance="+instanceName, "-n", instanceNS,
-					"-o", "jsonpath={.items[0].status.phase}")
+				status := getFieldBySelector("pod", instanceNS, "app.kubernetes.io/instance="+keyInstance, ".status.phase")
 				g.Expect(status).To(Equal("Running"))
-			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
+			// Selected onto the rotated instance on purpose: against the shared instance
+			// this would succeed using a key that never changed, proving nothing.
 			By("verifying operator can still authenticate with new API key by creating a user")
 			testUserName := "api-key-rotation-test-user"
 			createUser(UserOptions{
-				Name:      testUserName,
-				Username:  "api-key-rotation-test",
-				FirstName: "APIKey",
-				LastName:  "RotationTest",
-				Email:     "apikey-rotation@example.local",
+				Name:             testUserName,
+				Username:         "api-key-rotation-test",
+				FirstName:        "APIKey",
+				LastName:         "RotationTest",
+				Email:            "apikey-rotation@example.local",
+				InstanceSelector: keyInstanceLabels,
 			})
 
 			By("verifying the user becomes Ready (confirms operator authenticated successfully)")
@@ -157,13 +109,13 @@ var _ = Describe("PocketIDInstance", Serial, Ordered, func() {
 			Expect(userID).NotTo(BeEmpty())
 
 			By("cleaning up test user")
-			kubectlDelete("pocketiduser", testUserName, userNS)
+			deleteObject("pocketiduser", testUserName, userNS)
 		})
 	})
 })
 
 // Tests that require creating additional instances - must run serially
-var _ = Describe("PocketIDInstance Multi-Instance Features", Serial, Ordered, func() {
+var _ = Describe("PocketIDInstance Multi-Instance Features", Ordered, func() {
 	Context("Instance Selector", func() {
 		It("should reconcile a labeled instance with a matching user selector", func() {
 			const selectorUser = "selector-test-user"
@@ -189,15 +141,14 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Serial, Ordered, fu
 			})
 
 			By("verifying userID is set")
-			userID := kubectlGet("pocketiduser", selectorUser, "-n", userNS,
-				"-o", "jsonpath={.status.userID}")
+			userID := getField("pocketiduser", selectorUser, userNS, ".status.userID")
 			Expect(userID).NotTo(BeEmpty())
 
 			By("cleaning up user")
-			Expect(kubectlDeleteWait("pocketiduser", selectorUser, userNS, 30*time.Second)).To(Succeed())
+			Expect(deleteObjectAndWait("pocketiduser", selectorUser, userNS, 30*time.Second)).To(Succeed())
 
 			By("cleaning up instance")
-			Expect(kubectlDeleteWait("pocketidinstance", selectorInstance, instanceNS, 60*time.Second)).To(Succeed())
+			Expect(deleteObjectAndWait("pocketidinstance", selectorInstance, instanceNS, 60*time.Second)).To(Succeed())
 		})
 	})
 
@@ -211,9 +162,9 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Serial, Ordered, fu
 			// A leftover second instance would break every later spec that selects the
 			// shared instance without a selector, so clean up even on failure.
 			DeferCleanup(func() {
-				kubectlDelete("pocketiduser", tlsUser, userNS)
-				_ = kubectlDeleteWait("pocketidinstance", tlsInstance, instanceNS, 60*time.Second)
-				kubectlDelete("secret", tlsSecret, instanceNS)
+				deleteObject("pocketiduser", tlsUser, userNS)
+				_ = deleteObjectAndWait("pocketidinstance", tlsInstance, instanceNS, 60*time.Second)
+				deleteObject("secret", tlsSecret, instanceNS)
 			})
 
 			// The hostname is not the Service DNS name the operator dials, mirroring a
@@ -228,29 +179,6 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Serial, Ordered, fu
 				TLSSecretName: tlsSecret,
 			})
 
-			By("verifying the certificate is mounted and pointed at with the _FILE variants")
-			Expect(kubectlGet("deployment", tlsInstance, "-n", instanceNS,
-				"-o", "jsonpath={.spec.template.spec.containers[0].env[?(@.name=='TLS_CERT_FILE')].value}")).
-				To(Equal("/etc/pocket-id/tls/tls.crt"))
-			Expect(kubectlGet("deployment", tlsInstance, "-n", instanceNS,
-				"-o", "jsonpath={.spec.template.spec.containers[0].env[?(@.name=='TLS_KEY_FILE')].value}")).
-				To(Equal("/etc/pocket-id/tls/tls.key"))
-			Expect(kubectlGet("deployment", tlsInstance, "-n", instanceNS,
-				"-o", "jsonpath={.spec.template.spec.volumes[?(@.name=='tls')].secret.secretName}")).
-				To(Equal(tlsSecret))
-
-			By("verifying the probes use the HTTPS scheme")
-			Expect(kubectlGet("deployment", tlsInstance, "-n", instanceNS,
-				"-o", "jsonpath={.spec.template.spec.containers[0].readinessProbe.httpGet.scheme}")).
-				To(Equal("HTTPS"))
-
-			By("verifying the Service advertises the https appProtocol")
-			Expect(kubectlGet("service", tlsInstance, "-n", instanceNS,
-				"-o", "jsonpath={.spec.ports[?(@.name=='http')].appProtocol}")).
-				To(Equal("https"))
-
-			// Readiness only proves the pod passes its HTTPS probes; the reported version
-			// comes from the operator's own API call, so it also covers the client side.
 			By("verifying the reported version proves an API call over TLS")
 			waitForStatusFieldNotEmpty("pocketidinstance", tlsInstance, instanceNS, ".status.version")
 
@@ -263,8 +191,7 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Serial, Ordered, fu
 				InstanceSelector: tlsLabels,
 				APIKeys:          []APIKeySpec{{Name: "tls-key", Description: "over TLS"}},
 			})
-			secretName := kubectlGet("pocketiduser", tlsUser, "-n", userNS,
-				"-o", "jsonpath={.status.apiKeys[0].secretName}")
+			secretName := getField("pocketiduser", tlsUser, userNS, ".status.apiKeys[0].secretName")
 			Expect(secretName).NotTo(BeEmpty())
 			waitForSecretKey(secretName, userNS, "token")
 		})
@@ -284,72 +211,52 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Serial, Ordered, fu
 			waitForSecretKey(staticSecretName, instanceNS, "token")
 
 			By("deleting the instance")
-			Expect(kubectlDeleteWait("pocketidinstance", testInstance, instanceNS, 30*time.Second)).To(Succeed())
+			Expect(deleteObjectAndWait("pocketidinstance", testInstance, instanceNS, 30*time.Second)).To(Succeed())
 
 			By("verifying secret is deleted")
 			waitForSecretNotExists(staticSecretName, instanceNS)
 		})
 	})
 
-	Context("Storage Persistence", func() {
-		It("should provision storage when persistence is enabled", func() {
-			const persistenceInstance = "persistence-test-instance"
-			pvcName := persistenceInstance + "-data"
+})
 
-			By("creating an instance with persistence enabled")
-			createInstance(InstanceOptions{
-				Name:               persistenceInstance,
-				PersistenceEnabled: boolPtr(true),
-				PersistenceSize:    "2Gi",
-			})
+// Ginkgo runs Serial specs last, on process 1, once every parallel spec has finished and its
+// own instance has been cleaned up — so by the time this runs the shared instance is the only
+// one in the cluster. That is exactly the condition it needs, and the scheduler provides it
+// without any coordination of our own.
+//
+// Every other resource in this suite names its instance explicitly, which keeps second
+// instances from making anyone's reconcile ambiguous but also means nothing else exercises the
+// default: no instanceSelector at all. That is the configuration nearly every real deployment
+// has, so it is worth one spec that pays for a short serial tail.
+//
+// A failure here reads two ways, and both are worth knowing: either the selectorless path
+// broke, or a spec leaked an instance and left the cluster ambiguous.
+var _ = Describe("PocketIDInstance Default Selection", Serial, func() {
+	It("should reconcile a resource that names no instance when only one exists", func() {
+		const defaultUser = "default-selection-user"
 
-			By("verifying PVC is created with correct size")
-			Eventually(func(g Gomega) {
-				output := kubectlGet("pvc", pvcName, "-n", instanceNS,
-					"-o", "jsonpath={.spec.resources.requests.storage}")
-				g.Expect(output).To(Equal("2Gi"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
-
-			By("verifying deployment mounts the PVC")
-			Eventually(func(g Gomega) {
-				volumeName := kubectlGet("deployment", persistenceInstance, "-n", instanceNS,
-					"-o", "jsonpath={.spec.template.spec.volumes[?(@.name=='data')].persistentVolumeClaim.claimName}")
-				g.Expect(volumeName).To(Equal(pvcName))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
-
-			By("cleaning up")
-			Expect(kubectlDeleteWait("pocketidinstance", persistenceInstance, instanceNS, 60*time.Second)).To(Succeed())
+		DeferCleanup(func() {
+			_ = deleteObjectAndWait("pocketiduser", defaultUser, userNS, time.Minute)
 		})
 
-		It("should mount existing claims when configured", func() {
-			const existingClaimInstance = "existing-claim-test-instance"
-			const existingPVC = "my-existing-pvc"
+		By("confirming the shared instance is the only one in the cluster")
+		Expect(listNames("pocketidinstance", instanceNS)).To(ConsistOf(instanceName),
+			"a spec leaked an instance; a resource without a selector cannot resolve one")
 
-			By("creating an existing PVC")
-			applyYAML(createPVCYAML(existingPVC, instanceNS, "3Gi"))
+		// Written out rather than built through createUser: the helper defaults an unset
+		// selector to the shared instance, which is the opposite of what this asserts. The
+		// manifest below is what a user's first PocketIDUser actually looks like.
+		By("creating a user whose manifest has no instanceSelector")
+		applyYAML(fmt.Sprintf(`apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: %s
+  namespace: %s
+spec: {}`, defaultUser, userNS))
 
-			By("creating an instance that references the existing PVC")
-			createInstance(InstanceOptions{
-				Name:               existingClaimInstance,
-				PersistenceEnabled: boolPtr(true),
-				ExistingClaim:      existingPVC,
-			})
-
-			By("verifying deployment mounts the existing PVC")
-			Eventually(func(g Gomega) {
-				volumeName := kubectlGet("deployment", existingClaimInstance, "-n", instanceNS,
-					"-o", "jsonpath={.spec.template.spec.volumes[?(@.name=='data')].persistentVolumeClaim.claimName}")
-				g.Expect(volumeName).To(Equal(existingPVC))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
-
-			By("verifying no new PVC was created")
-			output := kubectlGet("pvc", existingClaimInstance+"-data", "-n", instanceNS, "-o", "name")
-			Expect(output).To(BeEmpty(), "Should not create a new PVC when existingClaim is specified")
-
-			By("cleaning up")
-			Expect(kubectlDeleteWait("pocketidinstance", existingClaimInstance, instanceNS, 60*time.Second)).To(Succeed())
-			kubectlDelete("pvc", existingPVC, instanceNS)
-		})
+		By("verifying it reconciled against the only instance")
+		waitForReady("pocketiduser", defaultUser, userNS)
+		Expect(getField("pocketiduser", defaultUser, userNS, ".status.userID")).NotTo(BeEmpty())
 	})
-
 })

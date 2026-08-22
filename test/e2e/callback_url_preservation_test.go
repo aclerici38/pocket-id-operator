@@ -9,6 +9,8 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
 var _ = Describe("Callback URL Preservation", Ordered, func() {
@@ -29,10 +31,9 @@ var _ = Describe("Callback URL Preservation", Ordered, func() {
 
 			By("verifying callback URLs appear in status")
 			Eventually(func(g Gomega) {
-				urls := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-					"-o", "jsonpath={.status.callbackUrls}")
+				urls := getField("pocketidoidcclient", clientName, userNS, ".status.callbackUrls")
 				g.Expect(urls).To(ContainSubstring("https://preserve.example.com/callback"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("triggering a reconcile by updating the spec (adding a logout URL)")
 			createOIDCClient(OIDCClientOptions{
@@ -45,14 +46,13 @@ var _ = Describe("Callback URL Preservation", Ordered, func() {
 
 			By("verifying callback URLs are still in status after reconcile")
 			Eventually(func(g Gomega) {
-				urls := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-					"-o", "jsonpath={.status.callbackUrls}")
+				urls := getField("pocketidoidcclient", clientName, userNS, ".status.callbackUrls")
 				g.Expect(urls).To(ContainSubstring("https://preserve.example.com/callback"))
-			}, time.Minute, 5*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketidoidcclient", clientName, userNS)
+			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
 	})
@@ -67,38 +67,37 @@ kind: PocketIDOIDCClient
 metadata:
   name: %s
   namespace: %s
-spec: {}`, clientName, userNS))
+spec:
+%s`, clientName, userNS, instanceSelectorYAML(sharedInstanceLabels)))
 
 			waitForReady("pocketidoidcclient", clientName, userNS)
 			clientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
 
 			By("setting a callback URL directly in pocket-id via API")
-			setOIDCClientCallbackURLsInPocketID("oob-set-pod", userNS, clientID, clientName,
+			setOIDCClientCallbackURLsInPocketID(clientID, clientName,
 				[]string{"https://oob-set.example.com/callback"})
 
 			By("triggering a reconcile via annotation change")
-			err := kubectlAnnotate("pocketidoidcclient", clientName, userNS, "test/trigger=reconcile")
+			err := annotateObject("pocketidoidcclient", clientName, userNS, "test/trigger=reconcile")
 			Expect(err).NotTo(HaveOccurred())
 
 			By("verifying the out-of-band callback URL appears in status after reconcile")
 			Eventually(func(g Gomega) {
-				urls := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-					"-o", "jsonpath={.status.callbackUrls}")
+				urls := getField("pocketidoidcclient", clientName, userNS, ".status.callbackUrls")
 				g.Expect(urls).To(ContainSubstring("https://oob-set.example.com/callback"),
 					"out-of-band callback URL must survive operator reconcile when spec has no callbackUrls")
-			}, time.Minute, 5*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying the out-of-band callback URL persists across multiple reconciles")
 			Consistently(func(g Gomega) {
-				urls := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-					"-o", "jsonpath={.status.callbackUrls}")
+				urls := getField("pocketidoidcclient", clientName, userNS, ".status.callbackUrls")
 				g.Expect(urls).To(ContainSubstring("https://oob-set.example.com/callback"),
 					"out-of-band callback URL must not be wiped by subsequent reconciles")
-			}, 20*time.Second, 5*time.Second).Should(Succeed())
+			}, 20*time.Second).Should(Succeed())
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketidoidcclient", clientName, userNS)
+			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
 	})
@@ -115,10 +114,9 @@ spec: {}`, clientName, userNS))
 
 			By("verifying initial callback URLs appear in status")
 			Eventually(func(g Gomega) {
-				urls := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-					"-o", "jsonpath={.status.callbackUrls}")
+				urls := getField("pocketidoidcclient", clientName, userNS, ".status.callbackUrls")
 				g.Expect(urls).To(ContainSubstring("https://initial.example.com/callback"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("updating the spec with new callback URLs")
 			createOIDCClient(OIDCClientOptions{
@@ -128,60 +126,30 @@ spec: {}`, clientName, userNS))
 
 			By("verifying status reflects the updated callback URLs")
 			Eventually(func(g Gomega) {
-				urls := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-					"-o", "jsonpath={.status.callbackUrls}")
+				urls := getField("pocketidoidcclient", clientName, userNS, ".status.callbackUrls")
 				g.Expect(urls).To(ContainSubstring("https://updated.example.com/callback"))
 				g.Expect(urls).NotTo(ContainSubstring("https://initial.example.com/callback"))
-			}, time.Minute, 5*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketidoidcclient", clientName, userNS)
+			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
 	})
 })
 
-// setOIDCClientCallbackURLsInPocketID updates an OIDC client's callback URLs directly in pocket-id.
-// clientName is the pocket-id display name (same as the CR metadata.name).
-func setOIDCClientCallbackURLsInPocketID(podName, namespace, clientID, clientName string, callbackURLs []string) {
-	staticSecretName := instanceName + "-static-api-key"
+// setOIDCClientCallbackURLsInPocketID rewrites a client's callback URLs directly through
+// the API, simulating an out-of-band edit. Only name and callbackURLs are sent, matching
+// the minimal update DTO the UI submits.
+func setOIDCClientCallbackURLsInPocketID(clientID, clientName string, callbackURLs []string) {
+	GinkgoHelper()
+	ctx, cancel := testCtx()
+	defer cancel()
 
-	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-	ExpectWithOffset(1, apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
-
-	// Build the complete update DTO JSON in Go — only "name" is required
-	callbackURLsJSON := "["
-	for i, url := range callbackURLs {
-		if i > 0 {
-			callbackURLsJSON += ","
-		}
-		callbackURLsJSON += fmt.Sprintf(`"%s"`, url)
-	}
-	callbackURLsJSON += "]"
-
-	updateBody := fmt.Sprintf(`{"name":"%s","callbackURLs":%s}`, clientName, callbackURLsJSON)
-
-	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-
-RESPONSE=$(curl -s -X PUT -H "X-API-KEY: $API_KEY" -H "Content-Type: application/json" \
-  -d '%s' \
-  -w '\n%%{http_code}' \
-  %s/api/oidc/clients/%s)
-HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-BODY=$(echo "$RESPONSE" | sed '$d')
-if [ "$HTTP_CODE" != "200" ]; then
-  echo "Failed to update OIDC client with HTTP $HTTP_CODE: $BODY" >&2
-  exit 1
-fi
-echo "Updated callback URLs successfully"`,
-		apiKeyBase64, updateBody, formatInstanceURL(), clientID)
-
-	// Clean up any previous pod with same name
-	kubectlDelete("pod", podName, namespace)
-	time.Sleep(time.Second)
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	waitForPodSucceeded(podName, namespace)
+	_, err := pid.UpdateOIDCClient(ctx, clientID, pocketid.OIDCClientInput{
+		Name:         clientName,
+		CallbackURLs: callbackURLs,
+	})
+	Expect(err).NotTo(HaveOccurred(), "updating callback URLs of client %s", clientID)
 }

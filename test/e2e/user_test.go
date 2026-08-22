@@ -5,23 +5,13 @@ package e2e
 
 import (
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/aclerici38/pocket-id-operator/internal/controller/user"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
-
-// staticAPIKeySecretName returns the name of the static API key secret for the e2e instance
-func staticAPIKeySecretName() string {
-	return instanceName + "-static-api-key"
-}
-
-// getStaticAPIKeyToken retrieves the base64-encoded static API key token
-func getStaticAPIKeyToken() string {
-	return kubectlGet("secret", staticAPIKeySecretName(), "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-}
 
 var _ = Describe("PocketIDUser", Ordered, func() {
 	Context("Minimal User", func() {
@@ -46,27 +36,24 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 
 		It("should default username to CR name", func() {
 			secretName := userName + "-user-data"
-			Expect(kubectlGetSecretData(secretName, userNS, "username")).To(Equal(userName))
+			Expect(secretData(secretName, userNS, "username")).To(Equal(userName))
 		})
 
 		It("should set placeholder email default", func() {
 			secretName := userName + "-user-data"
-			Expect(kubectlGetSecretData(secretName, userNS, "email")).To(Equal(userName + "@placeholder.local"))
+			Expect(secretData(secretName, userNS, "email")).To(Equal(userName + "@placeholder.local"))
 		})
 
 		It("should set one-time login status fields", func() {
 			Eventually(func(g Gomega) {
-				token := kubectlGet("pocketiduser", userName, "-n", userNS,
-					"-o", "jsonpath={.status.oneTimeLoginToken}")
-				loginURL := kubectlGet("pocketiduser", userName, "-n", userNS,
-					"-o", "jsonpath={.status.oneTimeLoginURL}")
-				expiresAt := kubectlGet("pocketiduser", userName, "-n", userNS,
-					"-o", "jsonpath={.status.oneTimeLoginExpiresAt}")
+				token := getField("pocketiduser", userName, userNS, ".status.oneTimeLoginToken")
+				loginURL := getField("pocketiduser", userName, userNS, ".status.oneTimeLoginURL")
+				expiresAt := getField("pocketiduser", userName, userNS, ".status.oneTimeLoginExpiresAt")
 				g.Expect(token).NotTo(BeEmpty())
 				g.Expect(loginURL).To(ContainSubstring("/lc/"))
 				g.Expect(loginURL).To(ContainSubstring(token))
 				g.Expect(expiresAt).NotTo(BeEmpty())
-			}, time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 
@@ -87,14 +74,13 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 
 		It("should reflect provided values in secret", func() {
 			secretName := userName + "-user-data"
-			Expect(kubectlGetSecretData(secretName, userNS, "username")).To(Equal("explicit-username"))
-			Expect(kubectlGetSecretData(secretName, userNS, "email")).To(Equal("john.doe@example.com"))
-			Expect(kubectlGetSecretData(secretName, userNS, "displayName")).To(Equal("John Doe"))
+			Expect(secretData(secretName, userNS, "username")).To(Equal("explicit-username"))
+			Expect(secretData(secretName, userNS, "email")).To(Equal("john.doe@example.com"))
+			Expect(secretData(secretName, userNS, "displayName")).To(Equal("John Doe"))
 		})
 
 		It("should not show isAdmin when false", func() {
-			output := kubectlGet("pocketiduser", userName, "-n", userNS,
-				"-o", "jsonpath={.status.isAdmin}")
+			output := getField("pocketiduser", userName, userNS, ".status.isAdmin")
 			Expect(output).To(BeEmpty())
 		})
 	})
@@ -110,8 +96,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 		})
 
 		It("should set isAdmin true in status", func() {
-			output := kubectlGet("pocketiduser", userName, "-n", userNS,
-				"-o", "jsonpath={.status.isAdmin}")
+			output := getField("pocketiduser", userName, userNS, ".status.isAdmin")
 			Expect(output).To(Equal("true"))
 		})
 	})
@@ -137,10 +122,9 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 
 			By("verifying isAdmin becomes true")
 			Eventually(func(g Gomega) {
-				output := kubectlGet("pocketiduser", userName, "-n", userNS,
-					"-o", "jsonpath={.status.isAdmin}")
+				output := getField("pocketiduser", userName, userNS, ".status.isAdmin")
 				g.Expect(output).To(Equal("true"))
-			}, time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 
@@ -168,13 +152,13 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 
 			By("verifying overrides take precedence")
 			outSecret := userName + "-user-data"
-			Expect(kubectlGetSecretData(outSecret, userNS, "username")).To(Equal("override-username"))
-			Expect(kubectlGetSecretData(outSecret, userNS, "displayName")).To(Equal("Override Name"))
+			Expect(secretData(outSecret, userNS, "username")).To(Equal("override-username"))
+			Expect(secretData(outSecret, userNS, "displayName")).To(Equal("Override Name"))
 
 			By("verifying secret defaults are used for non-overridden values")
-			Expect(kubectlGetSecretData(outSecret, userNS, "firstName")).To(Equal("Secret"))
-			Expect(kubectlGetSecretData(outSecret, userNS, "lastName")).To(Equal("User"))
-			Expect(kubectlGetSecretData(outSecret, userNS, "email")).To(Equal("secret@example.com"))
+			Expect(secretData(outSecret, userNS, "firstName")).To(Equal("Secret"))
+			Expect(secretData(outSecret, userNS, "lastName")).To(Equal("User"))
+			Expect(secretData(outSecret, userNS, "email")).To(Equal("secret@example.com"))
 		})
 
 		It("should apply defaults for missing keys in partial secret", func() {
@@ -196,11 +180,11 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 
 			By("verifying defaults are applied for missing keys")
 			outSecret := userName + "-user-data"
-			Expect(kubectlGetSecretData(outSecret, userNS, "firstName")).To(Equal("Partial"))
-			Expect(kubectlGetSecretData(outSecret, userNS, "lastName")).To(Equal("User"))
-			Expect(kubectlGetSecretData(outSecret, userNS, "email")).To(Equal("partial@example.com"))
-			Expect(kubectlGetSecretData(outSecret, userNS, "username")).To(Equal(userName))
-			Expect(kubectlGetSecretData(outSecret, userNS, "displayName")).To(Equal("Partial User"))
+			Expect(secretData(outSecret, userNS, "firstName")).To(Equal("Partial"))
+			Expect(secretData(outSecret, userNS, "lastName")).To(Equal("User"))
+			Expect(secretData(outSecret, userNS, "email")).To(Equal("partial@example.com"))
+			Expect(secretData(outSecret, userNS, "username")).To(Equal(userName))
+			Expect(secretData(outSecret, userNS, "displayName")).To(Equal("Partial User"))
 		})
 
 		It("should apply defaults for empty string values", func() {
@@ -224,9 +208,9 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 
 			By("verifying defaults are applied")
 			outSecret := userName + "-user-data"
-			Expect(kubectlGetSecretData(outSecret, userNS, "username")).To(Equal(userName))
-			Expect(kubectlGetSecretData(outSecret, userNS, "firstName")).To(Equal(userName))
-			Expect(kubectlGetSecretData(outSecret, userNS, "email")).To(Equal(userName + "@placeholder.local"))
+			Expect(secretData(outSecret, userNS, "username")).To(Equal(userName))
+			Expect(secretData(outSecret, userNS, "firstName")).To(Equal(userName))
+			Expect(secretData(outSecret, userNS, "email")).To(Equal(userName + "@placeholder.local"))
 		})
 	})
 
@@ -245,19 +229,16 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 
 			By("verifying API key appears in status")
 			Eventually(func(g Gomega) {
-				output := kubectlGet("pocketiduser", userName, "-n", userNS,
-					"-o", "jsonpath={.status.apiKeys[0].name}")
+				output := getField("pocketiduser", userName, userNS, ".status.apiKeys[0].name")
 				g.Expect(output).To(Equal(apiKeyName))
 			}).Should(Succeed())
 
 			By("verifying API key has ID from Pocket-ID")
-			output := kubectlGet("pocketiduser", userName, "-n", userNS,
-				"-o", "jsonpath={.status.apiKeys[0].id}")
+			output := getField("pocketiduser", userName, userNS, ".status.apiKeys[0].id")
 			Expect(output).NotTo(BeEmpty())
 
 			By("verifying secret was created with token")
-			secretName := kubectlGet("pocketiduser", userName, "-n", userNS,
-				"-o", "jsonpath={.status.apiKeys[0].secretName}")
+			secretName := getField("pocketiduser", userName, userNS, ".status.apiKeys[0].secretName")
 			Expect(secretName).NotTo(BeEmpty())
 			waitForSecretKey(secretName, userNS, "token")
 		})
@@ -265,7 +246,6 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 		It("should create API key owned by the target user", func() {
 			const userName = "test-apikey-owner-user"
 			const apiKeyName = "owner-key"
-			const podName = "api-key-owner-test"
 
 			createUserAndWaitReady(UserOptions{
 				Name:  userName,
@@ -276,21 +256,15 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 			})
 
 			By("getting secret name and token")
-			secretName := kubectlGet("pocketiduser", userName, "-n", userNS,
-				"-o", fmt.Sprintf("jsonpath={.status.apiKeys[?(@.name=='%s')].secretName}", apiKeyName))
+			secretName := getField("pocketiduser", userName, userNS,
+				fmt.Sprintf(".status.apiKeys[?(@.name=='%s')].secretName", apiKeyName))
 			Expect(secretName).NotTo(BeEmpty())
 
-			tokenBase64 := kubectlGet("secret", secretName, "-n", userNS,
-				"-o", "jsonpath={.data.token}")
-			Expect(tokenBase64).NotTo(BeEmpty())
+			token := secretData(secretName, userNS, "token")
+			Expect(token).NotTo(BeEmpty())
 
-			By("creating a curl pod to verify the token belongs to the user")
-			script := fmt.Sprintf(`TOKEN=$(echo '%s' | base64 -d)
-curl -sf -H "X-API-KEY: $TOKEN" %s/api/users/me | grep -q '"username":"%s"'`,
-				tokenBase64, formatInstanceURL(), userName)
-			applyYAML(createCurlPodYAML(podName, userNS, script))
-
-			waitForPodSucceeded(podName, userNS)
+			By("verifying the token authenticates as that user")
+			Expect(pocketIDUsernameForAPIKey(token)).To(Equal(userName))
 		})
 	})
 
@@ -301,12 +275,9 @@ curl -sf -H "X-API-KEY: $TOKEN" %s/api/users/me | grep -q '"username":"%s"'`,
 			createUserAndWaitReady(UserOptions{Name: userName})
 
 			Eventually(func(g Gomega) {
-				token := kubectlGet("pocketiduser", userName, "-n", userNS,
-					"-o", "jsonpath={.status.oneTimeLoginToken}")
-				loginURL := kubectlGet("pocketiduser", userName, "-n", userNS,
-					"-o", "jsonpath={.status.oneTimeLoginURL}")
-				expiresAt := kubectlGet("pocketiduser", userName, "-n", userNS,
-					"-o", "jsonpath={.status.oneTimeLoginExpiresAt}")
+				token := getField("pocketiduser", userName, userNS, ".status.oneTimeLoginToken")
+				loginURL := getField("pocketiduser", userName, userNS, ".status.oneTimeLoginURL")
+				expiresAt := getField("pocketiduser", userName, userNS, ".status.oneTimeLoginExpiresAt")
 
 				g.Expect(token).NotTo(BeEmpty())
 				g.Expect(loginURL).To(ContainSubstring("/lc/"))
@@ -316,7 +287,7 @@ curl -sf -H "X-API-KEY: $TOKEN" %s/api/users/me | grep -q '"username":"%s"'`,
 				parsed, err := time.Parse(time.RFC3339, expiresAt)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(parsed.After(time.Now().Add(-time.Second))).To(BeTrue())
-			}, time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		// Pocket-ID derives the login code's length from the TTL requested when minting
@@ -328,7 +299,6 @@ curl -sf -H "X-API-KEY: $TOKEN" %s/api/users/me | grep -q '"username":"%s"'`,
 		// That is why the session-exchange test below cannot catch this on its own.
 		It("should issue the long link login code", func() {
 			const userName = "test-login-code-length"
-			const podName = "login-code-config-check"
 			// Pocket-ID's shortTokenLength, the code the browser login page cannot submit.
 			const shortLoginCodeLength = 6
 
@@ -338,8 +308,7 @@ curl -sf -H "X-API-KEY: $TOKEN" %s/api/users/me | grep -q '"username":"%s"'`,
 				".status.oneTimeLoginToken")
 
 			By("confirming email one-time access is off, so the page requires the long code")
-			Expect(getAppConfigFieldFromPocketID(podName, userNS,
-				"emailOneTimeAccessAsUnauthenticatedEnabled")).To(Equal("false"))
+			Expect(getAppConfigFieldFromPocketID("emailOneTimeAccessAsUnauthenticatedEnabled")).To(Equal("false"))
 
 			Expect(len(token)).To(BeNumerically(">", shortLoginCodeLength),
 				"expected the long link code; a %d-character code means either "+
@@ -350,38 +319,23 @@ curl -sf -H "X-API-KEY: $TOKEN" %s/api/users/me | grep -q '"username":"%s"'`,
 
 		It("should exchange the one-time access token for a session", func() {
 			const userName = "test-login-token-exchange"
-			const podName = "login-token-exchange-test"
 
 			createUserAndWaitReady(UserOptions{Name: userName})
 
 			var token string
 			Eventually(func(g Gomega) {
-				token = kubectlGet("pocketiduser", userName, "-n", userNS,
-					"-o", "jsonpath={.status.oneTimeLoginToken}")
+				token = getField("pocketiduser", userName, userNS, ".status.oneTimeLoginToken")
 				g.Expect(token).NotTo(BeEmpty())
-			}, time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
-			By("creating a curl pod to exchange the token")
-			script := fmt.Sprintf(`TOKEN='%s'
-curl -sf -D /tmp/headers -o /tmp/user.json -X POST %s/api/one-time-access-token/$TOKEN
-COOKIE=$(awk -F': ' 'tolower($1)=="set-cookie" && $2 ~ /access_token=/ {print $2; exit}' /tmp/headers)
-if [ -z "$COOKIE" ]; then
-  echo "missing access token cookie" >&2
-  exit 1
-fi
-COOKIE_PAIR=$(echo "$COOKIE" | cut -d';' -f1)
-curl -sf -H "Cookie: $COOKIE_PAIR" %s/api/users/me | grep -q '"username":"%s"'`,
-				token, formatInstanceURL(), formatInstanceURL(), userName)
-
-			applyYAML(createCurlPodYAML(podName, userNS, script))
-			waitForPodSucceeded(podName, userNS)
+			By("redeeming the token and verifying the session belongs to that user")
+			Expect(pocketIDUsernameForOneTimeToken(token)).To(Equal(userName))
 		})
 	})
 
 	Context("User Deletion Behavior", func() {
 		It("should NOT delete user from Pocket-ID when annotation is missing", func() {
 			const userName = "test-delete-no-annotation"
-			const podName = "check-user-exists-no-annotation"
 
 			By("creating a user without the delete annotation")
 			createUserAndWaitReady(UserOptions{Name: userName})
@@ -390,22 +344,15 @@ curl -sf -H "Cookie: $COOKIE_PAIR" %s/api/users/me | grep -q '"username":"%s"'`,
 			userID := waitForStatusFieldNotEmpty("pocketiduser", userName, userNS, ".status.userID")
 
 			By("deleting the PocketIDUser resource")
-			kubectlDelete("pocketiduser", userName, userNS)
+			deleteObject("pocketiduser", userName, userNS)
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 
 			By("verifying user still exists in Pocket-ID")
-			tokenBase64 := getStaticAPIKeyToken()
-			Expect(tokenBase64).NotTo(BeEmpty())
-			script := fmt.Sprintf(`TOKEN=$(echo '%s' | base64 -d)
-curl -sf -H "X-API-KEY: $TOKEN" %s/api/users/%s | grep -q '"id":"%s"'`,
-				tokenBase64, formatInstanceURL(), userID, userID)
-			applyYAML(createCurlPodYAML(podName, userNS, script))
-			waitForPodSucceeded(podName, userNS)
+			Expect(getFromPocketID("/api/users/" + userID)).To(ContainSubstring(userID))
 		})
 
 		It("should NOT delete user from Pocket-ID when annotation is set to false", func() {
 			const userName = "test-delete-annotation-false"
-			const podName = "check-user-exists-annotation-false"
 
 			By("creating a user with annotation set to false")
 			createUserAndWaitReady(UserOptions{
@@ -419,22 +366,15 @@ curl -sf -H "X-API-KEY: $TOKEN" %s/api/users/%s | grep -q '"id":"%s"'`,
 			userID := waitForStatusFieldNotEmpty("pocketiduser", userName, userNS, ".status.userID")
 
 			By("deleting the PocketIDUser resource")
-			kubectlDelete("pocketiduser", userName, userNS)
+			deleteObject("pocketiduser", userName, userNS)
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 
 			By("verifying user still exists in Pocket-ID")
-			tokenBase64 := getStaticAPIKeyToken()
-			Expect(tokenBase64).NotTo(BeEmpty())
-			script := fmt.Sprintf(`TOKEN=$(echo '%s' | base64 -d)
-curl -sf -H "X-API-KEY: $TOKEN" %s/api/users/%s | grep -q '"id":"%s"'`,
-				tokenBase64, formatInstanceURL(), userID, userID)
-			applyYAML(createCurlPodYAML(podName, userNS, script))
-			waitForPodSucceeded(podName, userNS)
+			Expect(getFromPocketID("/api/users/" + userID)).To(ContainSubstring(userID))
 		})
 
 		It("should delete user from Pocket-ID when annotation is set to true", func() {
 			const userName = "test-delete-annotation-true"
-			const podName = "check-user-deleted-annotation-true"
 
 			By("creating a user with annotation set to true")
 			createUserAndWaitReady(UserOptions{
@@ -448,29 +388,16 @@ curl -sf -H "X-API-KEY: $TOKEN" %s/api/users/%s | grep -q '"id":"%s"'`,
 			userID := waitForStatusFieldNotEmpty("pocketiduser", userName, userNS, ".status.userID")
 
 			By("deleting the PocketIDUser resource")
-			kubectlDelete("pocketiduser", userName, userNS)
+			deleteObject("pocketiduser", userName, userNS)
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 
 			By("verifying user no longer exists in Pocket-ID (expect 404)")
-			tokenBase64 := getStaticAPIKeyToken()
-			Expect(tokenBase64).NotTo(BeEmpty())
-			script := fmt.Sprintf(`TOKEN=$(echo '%s' | base64 -d)
-HTTP_CODE=$(curl -s -o /dev/null -w "%%{http_code}" -H "X-API-KEY: $TOKEN" %s/api/users/%s)
-if [ "$HTTP_CODE" = "404" ]; then
-  echo "User correctly deleted (got 404)"
-  exit 0
-else
-  echo "Expected 404 but got $HTTP_CODE"
-  exit 1
-fi`,
-				tokenBase64, formatInstanceURL(), userID)
-			applyYAML(createCurlPodYAML(podName, userNS, script))
-			waitForPodSucceeded(podName, userNS)
+			Expect(getStatusFromPocketID("/api/users/"+userID)).To(Equal(http.StatusNotFound),
+				"the user should have been deleted from Pocket-ID")
 		})
 
 		It("should delete user from Pocket-ID when annotation is added before deletion", func() {
 			const userName = "test-delete-add-annotation"
-			const podName = "check-user-deleted-add-annotation"
 
 			By("creating a user without annotation")
 			createUserAndWaitReady(UserOptions{Name: userName})
@@ -479,28 +406,16 @@ fi`,
 			userID := waitForStatusFieldNotEmpty("pocketiduser", userName, userNS, ".status.userID")
 
 			By("adding the delete annotation")
-			Expect(kubectlAnnotate("pocketiduser", userName, userNS,
+			Expect(annotateObject("pocketiduser", userName, userNS,
 				user.DeleteFromPocketIDAnnotation+"=true")).To(Succeed())
 
 			By("deleting the PocketIDUser resource")
-			kubectlDelete("pocketiduser", userName, userNS)
+			deleteObject("pocketiduser", userName, userNS)
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 
 			By("verifying user no longer exists in Pocket-ID (expect 404)")
-			tokenBase64 := getStaticAPIKeyToken()
-			Expect(tokenBase64).NotTo(BeEmpty())
-			script := fmt.Sprintf(`TOKEN=$(echo '%s' | base64 -d)
-HTTP_CODE=$(curl -s -o /dev/null -w "%%{http_code}" -H "X-API-KEY: $TOKEN" %s/api/users/%s)
-if [ "$HTTP_CODE" = "404" ]; then
-  echo "User correctly deleted (got 404)"
-  exit 0
-else
-  echo "Expected 404 but got $HTTP_CODE"
-  exit 1
-fi`,
-				tokenBase64, formatInstanceURL(), userID)
-			applyYAML(createCurlPodYAML(podName, userNS, script))
-			waitForPodSucceeded(podName, userNS)
+			Expect(getStatusFromPocketID("/api/users/"+userID)).To(Equal(http.StatusNotFound),
+				"the user should have been deleted from Pocket-ID")
 		})
 	})
 })

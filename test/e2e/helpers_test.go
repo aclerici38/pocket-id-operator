@@ -4,6 +4,7 @@
 package e2e
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -11,17 +12,30 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"math/big"
 	"os"
-	"os/exec"
 	"regexp"
 	"strings"
 	"time"
 
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/aclerici38/pocket-id-operator/test/utils"
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+// sharedInstanceLabels marks the instance created once for the whole suite. Every resource
+// selects its instance explicitly, so a spec that needs its own can create one without
+// making SelectInstance ambiguous for everyone else: that list is cluster-wide, so a second
+// unlabelled instance would break every resource that named none.
+var sharedInstanceLabels = map[string]string{"e2e-instance": "shared"}
 
 // Test constants
 const (
@@ -45,6 +59,10 @@ type InstanceOptions struct {
 	// TLSSecretName makes the instance terminate TLS from that kubernetes.io/tls
 	// Secret, which also forces appUrl to https.
 	TLSSecretName string
+	// NodePort publishes the instance's http port on that node port, which Kind maps to
+	// the same port on the host (see setup-test-e2e). Set on the shared instance so the
+	// suite can call Pocket-ID's API directly instead of through a pod in the cluster.
+	NodePort int
 }
 
 const defaultPocketIDImage = "ghcr.io/pocket-id/pocket-id:v2.14.0-distroless@sha256:e0f83a42a78d0759b6d2d8c7380ef0fa8a4c95dfa01ad88740a073ae9cc4ba94"
@@ -100,6 +118,15 @@ func buildInstanceYAML(opts InstanceOptions) string {
 	}
 	persistence += cimd
 
+	if opts.NodePort != 0 {
+		persistence += fmt.Sprintf(`  serviceTemplate:
+    type: NodePort
+    ports:
+    - name: http
+      nodePort: %d
+`, opts.NodePort)
+	}
+
 	scheme := "http"
 	if opts.TLSSecretName != "" {
 		scheme = "https"
@@ -153,6 +180,9 @@ func (o UserOptions) withDefaults() UserOptions {
 	if o.Namespace == "" {
 		o.Namespace = userNS
 	}
+	if len(o.InstanceSelector) == 0 {
+		o.InstanceSelector = sharedInstanceLabels
+	}
 	return o
 }
 
@@ -200,12 +230,7 @@ func buildUserYAML(opts UserOptions) string {
 			spec.WriteString(fmt.Sprintf("  - key: %s\n    value: %s\n", claim.Key, claim.Value))
 		}
 	}
-	if len(opts.InstanceSelector) > 0 {
-		spec.WriteString("  instanceSelector:\n    matchLabels:\n")
-		for k, v := range opts.InstanceSelector {
-			spec.WriteString(fmt.Sprintf("      %s: %s\n", k, v))
-		}
-	}
+	spec.WriteString(instanceSelectorYAML(opts.InstanceSelector))
 	if len(opts.APIKeys) > 0 {
 		spec.WriteString("  apiKeys:\n")
 		for _, key := range opts.APIKeys {
@@ -240,6 +265,7 @@ metadata:
 
 // UserGroupOptions configures a PocketIDUserGroup YAML.
 type UserGroupOptions struct {
+	InstanceSelector   map[string]string
 	Name               string
 	Namespace          string
 	GroupName          string
@@ -274,6 +300,9 @@ func (o UserGroupOptions) withDefaults() UserGroupOptions {
 	if o.FriendlyName == "" {
 		o.FriendlyName = o.GroupName
 	}
+	if len(o.InstanceSelector) == 0 {
+		o.InstanceSelector = sharedInstanceLabels
+	}
 	return o
 }
 
@@ -283,6 +312,7 @@ func buildUserGroupYAML(opts UserGroupOptions) string {
 	var spec strings.Builder
 	spec.WriteString(fmt.Sprintf("  name: %s\n", opts.GroupName))
 	spec.WriteString(fmt.Sprintf("  friendlyName: %s\n", opts.FriendlyName))
+	spec.WriteString(instanceSelectorYAML(opts.InstanceSelector))
 
 	if len(opts.CustomClaims) > 0 {
 		spec.WriteString("  customClaims:\n")
@@ -342,6 +372,7 @@ spec:
 
 // OIDCClientOptions configures a PocketIDOIDCClient YAML.
 type OIDCClientOptions struct {
+	InstanceSelector   map[string]string
 	Name               string
 	Namespace          string
 	SpecName           string // spec.name: Pocket-ID display name (defaults to metadata.name when empty)
@@ -432,6 +463,9 @@ func (o OIDCClientOptions) withDefaults() OIDCClientOptions {
 	if len(o.CallbackURLs) == 0 && !strings.HasPrefix(o.ClientID, "https://") {
 		o.CallbackURLs = []string{"https://example.com/callback"}
 	}
+	if len(o.InstanceSelector) == 0 {
+		o.InstanceSelector = sharedInstanceLabels
+	}
 	return o
 }
 
@@ -439,6 +473,7 @@ func buildOIDCClientYAML(opts OIDCClientOptions) string {
 	opts = opts.withDefaults()
 
 	var spec strings.Builder
+	spec.WriteString(instanceSelectorYAML(opts.InstanceSelector))
 
 	if opts.SpecName != "" {
 		spec.WriteString(fmt.Sprintf("  name: %s\n", opts.SpecName))
@@ -638,6 +673,9 @@ func (o APIOptions) withDefaults() APIOptions {
 	if o.Resource == "" {
 		o.Resource = fmt.Sprintf("https://%s.example.com", o.Name)
 	}
+	if len(o.InstanceSelector) == 0 {
+		o.InstanceSelector = sharedInstanceLabels
+	}
 	return o
 }
 
@@ -650,12 +688,7 @@ func buildAPIYAML(opts APIOptions) string {
 	}
 	spec.WriteString(fmt.Sprintf("  resource: %s\n", opts.Resource))
 
-	if len(opts.InstanceSelector) > 0 {
-		spec.WriteString("  instanceSelector:\n    matchLabels:\n")
-		for k, v := range opts.InstanceSelector {
-			spec.WriteString(fmt.Sprintf("      %s: %s\n", k, v))
-		}
-	}
+	spec.WriteString(instanceSelectorYAML(opts.InstanceSelector))
 
 	if len(opts.Permissions) > 0 {
 		spec.WriteString("  permissions:\n")
@@ -685,81 +718,35 @@ spec:
 
 // --- kubectl Helpers ---
 
-func applyYAML(yaml string) {
-	cmd := exec.Command("kubectl", "apply", "-f", "-")
-	cmd.Stdin = strings.NewReader(yaml)
-	_, err := utils.Run(cmd)
-	Expect(err).NotTo(HaveOccurred())
-}
-
-// applyYAMLExpectingError applies the manifest and returns kubectl's combined output and
-// error, for specs that assert admission rejects a spec rather than that it is accepted.
-func applyYAMLExpectingError(yaml string) (string, error) {
-	cmd := exec.Command("kubectl", "apply", "-f", "-")
-	cmd.Stdin = strings.NewReader(yaml)
-	return utils.Run(cmd)
-}
-
-// expectApplyRejected requires the manifest to be refused by admission with an error
-// mentioning wantMessage, so a CEL rule that silently stops matching is caught.
-func expectApplyRejected(yaml, wantMessage string) {
-	output, err := applyYAMLExpectingError(yaml)
-	Expect(err).To(HaveOccurred(), "apply should fail CEL validation")
-	Expect(output).To(ContainSubstring(wantMessage))
-}
-
-func kubectlGet(args ...string) string {
-	fullArgs := append([]string{"get"}, args...)
-	cmd := exec.Command("kubectl", fullArgs...)
-	output, err := utils.Run(cmd)
-	if err != nil {
+// secretData returns one decoded value from a Secret, or "" when the Secret or
+// the key is absent.
+func secretData(secretName, namespace, key string) string {
+	secret := &corev1.Secret{}
+	if err := k8sClient.Get(context.Background(),
+		client.ObjectKey{Name: secretName, Namespace: namespace}, secret); err != nil {
 		return ""
 	}
-	return strings.TrimSpace(output)
+	return string(secret.Data[key])
 }
 
-func kubectlGetSecretData(secretName, namespace, key string) string {
-	output := kubectlGet("secret", secretName, "-n", namespace,
-		"-o", fmt.Sprintf("jsonpath={.data.%s}", key))
-	if output == "" {
-		return ""
-	}
-	decoded, err := base64.StdEncoding.DecodeString(output)
-	if err != nil {
-		return ""
-	}
-	return string(decoded)
-}
-
-func kubectlDelete(resource, name, namespace string) {
-	cmd := exec.Command("kubectl", "delete", resource, name, "-n", namespace, "--ignore-not-found")
-	_, _ = utils.Run(cmd)
-}
-
-func kubectlDeleteWait(resource, name, namespace string, timeout time.Duration) error {
-	cmd := exec.Command("kubectl", "delete", resource, name, "-n", namespace,
-		"--ignore-not-found", fmt.Sprintf("--timeout=%s", timeout))
-	_, err := utils.Run(cmd)
-	return err
-}
-
-func kubectlAnnotate(resource, name, namespace, annotation string) error {
-	cmd := exec.Command("kubectl", "annotate", resource, name, "-n", namespace, annotation, "--overwrite")
-	_, err := utils.Run(cmd)
-	return err
-}
-
-func kubectlPatch(resource, name, namespace, patch string) error {
-	cmd := exec.Command("kubectl", "patch", resource, name, "-n", namespace, "--type=merge", "-p", patch)
-	_, err := utils.Run(cmd)
-	return err
-}
-
+// removeFinalizers clears finalizers from every operator-owned resource in the namespace,
+// so teardown cannot hang on a controller that is already being torn down itself.
 func removeFinalizers(namespace string) {
-	cmd := exec.Command("bash", "-c",
-		fmt.Sprintf("kubectl get pocketiduser,pocketidusergroup,pocketidoidcclient,pocketidapi,pocketidinstance -n %s -o name 2>/dev/null | xargs -I {} kubectl patch {} -n %s --type=merge -p '{\"metadata\":{\"finalizers\":null}}' 2>/dev/null || true",
-			namespace, namespace))
-	_, _ = utils.Run(cmd)
+	for _, resource := range []string{
+		"pocketiduser", "pocketidusergroup", "pocketidoidcclient", "pocketidapi", "pocketidinstance",
+	} {
+		list := &unstructured.UnstructuredList{}
+		gvk := resourceGVK[resource]
+		gvk.Kind += "List"
+		list.SetGroupVersionKind(gvk)
+		if err := k8sClient.List(context.Background(), list, client.InNamespace(namespace)); err != nil {
+			continue
+		}
+		for i := range list.Items {
+			_ = patchObject(resource, list.Items[i].GetName(), namespace,
+				`{"metadata":{"finalizers":null}}`)
+		}
+	}
 }
 
 // --- Wait Helpers ---
@@ -769,43 +756,52 @@ func waitForReady(resource, name, namespace string) {
 }
 
 func waitForCondition(resource, name, namespace, conditionType, status string) {
+	GinkgoHelper()
 	Eventually(func(g Gomega) {
-		output := kubectlGet(resource, name, "-n", namespace,
-			"-o", fmt.Sprintf("jsonpath={.status.conditions[?(@.type=='%s')].status}", conditionType))
-		g.Expect(output).To(Equal(status), "%s/%s should have condition %s=%s", resource, name, conditionType, status)
-	}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		obj, err := getObject(resource, name, namespace)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(conditionField(obj, conditionType, "status")).To(Equal(status),
+			"%s/%s should have condition %s=%s", resource, name, conditionType, status)
+	}).Should(Succeed())
 }
 
 func waitForConditionReason(resource, name, namespace, conditionType, reason string) {
+	GinkgoHelper()
 	Eventually(func(g Gomega) {
-		output := kubectlGet(resource, name, "-n", namespace,
-			"-o", fmt.Sprintf("jsonpath={.status.conditions[?(@.type=='%s')].reason}", conditionType))
-		g.Expect(output).To(Equal(reason))
-	}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		obj, err := getObject(resource, name, namespace)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(conditionField(obj, conditionType, "reason")).To(Equal(reason))
+	}).Should(Succeed())
 }
 
-func waitForStatusField(resource, name, namespace, jsonpath, expected string) {
+func waitForStatusField(resource, name, namespace, path, expected string) {
+	GinkgoHelper()
 	Eventually(func(g Gomega) {
-		output := kubectlGet(resource, name, "-n", namespace, "-o", fmt.Sprintf("jsonpath={%s}", jsonpath))
-		g.Expect(output).To(Equal(expected))
-	}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		obj, err := getObject(resource, name, namespace)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(fieldString(obj, path)).To(Equal(expected),
+			"%s/%s field %s", resource, name, path)
+	}).Should(Succeed())
 }
 
-func waitForStatusFieldNotEmpty(resource, name, namespace, jsonpath string) string {
+func waitForStatusFieldNotEmpty(resource, name, namespace, path string) string {
+	GinkgoHelper()
 	var result string
 	Eventually(func(g Gomega) {
-		result = kubectlGet(resource, name, "-n", namespace, "-o", fmt.Sprintf("jsonpath={%s}", jsonpath))
-		g.Expect(result).NotTo(BeEmpty())
-	}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		obj, err := getObject(resource, name, namespace)
+		g.Expect(err).NotTo(HaveOccurred())
+		result = fieldString(obj, path)
+		g.Expect(result).NotTo(BeEmpty(), "%s/%s field %s", resource, name, path)
+	}).Should(Succeed())
 	return result
 }
 
 func waitForSecretKey(secretName, namespace, key string) string {
 	var result string
 	Eventually(func(g Gomega) {
-		result = kubectlGetSecretData(secretName, namespace, key)
+		result = secretData(secretName, namespace, key)
 		g.Expect(result).NotTo(BeEmpty())
-	}, time.Minute, 2*time.Second).Should(Succeed())
+	}).Should(Succeed())
 	return result
 }
 
@@ -814,38 +810,51 @@ func waitForSecretKey(secretName, namespace, key string) string {
 // reconciled the latest spec. Use this after updating a spec whose effect is not visible
 // in a pollable status field, before asserting directly against Pocket-ID.
 func waitForReconciled(resource, name, namespace string) {
-	gen := kubectlGet(resource, name, "-n", namespace, "-o", "jsonpath={.metadata.generation}")
+	GinkgoHelper()
+	current, err := getObject(resource, name, namespace)
+	Expect(err).NotTo(HaveOccurred())
+	gen := fieldString(current, ".metadata.generation")
 	Expect(gen).NotTo(BeEmpty())
+
 	Eventually(func(g Gomega) {
-		observed := kubectlGet(resource, name, "-n", namespace,
-			"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].observedGeneration}")
-		status := kubectlGet(resource, name, "-n", namespace,
-			"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
-		g.Expect(observed).To(Equal(gen), "observedGeneration should catch up to spec generation")
-		g.Expect(status).To(Equal("True"))
-	}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		obj, err := getObject(resource, name, namespace)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(conditionField(obj, "Ready", "observedGeneration")).To(Equal(gen),
+			"observedGeneration should catch up to spec generation")
+		g.Expect(conditionField(obj, "Ready", "status")).To(Equal("True"))
+	}).Should(Succeed())
 }
 
 func waitForResourceDeleted(resource, name, namespace string) {
+	GinkgoHelper()
 	Eventually(func(g Gomega) {
-		output := kubectlGet(resource, name, "-n", namespace, "-o", "name")
-		g.Expect(output).To(BeEmpty())
-	}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		_, err := getObject(resource, name, namespace)
+		g.Expect(isGone(err)).To(BeTrue(), "%s/%s should be gone, got %v", resource, name, err)
+	}).Should(Succeed())
+}
+
+// isGone reports whether a Get proves the object is absent. A missing object is the usual
+// case; a missing *kind* also counts, because the httproute specs uninstall the Gateway API
+// CRD at runtime and nothing of that kind can exist once its definition is gone.
+func isGone(err error) bool {
+	return apierrors.IsNotFound(err) || meta.IsNoMatchError(err) ||
+		runtime.IsNotRegisteredError(err)
 }
 
 func waitForSecretExists(secretName, namespace string) {
+	GinkgoHelper()
 	Eventually(func(g Gomega) {
-		output := kubectlGet("secret", secretName, "-n", namespace, "-o", "name")
-		g.Expect(output).To(Equal("secret/" + secretName))
-	}, time.Minute, 2*time.Second).Should(Succeed())
+		_, err := getObject("secret", secretName, namespace)
+		g.Expect(err).NotTo(HaveOccurred(), "secret %s should exist", secretName)
+	}).Should(Succeed())
 }
 
 func waitForSecretNotExists(secretName, namespace string) {
+	GinkgoHelper()
 	Eventually(func(g Gomega) {
-		cmd := exec.Command("kubectl", "get", "secret", secretName, "-n", namespace)
-		_, err := utils.Run(cmd)
-		g.Expect(err).To(HaveOccurred())
-	}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		_, err := getObject("secret", secretName, namespace)
+		g.Expect(isGone(err)).To(BeTrue(), "secret %s should be gone, got %v", secretName, err)
+	}).Should(Succeed())
 }
 
 // --- Create and Wait Helpers ---
@@ -858,10 +867,9 @@ func createInstanceAndWaitReady(opts InstanceOptions) {
 	opts = opts.withDefaults()
 	createInstance(opts)
 	Eventually(func(g Gomega) {
-		output := kubectlGet("pocketidinstance", opts.Name, "-n", opts.Namespace,
-			"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+		output := getField("pocketidinstance", opts.Name, opts.Namespace, ".status.conditions[?(@.type=='Ready')].status")
 		g.Expect(output).To(Equal("True"))
-	}, 5*time.Minute, 5*time.Second).Should(Succeed())
+	}).Should(Succeed())
 }
 
 func createUser(opts UserOptions) {
@@ -964,236 +972,65 @@ data:
 		base64.StdEncoding.EncodeToString(keyPEM)))
 }
 
-func createPVCYAML(name, namespace, size string) string {
-	return fmt.Sprintf(`apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: %s
-  namespace: %s
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: %s
-`, name, namespace, size)
-}
-
-func createCurlPodYAML(name, namespace, script string) string {
-	return fmt.Sprintf(`apiVersion: v1
-kind: Pod
-metadata:
-  name: %s
-  namespace: %s
-spec:
-  restartPolicy: Never
-  containers:
-  - name: curl
-    image: curlimages/curl:latest
-    command: ["/bin/sh", "-c"]
-    args:
-    - |
-%s
-    securityContext:
-      allowPrivilegeEscalation: false
-      capabilities:
-        drop: ["ALL"]
-      runAsNonRoot: true
-      runAsUser: 1000
-`, name, namespace, indentScript(script, 6))
-}
-
-func indentScript(script string, spaces int) string {
-	indent := strings.Repeat(" ", spaces)
-	lines := strings.Split(script, "\n")
-	for i, line := range lines {
-		if line != "" {
-			lines[i] = indent + line
-		}
-	}
-	return strings.Join(lines, "\n")
-}
-
-func waitForPodSucceeded(name, namespace string) {
-	Eventually(func(g Gomega) {
-		output := kubectlGet("pod", name, "-n", namespace, "-o", "jsonpath={.status.phase}")
-		g.Expect(output).To(Equal("Succeeded"))
-	}, 2*time.Minute, 2*time.Second).Should(Succeed())
-}
-
-// kubectlLogs retrieves logs from a pod
-func kubectlLogs(name, namespace string) string {
-	cmd := exec.Command("kubectl", "logs", name, "-n", namespace)
-	output, err := utils.Run(cmd)
+// podLogs returns a pod's logs. Logs are a subresource the typed client cannot read,
+// so this is the one place the suite still needs a clientset.
+func podLogs(name, namespace string) string {
+	stream, err := clientSet.CoreV1().Pods(namespace).GetLogs(name, &corev1.PodLogOptions{}).
+		Stream(context.Background())
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(output)
-}
+	defer func() { _ = stream.Close() }()
 
-// getPodLogs waits for a pod to succeed and retrieves its logs
-func getPodLogs(name, namespace string) string {
-	waitForPodSucceeded(name, namespace)
-	return kubectlLogs(name, namespace)
-}
-
-// formatInstanceURL returns the internal service URL for the e2e instance
-func formatInstanceURL() string {
-	return fmt.Sprintf("http://%s.%s.svc:1411", instanceName, instanceNS)
+	out, err := io.ReadAll(stream)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // addUserToGroupInPocketID adds a user to a group directly via the Pocket-ID API,
-// bypassing the operator. This simulates a user being added through the UI.
-// It GETs the current users, appends the new one, and PUTs the full list.
-func addUserToGroupInPocketID(podName, namespace, groupID, userID string) {
-	staticSecretName := instanceName + "-static-api-key"
+// bypassing the operator. This simulates a user being added through the UI. The API
+// replaces the whole membership list, so the current members are read first and the new
+// user appended.
+func addUserToGroupInPocketID(groupID, userID string) {
+	GinkgoHelper()
+	ctx, cancel := testCtx()
+	defer cancel()
 
-	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
+	group, err := pid.GetUserGroup(ctx, groupID)
+	Expect(err).NotTo(HaveOccurred(), "reading group %s", groupID)
 
-	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-# GET current group to find existing user IDs
-BODY=$(curl -s -H "X-API-KEY: $API_KEY" %s/api/user-groups/%s)
-# Extract user IDs: find the "users" array, then collect all "id" fields within it.
-# Use awk to extract just the users array portion, then grep for IDs.
-USERS_JSON=$(echo "$BODY" | awk -F'"users":' '{print $2}' | awk '{
-  depth=0; out=""; started=0
-  for(i=1;i<=length($0);i++){
-    c=substr($0,i,1)
-    if(c=="[" && !started){started=1; depth=1; out=out c; continue}
-    if(started){
-      out=out c
-      if(c=="[") depth++
-      if(c=="]") depth--
-      if(depth==0){print out; exit}
-    }
-  }
-}')
-EXISTING_IDS=$(echo "$USERS_JSON" | grep -o '"id":"[^"]*"' | sed 's/"id":"//;s/"//' | tr '\n' ',' | sed 's/,$//')
-# Build new list with the additional user
-if [ -z "$EXISTING_IDS" ]; then
-  USER_IDS='["%s"]'
-else
-  USER_IDS=$(echo "[$(echo "$EXISTING_IDS" | sed 's/\([^,]*\)/"\1"/g'),\"%s\"]")
-fi
-# PUT the updated user list
-HTTP_CODE=$(curl -s -o /dev/null -w '%%{http_code}' -X PUT \
-  -H "X-API-KEY: $API_KEY" -H "Content-Type: application/json" \
-  -d "{\"userIds\": $USER_IDS}" \
-  %s/api/user-groups/%s/users)
-if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "204" ]; then
-  echo "Failed to add user to group: HTTP $HTTP_CODE" >&2
-  exit 1
-fi
-echo "User added to group successfully"`,
-		apiKeyBase64, formatInstanceURL(), groupID, userID, userID, formatInstanceURL(), groupID)
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	waitForPodSucceeded(podName, namespace)
-}
-
-// getFromPocketID performs a GET against the Pocket-ID API using the instance's static
-// API key and returns the raw response body. Used to assert that operator-managed state
-// is actually reflected in Pocket-ID's database. Each call needs a unique podName.
-func getFromPocketID(podName, namespace, apiPath string) string {
-	staticSecretName := instanceName + "-static-api-key"
-
-	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
-
-	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-curl -sf -H "X-API-KEY: $API_KEY" %s%s`,
-		apiKeyBase64, formatInstanceURL(), apiPath)
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	return getPodLogs(podName, namespace)
-}
-
-// getAppConfigFieldFromPocketID returns a single field from Pocket-ID's public
-// application configuration. This endpoint needs no auth: it is the same payload the
-// login page reads in the browser before the user has a session. The response is a flat
-// array of {"key","type","value"} objects rather than an object keyed by field name, so
-// this pulls the entry whose "key" matches and reads its "value". Values are always
-// strings, so booleans come back as "true"/"false".
-func getAppConfigFieldFromPocketID(podName, namespace, field string) string {
-	script := fmt.Sprintf(`curl -sf %s/api/application-configuration \
-  | grep -o '{[^{}]*"key":"%s"[^{}]*}' \
-  | grep -o '"value":"[^"]*"' | head -1 | sed 's/.*":"//;s/"$//'`,
-		formatInstanceURL(), field)
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	return getPodLogs(podName, namespace)
+	Expect(pid.UpdateUserGroupUsers(ctx, groupID, append(group.UserIDs, userID))).
+		To(Succeed(), "adding user %s to group %s", userID, groupID)
 }
 
 // createAPIInPocketID creates an API directly via the Pocket-ID API (bypassing the
 // operator, simulating creation through the UI) and returns the new API's ID. Used to
 // test adoption of a pre-existing API by resource.
-func createAPIInPocketID(podName, namespace, name, resource string) string {
-	staticSecretName := instanceName + "-static-api-key"
+func createAPIInPocketID(name, resource string) string {
+	GinkgoHelper()
+	ctx, cancel := testCtx()
+	defer cancel()
 
-	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
-
-	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-BODY=$(curl -sf -X POST -H "X-API-KEY: $API_KEY" -H "Content-Type: application/json" \
-  -d '{"name":"%s","resource":"%s"}' %s/api/apis)
-echo "$BODY" | grep -o '"id":"[^"]*"' | head -1 | sed 's/"id":"//;s/"//'`,
-		apiKeyBase64, name, resource, formatInstanceURL())
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	return getPodLogs(podName, namespace)
+	api, err := pid.CreateAPI(ctx, pocketid.APIInput{Name: name, Resource: resource})
+	Expect(err).NotTo(HaveOccurred(), "creating API %q", name)
+	Expect(api.ID).NotTo(BeEmpty())
+	return api.ID
 }
 
 // deleteUserGroupInPocketID deletes a user group directly via the Pocket-ID API,
 // simulating a group removed out-of-band (another cluster, or the UI).
-func deleteUserGroupInPocketID(podName, namespace, groupID string) {
-	staticSecretName := instanceName + "-static-api-key"
+func deleteUserGroupInPocketID(groupID string) {
+	GinkgoHelper()
+	ctx, cancel := testCtx()
+	defer cancel()
 
-	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
-
-	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-HTTP_CODE=$(curl -s -o /dev/null -w '%%{http_code}' -X DELETE \
-  -H "X-API-KEY: $API_KEY" %s/api/user-groups/%s)
-if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "204" ]; then
-  echo "Failed to delete user group: HTTP $HTTP_CODE" >&2
-  exit 1
-fi
-echo "User group deleted"`,
-		apiKeyBase64, formatInstanceURL(), groupID)
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	waitForPodSucceeded(podName, namespace)
+	Expect(pid.DeleteUserGroup(ctx, groupID)).To(Succeed(), "deleting group %s", groupID)
 }
 
-// clientSecretAuthResult reports what Pocket-ID makes of a client_id/client_secret pair, by asking
-// its token endpoint for a client_credentials grant. It answers "ok" when a token comes back and
-// the OAuth error code otherwise — "invalid_client" being the one that means the secret is not
-// accepted. This is the only way to tell that a secret Pocket-ID still lists is actually usable,
-// and that a retired one really stopped working.
-func clientSecretAuthResult(podName, namespace, clientID, clientSecret string) string {
-	script := fmt.Sprintf(`BODY=$(curl -s -u '%s:%s'   -d 'grant_type=client_credentials' %s/api/oidc/token)
-if echo "$BODY" | grep -q '"access_token"'; then
-  echo ok
-else
-  echo "$BODY" | grep -o '"error":"[^"]*"' | head -1 | sed 's/"error":"//;s/"//'
-fi`, clientID, clientSecret, formatInstanceURL())
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	return getPodLogs(podName, namespace)
-}
-
-// clientSecretsSectionFromPocketID returns the credentials.secrets array of a client, as read from
-// the same endpoint the operator reconciles from. Reading it here rather than from the dedicated
-// /secrets endpoint is deliberate: the operator derives the whole secret set from this one client
-// GET, so a release that stopped embedding it would break every retirement decision, and this is
-// what notices. Secret entries hold only scalars, so the array ends at the first "]".
-func clientSecretsSectionFromPocketID(podName, namespace, clientID string) string {
-	body := getFromPocketID(podName, namespace, "/api/oidc/clients/"+clientID)
+func clientSecretsSectionFromPocketID(clientID string) string {
+	body := getFromPocketID("/api/oidc/clients/" + clientID)
 	section := regexp.MustCompile(`"secrets":\[[^\]]*\]`).FindString(body)
 	Expect(section).NotTo(BeEmpty(),
 		"a client read must carry credentials.secrets; the operator has no other source for them: %s", body)
@@ -1202,15 +1039,15 @@ func clientSecretsSectionFromPocketID(podName, namespace, clientID string) strin
 
 // clientSecretIDsFromPocketID returns the IDs of the secrets Pocket-ID holds for a client, in the
 // order the API reports them.
-func clientSecretIDsFromPocketID(podName, namespace, clientID string) []string {
-	return matchAllInClientSecrets(clientSecretsSectionFromPocketID(podName, namespace, clientID), "id")
+func clientSecretIDsFromPocketID(clientID string) []string {
+	return matchAllInClientSecrets(clientSecretsSectionFromPocketID(clientID), "id")
 }
 
 // clientSecretPrefixesFromPocketID returns the clear-text prefixes Pocket-ID recorded for a
 // client's secrets. The operator identifies its own credential by matching these, so how much of
 // the value they carry is a contract with Pocket-ID rather than an implementation detail.
-func clientSecretPrefixesFromPocketID(podName, namespace, clientID string) []string {
-	return matchAllInClientSecrets(clientSecretsSectionFromPocketID(podName, namespace, clientID), "prefix")
+func clientSecretPrefixesFromPocketID(clientID string) []string {
+	return matchAllInClientSecrets(clientSecretsSectionFromPocketID(clientID), "prefix")
 }
 
 func matchAllInClientSecrets(section, field string) []string {
@@ -1221,57 +1058,37 @@ func matchAllInClientSecrets(section, field string) []string {
 	return values
 }
 
-// deleteClientSecretInPocketID removes a client secret directly via the Pocket-ID API, simulating
-// one revoked through the UI or by another cluster.
-func deleteClientSecretInPocketID(podName, namespace, clientID, secretID string) {
-	staticSecretName := instanceName + "-static-api-key"
+// deleteClientSecretInPocketID retires a client secret directly via the Pocket-ID API,
+// simulating one revoked through the UI or by another cluster.
+func deleteClientSecretInPocketID(clientID, secretID string) {
+	GinkgoHelper()
+	ctx, cancel := testCtx()
+	defer cancel()
 
-	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
-
-	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-HTTP_CODE=$(curl -s -o /dev/null -w '%%{http_code}' -X DELETE \
-  -H "X-API-KEY: $API_KEY" %s/api/oidc/clients/%s/secrets/%s)
-if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "204" ]; then
-  echo "Failed to delete client secret: HTTP $HTTP_CODE" >&2
-  exit 1
-fi
-echo "Client secret deleted"`,
-		apiKeyBase64, formatInstanceURL(), clientID, secretID)
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	waitForPodSucceeded(podName, namespace)
+	Expect(pid.DeleteOIDCClientSecret(ctx, clientID, secretID)).
+		To(Succeed(), "deleting secret %s of client %s", secretID, clientID)
 }
 
-// getGroupMembersFromPocketID returns the space-separated user IDs of a group
-// by querying the Pocket-ID API directly.
-func getGroupMembersFromPocketID(podName, namespace, groupID string) string {
-	staticSecretName := instanceName + "-static-api-key"
+func getGroupMembersFromPocketID(groupID string) string {
+	GinkgoHelper()
+	ctx, cancel := testCtx()
+	defer cancel()
 
-	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
+	group, err := pid.GetUserGroup(ctx, groupID)
+	Expect(err).NotTo(HaveOccurred(), "reading group %s", groupID)
+	return strings.Join(group.UserIDs, " ")
+}
 
-	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-BODY=$(curl -s -H "X-API-KEY: $API_KEY" %s/api/user-groups/%s)
-# Extract user IDs from the users array using bracket-matching awk
-USERS_JSON=$(echo "$BODY" | awk -F'"users":' '{print $2}' | awk '{
-  depth=0; out=""; started=0
-  for(i=1;i<=length($0);i++){
-    c=substr($0,i,1)
-    if(c=="[" && !started){started=1; depth=1; out=out c; continue}
-    if(started){
-      out=out c
-      if(c=="[") depth++
-      if(c=="]") depth--
-      if(depth==0){print out; exit}
-    }
-  }
-}')
-echo "$USERS_JSON" | grep -o '"id":"[^"]*"' | sed 's/"id":"//;s/"//' | tr '\n' ' ' | sed 's/ $//'`,
-		apiKeyBase64, formatInstanceURL(), groupID)
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	return getPodLogs(podName, namespace)
+// instanceSelectorYAML renders a spec.instanceSelector block, or nothing when no labels
+// are given.
+func instanceSelectorYAML(labels map[string]string) string {
+	if len(labels) == 0 {
+		return ""
+	}
+	var out strings.Builder
+	out.WriteString("  instanceSelector:\n    matchLabels:\n")
+	for k, v := range labels {
+		out.WriteString(fmt.Sprintf("      %s: %s\n", k, v))
+	}
+	return out.String()
 }

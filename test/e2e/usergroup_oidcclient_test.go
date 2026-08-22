@@ -4,14 +4,11 @@
 package e2e
 
 import (
-	"os/exec"
 	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	"github.com/aclerici38/pocket-id-operator/test/utils"
 )
 
 var _ = Describe("PocketIDUserGroup and PocketIDOIDCClient", Ordered, func() {
@@ -46,10 +43,9 @@ var _ = Describe("PocketIDUserGroup and PocketIDOIDCClient", Ordered, func() {
 
 		It("should reflect custom claims in status", func() {
 			Eventually(func(g Gomega) {
-				output := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.customClaims[?(@.key=='department')].value}")
+				output := getField("pocketidusergroup", groupName, userNS, ".status.customClaims[?(@.key=='department')].value")
 				g.Expect(output).To(Equal("engineering"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 
@@ -69,14 +65,12 @@ var _ = Describe("PocketIDUserGroup and PocketIDOIDCClient", Ordered, func() {
 		})
 
 		It("should include the group in allowedUserGroupIDs", func() {
-			groupID := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-				"-o", "jsonpath={.status.groupID}")
+			groupID := getField("pocketidusergroup", groupName, userNS, ".status.groupID")
 
 			Eventually(func(g Gomega) {
-				output := kubectlGet("pocketidoidcclient", oidcClientName, "-n", userNS,
-					"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+				output := getField("pocketidoidcclient", oidcClientName, userNS, ".status.allowedUserGroupIDs[*]")
 				g.Expect(output).To(ContainSubstring(groupID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 
@@ -121,10 +115,9 @@ var _ = Describe("PocketIDUserGroup and PocketIDOIDCClient", Ordered, func() {
 
 			By("verifying custom claims are updated")
 			Eventually(func(g Gomega) {
-				output := kubectlGet("pocketidusergroup", recoveryGroupName, "-n", userNS,
-					"-o", "jsonpath={.status.customClaims[?(@.key=='team')].value}")
+				output := getField("pocketidusergroup", recoveryGroupName, userNS, ".status.customClaims[?(@.key=='team')].value")
 				g.Expect(output).To(Equal("beta"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 
@@ -174,18 +167,15 @@ var _ = Describe("PocketIDUserGroup and PocketIDOIDCClient", Ordered, func() {
 				AllowedUserGroups:  []string{recoveryOIDCGroup, recoveryOIDCGroupAlt},
 			})
 
-			groupID := kubectlGet("pocketidusergroup", recoveryOIDCGroup, "-n", userNS,
-				"-o", "jsonpath={.status.groupID}")
-			groupIDAlt := kubectlGet("pocketidusergroup", recoveryOIDCGroupAlt, "-n", userNS,
-				"-o", "jsonpath={.status.groupID}")
+			groupID := getField("pocketidusergroup", recoveryOIDCGroup, userNS, ".status.groupID")
+			groupIDAlt := getField("pocketidusergroup", recoveryOIDCGroupAlt, userNS, ".status.groupID")
 
 			By("verifying allowed group IDs include both groups")
 			Eventually(func(g Gomega) {
-				output := kubectlGet("pocketidoidcclient", recoveryOIDCName, "-n", userNS,
-					"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+				output := getField("pocketidoidcclient", recoveryOIDCName, userNS, ".status.allowedUserGroupIDs[*]")
 				g.Expect(output).To(ContainSubstring(groupID))
 				g.Expect(output).To(ContainSubstring(groupIDAlt))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 })
@@ -223,25 +213,21 @@ var _ = Describe("Bidirectional UserGroup and OIDCClient Assignment", Ordered, f
 		})
 
 		It("should include the client ID in allowedOIDCClientIDs status", func() {
-			clientID := kubectlGet("pocketidoidcclient", biClientName, "-n", userNS,
-				"-o", "jsonpath={.status.clientID}")
+			clientID := getField("pocketidoidcclient", biClientName, userNS, ".status.clientID")
 
 			Eventually(func(g Gomega) {
-				output := kubectlGet("pocketidusergroup", biReverseGroup, "-n", userNS,
-					"-o", "jsonpath={.status.allowedOIDCClientIDs[*]}")
+				output := getField("pocketidusergroup", biReverseGroup, userNS, ".status.allowedOIDCClientIDs[*]")
 				g.Expect(output).To(ContainSubstring(clientID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		It("should also reflect the group in the OIDC client's allowedUserGroupIDs", func() {
-			groupID := kubectlGet("pocketidusergroup", biReverseGroup, "-n", userNS,
-				"-o", "jsonpath={.status.groupID}")
+			groupID := getField("pocketidusergroup", biReverseGroup, userNS, ".status.groupID")
 
 			Eventually(func(g Gomega) {
-				output := kubectlGet("pocketidoidcclient", biClientName, "-n", userNS,
-					"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+				output := getField("pocketidoidcclient", biClientName, userNS, ".status.allowedUserGroupIDs[*]")
 				g.Expect(output).To(ContainSubstring(groupID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 
@@ -275,32 +261,26 @@ var _ = Describe("Bidirectional UserGroup and OIDCClient Assignment", Ordered, f
 		})
 
 		It("should include both client IDs in the group's allowedOIDCClientIDs (union)", func() {
-			clientID1 := kubectlGet("pocketidoidcclient", biUnionClient, "-n", userNS,
-				"-o", "jsonpath={.status.clientID}")
-			clientID2 := kubectlGet("pocketidoidcclient", biClientAltName, "-n", userNS,
-				"-o", "jsonpath={.status.clientID}")
+			clientID1 := getField("pocketidoidcclient", biUnionClient, userNS, ".status.clientID")
+			clientID2 := getField("pocketidoidcclient", biClientAltName, userNS, ".status.clientID")
 
 			Eventually(func(g Gomega) {
-				output := kubectlGet("pocketidusergroup", biUnionGroup, "-n", userNS,
-					"-o", "jsonpath={.status.allowedOIDCClientIDs[*]}")
+				output := getField("pocketidusergroup", biUnionGroup, userNS, ".status.allowedOIDCClientIDs[*]")
 				g.Expect(output).To(ContainSubstring(clientID1))
 				g.Expect(output).To(ContainSubstring(clientID2))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		It("should include the group in both clients' allowedUserGroupIDs", func() {
-			groupID := kubectlGet("pocketidusergroup", biUnionGroup, "-n", userNS,
-				"-o", "jsonpath={.status.groupID}")
+			groupID := getField("pocketidusergroup", biUnionGroup, userNS, ".status.groupID")
 
 			Eventually(func(g Gomega) {
-				output1 := kubectlGet("pocketidoidcclient", biUnionClient, "-n", userNS,
-					"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+				output1 := getField("pocketidoidcclient", biUnionClient, userNS, ".status.allowedUserGroupIDs[*]")
 				g.Expect(output1).To(ContainSubstring(groupID))
 
-				output2 := kubectlGet("pocketidoidcclient", biClientAltName, "-n", userNS,
-					"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+				output2 := getField("pocketidoidcclient", biClientAltName, userNS, ".status.allowedUserGroupIDs[*]")
 				g.Expect(output2).To(ContainSubstring(groupID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 
@@ -327,14 +307,12 @@ var _ = Describe("Bidirectional UserGroup and OIDCClient Assignment", Ordered, f
 			waitForReady("pocketidusergroup", biRecoveryGroup, userNS)
 
 			By("verifying the client ID appears in the group's status")
-			clientID := kubectlGet("pocketidoidcclient", biRecoveryClient, "-n", userNS,
-				"-o", "jsonpath={.status.clientID}")
+			clientID := getField("pocketidoidcclient", biRecoveryClient, userNS, ".status.clientID")
 
 			Eventually(func(g Gomega) {
-				output := kubectlGet("pocketidusergroup", biRecoveryGroup, "-n", userNS,
-					"-o", "jsonpath={.status.allowedOIDCClientIDs[*]}")
+				output := getField("pocketidusergroup", biRecoveryGroup, userNS, ".status.allowedOIDCClientIDs[*]")
 				g.Expect(output).To(ContainSubstring(clientID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 })
@@ -363,20 +341,17 @@ var _ = Describe("Group-OIDC Reference Removal", Ordered, func() {
 				AllowedUserGroups: []string{fwdRemovalGroup},
 			})
 
-			groupID := kubectlGet("pocketidusergroup", fwdRemovalGroup, "-n", userNS,
-				"-o", "jsonpath={.status.groupID}")
+			groupID := getField("pocketidusergroup", fwdRemovalGroup, userNS, ".status.groupID")
 
 			By("confirming the group is initially present in allowedUserGroupIDs")
 			Eventually(func(g Gomega) {
-				output := kubectlGet("pocketidoidcclient", fwdRemovalClient, "-n", userNS,
-					"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+				output := getField("pocketidoidcclient", fwdRemovalClient, userNS, ".status.allowedUserGroupIDs[*]")
 				g.Expect(output).To(ContainSubstring(groupID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		It("should remove the group from allowedUserGroupIDs after reference is dropped", func() {
-			groupID := kubectlGet("pocketidusergroup", fwdRemovalGroup, "-n", userNS,
-				"-o", "jsonpath={.status.groupID}")
+			groupID := getField("pocketidusergroup", fwdRemovalGroup, userNS, ".status.groupID")
 
 			By("updating the OIDC client to remove allowedUserGroups")
 			createOIDCClient(OIDCClientOptions{
@@ -388,10 +363,9 @@ var _ = Describe("Group-OIDC Reference Removal", Ordered, func() {
 
 			By("verifying the group ID is gone from allowedUserGroupIDs")
 			Eventually(func(g Gomega) {
-				output := kubectlGet("pocketidoidcclient", fwdRemovalClient, "-n", userNS,
-					"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+				output := getField("pocketidoidcclient", fwdRemovalClient, userNS, ".status.allowedUserGroupIDs[*]")
 				g.Expect(output).NotTo(ContainSubstring(groupID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 
@@ -421,20 +395,17 @@ var _ = Describe("Group-OIDC Reference Removal", Ordered, func() {
 				AllowedOIDCClients: []ResourceRef{{Name: revRemovalClient}},
 			})
 
-			groupID := kubectlGet("pocketidusergroup", revRemovalGroup, "-n", userNS,
-				"-o", "jsonpath={.status.groupID}")
+			groupID := getField("pocketidusergroup", revRemovalGroup, userNS, ".status.groupID")
 
 			By("confirming the group is initially in the OIDCClient's allowedUserGroupIDs")
 			Eventually(func(g Gomega) {
-				output := kubectlGet("pocketidoidcclient", revRemovalClient, "-n", userNS,
-					"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+				output := getField("pocketidoidcclient", revRemovalClient, userNS, ".status.allowedUserGroupIDs[*]")
 				g.Expect(output).To(ContainSubstring(groupID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		It("should remove the group from the OIDCClient's allowedUserGroupIDs after reverse reference is dropped", func() {
-			groupID := kubectlGet("pocketidusergroup", revRemovalGroup, "-n", userNS,
-				"-o", "jsonpath={.status.groupID}")
+			groupID := getField("pocketidusergroup", revRemovalGroup, userNS, ".status.groupID")
 
 			By("updating the user group to remove the OIDC client from allowedOIDCClients")
 			createUserGroup(UserGroupOptions{
@@ -450,10 +421,9 @@ var _ = Describe("Group-OIDC Reference Removal", Ordered, func() {
 			// Allow the full resync window plus buffer.
 			By("verifying the group ID is gone from the OIDCClient's allowedUserGroupIDs")
 			Eventually(func(g Gomega) {
-				output := kubectlGet("pocketidoidcclient", revRemovalClient, "-n", userNS,
-					"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+				output := getField("pocketidoidcclient", revRemovalClient, userNS, ".status.allowedUserGroupIDs[*]")
 				g.Expect(output).NotTo(ContainSubstring(groupID))
-			}, 5*time.Minute, 5*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 })
@@ -499,10 +469,9 @@ var _ = Describe("UserGroup with Usernames and UserIds", Ordered, func() {
 
 			By("verifying the group has the correct user")
 			Eventually(func(g Gomega) {
-				userIDs := kubectlGet("pocketidusergroup", usernameGroupName, "-n", userNS,
-					"-o", "jsonpath={.status.managedUserIDs[*]}")
+				userIDs := getField("pocketidusergroup", usernameGroupName, userNS, ".status.managedUserIDs[*]")
 				g.Expect(userIDs).To(ContainSubstring(userID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		It("should report error for non-existent username", func() {
@@ -552,10 +521,9 @@ var _ = Describe("UserGroup with Usernames and UserIds", Ordered, func() {
 
 			By("verifying the group has the correct user")
 			Eventually(func(g Gomega) {
-				userIDs := kubectlGet("pocketidusergroup", userIdGroupName, "-n", userNS,
-					"-o", "jsonpath={.status.managedUserIDs[*]}")
+				userIDs := getField("pocketidusergroup", userIdGroupName, userNS, ".status.managedUserIDs[*]")
 				g.Expect(userIDs).To(ContainSubstring(userID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 
@@ -612,12 +580,11 @@ var _ = Describe("UserGroup with Usernames and UserIds", Ordered, func() {
 
 			By("verifying the group has all 3 users")
 			Eventually(func(g Gomega) {
-				userIDs := kubectlGet("pocketidusergroup", mixedGroupName, "-n", userNS,
-					"-o", "jsonpath={.status.managedUserIDs[*]}")
+				userIDs := getField("pocketidusergroup", mixedGroupName, userNS, ".status.managedUserIDs[*]")
 				g.Expect(userIDs).To(ContainSubstring(userRefsUserID))
 				g.Expect(userIDs).To(ContainSubstring(usernameUserID))
 				g.Expect(userIDs).To(ContainSubstring(mixedUserIdUserID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		It("should deduplicate users specified multiple ways", func() {
@@ -641,11 +608,10 @@ var _ = Describe("UserGroup with Usernames and UserIds", Ordered, func() {
 
 			By("verifying the group has only 1 user (deduplicated)")
 			Eventually(func(g Gomega) {
-				userIDs := kubectlGet("pocketidusergroup", dedupeGroupName, "-n", userNS,
-					"-o", "jsonpath={.status.managedUserIDs[*]}")
+				userIDs := getField("pocketidusergroup", dedupeGroupName, userNS, ".status.managedUserIDs[*]")
 				// Should contain the user ID exactly once (no duplicates)
 				g.Expect(userIDs).To(Equal(usernameUserID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 
@@ -684,10 +650,9 @@ var _ = Describe("UserGroup with Usernames and UserIds", Ordered, func() {
 
 			By("verifying the group has the correct user")
 			Eventually(func(g Gomega) {
-				userIDs := kubectlGet("pocketidusergroup", recoveryUsernameGroupName, "-n", userNS,
-					"-o", "jsonpath={.status.managedUserIDs[*]}")
+				userIDs := getField("pocketidusergroup", recoveryUsernameGroupName, userNS, ".status.managedUserIDs[*]")
 				g.Expect(userIDs).To(ContainSubstring(userID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 })
@@ -790,10 +755,8 @@ var _ = Describe("OIDC Client Secrets", Ordered, func() {
 			publicSecretName := publicClientName + "-oidc-credentials"
 			waitForSecretExists(publicSecretName, userNS)
 
-			cmd := exec.Command("kubectl", "get", "secret", publicSecretName, "-n", userNS,
-				"-o", "jsonpath={.data.client_secret}")
-			output, _ := utils.Run(cmd)
-			Expect(strings.TrimSpace(output)).To(BeEmpty())
+			Expect(secretData(publicSecretName, userNS, "client_secret")).To(BeEmpty(),
+				"a public client has no client secret to store")
 		})
 
 		It("should still include client_id", func() {
@@ -818,10 +781,8 @@ var _ = Describe("OIDC Client Secrets", Ordered, func() {
 		It("should not create secret when disabled", func() {
 			disabledSecretName := disabledSecretClient + "-oidc-credentials"
 			Consistently(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "secret", disabledSecretName, "-n", userNS)
-				_, err := utils.Run(cmd)
-				g.Expect(err).To(HaveOccurred())
-			}, 10*time.Second, 2*time.Second).Should(Succeed())
+				g.Expect(objectExists("secret", disabledSecretName, userNS)).To(BeFalse())
+			}, 10*time.Second).Should(Succeed())
 		})
 	})
 
@@ -849,9 +810,9 @@ var _ = Describe("OIDC Client Secrets", Ordered, func() {
 
 			By("verifying the client_secret is unchanged")
 			Consistently(func(g Gomega) {
-				currentSecret := kubectlGetSecretData(preserveSecretName, userNS, "client_secret")
+				currentSecret := secretData(preserveSecretName, userNS, "client_secret")
 				g.Expect(currentSecret).To(Equal(originalSecret))
-			}, 20*time.Second, 2*time.Second).Should(Succeed())
+			}, 20*time.Second).Should(Succeed())
 		})
 
 		It("should regenerate client_secret each time the annotation is added", func() {
@@ -859,42 +820,42 @@ var _ = Describe("OIDC Client Secrets", Ordered, func() {
 			originalSecret := waitForSecretKey(preserveSecretName, userNS, "client_secret")
 
 			By("adding the regenerate annotation the first time")
-			Expect(kubectlAnnotate("pocketidoidcclient", regenerateSecretClient, userNS,
+			Expect(annotateObject("pocketidoidcclient", regenerateSecretClient, userNS,
 				"pocketid.internal/regenerate-client-secret=true")).To(Succeed())
 
 			By("verifying the client_secret is regenerated")
 			var firstRegenSecret string
 			Eventually(func(g Gomega) {
-				firstRegenSecret = kubectlGetSecretData(preserveSecretName, userNS, "client_secret")
+				firstRegenSecret = secretData(preserveSecretName, userNS, "client_secret")
 				g.Expect(firstRegenSecret).NotTo(BeEmpty())
 				g.Expect(firstRegenSecret).NotTo(Equal(originalSecret))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying the annotation is removed")
 			Eventually(func(g Gomega) {
-				output := kubectlGet("pocketidoidcclient", regenerateSecretClient, "-n", userNS,
-					"-o", "jsonpath={.metadata.annotations.pocketid\\.internal/regenerate-client-secret}")
+				output := getField("pocketidoidcclient", regenerateSecretClient, userNS,
+					".metadata.annotations.pocketid\\.internal/regenerate-client-secret")
 				g.Expect(output).To(BeEmpty())
-			}, time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("adding the regenerate annotation a second time")
-			Expect(kubectlAnnotate("pocketidoidcclient", regenerateSecretClient, userNS,
+			Expect(annotateObject("pocketidoidcclient", regenerateSecretClient, userNS,
 				"pocketid.internal/regenerate-client-secret=true")).To(Succeed())
 
 			By("verifying the client_secret is regenerated again to a new value")
 			Eventually(func(g Gomega) {
-				currentSecret := kubectlGetSecretData(preserveSecretName, userNS, "client_secret")
+				currentSecret := secretData(preserveSecretName, userNS, "client_secret")
 				g.Expect(currentSecret).NotTo(BeEmpty())
 				g.Expect(currentSecret).NotTo(Equal(originalSecret))
 				g.Expect(currentSecret).NotTo(Equal(firstRegenSecret))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying the annotation is removed again")
 			Eventually(func(g Gomega) {
-				output := kubectlGet("pocketidoidcclient", regenerateSecretClient, "-n", userNS,
-					"-o", "jsonpath={.metadata.annotations.pocketid\\.internal/regenerate-client-secret}")
+				output := getField("pocketidoidcclient", regenerateSecretClient, userNS,
+					".metadata.annotations.pocketid\\.internal/regenerate-client-secret")
 				g.Expect(output).To(BeEmpty())
-			}, time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 })
@@ -938,18 +899,16 @@ var _ = Describe("Multiple OIDC Clients Sharing a User Group", Ordered, func() {
 	})
 
 	It("should reflect the shared group in all three clients' allowedUserGroupIDs", func() {
-		groupID := kubectlGet("pocketidusergroup", sharedGroupName, "-n", userNS,
-			"-o", "jsonpath={.status.groupID}")
+		groupID := getField("pocketidusergroup", sharedGroupName, userNS, ".status.groupID")
 		Expect(groupID).NotTo(BeEmpty())
 
 		for _, name := range []string{sharedClientA, sharedClientB, sharedClientC} {
 			clientName := name
 			Eventually(func(g Gomega) {
-				output := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-					"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+				output := getField("pocketidoidcclient", clientName, userNS, ".status.allowedUserGroupIDs[*]")
 				g.Expect(output).To(ContainSubstring(groupID),
 					"client %s should have the shared group in allowedUserGroupIDs", clientName)
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		}
 	})
 
@@ -962,7 +921,7 @@ var _ = Describe("Multiple OIDC Clients Sharing a User Group", Ordered, func() {
 			Email:    secondUser + "@example.com",
 		})
 
-		err := kubectlPatch("pocketidusergroup", sharedGroupName, userNS,
+		err := patchObject("pocketidusergroup", sharedGroupName, userNS,
 			`{"spec":{"users":{"userRefs":[{"name":"`+sharedUserName+`"},{"name":"`+secondUser+`"}]}}}`)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -970,18 +929,16 @@ var _ = Describe("Multiple OIDC Clients Sharing a User Group", Ordered, func() {
 		waitForReady("pocketidusergroup", sharedGroupName, userNS)
 
 		By("verifying all three clients are still Ready with the correct group")
-		groupID := kubectlGet("pocketidusergroup", sharedGroupName, "-n", userNS,
-			"-o", "jsonpath={.status.groupID}")
+		groupID := getField("pocketidusergroup", sharedGroupName, userNS, ".status.groupID")
 
 		for _, name := range []string{sharedClientA, sharedClientB, sharedClientC} {
 			clientName := name
 			By("checking client " + clientName)
 			waitForReady("pocketidoidcclient", clientName, userNS)
 			Eventually(func(g Gomega) {
-				output := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-					"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+				output := getField("pocketidoidcclient", clientName, userNS, ".status.allowedUserGroupIDs[*]")
 				g.Expect(output).To(ContainSubstring(groupID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		}
 	})
 })
@@ -1004,7 +961,7 @@ var _ = Describe("OIDCClient attaching groups that have no PocketIDUserGroup CR"
 
 	BeforeAll(func() {
 		By("creating a user group directly in Pocket-ID, with no CR in this cluster")
-		externalGroupID = createUserGroupInPocketID(createGroupPod, userNS, externalGroup, "External Only Group")
+		externalGroupID = createUserGroupInPocketID(externalGroup, "External Only Group")
 		Expect(externalGroupID).NotTo(BeEmpty(), "expected a group ID from Pocket-ID")
 	})
 
@@ -1021,18 +978,16 @@ var _ = Describe("OIDCClient attaching groups that have no PocketIDUserGroup CR"
 	})
 
 	It("should push the assignment through to Pocket-ID", func() {
-		clientID := kubectlGet("pocketidoidcclient", byNameClient, "-n", userNS,
-			"-o", "jsonpath={.status.clientID}")
+		clientID := getField("pocketidoidcclient", byNameClient, userNS, ".status.clientID")
 
 		Eventually(func(g Gomega) {
-			body := getFromPocketID(verifyAttachedPod, userNS, "/api/oidc/clients/"+clientID)
+			body := getFromPocketID("/api/oidc/clients/" + clientID)
 			g.Expect(body).To(ContainSubstring(externalGroupID))
-		}, 2*time.Minute, 5*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 
 	It("should leave no PocketIDUserGroup behind for the external group", func() {
-		output := kubectlGet("pocketidusergroup", "-n", userNS, "-o", "name")
-		Expect(output).NotTo(ContainSubstring(externalGroup))
+		Expect(listNames("pocketidusergroup", userNS)).NotTo(ContainElement(ContainSubstring(externalGroup)))
 	})
 
 	It("should resolve a group by groupID", func() {
@@ -1061,10 +1016,9 @@ var _ = Describe("OIDCClient attaching groups that have no PocketIDUserGroup CR"
 
 		By("verifying it stays not Ready across resyncs")
 		Consistently(func(g Gomega) {
-			output := kubectlGet("pocketidoidcclient", badIDClient, "-n", userNS,
-				"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+			output := getField("pocketidoidcclient", badIDClient, userNS, ".status.conditions[?(@.type=='Ready')].status")
 			g.Expect(output).To(Equal("False"))
-		}, 30*time.Second, 5*time.Second).Should(Succeed())
+		}, 30*time.Second).Should(Succeed())
 	})
 
 	It("should report UserGroupNotFound for a group that does not exist", func() {
@@ -1078,7 +1032,7 @@ var _ = Describe("OIDCClient attaching groups that have no PocketIDUserGroup CR"
 	})
 
 	It("should recover once the referenced group exists in Pocket-ID", func() {
-		createUserGroupInPocketID("create-late-group", userNS, nonexistentGroup, "Late Group")
+		createUserGroupInPocketID(nonexistentGroup, "Late Group")
 		waitForReady("pocketidoidcclient", missingRefClient, userNS)
 	})
 
@@ -1086,13 +1040,13 @@ var _ = Describe("OIDCClient attaching groups that have no PocketIDUserGroup CR"
 		// The core promise: the operator resolves the group but never manages it.
 		// friendlyName is the field a PocketIDUserGroup would overwrite on every
 		// resync, so its survival is the strongest available signal.
-		body := getFromPocketID("verify-external-group-unmodified", userNS, "/api/user-groups/"+externalGroupID)
+		body := getFromPocketID("/api/user-groups/" + externalGroupID)
 		Expect(body).To(ContainSubstring("External Only Group"))
 		Expect(body).To(ContainSubstring(externalGroup))
 	})
 
 	It("should not block deletion of the client on the external group", func() {
-		Expect(kubectlDeleteWait("pocketidoidcclient", byNameClient, userNS, 2*time.Minute)).To(Succeed())
+		Expect(deleteObjectAndWait("pocketidoidcclient", byNameClient, userNS, 2*time.Minute)).To(Succeed())
 		waitForResourceDeleted("pocketidoidcclient", byNameClient, userNS)
 	})
 
@@ -1103,7 +1057,7 @@ var _ = Describe("OIDCClient attaching groups that have no PocketIDUserGroup CR"
 		waitForStatusField("pocketidoidcclient", byIDClient, userNS,
 			".status.allowedUserGroupIDs[0]", externalGroupID)
 
-		body := getFromPocketID("verify-external-group-survives", userNS, "/api/user-groups/"+externalGroupID)
+		body := getFromPocketID("/api/user-groups/" + externalGroupID)
 		Expect(body).To(ContainSubstring(externalGroupID))
 	})
 })
@@ -1132,14 +1086,13 @@ var _ = Describe("OIDCClient mixing CR, name, and ID group references", Ordered,
 			GroupName:    comboCRPocket,
 			FriendlyName: "Combo CR Group",
 		})
-		crGroupID = kubectlGet("pocketidusergroup", comboCRGroup, "-n", userNS,
-			"-o", "jsonpath={.status.groupID}")
+		crGroupID = getField("pocketidusergroup", comboCRGroup, userNS, ".status.groupID")
 		Expect(crGroupID).NotTo(BeEmpty())
 
 		By("creating three groups directly in Pocket-ID with no CR")
-		extAID = createUserGroupInPocketID("create-combo-a", userNS, comboExtA, "Combo External A")
-		extBID = createUserGroupInPocketID("create-combo-b", userNS, comboExtB, "Combo External B")
-		extByIDGid = createUserGroupInPocketID("create-combo-id", userNS, comboExtByID, "Combo External By ID")
+		extAID = createUserGroupInPocketID(comboExtA, "Combo External A")
+		extBID = createUserGroupInPocketID(comboExtB, "Combo External B")
+		extByIDGid = createUserGroupInPocketID(comboExtByID, "Combo External By ID")
 		Expect(extAID).NotTo(BeEmpty())
 		Expect(extBID).NotTo(BeEmpty())
 		Expect(extByIDGid).NotTo(BeEmpty())
@@ -1156,25 +1109,23 @@ var _ = Describe("OIDCClient mixing CR, name, and ID group references", Ordered,
 
 		waitForReady("pocketidoidcclient", comboClient, userNS)
 		Eventually(func(g Gomega) {
-			output := kubectlGet("pocketidoidcclient", comboClient, "-n", userNS,
-				"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+			output := getField("pocketidoidcclient", comboClient, userNS, ".status.allowedUserGroupIDs[*]")
 			for _, id := range []string{crGroupID, extAID, extBID, extByIDGid} {
 				g.Expect(output).To(ContainSubstring(id))
 			}
 			g.Expect(strings.Fields(output)).To(HaveLen(4))
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 
 	It("should push all four groups through to Pocket-ID", func() {
-		clientID := kubectlGet("pocketidoidcclient", comboClient, "-n", userNS,
-			"-o", "jsonpath={.status.clientID}")
+		clientID := getField("pocketidoidcclient", comboClient, userNS, ".status.clientID")
 
 		Eventually(func(g Gomega) {
-			body := getFromPocketID("verify-combo-groups", userNS, "/api/oidc/clients/"+clientID)
+			body := getFromPocketID("/api/oidc/clients/" + clientID)
 			for _, id := range []string{crGroupID, extAID, extBID, extByIDGid} {
 				g.Expect(body).To(ContainSubstring(id))
 			}
-		}, 2*time.Minute, 5*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 
 	It("should collapse duplicate references to the same group", func() {
@@ -1189,10 +1140,9 @@ var _ = Describe("OIDCClient mixing CR, name, and ID group references", Ordered,
 
 		waitForReady("pocketidoidcclient", comboClient, userNS)
 		Eventually(func(g Gomega) {
-			output := kubectlGet("pocketidoidcclient", comboClient, "-n", userNS,
-				"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+			output := getField("pocketidoidcclient", comboClient, userNS, ".status.allowedUserGroupIDs[*]")
 			g.Expect(strings.Fields(output)).To(Equal([]string{crGroupID}))
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 
 	It("should detach external groups when their references are removed", func() {
@@ -1204,20 +1154,18 @@ var _ = Describe("OIDCClient mixing CR, name, and ID group references", Ordered,
 
 		waitForReady("pocketidoidcclient", comboClient, userNS)
 		Eventually(func(g Gomega) {
-			output := kubectlGet("pocketidoidcclient", comboClient, "-n", userNS,
-				"-o", "jsonpath={.status.allowedUserGroupIDs[*]}")
+			output := getField("pocketidoidcclient", comboClient, userNS, ".status.allowedUserGroupIDs[*]")
 			g.Expect(strings.Fields(output)).To(Equal([]string{extAID}))
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 
 	It("should not add a finalizer to the CR group for external references", func() {
 		// The CR group is no longer referenced by the client at all, so the
 		// cross-resource finalizer must be gone and deletion must not block.
 		Eventually(func(g Gomega) {
-			finalizers := kubectlGet("pocketidusergroup", comboCRGroup, "-n", userNS,
-				"-o", "jsonpath={.metadata.finalizers}")
+			finalizers := getField("pocketidusergroup", comboCRGroup, userNS, ".metadata.finalizers")
 			g.Expect(finalizers).NotTo(ContainSubstring("pocketid.internal/oidc-client-finalizer"))
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 })
 
@@ -1232,7 +1180,7 @@ var _ = Describe("OIDCClient referencing a group deleted upstream", Ordered, fun
 
 	BeforeAll(func() {
 		By("creating a group directly in Pocket-ID, with no CR in this cluster")
-		doomedGroupID = createUserGroupInPocketID("create-doomed-group", userNS, doomedGroup, "Doomed Group")
+		doomedGroupID = createUserGroupInPocketID(doomedGroup, "Doomed Group")
 		Expect(doomedGroupID).NotTo(BeEmpty())
 
 		By("attaching two clients, one by groupID and one by groupName")
@@ -1258,7 +1206,7 @@ var _ = Describe("OIDCClient referencing a group deleted upstream", Ordered, fun
 
 	It("should go not Ready after the group is deleted in Pocket-ID", func() {
 		By("deleting the group out-of-band")
-		deleteUserGroupInPocketID("delete-doomed-group", userNS, doomedGroupID)
+		deleteUserGroupInPocketID(doomedGroupID)
 
 		// Nothing in the cluster changed, so this is only caught because references
 		// are re-resolved against Pocket-ID on every reconcile.
@@ -1272,7 +1220,7 @@ var _ = Describe("OIDCClient referencing a group deleted upstream", Ordered, fun
 	It("should recover a groupName reference when the group is recreated", func() {
 		// A name can be re-resolved to whatever group now holds it; a groupID cannot,
 		// since a recreated group gets a new ID.
-		newID := createUserGroupInPocketID("recreate-doomed-group", userNS, doomedGroup, "Doomed Group")
+		newID := createUserGroupInPocketID(doomedGroup, "Doomed Group")
 		Expect(newID).NotTo(BeEmpty())
 		Expect(newID).NotTo(Equal(doomedGroupID))
 

@@ -24,6 +24,7 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
@@ -250,6 +251,73 @@ var _ = Describe("PocketIDUser Controller", func() {
 			Expect(createdUser.Spec.APIKeys[0].SecretRef).NotTo(BeNil())
 			Expect(createdUser.Spec.APIKeys[0].SecretRef.Name).To(Equal(apiKeySecretName))
 			Expect(createdUser.Spec.APIKeys[0].SecretRef.Key).To(Equal("token"))
+		})
+	})
+
+	// The configuration nearly every real deployment has: no instanceSelector at all.
+	// SelectInstance lists cluster-wide and returns the single instance, so the resource must
+	// reconcile against it rather than reporting a missing or ambiguous selection. The e2e
+	// suite now names an instance on every resource, so without this the selectorless path
+	// would go entirely uncovered.
+	Context("When exactly one instance exists and the resource selects none", func() {
+		const soleInstanceNS = "sole-instance"
+
+		var (
+			soleNamespace *corev1.Namespace
+			soleInstance  *pocketidinternalv1alpha1.PocketIDInstance
+		)
+
+		BeforeEach(func() {
+			soleNamespace = &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: soleInstanceNS}}
+			Expect(k8sClient.Create(ctx, soleNamespace)).To(Succeed())
+
+			soleInstance = &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{Name: "sole-instance", Namespace: soleInstanceNS},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{Value: "test-encryption-key-9012"},
+				},
+			}
+			Expect(k8sClient.Create(ctx, soleInstance)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if soleInstance != nil {
+				_ = k8sClient.Delete(ctx, soleInstance)
+			}
+			if soleNamespace != nil {
+				_ = k8sClient.Delete(ctx, soleNamespace)
+			}
+		})
+
+		It("should resolve the only instance for a user with no instanceSelector", func() {
+			// The assertion below only means anything while the selection is unambiguous,
+			// so prove that first rather than assuming the suite left nothing behind.
+			instances := &pocketidinternalv1alpha1.PocketIDInstanceList{}
+			Expect(k8sClient.List(ctx, instances)).To(Succeed())
+			Expect(instances.Items).To(HaveLen(1),
+				"this spec needs exactly one instance cluster-wide; another spec leaked one")
+
+			user := &pocketidinternalv1alpha1.PocketIDUser{
+				ObjectMeta: metav1.ObjectMeta{Name: "no-selector-user", Namespace: namespace},
+				// InstanceSelector deliberately omitted.
+			}
+			Expect(k8sClient.Create(ctx, user)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, user) })
+
+			// envtest has no Pocket-ID behind the instance, so the reconcile cannot finish.
+			// What matters is that it fails *past* selection: any reason other than
+			// InstanceSelectionError proves the nil selector resolved to the sole instance.
+			Eventually(func() string {
+				updated := &pocketidinternalv1alpha1.PocketIDUser{}
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: user.Name, Namespace: namespace}, updated); err != nil {
+					return ""
+				}
+				cond := meta.FindStatusCondition(updated.Status.Conditions, "Ready")
+				if cond == nil {
+					return ""
+				}
+				return cond.Reason
+			}, timeout, interval).ShouldNot(SatisfyAny(BeEmpty(), Equal("InstanceSelectionError")))
 		})
 	})
 

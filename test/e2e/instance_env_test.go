@@ -24,14 +24,15 @@ import (
 // v2.14.0 while every unit test still passed.
 const envRejectedMarker = "invalid environment app configuration"
 
-var _ = Describe("PocketIDInstance Maximal Environment", Serial, Ordered, func() {
+var _ = Describe("PocketIDInstance Maximal Environment", Ordered, func() {
 	const maximalInstance = "maximal-env-instance"
 
 	BeforeAll(func() {
-		// A leftover second instance would break every later spec that selects the
-		// shared instance without a selector, so clean up even on failure.
+		// Every resource names its instance explicitly, so this one existing alongside
+		// the shared instance is harmless; it is still cleaned up on failure so the
+		// cluster does not accumulate pods across specs.
 		DeferCleanup(func() {
-			_ = kubectlDeleteWait("pocketidinstance", maximalInstance, instanceNS, 60*time.Second)
+			_ = deleteObjectAndWait("pocketidinstance", maximalInstance, instanceNS, 60*time.Second)
 		})
 
 		// kubectl apply defaults to --validate=strict, so a field the CRD does not
@@ -44,25 +45,23 @@ var _ = Describe("PocketIDInstance Maximal Environment", Serial, Ordered, func()
 			// Fail immediately rather than burning the full timeout: once
 			// Pocket-ID has rejected a variable it exits, and the pod only
 			// crash-loops from here.
-			if logs := kubectlLogs(pocketIDPodName(maximalInstance), instanceNS); strings.Contains(logs, envRejectedMarker) {
+			if logs := podLogs(pocketIDPodName(maximalInstance), instanceNS); strings.Contains(logs, envRejectedMarker) {
 				StopTrying("Pocket-ID rejected the operator's environment").
 					Attach("pocket-id logs", logs).
 					Now()
 			}
-			status := kubectlGet("pocketidinstance", maximalInstance, "-n", instanceNS,
-				"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+			status := getField("pocketidinstance", maximalInstance, instanceNS, ".status.conditions[?(@.type=='Ready')].status")
 			g.Expect(status).To(Equal("True"))
-		}, 5*time.Minute, 5*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 
 	It("should not have logged an app config validation failure", func() {
-		logs := kubectlLogs(pocketIDPodName(maximalInstance), instanceNS)
+		logs := podLogs(pocketIDPodName(maximalInstance), instanceNS)
 		Expect(logs).NotTo(ContainSubstring(envRejectedMarker))
 	})
 
 	It("should not have restarted the container", func() {
-		restarts := kubectlGet("pod", pocketIDPodName(maximalInstance), "-n", instanceNS,
-			"-o", "jsonpath={.status.containerStatuses[0].restartCount}")
+		restarts := getField("pod", pocketIDPodName(maximalInstance), instanceNS, ".status.containerStatuses[0].restartCount")
 		Expect(restarts).To(Equal("0"), "Pocket-ID restarted, which a rejected environment causes")
 	})
 })
@@ -70,9 +69,7 @@ var _ = Describe("PocketIDInstance Maximal Environment", Serial, Ordered, func()
 // pocketIDPodName returns the pod backing the named instance, or "" while it is
 // still being created.
 func pocketIDPodName(instance string) string {
-	return kubectlGet("pod", "-n", instanceNS,
-		"-l", "app.kubernetes.io/instance="+instance,
-		"-o", "jsonpath={.items[0].metadata.name}")
+	return getFieldBySelector("pod", instanceNS, "app.kubernetes.io/instance="+instance, ".metadata.name")
 }
 
 // maximalInstanceYAML renders an instance that sets every spec field the

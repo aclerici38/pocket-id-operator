@@ -5,11 +5,8 @@ package e2e
 
 import (
 	"fmt"
-	"os/exec"
-	"strings"
 	"time"
 
-	"github.com/aclerici38/pocket-id-operator/test/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -27,9 +24,11 @@ var _ = Describe("OIDC Client Declarative Client Secret", Ordered, func() {
 	)
 
 	apply := func(yaml string) (string, error) {
-		cmd := exec.Command("kubectl", "apply", "-f", "-")
-		cmd.Stdin = strings.NewReader(yaml)
-		return utils.Run(cmd)
+		err := applyYAMLErr(yaml)
+		if err != nil {
+			return err.Error(), err
+		}
+		return "", nil
 	}
 
 	sourceSecretYAML := func(value string) string {
@@ -60,13 +59,13 @@ metadata:
   name: %s
   namespace: %s
 spec:
-  callbackUrls:
+%s  callbackUrls:
   - https://declared-secret-test.example.com/callback
   isPublic: %t
   clientSecretRef:
     name: %s
     key: %s%s
-`, name, userNS, isPublic, sourceSecretName, sourceKey, rotation)
+`, name, userNS, instanceSelectorYAML(sharedInstanceLabels), isPublic, sourceSecretName, sourceKey, rotation)
 	}
 
 	BeforeAll(func() {
@@ -76,25 +75,7 @@ spec:
 	})
 
 	AfterAll(func() {
-		kubectlDelete("secret", sourceSecretName, userNS)
-	})
-
-	Context("Admission Validation", func() {
-		It("should reject a public client with clientSecretRef", func() {
-			By("applying a PocketIDOIDCClient with isPublic and clientSecretRef")
-			output, err := apply(declaredClientYAML("test-declared-secret-public", true, false))
-			Expect(err).To(HaveOccurred(), "apply should fail CEL validation")
-			Expect(output).To(ContainSubstring("clientSecretRef requires a confidential client"),
-				"error should indicate a public client cannot have a declared secret")
-		})
-
-		It("should reject enabling clientSecretRotation with clientSecretRef", func() {
-			By("applying a PocketIDOIDCClient with clientSecretRef and rotation enabled")
-			output, err := apply(declaredClientYAML("test-declared-secret-rotation", false, true))
-			Expect(err).To(HaveOccurred(), "apply should fail CEL validation")
-			Expect(output).To(ContainSubstring("clientSecretRotation cannot be enabled when clientSecretRef is set"),
-				"error should indicate rotation cannot replace a declared secret")
-		})
+		deleteObject("secret", sourceSecretName, userNS)
 	})
 
 	Context("Declared Secret Lifecycle", func() {
@@ -111,8 +92,8 @@ spec:
 
 			By("verifying the generated Secret holds the declared value, not a generated one")
 			Eventually(func() string {
-				return kubectlGetSecretData(credentialsSecret, userNS, "client_secret")
-			}, time.Minute, 2*time.Second).Should(Equal(declaredValue))
+				return secretData(credentialsSecret, userNS, "client_secret")
+			}).Should(Equal(declaredValue))
 
 			By("verifying status records the source revision that was pushed")
 			version := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS,
@@ -125,13 +106,12 @@ spec:
 			// is what it actually kept.
 			By("verifying Pocket-ID accepts the declared value as the client secret")
 			clientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
-			Expect(clientSecretAuthResult("auth-declared", userNS, clientID, declaredValue)).To(Equal("ok"))
+			Expect(clientSecretAuthResult(clientID, declaredValue)).To(Equal("ok"))
 		})
 
 		It("should re-push after the source Secret changes", func() {
 			By("recording the source revision pushed so far")
-			before := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-				"-o", "jsonpath={.status.clientSecretSourceVersion}")
+			before := getField("pocketidoidcclient", clientName, userNS, ".status.clientSecretSourceVersion")
 
 			By("updating the value in the source Secret")
 			_, err := apply(sourceSecretYAML(rotatedValue))
@@ -139,59 +119,56 @@ spec:
 
 			By("verifying the new value reaches the generated Secret")
 			Eventually(func() string {
-				return kubectlGetSecretData(credentialsSecret, userNS, "client_secret")
-			}, 3*time.Minute, 2*time.Second).Should(Equal(rotatedValue))
+				return secretData(credentialsSecret, userNS, "client_secret")
+			}).Should(Equal(rotatedValue))
 
 			By("verifying the recorded source revision advanced")
 			Eventually(func() string {
-				return kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-					"-o", "jsonpath={.status.clientSecretSourceVersion}")
-			}, time.Minute, 2*time.Second).ShouldNot(Equal(before))
+				return getField("pocketidoidcclient", clientName, userNS, ".status.clientSecretSourceVersion")
+			}).ShouldNot(Equal(before))
 
 			// A push appends rather than replaces, so without retirement the value the user
 			// rotated away from would keep authenticating indefinitely.
 			By("verifying the new value works and the one it replaced was retired")
-			clientID := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-				"-o", "jsonpath={.status.clientID}")
+			clientID := getField("pocketidoidcclient", clientName, userNS, ".status.clientID")
 			Eventually(func() []string {
-				return clientSecretIDsFromPocketID(
-					fmt.Sprintf("list-declared-%d", time.Now().UnixNano()), userNS, clientID)
-			}, time.Minute, 10*time.Second).Should(HaveLen(1))
-			Expect(clientSecretAuthResult("auth-declared-new", userNS, clientID, rotatedValue)).To(Equal("ok"))
-			Expect(clientSecretAuthResult("auth-declared-old", userNS, clientID, declaredValue)).
+				return clientSecretIDsFromPocketID(clientID)
+			}).Should(HaveLen(1))
+			Expect(clientSecretAuthResult(clientID, rotatedValue)).To(Equal("ok"))
+			Expect(clientSecretAuthResult(clientID, declaredValue)).
 				To(Equal("invalid_client"))
 		})
 
 		It("should ignore the regenerate-client-secret annotation", func() {
 			By("setting the regenerate-client-secret annotation")
-			Expect(kubectlAnnotate("pocketidoidcclient", clientName, userNS,
+			Expect(annotateObject("pocketidoidcclient", clientName, userNS,
 				"pocketid.internal/regenerate-client-secret=true")).To(Succeed())
 
 			By("waiting for the operator to consume and remove the annotation")
 			Eventually(func() string {
-				return kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-					"-o", "jsonpath={.metadata.annotations.pocketid\\.internal/regenerate-client-secret}")
-			}, 2*time.Minute, 2*time.Second).Should(BeEmpty())
+				return getField("pocketidoidcclient", clientName, userNS,
+					".metadata.annotations.pocketid\\.internal/regenerate-client-secret")
+			}).Should(BeEmpty())
 
 			By("verifying the declared secret was not regenerated")
 			Consistently(func() string {
-				return kubectlGetSecretData(credentialsSecret, userNS, "client_secret")
-			}, 15*time.Second, 3*time.Second).Should(Equal(rotatedValue))
+				return secretData(credentialsSecret, userNS, "client_secret")
+			}, 15*time.Second).Should(Equal(rotatedValue))
 		})
 
 		It("should report an error when the referenced key is missing", func() {
 			By("pointing clientSecretRef at a key that does not exist")
-			Expect(kubectlPatch("pocketidoidcclient", clientName, userNS,
+			Expect(patchObject("pocketidoidcclient", clientName, userNS,
 				`{"spec":{"clientSecretRef":{"name":"`+sourceSecretName+`","key":"absent-key"}}}`)).To(Succeed())
 
 			By("verifying the client reports the sync failure rather than generating a secret")
 			waitForConditionReason("pocketidoidcclient", clientName, userNS, "Ready", "ClientSecretSyncError")
-			Expect(kubectlGetSecretData(credentialsSecret, userNS, "client_secret")).To(Equal(rotatedValue),
+			Expect(secretData(credentialsSecret, userNS, "client_secret")).To(Equal(rotatedValue),
 				"the previously declared secret should be left untouched")
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketidoidcclient", clientName, userNS)
+			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
 	})

@@ -4,8 +4,6 @@
 package e2e
 
 import (
-	"fmt"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -32,41 +30,19 @@ var _ = Describe("OIDC Client Skip Consent", Ordered, func() {
 		clientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
 
 		By("verifying Pocket-ID reports skipConsent: true for the client")
-		body := getOIDCClientFromPocketID("skip-consent-verify", userNS, clientID)
+		body := getOIDCClientFromPocketID(clientID)
 		Expect(body).To(ContainSubstring(`"skipConsent":true`),
 			"Pocket-ID should persist and return skipConsent: true")
 	})
 
 	AfterAll(func() {
-		kubectlDelete("pocketidoidcclient", clientName, userNS)
+		deleteObject("pocketidoidcclient", clientName, userNS)
 		waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 	})
 })
 
-// getOIDCClientFromPocketID fetches a single OIDC client from the Pocket-ID API
-// via a curl pod and returns the raw JSON response body.
-func getOIDCClientFromPocketID(podName, namespace, clientID string) string {
-	staticSecretName := instanceName + "-static-api-key"
-
-	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
-
-	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-RESPONSE=$(curl -s -H "X-API-KEY: $API_KEY" \
-  -w '\n%%{http_code}' \
-  %s/api/oidc/clients/%s)
-HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-BODY=$(echo "$RESPONSE" | sed '$d')
-if [ "$HTTP_CODE" != "200" ]; then
-  echo "Failed to get OIDC client with HTTP $HTTP_CODE: $BODY" >&2
-  exit 1
-fi
-echo "$BODY"`,
-		apiKeyBase64, formatInstanceURL(), clientID)
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	body := getPodLogs(podName, namespace)
-	kubectlDelete("pod", podName, namespace)
-	return body
+// getOIDCClientFromPocketID returns the raw JSON body Pocket-ID reports for a client.
+func getOIDCClientFromPocketID(clientID string) string {
+	GinkgoHelper()
+	return getFromPocketID("/api/oidc/clients/" + clientID)
 }

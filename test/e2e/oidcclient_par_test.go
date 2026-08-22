@@ -31,13 +31,13 @@ var _ = Describe("OIDC Client Pushed Authorization Requests", Ordered, func() {
 		clientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
 
 		By("verifying Pocket-ID reports requiresPushedAuthorizationRequests: true for the client")
-		body := getOIDCClientFromPocketID("par-verify", userNS, clientID)
+		body := getOIDCClientFromPocketID(clientID)
 		Expect(body).To(ContainSubstring(`"requiresPushedAuthorizationRequests":true`),
 			"Pocket-ID should persist and return requiresPushedAuthorizationRequests: true")
 	})
 
 	AfterAll(func() {
-		kubectlDelete("pocketidoidcclient", clientName, userNS)
+		deleteObject("pocketidoidcclient", clientName, userNS)
 		waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 	})
 })

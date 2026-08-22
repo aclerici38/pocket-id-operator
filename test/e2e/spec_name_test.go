@@ -33,7 +33,7 @@ var _ = Describe("OIDC Client spec.name", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketidoidcclient", clientName, userNS)
+			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
 	})
@@ -49,10 +49,7 @@ var _ = Describe("OIDC Client spec.name", Ordered, func() {
 
 		It("should adopt an existing OIDC client by matching spec.name when metadata.name differs", func() {
 			By("creating an OIDC client directly in Pocket-ID with a name matching spec.name")
-			externalClientID := createOIDCClientInPocketIDWithName(
-				"create-specname-adopt-pod",
-				userNS,
-				pocketIDName,
+			externalClientID := createOIDCClientInPocketIDWithName(pocketIDName,
 				[]string{"https://specname-adopt.example.com/callback"},
 			)
 
@@ -73,7 +70,7 @@ var _ = Describe("OIDC Client spec.name", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketidoidcclient", clientName, userNS)
+			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
 	})
@@ -106,14 +103,13 @@ var _ = Describe("OIDC Client spec.name", Ordered, func() {
 			waitForStatusField("pocketidoidcclient", clientName, userNS, ".status.name", "Updated Display Name")
 
 			By("verifying status.clientID is unchanged after adding spec.name")
-			currentClientID := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-				"-o", "jsonpath={.status.clientID}")
+			currentClientID := getField("pocketidoidcclient", clientName, userNS, ".status.clientID")
 			Expect(currentClientID).To(Equal(originalClientID),
 				"status.clientID should not change when spec.name is added to an existing resource")
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketidoidcclient", clientName, userNS)
+			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
 	})

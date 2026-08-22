@@ -4,11 +4,13 @@
 package e2e
 
 import (
-	"fmt"
+	"strconv"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
 // These tests verify that state-diff reconciliation correctly syncs changes to Pocket-ID
@@ -37,7 +39,7 @@ var _ = Describe("User State Sync", func() {
 			secretName := userName + "-user-data"
 
 			By("verifying initial firstName in user-data secret")
-			Expect(kubectlGetSecretData(secretName, userNS, "firstName")).To(Equal("OriginalFirst"))
+			Expect(secretData(secretName, userNS, "firstName")).To(Equal("OriginalFirst"))
 
 			By("updating the firstName in spec")
 			createUser(UserOptions{
@@ -51,8 +53,8 @@ var _ = Describe("User State Sync", func() {
 
 			By("verifying the updated firstName appears in the user-data secret")
 			Eventually(func(g Gomega) {
-				g.Expect(kubectlGetSecretData(secretName, userNS, "firstName")).To(Equal("UpdatedFirst"))
-			}, time.Minute, 2*time.Second).Should(Succeed())
+				g.Expect(secretData(secretName, userNS, "firstName")).To(Equal("UpdatedFirst"))
+			}).Should(Succeed())
 		})
 
 		It("should reflect displayName change in user-data secret", func() {
@@ -70,8 +72,8 @@ var _ = Describe("User State Sync", func() {
 
 			By("verifying the updated displayName appears in the user-data secret")
 			Eventually(func(g Gomega) {
-				g.Expect(kubectlGetSecretData(secretName, userNS, "displayName")).To(Equal("Totally New Name"))
-			}, time.Minute, 2*time.Second).Should(Succeed())
+				g.Expect(secretData(secretName, userNS, "displayName")).To(Equal("Totally New Name"))
+			}).Should(Succeed())
 		})
 	})
 
@@ -90,10 +92,9 @@ var _ = Describe("User State Sync", func() {
 
 		It("should reflect the claim in status.customClaims", func() {
 			Eventually(func(g Gomega) {
-				val := kubectlGet("pocketiduser", userName, "-n", userNS,
-					"-o", "jsonpath={.status.customClaims[?(@.key=='department')].value}")
+				val := getField("pocketiduser", userName, userNS, ".status.customClaims[?(@.key=='department')].value")
 				g.Expect(val).To(Equal("engineering"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		It("should reflect an updated claim value in status.customClaims", func() {
@@ -106,10 +107,9 @@ var _ = Describe("User State Sync", func() {
 			})
 
 			Eventually(func(g Gomega) {
-				val := kubectlGet("pocketiduser", userName, "-n", userNS,
-					"-o", "jsonpath={.status.customClaims[?(@.key=='department')].value}")
+				val := getField("pocketiduser", userName, userNS, ".status.customClaims[?(@.key=='department')].value")
 				g.Expect(val).To(Equal("platform"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		It("should clear status.customClaims when all claims are removed from spec", func() {
@@ -122,10 +122,9 @@ var _ = Describe("User State Sync", func() {
 			})
 
 			Eventually(func(g Gomega) {
-				val := kubectlGet("pocketiduser", userName, "-n", userNS,
-					"-o", "jsonpath={.status.customClaims}")
+				val := getField("pocketiduser", userName, userNS, ".status.customClaims")
 				g.Expect(val).To(BeEmpty())
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			waitForReady("pocketiduser", userName, userNS)
 		})
@@ -158,10 +157,9 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 			By("verifying the user appears in status.managedUserIDs")
 			userID := waitForStatusFieldNotEmpty("pocketiduser", syncTestUser, userNS, ".status.userID")
 			Eventually(func(g Gomega) {
-				ids := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.managedUserIDs[*]}")
+				ids := getField("pocketidusergroup", groupName, userNS, ".status.managedUserIDs[*]")
 				g.Expect(ids).To(ContainSubstring(userID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("removing all users from the spec")
 			createUserGroup(UserGroupOptions{
@@ -172,10 +170,9 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 
 			By("verifying status.managedUserIDs becomes empty")
 			Eventually(func(g Gomega) {
-				ids := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.managedUserIDs}")
+				ids := getField("pocketidusergroup", groupName, userNS, ".status.managedUserIDs")
 				g.Expect(ids).To(BeEmpty())
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			waitForReady("pocketidusergroup", groupName, userNS)
 		})
@@ -194,10 +191,9 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 
 			By("verifying the claim appears in status.customClaims")
 			Eventually(func(g Gomega) {
-				val := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.customClaims[?(@.key=='env')].value}")
+				val := getField("pocketidusergroup", groupName, userNS, ".status.customClaims[?(@.key=='env')].value")
 				g.Expect(val).To(Equal("staging"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("removing all custom claims from the spec")
 			createUserGroup(UserGroupOptions{
@@ -208,10 +204,9 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 
 			By("verifying status.customClaims becomes empty")
 			Eventually(func(g Gomega) {
-				val := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.customClaims}")
+				val := getField("pocketidusergroup", groupName, userNS, ".status.customClaims")
 				g.Expect(val).To(BeEmpty())
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			waitForReady("pocketidusergroup", groupName, userNS)
 		})
@@ -240,13 +235,11 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 
 			By("verifying status reflects the updated name")
 			Eventually(func(g Gomega) {
-				name := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.name}")
+				name := getField("pocketidusergroup", groupName, userNS, ".status.name")
 				g.Expect(name).To(Equal("sync-updated-name"))
-				friendly := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.friendlyName}")
+				friendly := getField("pocketidusergroup", groupName, userNS, ".status.friendlyName")
 				g.Expect(friendly).To(Equal("Updated Friendly"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			waitForReady("pocketidusergroup", groupName, userNS)
 		})
@@ -269,13 +262,11 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 
 			By("verifying initial user and claim are present")
 			Eventually(func(g Gomega) {
-				ids := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.managedUserIDs[*]}")
+				ids := getField("pocketidusergroup", groupName, userNS, ".status.managedUserIDs[*]")
 				g.Expect(ids).To(ContainSubstring(userID))
-				val := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.customClaims[?(@.key=='tier')].value}")
+				val := getField("pocketidusergroup", groupName, userNS, ".status.customClaims[?(@.key=='tier')].value")
 				g.Expect(val).To(Equal("gold"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("updating only the name (preserving users and claims in spec)")
 			createUserGroup(UserGroupOptions{
@@ -288,20 +279,17 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 
 			By("verifying the name updated in status")
 			Eventually(func(g Gomega) {
-				name := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.name}")
+				name := getField("pocketidusergroup", groupName, userNS, ".status.name")
 				g.Expect(name).To(Equal("sync-name-only-new"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying users and claims are still present")
 			Eventually(func(g Gomega) {
-				ids := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.managedUserIDs[*]}")
+				ids := getField("pocketidusergroup", groupName, userNS, ".status.managedUserIDs[*]")
 				g.Expect(ids).To(ContainSubstring(userID))
-				val := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.customClaims[?(@.key=='tier')].value}")
+				val := getField("pocketidusergroup", groupName, userNS, ".status.customClaims[?(@.key=='tier')].value")
 				g.Expect(val).To(Equal("gold"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			waitForReady("pocketidusergroup", groupName, userNS)
 		})
@@ -320,7 +308,7 @@ var _ = Describe("EmailVerified Preservation", Ordered, func() {
 
 	BeforeAll(func() {
 		By("creating a user directly in Pocket-ID with emailVerified=true")
-		createUserInPocketIDWithVerifiedEmail("create-verified-user", userNS, username, "sync-verified@example.local")
+		createUserInPocketIDWithVerifiedEmail(username, "sync-verified@example.local")
 	})
 
 	It("should adopt the pre-existing user and reflect emailVerified=true in status", func() {
@@ -342,69 +330,48 @@ var _ = Describe("EmailVerified Preservation", Ordered, func() {
 		time.Sleep(15 * time.Second)
 
 		By("verifying status.emailVerified is still true")
-		Expect(kubectlGet("pocketiduser", crName, "-n", userNS,
-			"-o", "jsonpath={.status.emailVerified}")).To(Equal("true"))
+		Expect(getField("pocketiduser", crName, userNS, ".status.emailVerified")).To(Equal("true"))
 
 		By("verifying Pocket-ID still has emailVerified=true for the user")
-		userID := kubectlGet("pocketiduser", crName, "-n", userNS,
-			"-o", "jsonpath={.status.userID}")
-		Expect(getUserEmailVerified("check-email-verified", userNS, userID)).To(Equal("true"))
+		userID := getField("pocketiduser", crName, userNS, ".status.userID")
+		Expect(getUserEmailVerified(userID)).To(Equal("true"))
 	})
 
 	AfterAll(func() {
-		kubectlDelete("pocketiduser", crName, userNS)
+		deleteObject("pocketiduser", crName, userNS)
 		waitForResourceDeleted("pocketiduser", crName, userNS)
-		kubectlDelete("pod", "create-verified-user", userNS)
-		kubectlDelete("pod", "check-email-verified", userNS)
+		deleteObject("pod", "create-verified-user", userNS)
+		deleteObject("pod", "check-email-verified", userNS)
 	})
 })
 
 // --- User API Helpers ---
 
-// createUserInPocketIDWithVerifiedEmail creates a user directly in Pocket-ID via the API
-// with emailVerified=true and waits for the curl pod to succeed.
-func createUserInPocketIDWithVerifiedEmail(podName, namespace, username, email string) {
-	staticSecretName := instanceName + "-static-api-key"
-	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
+// createUserInPocketIDWithVerifiedEmail creates a user out-of-band whose email is already
+// verified, so the operator's handling of an externally verified address can be observed.
+func createUserInPocketIDWithVerifiedEmail(username, email string) {
+	GinkgoHelper()
+	ctx, cancel := testCtx()
+	defer cancel()
 
-	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-BODY=$(curl -s -X POST \
-  -H "X-API-KEY: $API_KEY" -H "Content-Type: application/json" \
-  -d '{"username":"%s","firstName":"%s","displayName":"%s","email":"%s","emailVerified":true}' \
-  -o /tmp/body -w '%%{http_code}' \
-  %s/api/users)
-HTTP_CODE="$BODY"
-BODY=$(cat /tmp/body)
-if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
-  echo "Failed to create user: HTTP $HTTP_CODE: $BODY" >&2
-  exit 1
-fi`,
-		apiKeyBase64, username, username, username, email, formatInstanceURL())
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	waitForPodSucceeded(podName, namespace)
+	_, err := pid.CreateUser(ctx, pocketid.UserInput{
+		Username:      username,
+		FirstName:     username,
+		DisplayName:   username,
+		Email:         email,
+		EmailVerified: true,
+	})
+	Expect(err).NotTo(HaveOccurred(), "creating verified user %q", username)
 }
 
-// getUserEmailVerified queries Pocket-ID for a user by ID and returns "true" or "false"
-// based on the emailVerified field.
-func getUserEmailVerified(podName, namespace, userID string) string {
-	staticSecretName := instanceName + "-static-api-key"
-	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
+// getUserEmailVerified reports whether Pocket-ID considers the user's email verified,
+// as "true" or "false" so callers can compare against the CR's string status field.
+func getUserEmailVerified(userID string) string {
+	GinkgoHelper()
+	ctx, cancel := testCtx()
+	defer cancel()
 
-	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-BODY=$(curl -s -H "X-API-KEY: $API_KEY" %s/api/users/%s)
-if echo "$BODY" | grep -q '"emailVerified":true'; then
-  echo "true"
-else
-  echo "false"
-fi`,
-		apiKeyBase64, formatInstanceURL(), userID)
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	waitForPodSucceeded(podName, namespace)
-	return kubectlLogs(podName, namespace)
+	user, err := pid.GetUser(ctx, userID)
+	Expect(err).NotTo(HaveOccurred(), "reading user %s", userID)
+	return strconv.FormatBool(user.EmailVerified)
 }

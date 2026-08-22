@@ -4,10 +4,10 @@
 package e2e
 
 import (
-	"fmt"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
 var _ = Describe("Resource Adoption", Ordered, func() {
@@ -21,7 +21,7 @@ var _ = Describe("Resource Adoption", Ordered, func() {
 
 		It("should adopt an existing user from Pocket-ID", func() {
 			By("creating a user directly in Pocket-ID via API")
-			userID := createUserInPocketID("create-adopt-user-pod", userNS, pocketIDUsername, "Adopt", "Test", "adopt-test@example.local")
+			userID := createUserInPocketID(pocketIDUsername, "Adopt", "Test", "adopt-test@example.local")
 
 			By("creating a PocketIDUser CR with the same username")
 			createUser(UserOptions{
@@ -41,7 +41,7 @@ var _ = Describe("Resource Adoption", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketiduser", userName, userNS)
+			deleteObject("pocketiduser", userName, userNS)
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 		})
 	})
@@ -52,7 +52,7 @@ var _ = Describe("Resource Adoption", Ordered, func() {
 
 		It("should adopt an existing user group from Pocket-ID", func() {
 			By("creating a user group directly in Pocket-ID via API")
-			groupID := createUserGroupInPocketID("create-adopt-group-pod", userNS, pocketIDGroupName, "Adopt Test Group")
+			groupID := createUserGroupInPocketID(pocketIDGroupName, "Adopt Test Group")
 
 			By("creating a PocketIDUserGroup CR with the same name")
 			createUserGroup(UserGroupOptions{
@@ -70,7 +70,7 @@ var _ = Describe("Resource Adoption", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketidusergroup", groupName, userNS)
+			deleteObject("pocketidusergroup", groupName, userNS)
 			waitForResourceDeleted("pocketidusergroup", groupName, userNS)
 		})
 	})
@@ -81,7 +81,7 @@ var _ = Describe("Resource Adoption", Ordered, func() {
 
 		It("should adopt an existing OIDC client from Pocket-ID", func() {
 			By("creating an OIDC client directly in Pocket-ID via API")
-			createOIDCClientInPocketID("create-adopt-oidc-pod", userNS, pocketIDClientID, "Adopt Test OIDC", []string{"https://adopt-test.example.com/callback"})
+			createOIDCClientInPocketID(pocketIDClientID, "Adopt Test OIDC", []string{"https://adopt-test.example.com/callback"})
 
 			By("creating a PocketIDOIDCClient CR with the same client ID")
 			createOIDCClient(OIDCClientOptions{
@@ -99,7 +99,7 @@ var _ = Describe("Resource Adoption", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketidoidcclient", clientName, userNS)
+			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
 	})
@@ -113,7 +113,7 @@ var _ = Describe("Resource Adoption", Ordered, func() {
 			By("creating an OIDC client directly in Pocket-ID with a random ID but name matching the CR name")
 			// The client ID in Pocket-ID will be different from the CR name,
 			// but the name field will match. The operator should find it by name.
-			externalClientID := createOIDCClientInPocketIDWithName("create-adopt-oidc-byname-pod", userNS, clientName, []string{"https://adopt-byname.example.com/callback"})
+			externalClientID := createOIDCClientInPocketIDWithName(clientName, []string{"https://adopt-byname.example.com/callback"})
 
 			By("creating a PocketIDOIDCClient CR without explicit clientID")
 			createOIDCClient(OIDCClientOptions{
@@ -131,163 +131,73 @@ var _ = Describe("Resource Adoption", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketidoidcclient", clientName, userNS)
+			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
 	})
 })
 
-// createUserInPocketID creates a user directly in Pocket-ID via the API and returns the user ID
-func createUserInPocketID(podName, namespace, username, firstName, lastName, email string) string {
-	staticSecretName := instanceName + "-static-api-key"
+// createUserInPocketID creates a user directly via the Pocket-ID API, bypassing the
+// operator, and returns the new user's ID. Pocket-ID requires a displayName, so it is
+// derived from the name parts the way a UI form would.
+func createUserInPocketID(username, firstName, lastName, email string) string {
+	GinkgoHelper()
+	ctx, cancel := testCtx()
+	defer cancel()
 
-	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
-
-	// Create user and capture the ID from the response
-	// Use -w to append HTTP code, then separate body and code for proper error handling
-	// Note: Pocket-ID API requires displayName, so we construct it from firstName + lastName
-	displayName := firstName + " " + lastName
-	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-RESPONSE=$(curl -s -X POST -H "X-API-KEY: $API_KEY" -H "Content-Type: application/json" \
-  -d '{"username": "%s", "firstName": "%s", "lastName": "%s", "email": "%s", "displayName": "%s"}' \
-  -w '\n%%{http_code}' \
-  %s/api/users)
-HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-BODY=$(echo "$RESPONSE" | sed '$d')
-if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
-  echo "Failed to create user with HTTP $HTTP_CODE: $BODY" >&2
-  exit 1
-fi
-# Extract user ID using sed (more portable than grep -o in busybox)
-echo "$BODY" | sed 's/.*"id":"\([^"]*\)".*/\1/'`,
-		apiKeyBase64, username, firstName, lastName, email, displayName, formatInstanceURL())
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	waitForPodSucceeded(podName, namespace)
-
-	// Get the user ID from pod logs
-	userID := getPodLogs(podName, namespace)
-	Expect(userID).NotTo(BeEmpty(), "should get user ID from API response")
-
-	return userID
+	user, err := pid.CreateUser(ctx, pocketid.UserInput{
+		Username:    username,
+		FirstName:   firstName,
+		LastName:    lastName,
+		Email:       email,
+		DisplayName: firstName + " " + lastName,
+	})
+	Expect(err).NotTo(HaveOccurred(), "creating user %q", username)
+	Expect(user.ID).NotTo(BeEmpty())
+	return user.ID
 }
 
-// createUserGroupInPocketID creates a user group directly in Pocket-ID via the API and returns the group ID
-func createUserGroupInPocketID(podName, namespace, name, friendlyName string) string {
-	staticSecretName := instanceName + "-static-api-key"
+// createUserGroupInPocketID creates a user group directly via the Pocket-ID API,
+// bypassing the operator, and returns its ID.
+func createUserGroupInPocketID(name, friendlyName string) string {
+	GinkgoHelper()
+	ctx, cancel := testCtx()
+	defer cancel()
 
-	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
-
-	// Use -w to append HTTP code, then separate body and code for proper error handling
-	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-RESPONSE=$(curl -s -X POST -H "X-API-KEY: $API_KEY" -H "Content-Type: application/json" \
-  -d '{"name": "%s", "friendlyName": "%s"}' \
-  -w '\n%%{http_code}' \
-  %s/api/user-groups)
-HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-BODY=$(echo "$RESPONSE" | sed '$d')
-if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
-  echo "Failed to create user group with HTTP $HTTP_CODE: $BODY" >&2
-  exit 1
-fi
-# Extract group ID using sed (more portable than grep -o in busybox)
-echo "$BODY" | sed 's/.*"id":"\([^"]*\)".*/\1/'`,
-		apiKeyBase64, name, friendlyName, formatInstanceURL())
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	waitForPodSucceeded(podName, namespace)
-
-	// Get the group ID from pod logs
-	groupID := getPodLogs(podName, namespace)
-	Expect(groupID).NotTo(BeEmpty(), "should get group ID from API response")
-
-	return groupID
+	group, err := pid.CreateUserGroup(ctx, name, friendlyName)
+	Expect(err).NotTo(HaveOccurred(), "creating group %q", name)
+	Expect(group.ID).NotTo(BeEmpty())
+	return group.ID
 }
 
-// createOIDCClientInPocketID creates an OIDC client directly in Pocket-ID via the API with a specific client ID
-func createOIDCClientInPocketID(podName, namespace, clientID, name string, callbackURLs []string) {
-	staticSecretName := instanceName + "-static-api-key"
+// createOIDCClientInPocketID creates an OIDC client directly in Pocket-ID under a
+// caller-chosen client ID, so a later CR can be shown to adopt it rather than create a
+// second one.
+func createOIDCClientInPocketID(clientID, name string, callbackURLs []string) {
+	GinkgoHelper()
+	ctx, cancel := testCtx()
+	defer cancel()
 
-	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
-
-	// Build callback URLs JSON array
-	callbackURLsJSON := "["
-	for i, url := range callbackURLs {
-		if i > 0 {
-			callbackURLsJSON += ","
-		}
-		callbackURLsJSON += fmt.Sprintf(`"%s"`, url)
-	}
-	callbackURLsJSON += "]"
-
-	// Use -w to append HTTP code, capture body for error messages
-	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-RESPONSE=$(curl -s -X POST -H "X-API-KEY: $API_KEY" -H "Content-Type: application/json" \
-  -d '{"id": "%s", "name": "%s", "callbackURLs": %s}' \
-  -w '\n%%{http_code}' \
-  %s/api/oidc/clients)
-HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-BODY=$(echo "$RESPONSE" | sed '$d')
-if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
-  echo "Failed to create OIDC client with HTTP $HTTP_CODE: $BODY" >&2
-  exit 1
-fi
-echo "OIDC client created successfully"`,
-		apiKeyBase64, clientID, name, callbackURLsJSON, formatInstanceURL())
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	waitForPodSucceeded(podName, namespace)
+	_, err := pid.CreateOIDCClient(ctx, pocketid.OIDCClientInput{
+		ID:           &clientID,
+		Name:         name,
+		CallbackURLs: callbackURLs,
+	})
+	Expect(err).NotTo(HaveOccurred(), "creating OIDC client %q", clientID)
 }
 
-// createOIDCClientInPocketIDWithName creates an OIDC client directly in Pocket-ID via the API
-// without specifying a client ID (letting Pocket-ID generate one), but with a specific name.
-// Returns the generated client ID.
-func createOIDCClientInPocketIDWithName(podName, namespace, name string, callbackURLs []string) string {
-	staticSecretName := instanceName + "-static-api-key"
+// createOIDCClientInPocketIDWithName creates an OIDC client without naming its ID, so
+// Pocket-ID autogenerates one, and returns that ID. Used to test adoption by name.
+func createOIDCClientInPocketIDWithName(name string, callbackURLs []string) string {
+	GinkgoHelper()
+	ctx, cancel := testCtx()
+	defer cancel()
 
-	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
-
-	// Build callback URLs JSON array
-	callbackURLsJSON := "["
-	for i, url := range callbackURLs {
-		if i > 0 {
-			callbackURLsJSON += ","
-		}
-		callbackURLsJSON += fmt.Sprintf(`"%s"`, url)
-	}
-	callbackURLsJSON += "]"
-
-	// Use -w to append HTTP code, capture body for error messages
-	// Note: We intentionally omit the "id" field so Pocket-ID generates a random UUID
-	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-RESPONSE=$(curl -s -X POST -H "X-API-KEY: $API_KEY" -H "Content-Type: application/json" \
-  -d '{"name": "%s", "callbackURLs": %s}' \
-  -w '\n%%{http_code}' \
-  %s/api/oidc/clients)
-HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-BODY=$(echo "$RESPONSE" | sed '$d')
-if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
-  echo "Failed to create OIDC client with HTTP $HTTP_CODE: $BODY" >&2
-  exit 1
-fi
-# Extract client ID using sed
-echo "$BODY" | sed 's/.*"id":"\([^"]*\)".*/\1/'`,
-		apiKeyBase64, name, callbackURLsJSON, formatInstanceURL())
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	waitForPodSucceeded(podName, namespace)
-
-	// Get the client ID from pod logs
-	clientID := getPodLogs(podName, namespace)
-	Expect(clientID).NotTo(BeEmpty(), "should get client ID from API response")
-
-	return clientID
+	client, err := pid.CreateOIDCClient(ctx, pocketid.OIDCClientInput{
+		Name:         name,
+		CallbackURLs: callbackURLs,
+	})
+	Expect(err).NotTo(HaveOccurred(), "creating OIDC client %q", name)
+	Expect(client.ID).NotTo(BeEmpty())
+	return client.ID
 }
