@@ -593,7 +593,9 @@ type PocketIDInstanceSpec struct {
 	TLS *TLSConfig `json:"tls,omitempty"`
 
 	// ServiceTemplate is merged with the operator-built Service spec.
-	// Operator-managed fields (the selector and the http/metrics ports) always take precedence.
+	// Operator-managed fields (the selector and the number, protocol and appProtocol of
+	// the http/metrics ports) always take precedence. A nodePort set on those ports is
+	// honoured, as are extra ports and every other field.
 	// +optional
 	// +kubebuilder:validation:Schemaless
 	// +kubebuilder:pruning:PreserveUnknownFields
