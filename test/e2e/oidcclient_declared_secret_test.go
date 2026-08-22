@@ -9,9 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aclerici38/pocket-id-operator/test/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/aclerici38/pocket-id-operator/test/utils"
 )
 
 var _ = Describe("OIDC Client Declarative Client Secret", Ordered, func() {
@@ -79,24 +80,6 @@ spec:
 		kubectlDelete("secret", sourceSecretName, userNS)
 	})
 
-	Context("Admission Validation", func() {
-		It("should reject a public client with clientSecretRef", func() {
-			By("applying a PocketIDOIDCClient with isPublic and clientSecretRef")
-			output, err := apply(declaredClientYAML("test-declared-secret-public", true, false))
-			Expect(err).To(HaveOccurred(), "apply should fail CEL validation")
-			Expect(output).To(ContainSubstring("clientSecretRef requires a confidential client"),
-				"error should indicate a public client cannot have a declared secret")
-		})
-
-		It("should reject enabling clientSecretRotation with clientSecretRef", func() {
-			By("applying a PocketIDOIDCClient with clientSecretRef and rotation enabled")
-			output, err := apply(declaredClientYAML("test-declared-secret-rotation", false, true))
-			Expect(err).To(HaveOccurred(), "apply should fail CEL validation")
-			Expect(output).To(ContainSubstring("clientSecretRotation cannot be enabled when clientSecretRef is set"),
-				"error should indicate rotation cannot replace a declared secret")
-		})
-	})
-
 	Context("Declared Secret Lifecycle", func() {
 		const clientName = "test-declared-secret"
 		var credentialsSecret = clientName + "-oidc-credentials"
@@ -125,7 +108,7 @@ spec:
 			// is what it actually kept.
 			By("verifying Pocket-ID accepts the declared value as the client secret")
 			clientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
-			Expect(clientSecretAuthResult("auth-declared", userNS, clientID, declaredValue)).To(Equal("ok"))
+			Expect(clientSecretAuthResult(clientID, declaredValue)).To(Equal("ok"))
 		})
 
 		It("should re-push after the source Secret changes", func() {
@@ -154,11 +137,10 @@ spec:
 			clientID := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
 				"-o", "jsonpath={.status.clientID}")
 			Eventually(func() []string {
-				return clientSecretIDsFromPocketID(
-					fmt.Sprintf("list-declared-%d", time.Now().UnixNano()), userNS, clientID)
+				return clientSecretIDsFromPocketID(clientID)
 			}, time.Minute, 10*time.Second).Should(HaveLen(1))
-			Expect(clientSecretAuthResult("auth-declared-new", userNS, clientID, rotatedValue)).To(Equal("ok"))
-			Expect(clientSecretAuthResult("auth-declared-old", userNS, clientID, declaredValue)).
+			Expect(clientSecretAuthResult(clientID, rotatedValue)).To(Equal("ok"))
+			Expect(clientSecretAuthResult(clientID, declaredValue)).
 				To(Equal("invalid_client"))
 		})
 

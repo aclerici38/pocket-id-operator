@@ -4,6 +4,7 @@
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -15,15 +16,57 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	pocketidv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 	"github.com/aclerici38/pocket-id-operator/test/utils"
+	"k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 const (
 	defaultProjectImage = "pocket-id-operator:e2e"
 	namespace           = "pocket-id-operator-system"
+
+	// pocketIDNodePort must match POCKET_ID_NODE_PORT in .mise.toml, which maps it from
+	// the Kind node to the same port on the host. The shared instance publishes its http
+	// port here so the suite can reach Pocket-ID's API over localhost.
+	pocketIDNodePort = 31411
 )
 
 var projectImage = defaultProjectImage
+
+var (
+	// k8sClient talks to the Kind cluster with typed objects, replacing jsonpath strings
+	// parsed out of kubectl's stdout.
+	k8sClient client.Client
+
+	// pid is the Pocket-ID API client for the shared instance, reached over the published
+	// NodePort. It is the same client the operator uses, so the suite exercises the real
+	// code path rather than a shell reimplementation of it.
+	pid *pocketid.Client
+)
+
+// pocketIDBaseURL is the shared instance's API address as seen from the test binary.
+func pocketIDBaseURL() string {
+	return fmt.Sprintf("http://127.0.0.1:%d", pocketIDNodePort)
+}
+
+// newK8sClient builds a typed client against whatever kubeconfig kubectl would use.
+func newK8sClient() (client.Client, error) {
+	cfg, err := config.GetConfig()
+	if err != nil {
+		return nil, err
+	}
+	if err := pocketidv1alpha1.AddToScheme(scheme.Scheme); err != nil {
+		return nil, err
+	}
+	if err := gatewayv1.Install(scheme.Scheme); err != nil {
+		return nil, err
+	}
+	return client.New(cfg, client.Options{Scheme: scheme.Scheme})
+}
 
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -51,6 +94,11 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	By("loading the operator image into Kind")
 	err := utils.LoadImageToKindClusterWithName(projectImage)
 	Expect(err).NotTo(HaveOccurred(), "Failed to load operator image into Kind")
+
+	By("building the Kubernetes client")
+	var kErr error
+	k8sClient, kErr = newK8sClient()
+	Expect(kErr).NotTo(HaveOccurred(), "Failed to build Kubernetes client")
 
 	if os.Getenv("SKIP_CLEANUP") == "" {
 		By("cleaning up any resources from previous runs")
@@ -89,7 +137,10 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	// The CIMD allowlist is set on the shared instance rather than a dedicated one because
 	// SelectInstance rejects a selector matching more than one PocketIDInstance, so a
 	// long-lived second instance would break every client that omits instanceSelector.
-	createInstance(InstanceOptions{CIMDURLAllowlist: []string{cimdMetadataURL}})
+	createInstance(InstanceOptions{
+		CIMDURLAllowlist: []string{cimdMetadataURL},
+		NodePort:         pocketIDNodePort,
+	})
 
 	By("waiting for the shared instance to be Ready")
 	Eventually(func(g Gomega) {
@@ -106,7 +157,28 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 }, func(_ []byte) {
 	// This runs on all processes
 	projectImage = resolveProjectImage()
+
+	var err error
+	k8sClient, err = newK8sClient()
+	Expect(err).NotTo(HaveOccurred(), "Failed to build Kubernetes client")
+
+	// The NodePort is a fixed address, so each parallel process builds an identical
+	// client and there is nothing to hand across from process 1.
+	pid, err = pocketid.NewClient(pocketIDBaseURL(), staticAPIKey())
+	Expect(err).NotTo(HaveOccurred(), "Failed to build Pocket-ID client")
+
+	Eventually(func() error {
+		_, vErr := pid.GetCurrentVersion(context.Background())
+		return vErr
+	}, 2*time.Minute, 2*time.Second).Should(Succeed(),
+		"Pocket-ID should be reachable on the published NodePort")
 })
+
+// staticAPIKey reads the shared instance's static API key, which the operator generates
+// and stores alongside the instance.
+func staticAPIKey() string {
+	return kubectlGetSecretData(instanceName+"-static-api-key", instanceNS, "token")
+}
 
 var _ = SynchronizedAfterSuite(func() {
 	// This runs on all processes

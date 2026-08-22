@@ -50,6 +50,8 @@ postinstall = "command -v lefthook >/dev/null 2>&1 && lefthook install || true"
 # Kept separate from IMG so it never leaks into the e2e suite's image logic.
 DEFAULT_IMG = "ghcr.io/aclerici38/pocket-id-operator:v0.14.1@sha256:a7c738f6eefe2cfcafa9382d7358da9cf294b30a06a736979babb2f2d1ea97bb"
 KIND_CLUSTER = "pocket-id-operator-test-e2e"
+# Host port the shared e2e Pocket-ID instance is published on.
+POCKET_ID_NODE_PORT = "31411"
 CONTAINER_TOOL = "docker"
 PLATFORMS = "linux/arm64,linux/amd64,linux/s390x,linux/ppc64le"
 
@@ -135,6 +137,15 @@ else
   kind create cluster --name "${KIND_CLUSTER}" --config - <<EOF
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    # Publishes the shared instance's NodePort on the host so the e2e binary can reach
+    # Pocket-ID's API directly, instead of scheduling a curl pod per request. Kind cannot
+    # add port mappings to a running cluster, so changing this needs a cluster recreate.
+    extraPortMappings:
+      - containerPort: ${POCKET_ID_NODE_PORT}
+        hostPort: ${POCKET_ID_NODE_PORT}
+        listenAddress: "127.0.0.1"
 kubeadmConfigPatches:
   - |
     kind: ClusterConfiguration

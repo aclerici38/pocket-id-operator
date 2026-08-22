@@ -49,10 +49,7 @@ var _ = Describe("OIDC Client spec.name", Ordered, func() {
 
 		It("should adopt an existing OIDC client by matching spec.name when metadata.name differs", func() {
 			By("creating an OIDC client directly in Pocket-ID with a name matching spec.name")
-			externalClientID := createOIDCClientInPocketIDWithName(
-				"create-specname-adopt-pod",
-				userNS,
-				pocketIDName,
+			externalClientID := createOIDCClientInPocketIDWithName(pocketIDName,
 				[]string{"https://specname-adopt.example.com/callback"},
 			)
 

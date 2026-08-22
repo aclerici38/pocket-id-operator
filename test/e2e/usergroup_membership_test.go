@@ -62,11 +62,11 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 			groupID := waitForStatusFieldNotEmpty("pocketidusergroup", mergeGroupName, userNS, ".status.groupID")
 
 			By("adding an external user directly via the Pocket-ID API")
-			addUserToGroupInPocketID("add-external-user", userNS, groupID, externalUserID)
+			addUserToGroupInPocketID(groupID, externalUserID)
 
 			By("verifying the external user exists in Pocket-ID")
 			Eventually(func(g Gomega) {
-				members := getGroupMembersFromPocketID("check-members-1", userNS, groupID)
+				members := getGroupMembersFromPocketID(groupID)
 				g.Expect(members).To(ContainSubstring(externalUserID))
 				g.Expect(members).To(ContainSubstring(managedUserID))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
@@ -82,7 +82,7 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 
 			By("verifying the external user is still in the group in Pocket-ID after reconcile")
 			Eventually(func(g Gomega) {
-				members := getGroupMembersFromPocketID("check-members-2", userNS, groupID)
+				members := getGroupMembersFromPocketID(groupID)
 				g.Expect(members).To(ContainSubstring(externalUserID),
 					"external user should be preserved after reconcile")
 				g.Expect(members).To(ContainSubstring(managedUserID),
@@ -122,11 +122,11 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 			groupID := waitForStatusFieldNotEmpty("pocketidusergroup", groupName, userNS, ".status.groupID")
 
 			By("adding an external user directly via the Pocket-ID API")
-			addUserToGroupInPocketID("add-ext-for-remove", userNS, groupID, externalUserID)
+			addUserToGroupInPocketID(groupID, externalUserID)
 
 			By("verifying all three users are in the group")
 			Eventually(func(g Gomega) {
-				members := getGroupMembersFromPocketID("check-3-members", userNS, groupID)
+				members := getGroupMembersFromPocketID(groupID)
 				g.Expect(members).To(ContainSubstring(managedUserID))
 				g.Expect(members).To(ContainSubstring(managedUser2ID))
 				g.Expect(members).To(ContainSubstring(externalUserID))
@@ -142,7 +142,7 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 
 			By("verifying managedUser2 was removed but external user and managedUser are preserved")
 			Eventually(func(g Gomega) {
-				members := getGroupMembersFromPocketID("check-after-remove", userNS, groupID)
+				members := getGroupMembersFromPocketID(groupID)
 				g.Expect(members).To(ContainSubstring(managedUserID),
 					"remaining managed user should still be present")
 				g.Expect(members).To(ContainSubstring(externalUserID),
@@ -184,11 +184,11 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 			groupID := waitForStatusFieldNotEmpty("pocketidusergroup", groupName, userNS, ".status.groupID")
 
 			By("adding an external user directly via the Pocket-ID API")
-			addUserToGroupInPocketID("add-ext-for-clear", userNS, groupID, externalUserID)
+			addUserToGroupInPocketID(groupID, externalUserID)
 
 			By("verifying both users are in the group")
 			Eventually(func(g Gomega) {
-				members := getGroupMembersFromPocketID("check-before-clear", userNS, groupID)
+				members := getGroupMembersFromPocketID(groupID)
 				g.Expect(members).To(ContainSubstring(managedUserID))
 				g.Expect(members).To(ContainSubstring(externalUserID))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
@@ -203,7 +203,7 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 
 			By("verifying managed user was removed but external user is preserved in Pocket-ID")
 			Eventually(func(g Gomega) {
-				members := getGroupMembersFromPocketID("check-after-clear", userNS, groupID)
+				members := getGroupMembersFromPocketID(groupID)
 				g.Expect(members).To(ContainSubstring(externalUserID),
 					"external user should be preserved")
 				g.Expect(members).NotTo(ContainSubstring(managedUserID),
@@ -242,10 +242,10 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 			managedUserID := waitForStatusFieldNotEmpty("pocketiduser", managedUser, userNS, ".status.userID")
 
 			By("creating a group directly in Pocket-ID with a user")
-			groupID := createUserGroupInPocketID("create-adopt-merge-group", userNS, adoptPocketIDName, "Merge Adopt Group")
+			groupID := createUserGroupInPocketID(adoptPocketIDName, "Merge Adopt Group")
 
 			By("adding the pre-existing user to the group via API")
-			addUserToGroupInPocketID("add-pre-existing", userNS, groupID, preExistingUserID)
+			addUserToGroupInPocketID(groupID, preExistingUserID)
 
 			By("creating a CR that adopts the group and adds a managed user")
 			createUserGroupAndWaitReady(UserGroupOptions{
@@ -260,7 +260,7 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 
 			By("verifying both the pre-existing and managed users are in the group")
 			Eventually(func(g Gomega) {
-				members := getGroupMembersFromPocketID("check-adopt-members", userNS, groupID)
+				members := getGroupMembersFromPocketID(groupID)
 				g.Expect(members).To(ContainSubstring(preExistingUserID),
 					"pre-existing user should be preserved after adoption")
 				g.Expect(members).To(ContainSubstring(managedUserID),
@@ -304,7 +304,7 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 			groupID := waitForStatusFieldNotEmpty("pocketidusergroup", groupName, userNS, ".status.groupID")
 
 			By(fmt.Sprintf("adding external user %s to group %s via Pocket-ID API", externalUserID, groupID))
-			addUserToGroupInPocketID("add-ext-for-count", userNS, groupID, externalUserID)
+			addUserToGroupInPocketID(groupID, externalUserID)
 
 			By("triggering a reconcile and verifying totalUserCount reflects 2 users")
 			// Trigger reconcile by re-applying the same spec (friendlyName change)

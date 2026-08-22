@@ -5,7 +5,10 @@ package e2e
 
 import (
 	"encoding/base64"
-	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -27,10 +30,7 @@ const cimdMetadataURL = "https://cdn.jsdelivr.net/gh/aclerici38/pocket-id-operat
 var _ = Describe("Client ID Metadata Documents", Ordered, func() {
 	It("advertises client_id_metadata_document_supported once the allowlist is set", func() {
 		By("reading the instance's discovery document")
-		script := fmt.Sprintf("curl -sf %s/.well-known/openid-configuration", formatInstanceURL())
-		applyYAML(createCurlPodYAML("cimd-discovery", instanceNS, script))
-		body := getPodLogs("cimd-discovery", instanceNS)
-		kubectlDelete("pod", "cimd-discovery", instanceNS)
+		body := getFromPocketID("/.well-known/openid-configuration")
 
 		By("verifying Pocket-ID enabled CIMD from CIMD_URL_ALLOWLIST")
 		Expect(body).To(ContainSubstring(`"client_id_metadata_document_supported":true`),
@@ -96,7 +96,7 @@ var _ = Describe("Client ID Metadata Documents", Ordered, func() {
 		})
 
 		It("pushes the writable fields and leaves the metadata-owned ones alone", func() {
-			body := getOIDCClientFromPocketID("cimd-verify", userNS, encodeCIMDClientID(cimdMetadataURL))
+			body := getOIDCClientFromPocketID(encodeCIMDClientID(cimdMetadataURL))
 
 			By("verifying the fields Pocket-ID persists for a CIMD client were applied")
 			Expect(body).To(ContainSubstring(`"description":"managed by e2e"`))
@@ -115,9 +115,9 @@ var _ = Describe("Client ID Metadata Documents", Ordered, func() {
 		// fields Pocket-ID discards, so it would push, read back, and push again forever.
 		It("settles instead of drifting", func() {
 			By("recording the current state and letting several reconciles pass")
-			before := getOIDCClientFromPocketID("cimd-drift-1", userNS, encodeCIMDClientID(cimdMetadataURL))
+			before := getOIDCClientFromPocketID(encodeCIMDClientID(cimdMetadataURL))
 			time.Sleep(30 * time.Second)
-			after := getOIDCClientFromPocketID("cimd-drift-2", userNS, encodeCIMDClientID(cimdMetadataURL))
+			after := getOIDCClientFromPocketID(encodeCIMDClientID(cimdMetadataURL))
 
 			Expect(after).To(Equal(before), "a managed CIMD client must reach a stable state")
 			waitForReady("pocketidoidcclient", clientName, userNS)
@@ -157,8 +157,7 @@ var _ = Describe("Client ID Metadata Documents", Ordered, func() {
 			})
 
 			It("matches what Pocket-ID reports for the client", func() {
-				body := getFromPocketID("cimd-granted-verify", userNS,
-					"/api/api-access/"+encodeCIMDClientID(cimdMetadataURL)+"/apis")
+				body := getFromPocketID("/api/api-access/" + encodeCIMDClientID(cimdMetadataURL) + "/apis")
 				Expect(body).To(ContainSubstring(apiResource))
 				Expect(body).To(ContainSubstring(`"cimdGrantedAccess":true`))
 			})
@@ -199,50 +198,66 @@ func encodeCIMDClientID(id string) string {
 	return "~" + base64.RawURLEncoding.EncodeToString([]byte(id))
 }
 
-// requireCIMDDocumentReachable fails the suite unless the metadata document resolves from
-// inside the cluster with the content type and client_id Pocket-ID requires. It runs before
-// the managed-client specs, which are the only coverage of adoption and of the anti-drift
-// behaviour: skipping on an unreachable document would let that coverage disappear
-// silently, which is exactly how a stale branch ref goes unnoticed.
+// requireCIMDDocumentReachable fails fast, with a message that explains the fix, when the
+// metadata document is missing or self-inconsistent. It is fetched from the test binary
+// rather than from inside the cluster: this is a preflight on the document itself, and if
+// the cluster's egress is what is broken, materializeCIMDClient reports that separately.
 func requireCIMDDocumentReachable() {
-	script := fmt.Sprintf(`CODE=$(curl -s -o /tmp/doc -w '%%{http_code}' -H 'Accept: application/json' %q)
-if [ "$CODE" != "200" ]; then echo "HTTP $CODE"; exit 0; fi
-grep -q %q /tmp/doc && echo reachable || echo "client_id in the document does not match its URL"`,
-		cimdMetadataURL, cimdMetadataURL)
+	GinkgoHelper()
 
-	applyYAML(createCurlPodYAML("cimd-preflight", instanceNS, script))
-	out := getPodLogs("cimd-preflight", instanceNS)
-	kubectlDelete("pod", "cimd-preflight", instanceNS)
+	ctx, cancel := testCtx()
+	defer cancel()
 
-	Expect(out).To(Equal("reachable"),
-		"the metadata document at %s is not usable (%s).\nIt is served from this repo via "+
-			"jsDelivr, so cimdMetadataURL and the document's own client_id field must both name "+
-			"the branch the file is pushed to — see the TODO on cimdMetadataURL.",
-		cimdMetadataURL, out)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cimdMetadataURL, nil)
+	Expect(err).NotTo(HaveOccurred())
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	Expect(err).NotTo(HaveOccurred(), "fetching %s", cimdMetadataURL)
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	Expect(err).NotTo(HaveOccurred())
+
+	const hint = "It is served from this repo via jsDelivr, so cimdMetadataURL and the " +
+		"document's own client_id field must both name the branch the file is pushed to " +
+		"— see the TODO on cimdMetadataURL."
+
+	Expect(resp.StatusCode).To(Equal(http.StatusOK),
+		"the metadata document at %s is not usable (HTTP %d).\n%s", cimdMetadataURL, resp.StatusCode, hint)
+	Expect(string(body)).To(ContainSubstring(cimdMetadataURL),
+		"the client_id in the document at %s does not match its URL.\n%s", cimdMetadataURL, hint)
 }
 
-// materializeCIMDClient makes Pocket-ID fetch the metadata document and persist the client.
-// POST /api/oidc/device/authorize needs no session and no client authentication (a CIMD
-// client is always public), and the CIMD resolver is wired into fosite as its ClientResolver,
-// so the client is resolved on any OAuth flow rather than only a browser /authorize.
+// materializeCIMDClient makes Pocket-ID fetch the metadata document and persist the
+// client. POST /api/oidc/device/authorize needs no session and no client authentication
+// (a CIMD client is always public), and the CIMD resolver is wired into fosite as its
+// ClientResolver, so the client is resolved on any OAuth flow rather than only a browser
+// /authorize.
 func materializeCIMDClient() {
-	script := fmt.Sprintf(`RESPONSE=$(curl -s -w '\n%%{http_code}' -X POST \
-  -H 'Content-Type: application/x-www-form-urlencoded' \
-  --data-urlencode 'client_id=%s' \
-  --data-urlencode 'scope=openid' \
-  %s/api/oidc/device/authorize)
-HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-BODY=$(echo "$RESPONSE" | sed '$d')
-echo "$BODY"
-if [ "$HTTP_CODE" != "200" ]; then
-  echo "device authorization failed with HTTP $HTTP_CODE" >&2
-  exit 1
-fi`, cimdMetadataURL, formatInstanceURL())
+	GinkgoHelper()
 
-	applyYAML(createCurlPodYAML("cimd-materialize", instanceNS, script))
-	body := getPodLogs("cimd-materialize", instanceNS)
-	kubectlDelete("pod", "cimd-materialize", instanceNS)
+	ctx, cancel := testCtx()
+	defer cancel()
 
-	Expect(body).To(ContainSubstring("device_code"),
+	form := url.Values{
+		"client_id": []string{cimdMetadataURL},
+		"scope":     []string{"openid"},
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		pocketIDBaseURL()+"/api/oidc/device/authorize", strings.NewReader(form.Encode()))
+	Expect(err).NotTo(HaveOccurred())
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := http.DefaultClient.Do(req)
+	Expect(err).NotTo(HaveOccurred(), "requesting device authorization")
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	Expect(err).NotTo(HaveOccurred())
+
+	Expect(resp.StatusCode).To(Equal(http.StatusOK),
+		"device authorization failed with HTTP %d: %s", resp.StatusCode, body)
+	Expect(string(body)).To(ContainSubstring("device_code"),
 		"the device authorization request should have resolved and materialized the CIMD client")
 }

@@ -4,7 +4,6 @@
 package e2e
 
 import (
-	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -30,7 +29,7 @@ var _ = Describe("OIDC Client Secret Rotation", Ordered, func() {
 	// authResult asks Pocket-ID whether a client_id/secret pair is accepted. Each call needs a
 	// unique pod name, so they are numbered per assertion.
 	authResult := func(pod, secret string) string {
-		return clientSecretAuthResult(pod, userNS, clientID, secret)
+		return clientSecretAuthResult(clientID, secret)
 	}
 
 	BeforeAll(func() {
@@ -57,7 +56,7 @@ var _ = Describe("OIDC Client Secret Rotation", Ordered, func() {
 			Expect(authResult("auth-initial", secret)).To(Equal("ok"))
 
 			By("verifying the client holds exactly the one secret")
-			Expect(clientSecretIDsFromPocketID("list-initial", userNS, clientID)).To(HaveLen(1))
+			Expect(clientSecretIDsFromPocketID(clientID)).To(HaveLen(1))
 		})
 
 		// The operator matches a stored credential against these prefixes to decide what to
@@ -67,7 +66,7 @@ var _ = Describe("OIDC Client Secret Rotation", Ordered, func() {
 			secret := kubectlGetSecretData(credentialsSecret, userNS, "client_secret")
 			Expect(len(secret)).To(BeNumerically(">", 4))
 
-			Expect(clientSecretPrefixesFromPocketID("prefix-initial", userNS, clientID)).
+			Expect(clientSecretPrefixesFromPocketID(clientID)).
 				To(ConsistOf(secret[:4]))
 		})
 	})
@@ -89,8 +88,7 @@ var _ = Describe("OIDC Client Secret Rotation", Ordered, func() {
 
 			By("waiting for the superseded secret to be retired in Pocket-ID")
 			Eventually(func() []string {
-				return clientSecretIDsFromPocketID(
-					fmt.Sprintf("list-rotated-%d", time.Now().UnixNano()), userNS, clientID)
+				return clientSecretIDsFromPocketID(clientID)
 			}, time.Minute, 10*time.Second).Should(HaveLen(1),
 				"with no overlap configured only the replacement should remain")
 
@@ -131,8 +129,7 @@ var _ = Describe("OIDC Client Secret Rotation", Ordered, func() {
 
 			By("verifying Pocket-ID is holding both, and the operator leaves them alone")
 			Consistently(func() []string {
-				return clientSecretIDsFromPocketID(
-					fmt.Sprintf("list-overlap-%d", time.Now().UnixNano()), userNS, clientID)
+				return clientSecretIDsFromPocketID(clientID)
 			}, 20*time.Second, 10*time.Second).Should(HaveLen(2))
 		})
 
@@ -143,8 +140,7 @@ var _ = Describe("OIDC Client Secret Rotation", Ordered, func() {
 
 			By("waiting for the client to hold only the current secret again")
 			Eventually(func() []string {
-				return clientSecretIDsFromPocketID(
-					fmt.Sprintf("list-retired-%d", time.Now().UnixNano()), userNS, clientID)
+				return clientSecretIDsFromPocketID(clientID)
 			}, time.Minute, 10*time.Second).Should(HaveLen(1))
 
 			By("verifying the superseded value stopped authenticating")
@@ -161,11 +157,11 @@ var _ = Describe("OIDC Client Secret Rotation", Ordered, func() {
 		It("should mint a replacement when its secret is deleted in Pocket-ID", func() {
 			before := kubectlGetSecretData(credentialsSecret, userNS, "client_secret")
 
-			ids := clientSecretIDsFromPocketID("list-before-drift", userNS, clientID)
+			ids := clientSecretIDsFromPocketID(clientID)
 			Expect(ids).To(HaveLen(1))
 
 			By("deleting the operator's secret directly in Pocket-ID")
-			deleteClientSecretInPocketID("delete-drift", userNS, clientID, ids[0])
+			deleteClientSecretInPocketID(clientID, ids[0])
 			Expect(authResult("auth-drift-deleted", before)).To(Equal("invalid_client"))
 
 			By("waiting for the operator to notice and mint a replacement")
@@ -176,7 +172,7 @@ var _ = Describe("OIDC Client Secret Rotation", Ordered, func() {
 			By("verifying the replacement authenticates and is the only secret held")
 			Expect(authResult("auth-drift-healed", kubectlGetSecretData(credentialsSecret, userNS, "client_secret"))).
 				To(Equal("ok"))
-			Expect(clientSecretIDsFromPocketID("list-after-drift", userNS, clientID)).To(HaveLen(1))
+			Expect(clientSecretIDsFromPocketID(clientID)).To(HaveLen(1))
 		})
 	})
 })

@@ -30,7 +30,7 @@ var _ = Describe("OIDC Client Description", Ordered, func() {
 		clientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
 
 		By("verifying Pocket-ID reports the description for the client")
-		body := getOIDCClientFromPocketID("description-verify", userNS, clientID)
+		body := getOIDCClientFromPocketID(clientID)
 		Expect(body).To(ContainSubstring(`"description":"managed by the operator"`),
 			"Pocket-ID should persist and return the client description")
 	})

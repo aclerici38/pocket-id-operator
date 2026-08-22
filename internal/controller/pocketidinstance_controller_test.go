@@ -2210,6 +2210,19 @@ var _ = Describe("PocketIDInstance Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 			})
 
+			// Consumers read the secret's name from status rather than reconstructing the
+			// naming convention, so the field has to be populated, not merely derivable.
+			It("Should record the static API key secret name in status", func() {
+				Eventually(func(g Gomega) {
+					instance := &pocketidinternalv1alpha1.PocketIDInstance{}
+					g.Expect(k8sClient.Get(ctx, types.NamespacedName{
+						Name:      instanceName,
+						Namespace: namespace,
+					}, instance)).To(Succeed())
+					g.Expect(instance.Status.StaticAPIKeySecretName).To(Equal(instanceName + "-static-api-key"))
+				}, timeout, interval).Should(Succeed())
+			})
+
 			It("Should set controller reference on the static API key secret", func() {
 				staticSecret := &corev1.Secret{}
 				Eventually(func() error {
