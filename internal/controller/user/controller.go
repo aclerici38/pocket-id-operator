@@ -25,7 +25,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -64,10 +63,6 @@ type Reconciler struct {
 	// to avoid cache delays when secrets are created externally.
 	APIReader client.Reader
 	Scheme    *runtime.Scheme
-
-	// skipUpdate gates the update phase of reconciliation
-	// and just fetches the state
-	skipUpdate map[types.NamespacedName]bool
 }
 
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidusers,verbs=get;list;watch;create;update;patch;delete
@@ -155,19 +150,24 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
-	// Skip the push if this reconcile was triggered for post-update status refresh
-	key := client.ObjectKeyFromObject(user)
-	if r.skipUpdate[key] {
-		delete(r.skipUpdate, key)
-		_ = r.SetReadyCondition(ctx, user, metav1.ConditionTrue, "Reconciled", "User and API keys are in sync")
-		return common.ApplyResync(ctrl.Result{}), nil
-	}
-
 	updated, err := r.pushUserState(ctx, user, apiClient, pUser)
 	if err != nil {
 		log.Error(err, "Failed to push user state")
 		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
+	}
+
+	// Read the write back in this same pass, so Ready below never stamps observedGeneration
+	// against state the operator has not observed yet.
+	if updated {
+		if pUser, err = apiClient.GetUser(ctx, user.Status.UserID); err != nil {
+			_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "GetError", err.Error())
+			return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
+		}
+		if err := r.updateUserStatus(ctx, user, pUser); err != nil {
+			log.Error(err, "Failed to update user status")
+			return ctrl.Result{RequeueAfter: common.Requeue}, nil
+		}
 	}
 
 	if err := r.reconcileAPIKeys(ctx, user, apiClient, instance.Namespace, instance.Name); err != nil {
@@ -188,10 +188,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	_ = r.SetReadyCondition(ctx, user, metav1.ConditionTrue, "Reconciled", "User and API keys are in sync")
-
-	if updated {
-		return ctrl.Result{RequeueAfter: common.RequeueImmediate}, nil
-	}
 
 	if cleanupResult.RequeueAfter > 0 {
 		return common.ApplyResync(cleanupResult), nil
@@ -573,11 +569,6 @@ func (r *Reconciler) pushUserState(ctx context.Context, user *pocketidinternalv1
 	}
 
 	metrics.ResourceOperations.WithLabelValues("PocketIDUser", "updated").Inc()
-
-	if r.skipUpdate == nil {
-		r.skipUpdate = make(map[types.NamespacedName]bool)
-	}
-	r.skipUpdate[client.ObjectKeyFromObject(user)] = true
 
 	return true, nil
 }

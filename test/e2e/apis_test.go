@@ -226,8 +226,8 @@ var _ = Describe("PocketIDAPI Client Access", Ordered, func() {
 	})
 
 	It("should reflect the delegated/client split in Pocket-ID's database", func() {
-		// Wrapped in Eventually as a stopgap: the client can report Ready for a generation
-		// it has not pushed yet, so a bare read here races the operator. See issue #588.
+		// Eventually because the wait that got here is waitForReady, which does not gate on
+		// observedGeneration: Ready can still be the previous generation's.
 		Eventually(func(g Gomega) {
 			body := getFromPocketID("/api/api-access/" + clientID + "/apis")
 			// read:data was granted for the user-delegated flow, sync:data for client-credentials.
@@ -251,16 +251,14 @@ var _ = Describe("PocketIDAPI Client Access", Ordered, func() {
 		waitForReconciled("pocketidoidcclient", clientName, userNS)
 
 		By("verifying Pocket-ID moved sync:data to the delegated bucket and cleared client permissions")
-		// Wrapped in Eventually as a stopgap: the client can report Ready for a generation
-		// it has not pushed yet, so a bare read here races the operator. See issue #588.
-		Eventually(func(g Gomega) {
-			body := getFromPocketID("/api/api-access/" + clientID + "/apis")
-			// clientPermissionIds empty + both IDs present proves both are now user-delegated.
-			g.Expect(body).To(ContainSubstring(`"clientPermissionIds":[]`))
-			g.Expect(body).To(ContainSubstring(`"clientAccess":false`))
-			g.Expect(body).To(ContainSubstring(readID))
-			g.Expect(body).To(ContainSubstring(syncID))
-		}).Should(Succeed())
+		// A bare read on purpose: waitForReconciled gates on observedGeneration, so this
+		// asserts that Ready for a generation means that generation reached Pocket-ID.
+		body := getFromPocketID("/api/api-access/" + clientID + "/apis")
+		// clientPermissionIds empty + both IDs present proves both are now user-delegated.
+		Expect(body).To(ContainSubstring(`"clientPermissionIds":[]`))
+		Expect(body).To(ContainSubstring(`"clientAccess":false`))
+		Expect(body).To(ContainSubstring(readID))
+		Expect(body).To(ContainSubstring(syncID))
 	})
 
 	It("should clear access in Pocket-ID when apiAccess is emptied", func() {
@@ -279,8 +277,8 @@ var _ = Describe("PocketIDAPI Client Access", Ordered, func() {
 		}).Should(Succeed())
 
 		By("confirming Pocket-ID's database has no access for the client")
-		// Wrapped in Eventually as a stopgap: the client can report Ready for a generation
-		// it has not pushed yet, so a bare read here races the operator. See issue #588.
+		// Eventually because the wait that got here is waitForReady, which does not gate on
+		// observedGeneration: Ready can still be the previous generation's.
 		Eventually(func(g Gomega) {
 			body := getFromPocketID("/api/api-access/" + clientID + "/apis")
 			g.Expect(body).NotTo(ContainSubstring(readID))

@@ -23,7 +23,6 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -51,10 +50,6 @@ type Reconciler struct {
 	common.BaseReconciler
 	APIReader client.Reader
 	Scheme    *runtime.Scheme
-
-	// skipUpdate gates the update phase of reconciliation
-	// and just fetches the state
-	skipUpdate map[types.NamespacedName]bool
 }
 
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidusergroups,verbs=get;list;watch;create;update;patch;delete
@@ -144,14 +139,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
-	// Skip the push if this reconcile was triggered for post-update status refresh
-	key := client.ObjectKeyFromObject(userGroup)
-	if r.skipUpdate[key] {
-		delete(r.skipUpdate, key)
-		_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionTrue, "Reconciled", "User group is in sync")
-		return common.ApplyResync(ctrl.Result{}), nil
-	}
-
 	updated, err := r.pushUserGroupState(ctx, userGroup, apiClient, current)
 	if err != nil {
 		log.Error(err, "Failed to push user group state")
@@ -159,11 +146,20 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 	}
 
-	_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionTrue, "Reconciled", "User group is in sync")
-
+	// Read the write back in this same pass, so Ready below never stamps observedGeneration
+	// against state the operator has not observed yet.
 	if updated {
-		return ctrl.Result{RequeueAfter: common.RequeueImmediate}, nil
+		if current, err = apiClient.GetUserGroup(ctx, userGroup.Status.GroupID); err != nil {
+			_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "GetError", err.Error())
+			return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
+		}
+		if err := r.updateUserGroupStatus(ctx, userGroup, current); err != nil {
+			log.Error(err, "Failed to update user group status")
+			return ctrl.Result{RequeueAfter: common.Requeue}, nil
+		}
 	}
+
+	_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionTrue, "Reconciled", "User group is in sync")
 
 	return common.ApplyResync(ctrl.Result{}), nil
 }
@@ -358,11 +354,6 @@ func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketid
 
 		metrics.ResourceOperations.WithLabelValues("PocketIDUserGroup", "updated").Inc()
 		updated = true
-
-		if r.skipUpdate == nil {
-			r.skipUpdate = make(map[types.NamespacedName]bool)
-		}
-		r.skipUpdate[client.ObjectKeyFromObject(userGroup)] = true
 	}
 
 	// Persist the operator-managed set to status after successful reconciliation

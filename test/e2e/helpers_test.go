@@ -822,6 +822,10 @@ func waitForReconciled(resource, name, namespace string) {
 		g.Expect(conditionField(obj, "Ready", "observedGeneration")).To(Equal(gen),
 			"observedGeneration should catch up to spec generation")
 		g.Expect(conditionField(obj, "Ready", "status")).To(Equal("True"))
+		// Ready=True is also how a resource whose deletion is blocked keeps dependents
+		// resolving it, and deletion bumps the generation, so the reason is what separates
+		// "this generation reached Pocket-ID" from "this generation is stuck mid-delete".
+		g.Expect(conditionField(obj, "Ready", "reason")).To(Equal("Reconciled"))
 	}).Should(Succeed())
 }
 
