@@ -85,8 +85,15 @@ func newK8sClient() (client.Client, error) {
 
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
-	SetDefaultEventuallyTimeout(3 * time.Minute)
-	SetDefaultEventuallyPollingInterval(2 * time.Second)
+	// One place to tune the suite's timing. Specs no longer pass their own timeout and
+	// interval: 2 minutes matches what the overwhelming majority used, and polling at
+	// 250ms costs one extra API GET per tick against a local apiserver while removing
+	// most of the observation lag between a condition becoming true and a spec seeing it.
+	SetDefaultEventuallyTimeout(2 * time.Minute)
+	SetDefaultEventuallyPollingInterval(250 * time.Millisecond)
+	// Consistently keeps its dwell time at each call site, because there the duration is
+	// the assertion; only its polling rate comes from here.
+	SetDefaultConsistentlyPollingInterval(250 * time.Millisecond)
 	RunSpecs(t, "Pocket-ID Operator E2E Suite")
 }
 
@@ -137,7 +144,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 			client.ObjectKey{Name: "pocket-id-operator", Namespace: namespace}, deployment)).To(Succeed())
 		g.Expect(deployment.Status.AvailableReplicas).To(BeNumerically(">=", 1),
 			"the operator deployment should have an available replica")
-	}, 2*time.Minute, 2*time.Second).Should(Succeed())
+	}).Should(Succeed())
 
 	By("creating test namespaces")
 	createNamespace(instanceNS)
@@ -150,9 +157,11 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 
 	By("creating the shared e2e instance")
 	// The CIMD allowlist is set on the shared instance rather than a dedicated one because
-	// SelectInstance rejects a selector matching more than one PocketIDInstance, so a
-	// long-lived second instance would break every client that omits instanceSelector.
+	// Labelled so every resource can name it explicitly. SelectInstance lists instances
+	// cluster-wide and rejects an ambiguous match, so this label is what lets a spec bring
+	// up its own instance without breaking everyone else's reconciles.
 	createInstance(InstanceOptions{
+		Labels:           sharedInstanceLabels,
 		CIMDURLAllowlist: []string{cimdMetadataURL},
 		NodePort:         pocketIDNodePort,
 	})
@@ -161,7 +170,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	Eventually(func(g Gomega) {
 		output := getField("pocketidinstance", instanceName, instanceNS, ".status.conditions[?(@.type=='Ready')].status")
 		g.Expect(output).To(Equal("True"))
-	}, 5*time.Minute, 5*time.Second).Should(Succeed())
+	}).Should(Succeed())
 
 	actualImage := getFieldBySelector("pod", instanceNS, "app.kubernetes.io/name=pocket-id", ".spec.containers[0].image")
 	By(fmt.Sprintf("pocket-id pod is running image: %s", actualImage))
@@ -183,7 +192,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	Eventually(func() error {
 		_, vErr := pid.GetCurrentVersion(context.Background())
 		return vErr
-	}, 2*time.Minute, 2*time.Second).Should(Succeed(),
+	}).Should(Succeed(),
 		"Pocket-ID should be reachable on the published NodePort")
 })
 

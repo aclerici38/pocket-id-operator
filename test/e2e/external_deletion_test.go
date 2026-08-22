@@ -5,7 +5,6 @@ package e2e
 
 import (
 	"fmt"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -40,7 +39,7 @@ var _ = Describe("External Deletion Recovery", Ordered, func() {
 				newUserID := getField("pocketiduser", userName, userNS, ".status.userID")
 				g.Expect(newUserID).NotTo(BeEmpty())
 				g.Expect(newUserID).NotTo(Equal(originalUserID), "user should have a new ID after recreation")
-			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying the user is ready")
 			waitForReady("pocketiduser", userName, userNS)
@@ -70,7 +69,7 @@ var _ = Describe("External Deletion Recovery", Ordered, func() {
 				newGroupID := getField("pocketidusergroup", groupName, userNS, ".status.groupID")
 				g.Expect(newGroupID).NotTo(BeEmpty())
 				g.Expect(newGroupID).NotTo(Equal(originalGroupID), "group should have a new ID after recreation")
-			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying the group is ready")
 			waitForReady("pocketidusergroup", groupName, userNS)
@@ -99,7 +98,7 @@ var _ = Describe("External Deletion Recovery", Ordered, func() {
 				// Note: OIDC client IDs may be the same if specified in spec, so we check ready state
 				condition := getField("pocketidoidcclient", clientName, userNS, ".status.conditions[?(@.type=='Ready')].status")
 				g.Expect(condition).To(Equal("True"))
-			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying the client secret still exists")
 			secretName := clientName + "-oidc-credentials"

@@ -53,7 +53,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 				g.Expect(loginURL).To(ContainSubstring("/lc/"))
 				g.Expect(loginURL).To(ContainSubstring(token))
 				g.Expect(expiresAt).NotTo(BeEmpty())
-			}, time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 
@@ -124,7 +124,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 			Eventually(func(g Gomega) {
 				output := getField("pocketiduser", userName, userNS, ".status.isAdmin")
 				g.Expect(output).To(Equal("true"))
-			}, time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 
@@ -287,7 +287,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 				parsed, err := time.Parse(time.RFC3339, expiresAt)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(parsed.After(time.Now().Add(-time.Second))).To(BeTrue())
-			}, time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		// Pocket-ID derives the login code's length from the TTL requested when minting
@@ -326,7 +326,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 			Eventually(func(g Gomega) {
 				token = getField("pocketiduser", userName, userNS, ".status.oneTimeLoginToken")
 				g.Expect(token).NotTo(BeEmpty())
-			}, time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("redeeming the token and verifying the session belongs to that user")
 			Expect(pocketIDUsernameForOneTimeToken(token)).To(Equal(userName))

@@ -83,12 +83,12 @@ var _ = Describe("OIDC Client Secret Rotation", Ordered, func() {
 			By("waiting for a different value to reach the generated Secret")
 			Eventually(func() string {
 				return secretData(credentialsSecret, userNS, "client_secret")
-			}, 2*time.Minute, 2*time.Second).ShouldNot(Equal(previousSecret))
+			}).ShouldNot(Equal(previousSecret))
 
 			By("waiting for the superseded secret to be retired in Pocket-ID")
 			Eventually(func() []string {
 				return clientSecretIDsFromPocketID(clientID)
-			}, time.Minute, 10*time.Second).Should(HaveLen(1),
+			}).Should(HaveLen(1),
 				"with no overlap configured only the replacement should remain")
 
 			By("verifying the replacement authenticates")
@@ -118,7 +118,7 @@ var _ = Describe("OIDC Client Secret Rotation", Ordered, func() {
 			By("waiting for the replacement to reach the generated Secret")
 			Eventually(func() string {
 				return secretData(credentialsSecret, userNS, "client_secret")
-			}, 2*time.Minute, 2*time.Second).ShouldNot(Equal(supersededSecret))
+			}).ShouldNot(Equal(supersededSecret))
 
 			By("verifying both the replacement and the secret it superseded authenticate")
 			Expect(authResult(secretData(credentialsSecret, userNS, "client_secret"))).
@@ -129,7 +129,7 @@ var _ = Describe("OIDC Client Secret Rotation", Ordered, func() {
 			By("verifying Pocket-ID is holding both, and the operator leaves them alone")
 			Consistently(func() []string {
 				return clientSecretIDsFromPocketID(clientID)
-			}, 20*time.Second, 10*time.Second).Should(HaveLen(2))
+			}, 20*time.Second).Should(HaveLen(2))
 		})
 
 		It("should retire the superseded secret once the overlap is gone", func() {
@@ -140,7 +140,7 @@ var _ = Describe("OIDC Client Secret Rotation", Ordered, func() {
 			By("waiting for the client to hold only the current secret again")
 			Eventually(func() []string {
 				return clientSecretIDsFromPocketID(clientID)
-			}, time.Minute, 10*time.Second).Should(HaveLen(1))
+			}).Should(HaveLen(1))
 
 			By("verifying the superseded value stopped authenticating")
 			Expect(authResult(supersededSecret)).To(Equal("invalid_client"))
@@ -166,7 +166,7 @@ var _ = Describe("OIDC Client Secret Rotation", Ordered, func() {
 			By("waiting for the operator to notice and mint a replacement")
 			Eventually(func() string {
 				return secretData(credentialsSecret, userNS, "client_secret")
-			}, time.Minute, 2*time.Second).ShouldNot(Equal(before))
+			}).ShouldNot(Equal(before))
 
 			By("verifying the replacement authenticates and is the only secret held")
 			Expect(authResult(secretData(credentialsSecret, userNS, "client_secret"))).

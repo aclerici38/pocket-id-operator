@@ -59,13 +59,13 @@ metadata:
   name: %s
   namespace: %s
 spec:
-  callbackUrls:
+%s  callbackUrls:
   - https://declared-secret-test.example.com/callback
   isPublic: %t
   clientSecretRef:
     name: %s
     key: %s%s
-`, name, userNS, isPublic, sourceSecretName, sourceKey, rotation)
+`, name, userNS, instanceSelectorYAML(sharedInstanceLabels), isPublic, sourceSecretName, sourceKey, rotation)
 	}
 
 	BeforeAll(func() {
@@ -93,7 +93,7 @@ spec:
 			By("verifying the generated Secret holds the declared value, not a generated one")
 			Eventually(func() string {
 				return secretData(credentialsSecret, userNS, "client_secret")
-			}, time.Minute, 2*time.Second).Should(Equal(declaredValue))
+			}).Should(Equal(declaredValue))
 
 			By("verifying status records the source revision that was pushed")
 			version := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS,
@@ -120,12 +120,12 @@ spec:
 			By("verifying the new value reaches the generated Secret")
 			Eventually(func() string {
 				return secretData(credentialsSecret, userNS, "client_secret")
-			}, 3*time.Minute, 2*time.Second).Should(Equal(rotatedValue))
+			}).Should(Equal(rotatedValue))
 
 			By("verifying the recorded source revision advanced")
 			Eventually(func() string {
 				return getField("pocketidoidcclient", clientName, userNS, ".status.clientSecretSourceVersion")
-			}, time.Minute, 2*time.Second).ShouldNot(Equal(before))
+			}).ShouldNot(Equal(before))
 
 			// A push appends rather than replaces, so without retirement the value the user
 			// rotated away from would keep authenticating indefinitely.
@@ -133,7 +133,7 @@ spec:
 			clientID := getField("pocketidoidcclient", clientName, userNS, ".status.clientID")
 			Eventually(func() []string {
 				return clientSecretIDsFromPocketID(clientID)
-			}, time.Minute, 10*time.Second).Should(HaveLen(1))
+			}).Should(HaveLen(1))
 			Expect(clientSecretAuthResult(clientID, rotatedValue)).To(Equal("ok"))
 			Expect(clientSecretAuthResult(clientID, declaredValue)).
 				To(Equal("invalid_client"))
@@ -148,12 +148,12 @@ spec:
 			Eventually(func() string {
 				return getField("pocketidoidcclient", clientName, userNS,
 					".metadata.annotations.pocketid\\.internal/regenerate-client-secret")
-			}, 2*time.Minute, 2*time.Second).Should(BeEmpty())
+			}).Should(BeEmpty())
 
 			By("verifying the declared secret was not regenerated")
 			Consistently(func() string {
 				return secretData(credentialsSecret, userNS, "client_secret")
-			}, 15*time.Second, 3*time.Second).Should(Equal(rotatedValue))
+			}, 15*time.Second).Should(Equal(rotatedValue))
 		})
 
 		It("should report an error when the referenced key is missing", func() {

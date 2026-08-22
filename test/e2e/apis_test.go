@@ -78,7 +78,7 @@ var _ = Describe("PocketIDAPI", Ordered, func() {
 			Eventually(func(g Gomega) {
 				out := getField("pocketidapi", apiName, userNS, ".status.permissions[?(@.key=='delete:orders')].id")
 				g.Expect(out).NotTo(BeEmpty())
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("confirming Pocket-ID's database contains the new permission")
 			body := getFromPocketID("/api/apis/" + apiID)
@@ -99,7 +99,7 @@ var _ = Describe("PocketIDAPI", Ordered, func() {
 			Eventually(func(g Gomega) {
 				out := getField("pocketidapi", apiName, userNS, ".status.permissions[?(@.key=='delete:orders')].id")
 				g.Expect(out).To(BeEmpty())
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("confirming Pocket-ID's database no longer contains the permission")
 			body := getFromPocketID("/api/apis/" + apiID)
@@ -124,7 +124,7 @@ var _ = Describe("PocketIDAPI", Ordered, func() {
 			Eventually(func(g Gomega) {
 				out := getField("pocketidapi", apiName, userNS, ".status.permissions[?(@.key=='write:orders')].name")
 				g.Expect(out).To(Equal("Write and modify orders"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying the permission ID is unchanged (updated in place, not recreated)")
 			Expect(permIDFromStatus(apiName, "write:orders")).To(Equal(originalID))
@@ -222,7 +222,7 @@ var _ = Describe("PocketIDAPI Client Access", Ordered, func() {
 			out := getField("pocketidoidcclient", clientName, userNS, ".status.managedAPIPermissionIDs[*]")
 			g.Expect(out).To(ContainSubstring(readID))
 			g.Expect(out).To(ContainSubstring(syncID))
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 
 	It("should reflect the delegated/client split in Pocket-ID's database", func() {
@@ -268,7 +268,7 @@ var _ = Describe("PocketIDAPI Client Access", Ordered, func() {
 		Eventually(func(g Gomega) {
 			out := getField("pocketidoidcclient", clientName, userNS, ".status.managedAPIPermissionIDs[*]")
 			g.Expect(out).To(BeEmpty())
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 
 		By("confirming Pocket-ID's database has no access for the client")
 		body := getFromPocketID("/api/api-access/" + clientID + "/apis")
@@ -310,7 +310,7 @@ var _ = Describe("PocketIDAPI CIMD Access", Ordered, func() {
 			g.Expect(body).To(ContainSubstring(fmt.Sprintf(`"id":"%s","key":"read:data","name":"Read data","allowedForCimdClients":true`, readID)))
 			g.Expect(body).To(ContainSubstring(`"key":"write:data","name":"Write data"`))
 			g.Expect(body).NotTo(ContainSubstring(`"key":"write:data","name":"Write data","allowedForCimdClients":true`))
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 
 	It("should mirror the resolved state into status", func() {
@@ -334,7 +334,7 @@ var _ = Describe("PocketIDAPI CIMD Access", Ordered, func() {
 			syncID := permIDFromStatus(apiName, "sync:data")
 			body := getFromPocketID("/api/apis/" + apiID)
 			g.Expect(body).To(ContainSubstring(fmt.Sprintf(`"id":"%s","key":"sync:data","name":"Sync data","allowedForCimdClients":true`, syncID)))
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 
 	// The one row of the spec.cimdAccess table with no coverage, and the only one where the
@@ -357,7 +357,7 @@ var _ = Describe("PocketIDAPI CIMD Access", Ordered, func() {
 		Eventually(func(g Gomega) {
 			body := getFromPocketID("/api/apis/" + apiID)
 			g.Expect(body).NotTo(ContainSubstring(`"allowCimdClients":true`))
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 		waitForStatusField("pocketidapi", apiName, userNS, ".status.cimdAccess", "false")
 
 		By("letting several reconciles pass and confirming the state stopped moving")
@@ -389,7 +389,7 @@ var _ = Describe("PocketIDAPI CIMD Access", Ordered, func() {
 			g.Expect(body).To(ContainSubstring(fmt.Sprintf(`"id":"%s","key":"read:data","name":"Read data","allowedForCimdClients":true`, readID)))
 			g.Expect(body).To(ContainSubstring(fmt.Sprintf(`"id":"%s","key":"sync:data","name":"Sync data","allowedForCimdClients":true`, syncID)))
 			g.Expect(body).NotTo(ContainSubstring(`"key":"write:data","name":"Write data","allowedForCimdClients":true`))
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 
 	It("should disable CIMD access when the marks are removed", func() {
@@ -408,7 +408,7 @@ var _ = Describe("PocketIDAPI CIMD Access", Ordered, func() {
 			body := getFromPocketID("/api/apis/" + apiID)
 			g.Expect(body).NotTo(ContainSubstring(`"allowCimdClients":true`))
 			g.Expect(body).NotTo(ContainSubstring(`"allowedForCimdClients":true`))
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 
 	AfterAll(func() {
@@ -447,7 +447,7 @@ var _ = Describe("PocketIDAPI Scopeless Client Grant", Ordered, func() {
 			body := getFromPocketID("/api/api-access/" + clientID + "/apis")
 			g.Expect(body).To(ContainSubstring(`"userDelegatedAccess":true`))
 			g.Expect(body).To(ContainSubstring(`"userDelegatedPermissionIds":[]`))
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 
 	// A scopeless grant carries no permission IDs, so status.managedAPIs is the only record
@@ -457,7 +457,7 @@ var _ = Describe("PocketIDAPI Scopeless Client Grant", Ordered, func() {
 		Eventually(func(g Gomega) {
 			g.Expect(getField("pocketidoidcclient", clientName, userNS, ".status.managedAPIs[*]")).To(Equal(apiID))
 			g.Expect(getField("pocketidoidcclient", clientName, userNS, ".status.managedAPIPermissionIDs[*]")).To(BeEmpty())
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 
 	It("should grant the client-credentials flow with no permissions", func() {
@@ -477,7 +477,7 @@ var _ = Describe("PocketIDAPI Scopeless Client Grant", Ordered, func() {
 			g.Expect(body).To(ContainSubstring(`"clientAccess":true`))
 			g.Expect(body).To(ContainSubstring(`"clientPermissionIds":[]`))
 			g.Expect(body).To(ContainSubstring(`"userDelegatedAccess":false`))
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 
 	// A scopeless grant is the case where desired and observed state are thinnest, so a
@@ -503,7 +503,7 @@ var _ = Describe("PocketIDAPI Scopeless Client Grant", Ordered, func() {
 			body := getFromPocketID("/api/api-access/" + clientID + "/apis")
 			g.Expect(body).NotTo(ContainSubstring(`"clientAccess":true`))
 			g.Expect(body).NotTo(ContainSubstring(`"userDelegatedAccess":true`))
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 
 	AfterAll(func() {
@@ -555,14 +555,14 @@ var _ = Describe("PocketIDAPI Multi-API Grants", Ordered, func() {
 			body := getFromPocketID("/api/api-access/" + clientID + "/apis")
 			g.Expect(body).To(ContainSubstring(fmt.Sprintf(`"userDelegatedPermissionIds":["%s"]`, ordersPermID)))
 			g.Expect(body).To(ContainSubstring(fmt.Sprintf(`"clientPermissionIds":["%s"]`, billingPermID)))
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 
 		By("verifying status tracks both API IDs")
 		Eventually(func(g Gomega) {
 			out := getField("pocketidoidcclient", clientName, userNS, ".status.managedAPIs[*]")
 			g.Expect(out).To(ContainSubstring(ordersID))
 			g.Expect(out).To(ContainSubstring(billingID))
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 
 	It("should revoke only the dropped API and leave the other grant intact", func() {
@@ -582,13 +582,13 @@ var _ = Describe("PocketIDAPI Multi-API Grants", Ordered, func() {
 				"the dropped API's grant should be gone")
 			g.Expect(body).To(ContainSubstring(ordersPermID),
 				"the surviving entry must not be collateral damage")
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 
 		By("verifying status dropped only the revoked API")
 		Eventually(func(g Gomega) {
 			out := getField("pocketidoidcclient", clientName, userNS, ".status.managedAPIs[*]")
 			g.Expect(out).To(Equal(ordersID))
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 
 	AfterAll(func() {
@@ -629,7 +629,7 @@ var _ = Describe("PocketIDAPI Reference Finalizer", Ordered, func() {
 			fin := getField("pocketidapi", apiName, userNS, ".metadata.finalizers")
 			g.Expect(ts).NotTo(BeEmpty())
 			g.Expect(fin).To(ContainSubstring("pocketid.internal/oidc-client-api-finalizer"))
-		}, time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 
 		By("dropping the apiAccess grant from the client (edit-away, not client deletion)")
 		createOIDCClient(OIDCClientOptions{
@@ -669,7 +669,7 @@ var _ = Describe("PocketIDAPI External Deletion Recovery", Ordered, func() {
 			newID := getField("pocketidapi", apiName, userNS, ".status.apiID")
 			g.Expect(newID).NotTo(BeEmpty())
 			g.Expect(newID).NotTo(Equal(originalAPIID), "API should have a new ID after recreation")
-		}, 2*time.Minute, 5*time.Second).Should(Succeed())
+		}).Should(Succeed())
 
 		By("verifying the API is Ready and its permission is restored")
 		waitForReady("pocketidapi", apiName, userNS)

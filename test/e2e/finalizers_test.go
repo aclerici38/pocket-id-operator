@@ -4,8 +4,6 @@
 package e2e
 
 import (
-	"time"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -42,7 +40,7 @@ var _ = Describe("Reference Finalizers", Ordered, func() {
 				finalizers := getField("pocketidusergroup", finalizerGroupName, userNS, ".metadata.finalizers")
 				g.Expect(deletionTimestamp).NotTo(BeEmpty())
 				g.Expect(finalizers).To(ContainSubstring("pocketid.internal/oidc-client-finalizer"))
-			}, time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("deleting the OIDC client")
 			deleteObject("pocketidoidcclient", finalizerOIDCName, userNS)
@@ -82,7 +80,7 @@ var _ = Describe("Reference Finalizers", Ordered, func() {
 				finalizers := getField("pocketidoidcclient", revFinalizerOIDCName, userNS, ".metadata.finalizers")
 				g.Expect(deletionTimestamp).NotTo(BeEmpty())
 				g.Expect(finalizers).To(ContainSubstring("pocketid.internal/user-group-oidc-client-finalizer"))
-			}, time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("deleting the user group")
 			deleteObject("pocketidusergroup", revFinalizerGroupName, userNS)
@@ -123,7 +121,7 @@ var _ = Describe("Reference Finalizers", Ordered, func() {
 				finalizers := getField("pocketiduser", finalizerUserName, userNS, ".metadata.finalizers")
 				g.Expect(deletionTimestamp).NotTo(BeEmpty())
 				g.Expect(finalizers).To(ContainSubstring("pocketid.internal/user-group-finalizer"))
-			}, time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("deleting the user group")
 			deleteObject("pocketidusergroup", finalizerUserGroupName, userNS)

@@ -14,7 +14,7 @@ patches:
       path: /spec/template/spec/containers/0/env
       value:
         - name: RESYNC_INTERVAL
-          value: "5s"
+          value: "2s"
         - name: AUTOGENERATE_LOGOS
           value: "false"
     - op: replace

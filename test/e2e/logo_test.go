@@ -6,7 +6,6 @@ package e2e
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -39,7 +38,7 @@ var _ = Describe("Logo Auto-Generation", Ordered, func() {
 			Eventually(func(g Gomega) {
 				hasLogo := getOIDCClientField(oidcClientID, "hasLogo")
 				g.Expect(hasLogo).To(Equal("true"))
-			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying the logo status fields are set")
 			logoURL := getField("pocketidoidcclient", clientName, userNS, ".status.logoUrl")

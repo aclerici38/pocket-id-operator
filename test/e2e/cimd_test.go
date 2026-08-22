@@ -146,7 +146,7 @@ var _ = Describe("Client ID Metadata Documents", Ordered, func() {
 			It("reports the API in status without claiming to manage it", func() {
 				Eventually(func(g Gomega) {
 					g.Expect(getField("pocketidoidcclient", clientName, userNS, ".status.cimdGrantedAPIs[*]")).To(Equal(apiResource))
-				}, 2*time.Minute, 2*time.Second).Should(Succeed())
+				}).Should(Succeed())
 
 				By("verifying the operator claims no ownership of API-side access")
 				Expect(getField("pocketidoidcclient", clientName, userNS, ".status.managedAPIs[*]")).To(BeEmpty())
@@ -172,7 +172,7 @@ var _ = Describe("Client ID Metadata Documents", Ordered, func() {
 
 				Eventually(func(g Gomega) {
 					g.Expect(getField("pocketidoidcclient", clientName, userNS, ".status.cimdGrantedAPIs[*]")).To(BeEmpty())
-				}, 2*time.Minute, 2*time.Second).Should(Succeed())
+				}).Should(Succeed())
 			})
 
 			AfterAll(func() {

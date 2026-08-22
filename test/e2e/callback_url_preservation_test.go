@@ -33,7 +33,7 @@ var _ = Describe("Callback URL Preservation", Ordered, func() {
 			Eventually(func(g Gomega) {
 				urls := getField("pocketidoidcclient", clientName, userNS, ".status.callbackUrls")
 				g.Expect(urls).To(ContainSubstring("https://preserve.example.com/callback"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("triggering a reconcile by updating the spec (adding a logout URL)")
 			createOIDCClient(OIDCClientOptions{
@@ -48,7 +48,7 @@ var _ = Describe("Callback URL Preservation", Ordered, func() {
 			Eventually(func(g Gomega) {
 				urls := getField("pocketidoidcclient", clientName, userNS, ".status.callbackUrls")
 				g.Expect(urls).To(ContainSubstring("https://preserve.example.com/callback"))
-			}, time.Minute, 5*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		AfterAll(func() {
@@ -67,7 +67,8 @@ kind: PocketIDOIDCClient
 metadata:
   name: %s
   namespace: %s
-spec: {}`, clientName, userNS))
+spec:
+%s`, clientName, userNS, instanceSelectorYAML(sharedInstanceLabels)))
 
 			waitForReady("pocketidoidcclient", clientName, userNS)
 			clientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
@@ -85,14 +86,14 @@ spec: {}`, clientName, userNS))
 				urls := getField("pocketidoidcclient", clientName, userNS, ".status.callbackUrls")
 				g.Expect(urls).To(ContainSubstring("https://oob-set.example.com/callback"),
 					"out-of-band callback URL must survive operator reconcile when spec has no callbackUrls")
-			}, time.Minute, 5*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying the out-of-band callback URL persists across multiple reconciles")
 			Consistently(func(g Gomega) {
 				urls := getField("pocketidoidcclient", clientName, userNS, ".status.callbackUrls")
 				g.Expect(urls).To(ContainSubstring("https://oob-set.example.com/callback"),
 					"out-of-band callback URL must not be wiped by subsequent reconciles")
-			}, 20*time.Second, 5*time.Second).Should(Succeed())
+			}, 20*time.Second).Should(Succeed())
 		})
 
 		AfterAll(func() {
@@ -115,7 +116,7 @@ spec: {}`, clientName, userNS))
 			Eventually(func(g Gomega) {
 				urls := getField("pocketidoidcclient", clientName, userNS, ".status.callbackUrls")
 				g.Expect(urls).To(ContainSubstring("https://initial.example.com/callback"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("updating the spec with new callback URLs")
 			createOIDCClient(OIDCClientOptions{
@@ -128,7 +129,7 @@ spec: {}`, clientName, userNS))
 				urls := getField("pocketidoidcclient", clientName, userNS, ".status.callbackUrls")
 				g.Expect(urls).To(ContainSubstring("https://updated.example.com/callback"))
 				g.Expect(urls).NotTo(ContainSubstring("https://initial.example.com/callback"))
-			}, time.Minute, 5*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		AfterAll(func() {

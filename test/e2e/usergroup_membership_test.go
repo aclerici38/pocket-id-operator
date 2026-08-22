@@ -6,7 +6,6 @@ package e2e
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -56,7 +55,7 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 			Eventually(func(g Gomega) {
 				ids := getField("pocketidusergroup", mergeGroupName, userNS, ".status.managedUserIDs[*]")
 				g.Expect(ids).To(ContainSubstring(managedUserID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			groupID := waitForStatusFieldNotEmpty("pocketidusergroup", mergeGroupName, userNS, ".status.groupID")
 
@@ -68,7 +67,7 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 				members := getGroupMembersFromPocketID(groupID)
 				g.Expect(members).To(ContainSubstring(externalUserID))
 				g.Expect(members).To(ContainSubstring(managedUserID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("triggering a reconcile by updating the group friendlyName")
 			createUserGroup(UserGroupOptions{
@@ -86,7 +85,7 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 					"external user should be preserved after reconcile")
 				g.Expect(members).To(ContainSubstring(managedUserID),
 					"managed user should still be present")
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying status.managedUserIDs only contains the managed user")
 			ids := getField("pocketidusergroup", mergeGroupName, userNS, ".status.managedUserIDs[*]")
@@ -128,7 +127,7 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 				g.Expect(members).To(ContainSubstring(managedUserID))
 				g.Expect(members).To(ContainSubstring(managedUser2ID))
 				g.Expect(members).To(ContainSubstring(externalUserID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("removing managedUser2 from the CR")
 			createUserGroup(UserGroupOptions{
@@ -147,14 +146,14 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 					"external user should be preserved")
 				g.Expect(members).NotTo(ContainSubstring(managedUser2ID),
 					"removed managed user should be gone")
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying status.managedUserIDs reflects only the remaining managed user")
 			Eventually(func(g Gomega) {
 				ids := getField("pocketidusergroup", groupName, userNS, ".status.managedUserIDs[*]")
 				g.Expect(ids).To(ContainSubstring(managedUserID))
 				g.Expect(ids).NotTo(ContainSubstring(managedUser2ID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		AfterAll(func() {
@@ -188,7 +187,7 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 				members := getGroupMembersFromPocketID(groupID)
 				g.Expect(members).To(ContainSubstring(managedUserID))
 				g.Expect(members).To(ContainSubstring(externalUserID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("clearing all users from the CR spec")
 			createUserGroup(UserGroupOptions{
@@ -205,13 +204,13 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 					"external user should be preserved")
 				g.Expect(members).NotTo(ContainSubstring(managedUserID),
 					"managed user should be removed")
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying status.managedUserIDs is empty")
 			Eventually(func(g Gomega) {
 				ids := getField("pocketidusergroup", groupName, userNS, ".status.managedUserIDs")
 				g.Expect(ids).To(BeEmpty())
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		AfterAll(func() {
@@ -261,7 +260,7 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 					"pre-existing user should be preserved after adoption")
 				g.Expect(members).To(ContainSubstring(managedUserID),
 					"managed user should be added to the group")
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying status.managedUserIDs only contains the CR-declared user")
 			ids := getField("pocketidusergroup", adoptGroupName, userNS, ".status.managedUserIDs[*]")
@@ -315,7 +314,7 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 				count := getField("pocketidusergroup", groupName, userNS, ".status.totalUserCount")
 				g.Expect(count).To(Equal("2"),
 					"totalUserCount should include both managed and external users")
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying managedUserIDs still only has 1 entry")
 			ids := getField("pocketidusergroup", groupName, userNS, ".status.managedUserIDs[*]")

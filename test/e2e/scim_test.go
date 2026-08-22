@@ -57,7 +57,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			Eventually(func(g Gomega) {
 				endpoint := getSCIMProviderEndpoint(oidcClientID)
 				g.Expect(endpoint).To(Equal("https://scim-updated.example.com/v2"))
-			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying the OIDC client is still ready")
 			waitForReady("pocketidoidcclient", clientName, userNS)
@@ -77,7 +77,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			Eventually(func(g Gomega) {
 				id := getField("pocketidoidcclient", clientName, userNS, ".status.scimProviderID")
 				g.Expect(id).To(BeEmpty())
-			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying the OIDC client is still ready")
 			waitForReady("pocketidoidcclient", clientName, userNS)
@@ -167,7 +167,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 				deleteObject("pod", "verify-scim-gone-after-oidc-delete", userNS)
 				gone := checkSCIMProviderGone(oidcClientID)
 				g.Expect(gone).To(BeTrue(), "SCIM provider should be deleted after OIDC client deletion")
-			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		AfterAll(func() {
@@ -273,7 +273,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 				deleteObject("pod", "verify-stale-scim-gone", userNS)
 				gone := checkSCIMProviderGone(pocketIDClientID)
 				g.Expect(gone).To(BeTrue(), "stale SCIM provider should be deleted")
-			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying the scimProviderID status field is empty")
 			id := getField("pocketidoidcclient", clientName, userNS, ".status.scimProviderID")

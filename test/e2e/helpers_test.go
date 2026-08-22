@@ -31,6 +31,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// sharedInstanceLabels marks the instance created once for the whole suite. Every resource
+// selects its instance explicitly, so a spec that needs its own can create one without
+// making SelectInstance ambiguous for everyone else: that list is cluster-wide, so a second
+// unlabelled instance would break every resource that named none.
+var sharedInstanceLabels = map[string]string{"e2e-instance": "shared"}
+
 // Test constants
 const (
 	instanceName = "e2e-instance"
@@ -174,6 +180,9 @@ func (o UserOptions) withDefaults() UserOptions {
 	if o.Namespace == "" {
 		o.Namespace = userNS
 	}
+	if len(o.InstanceSelector) == 0 {
+		o.InstanceSelector = sharedInstanceLabels
+	}
 	return o
 }
 
@@ -221,12 +230,7 @@ func buildUserYAML(opts UserOptions) string {
 			spec.WriteString(fmt.Sprintf("  - key: %s\n    value: %s\n", claim.Key, claim.Value))
 		}
 	}
-	if len(opts.InstanceSelector) > 0 {
-		spec.WriteString("  instanceSelector:\n    matchLabels:\n")
-		for k, v := range opts.InstanceSelector {
-			spec.WriteString(fmt.Sprintf("      %s: %s\n", k, v))
-		}
-	}
+	spec.WriteString(instanceSelectorYAML(opts.InstanceSelector))
 	if len(opts.APIKeys) > 0 {
 		spec.WriteString("  apiKeys:\n")
 		for _, key := range opts.APIKeys {
@@ -261,6 +265,7 @@ metadata:
 
 // UserGroupOptions configures a PocketIDUserGroup YAML.
 type UserGroupOptions struct {
+	InstanceSelector   map[string]string
 	Name               string
 	Namespace          string
 	GroupName          string
@@ -295,6 +300,9 @@ func (o UserGroupOptions) withDefaults() UserGroupOptions {
 	if o.FriendlyName == "" {
 		o.FriendlyName = o.GroupName
 	}
+	if len(o.InstanceSelector) == 0 {
+		o.InstanceSelector = sharedInstanceLabels
+	}
 	return o
 }
 
@@ -304,6 +312,7 @@ func buildUserGroupYAML(opts UserGroupOptions) string {
 	var spec strings.Builder
 	spec.WriteString(fmt.Sprintf("  name: %s\n", opts.GroupName))
 	spec.WriteString(fmt.Sprintf("  friendlyName: %s\n", opts.FriendlyName))
+	spec.WriteString(instanceSelectorYAML(opts.InstanceSelector))
 
 	if len(opts.CustomClaims) > 0 {
 		spec.WriteString("  customClaims:\n")
@@ -363,6 +372,7 @@ spec:
 
 // OIDCClientOptions configures a PocketIDOIDCClient YAML.
 type OIDCClientOptions struct {
+	InstanceSelector   map[string]string
 	Name               string
 	Namespace          string
 	SpecName           string // spec.name: Pocket-ID display name (defaults to metadata.name when empty)
@@ -453,6 +463,9 @@ func (o OIDCClientOptions) withDefaults() OIDCClientOptions {
 	if len(o.CallbackURLs) == 0 && !strings.HasPrefix(o.ClientID, "https://") {
 		o.CallbackURLs = []string{"https://example.com/callback"}
 	}
+	if len(o.InstanceSelector) == 0 {
+		o.InstanceSelector = sharedInstanceLabels
+	}
 	return o
 }
 
@@ -460,6 +473,7 @@ func buildOIDCClientYAML(opts OIDCClientOptions) string {
 	opts = opts.withDefaults()
 
 	var spec strings.Builder
+	spec.WriteString(instanceSelectorYAML(opts.InstanceSelector))
 
 	if opts.SpecName != "" {
 		spec.WriteString(fmt.Sprintf("  name: %s\n", opts.SpecName))
@@ -659,6 +673,9 @@ func (o APIOptions) withDefaults() APIOptions {
 	if o.Resource == "" {
 		o.Resource = fmt.Sprintf("https://%s.example.com", o.Name)
 	}
+	if len(o.InstanceSelector) == 0 {
+		o.InstanceSelector = sharedInstanceLabels
+	}
 	return o
 }
 
@@ -671,12 +688,7 @@ func buildAPIYAML(opts APIOptions) string {
 	}
 	spec.WriteString(fmt.Sprintf("  resource: %s\n", opts.Resource))
 
-	if len(opts.InstanceSelector) > 0 {
-		spec.WriteString("  instanceSelector:\n    matchLabels:\n")
-		for k, v := range opts.InstanceSelector {
-			spec.WriteString(fmt.Sprintf("      %s: %s\n", k, v))
-		}
-	}
+	spec.WriteString(instanceSelectorYAML(opts.InstanceSelector))
 
 	if len(opts.Permissions) > 0 {
 		spec.WriteString("  permissions:\n")
@@ -750,7 +762,7 @@ func waitForCondition(resource, name, namespace, conditionType, status string) {
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(conditionField(obj, conditionType, "status")).To(Equal(status),
 			"%s/%s should have condition %s=%s", resource, name, conditionType, status)
-	}, 2*time.Minute, 2*time.Second).Should(Succeed())
+	}).Should(Succeed())
 }
 
 func waitForConditionReason(resource, name, namespace, conditionType, reason string) {
@@ -759,7 +771,7 @@ func waitForConditionReason(resource, name, namespace, conditionType, reason str
 		obj, err := getObject(resource, name, namespace)
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(conditionField(obj, conditionType, "reason")).To(Equal(reason))
-	}, 2*time.Minute, 2*time.Second).Should(Succeed())
+	}).Should(Succeed())
 }
 
 func waitForStatusField(resource, name, namespace, path, expected string) {
@@ -769,7 +781,7 @@ func waitForStatusField(resource, name, namespace, path, expected string) {
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(fieldString(obj, path)).To(Equal(expected),
 			"%s/%s field %s", resource, name, path)
-	}, 2*time.Minute, 2*time.Second).Should(Succeed())
+	}).Should(Succeed())
 }
 
 func waitForStatusFieldNotEmpty(resource, name, namespace, path string) string {
@@ -780,7 +792,7 @@ func waitForStatusFieldNotEmpty(resource, name, namespace, path string) string {
 		g.Expect(err).NotTo(HaveOccurred())
 		result = fieldString(obj, path)
 		g.Expect(result).NotTo(BeEmpty(), "%s/%s field %s", resource, name, path)
-	}, 2*time.Minute, 2*time.Second).Should(Succeed())
+	}).Should(Succeed())
 	return result
 }
 
@@ -789,7 +801,7 @@ func waitForSecretKey(secretName, namespace, key string) string {
 	Eventually(func(g Gomega) {
 		result = secretData(secretName, namespace, key)
 		g.Expect(result).NotTo(BeEmpty())
-	}, time.Minute, 2*time.Second).Should(Succeed())
+	}).Should(Succeed())
 	return result
 }
 
@@ -810,7 +822,7 @@ func waitForReconciled(resource, name, namespace string) {
 		g.Expect(conditionField(obj, "Ready", "observedGeneration")).To(Equal(gen),
 			"observedGeneration should catch up to spec generation")
 		g.Expect(conditionField(obj, "Ready", "status")).To(Equal("True"))
-	}, 2*time.Minute, 2*time.Second).Should(Succeed())
+	}).Should(Succeed())
 }
 
 func waitForResourceDeleted(resource, name, namespace string) {
@@ -818,7 +830,7 @@ func waitForResourceDeleted(resource, name, namespace string) {
 	Eventually(func(g Gomega) {
 		_, err := getObject(resource, name, namespace)
 		g.Expect(isGone(err)).To(BeTrue(), "%s/%s should be gone, got %v", resource, name, err)
-	}, 2*time.Minute, 2*time.Second).Should(Succeed())
+	}).Should(Succeed())
 }
 
 // isGone reports whether a Get proves the object is absent. A missing object is the usual
@@ -834,7 +846,7 @@ func waitForSecretExists(secretName, namespace string) {
 	Eventually(func(g Gomega) {
 		_, err := getObject("secret", secretName, namespace)
 		g.Expect(err).NotTo(HaveOccurred(), "secret %s should exist", secretName)
-	}, time.Minute, 2*time.Second).Should(Succeed())
+	}).Should(Succeed())
 }
 
 func waitForSecretNotExists(secretName, namespace string) {
@@ -842,7 +854,7 @@ func waitForSecretNotExists(secretName, namespace string) {
 	Eventually(func(g Gomega) {
 		_, err := getObject("secret", secretName, namespace)
 		g.Expect(isGone(err)).To(BeTrue(), "secret %s should be gone, got %v", secretName, err)
-	}, 2*time.Minute, 2*time.Second).Should(Succeed())
+	}).Should(Succeed())
 }
 
 // --- Create and Wait Helpers ---
@@ -857,7 +869,7 @@ func createInstanceAndWaitReady(opts InstanceOptions) {
 	Eventually(func(g Gomega) {
 		output := getField("pocketidinstance", opts.Name, opts.Namespace, ".status.conditions[?(@.type=='Ready')].status")
 		g.Expect(output).To(Equal("True"))
-	}, 5*time.Minute, 5*time.Second).Should(Succeed())
+	}).Should(Succeed())
 }
 
 func createUser(opts UserOptions) {
@@ -1065,4 +1077,18 @@ func getGroupMembersFromPocketID(groupID string) string {
 	group, err := pid.GetUserGroup(ctx, groupID)
 	Expect(err).NotTo(HaveOccurred(), "reading group %s", groupID)
 	return strings.Join(group.UserIDs, " ")
+}
+
+// instanceSelectorYAML renders a spec.instanceSelector block, or nothing when no labels
+// are given.
+func instanceSelectorYAML(labels map[string]string) string {
+	if len(labels) == 0 {
+		return ""
+	}
+	var out strings.Builder
+	out.WriteString("  instanceSelector:\n    matchLabels:\n")
+	for k, v := range labels {
+		out.WriteString(fmt.Sprintf("      %s: %s\n", k, v))
+	}
+	return out.String()
 }

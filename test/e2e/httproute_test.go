@@ -15,14 +15,21 @@ import (
 	"github.com/aclerici38/pocket-id-operator/test/utils"
 )
 
-var _ = Describe("HTTPRoute", Serial, Ordered, func() {
+var _ = Describe("HTTPRoute", Ordered, func() {
 	const (
-		routeName       = "e2e-instance-route"
+		// Its own instance: toggling a route rewrites TRUST_PROXY on the Deployment, which
+		// rolls the pod. Doing that to the shared instance would restart the Pocket-ID every
+		// other spec is talking to — and with no persistence configured, a restart takes its
+		// database with it.
+		routeInstance   = "httproute-test-instance"
+		routeName       = "httproute-test-instance-route"
 		initialHostname = "route.e2e.example.com"
 		updatedHostname = "route-updated.e2e.example.com"
 	)
 
-	setSharedInstanceRoute := func(enabled bool, hostnames []string) {
+	routeInstanceLabels := map[string]string{"e2e-instance": "httproute"}
+
+	setInstanceRoute := func(enabled bool, hostnames []string) {
 		quotedHostnames := make([]string, 0, len(hostnames))
 		for _, hostname := range hostnames {
 			quotedHostnames = append(quotedHostnames, fmt.Sprintf("%q", hostname))
@@ -35,7 +42,7 @@ var _ = Describe("HTTPRoute", Serial, Ordered, func() {
 			strings.Join(quotedHostnames, ","),
 		)
 
-		err := patchObject("pocketidinstance", instanceName, instanceNS, patch)
+		err := patchObject("pocketidinstance", routeInstance, instanceNS, patch)
 		Expect(err).NotTo(HaveOccurred())
 	}
 
@@ -63,21 +70,21 @@ var _ = Describe("HTTPRoute", Serial, Ordered, func() {
 
 	BeforeAll(func() {
 		uninstallGatewayHTTPRouteCRD()
-		waitForReady("pocketidinstance", instanceName, instanceNS)
-		setSharedInstanceRoute(false, nil)
+		createInstanceAndWaitReady(InstanceOptions{
+			Name:   routeInstance,
+			Labels: routeInstanceLabels,
+		})
+		setInstanceRoute(false, nil)
 		waitForResourceDeleted("httproute", routeName, instanceNS)
 	})
 
 	AfterAll(func() {
-		setSharedInstanceRoute(false, nil)
-		waitForResourceDeleted("httproute", routeName, instanceNS)
 		uninstallGatewayHTTPRouteCRD()
-		// Toggling the route mutates TRUST_PROXY on the Deployment, which rolls the pod.
-		waitForReady("pocketidinstance", instanceName, instanceNS)
+		_ = deleteObjectAndWait("pocketidinstance", routeInstance, instanceNS, 2*time.Minute)
 	})
 
 	It("should log an error when route is enabled without Gateway API CRDs", func() {
-		setSharedInstanceRoute(true, []string{initialHostname})
+		setInstanceRoute(true, []string{initialHostname})
 
 		Eventually(func(g Gomega) {
 			podName := operatorControllerPodName()
@@ -88,34 +95,34 @@ var _ = Describe("HTTPRoute", Serial, Ordered, func() {
 
 			g.Expect(objectExists("httproute", routeName, instanceNS)).To(BeFalse(),
 				"no HTTPRoute should exist while the Gateway API CRDs are absent")
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 
 	It("should create, update, and delete HTTPRoute after installing the CRD", func() {
 		installGatewayHTTPRouteCRD()
-		setSharedInstanceRoute(true, []string{updatedHostname})
+		setInstanceRoute(true, []string{updatedHostname})
 
 		Eventually(func(g Gomega) {
 			name := getField("httproute", routeName, instanceNS, ".metadata.name")
 			g.Expect(name).To(Equal(routeName))
 
 			backendName := getField("httproute", routeName, instanceNS, ".spec.rules[0].backendRefs[0].name")
-			g.Expect(backendName).To(Equal(instanceName))
+			g.Expect(backendName).To(Equal(routeInstance))
 
 			backendPort := getField("httproute", routeName, instanceNS, ".spec.rules[0].backendRefs[0].port")
 			g.Expect(backendPort).To(Equal("1411"))
 
 			hostname := getField("httproute", routeName, instanceNS, ".spec.hostnames[0]")
 			g.Expect(hostname).To(Equal(updatedHostname))
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 
-		setSharedInstanceRoute(true, []string{initialHostname})
+		setInstanceRoute(true, []string{initialHostname})
 		Eventually(func(g Gomega) {
 			hostname := getField("httproute", routeName, instanceNS, ".spec.hostnames[0]")
 			g.Expect(hostname).To(Equal(initialHostname))
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 
-		setSharedInstanceRoute(false, nil)
+		setInstanceRoute(false, nil)
 		waitForResourceDeleted("httproute", routeName, instanceNS)
 	})
 })

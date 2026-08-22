@@ -51,7 +51,7 @@ var _ = Describe("PocketIDInstance Maximal Environment", Serial, Ordered, func()
 			}
 			status := getField("pocketidinstance", maximalInstance, instanceNS, ".status.conditions[?(@.type=='Ready')].status")
 			g.Expect(status).To(Equal("True"))
-		}, 5*time.Minute, 5*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 
 	It("should not have logged an app config validation failure", func() {

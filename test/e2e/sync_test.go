@@ -54,7 +54,7 @@ var _ = Describe("User State Sync", func() {
 			By("verifying the updated firstName appears in the user-data secret")
 			Eventually(func(g Gomega) {
 				g.Expect(secretData(secretName, userNS, "firstName")).To(Equal("UpdatedFirst"))
-			}, time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		It("should reflect displayName change in user-data secret", func() {
@@ -73,7 +73,7 @@ var _ = Describe("User State Sync", func() {
 			By("verifying the updated displayName appears in the user-data secret")
 			Eventually(func(g Gomega) {
 				g.Expect(secretData(secretName, userNS, "displayName")).To(Equal("Totally New Name"))
-			}, time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 
@@ -94,7 +94,7 @@ var _ = Describe("User State Sync", func() {
 			Eventually(func(g Gomega) {
 				val := getField("pocketiduser", userName, userNS, ".status.customClaims[?(@.key=='department')].value")
 				g.Expect(val).To(Equal("engineering"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		It("should reflect an updated claim value in status.customClaims", func() {
@@ -109,7 +109,7 @@ var _ = Describe("User State Sync", func() {
 			Eventually(func(g Gomega) {
 				val := getField("pocketiduser", userName, userNS, ".status.customClaims[?(@.key=='department')].value")
 				g.Expect(val).To(Equal("platform"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		It("should clear status.customClaims when all claims are removed from spec", func() {
@@ -124,7 +124,7 @@ var _ = Describe("User State Sync", func() {
 			Eventually(func(g Gomega) {
 				val := getField("pocketiduser", userName, userNS, ".status.customClaims")
 				g.Expect(val).To(BeEmpty())
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			waitForReady("pocketiduser", userName, userNS)
 		})
@@ -159,7 +159,7 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 			Eventually(func(g Gomega) {
 				ids := getField("pocketidusergroup", groupName, userNS, ".status.managedUserIDs[*]")
 				g.Expect(ids).To(ContainSubstring(userID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("removing all users from the spec")
 			createUserGroup(UserGroupOptions{
@@ -172,7 +172,7 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 			Eventually(func(g Gomega) {
 				ids := getField("pocketidusergroup", groupName, userNS, ".status.managedUserIDs")
 				g.Expect(ids).To(BeEmpty())
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			waitForReady("pocketidusergroup", groupName, userNS)
 		})
@@ -193,7 +193,7 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 			Eventually(func(g Gomega) {
 				val := getField("pocketidusergroup", groupName, userNS, ".status.customClaims[?(@.key=='env')].value")
 				g.Expect(val).To(Equal("staging"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("removing all custom claims from the spec")
 			createUserGroup(UserGroupOptions{
@@ -206,7 +206,7 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 			Eventually(func(g Gomega) {
 				val := getField("pocketidusergroup", groupName, userNS, ".status.customClaims")
 				g.Expect(val).To(BeEmpty())
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			waitForReady("pocketidusergroup", groupName, userNS)
 		})
@@ -239,7 +239,7 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 				g.Expect(name).To(Equal("sync-updated-name"))
 				friendly := getField("pocketidusergroup", groupName, userNS, ".status.friendlyName")
 				g.Expect(friendly).To(Equal("Updated Friendly"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			waitForReady("pocketidusergroup", groupName, userNS)
 		})
@@ -266,7 +266,7 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 				g.Expect(ids).To(ContainSubstring(userID))
 				val := getField("pocketidusergroup", groupName, userNS, ".status.customClaims[?(@.key=='tier')].value")
 				g.Expect(val).To(Equal("gold"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("updating only the name (preserving users and claims in spec)")
 			createUserGroup(UserGroupOptions{
@@ -281,7 +281,7 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 			Eventually(func(g Gomega) {
 				name := getField("pocketidusergroup", groupName, userNS, ".status.name")
 				g.Expect(name).To(Equal("sync-name-only-new"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying users and claims are still present")
 			Eventually(func(g Gomega) {
@@ -289,7 +289,7 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 				g.Expect(ids).To(ContainSubstring(userID))
 				val := getField("pocketidusergroup", groupName, userNS, ".status.customClaims[?(@.key=='tier')].value")
 				g.Expect(val).To(Equal("gold"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			waitForReady("pocketidusergroup", groupName, userNS)
 		})

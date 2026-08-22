@@ -5,7 +5,6 @@ package e2e
 
 import (
 	"encoding/json"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -123,7 +122,7 @@ var _ = Describe("PocketIDUser Declarative User ID", Ordered, func() {
 			Eventually(func(g Gomega) {
 				g.Expect(secretData(userName+"-user-data", userNS, "username")).
 					To(Equal(userName + "-readopted"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			user := getUserFromPocketID(declaredID)
 			Expect(user.ID).To(Equal(declaredID))

@@ -47,7 +47,7 @@ var _ = Describe("PocketIDInstance", Serial, Ordered, func() {
 				newToken := secretData(staticSecretName, instanceNS, "token")
 				g.Expect(newToken).NotTo(BeEmpty())
 				g.Expect(newToken).NotTo(Equal(originalToken))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying deployment's hash annotation changed (triggers rollout)")
 			Eventually(func(g Gomega) {
@@ -55,7 +55,7 @@ var _ = Describe("PocketIDInstance", Serial, Ordered, func() {
 					".spec.template.metadata.annotations.pocketid\\.internal/static-api-key-hash")
 				g.Expect(newHash).NotTo(BeEmpty())
 				g.Expect(newHash).NotTo(Equal(originalHash))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying instance rolled out with new pod")
 			Eventually(func(g Gomega) {
@@ -64,13 +64,13 @@ var _ = Describe("PocketIDInstance", Serial, Ordered, func() {
 					".metadata.name")
 				g.Expect(currentPodName).NotTo(BeEmpty())
 				g.Expect(currentPodName).NotTo(Equal(originalPodName), "Pod should have been replaced by rollout")
-			}, 3*time.Minute, 5*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying the new pod is running")
 			Eventually(func(g Gomega) {
 				status := getFieldBySelector("pod", instanceNS, "app.kubernetes.io/instance="+instanceName, ".status.phase")
 				g.Expect(status).To(Equal("Running"))
-			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying operator can still authenticate with new API key by creating a user")
 			testUserName := "api-key-rotation-test-user"

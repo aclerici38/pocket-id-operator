@@ -45,7 +45,7 @@ var _ = Describe("PocketIDUserGroup and PocketIDOIDCClient", Ordered, func() {
 			Eventually(func(g Gomega) {
 				output := getField("pocketidusergroup", groupName, userNS, ".status.customClaims[?(@.key=='department')].value")
 				g.Expect(output).To(Equal("engineering"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 
@@ -70,7 +70,7 @@ var _ = Describe("PocketIDUserGroup and PocketIDOIDCClient", Ordered, func() {
 			Eventually(func(g Gomega) {
 				output := getField("pocketidoidcclient", oidcClientName, userNS, ".status.allowedUserGroupIDs[*]")
 				g.Expect(output).To(ContainSubstring(groupID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 
@@ -117,7 +117,7 @@ var _ = Describe("PocketIDUserGroup and PocketIDOIDCClient", Ordered, func() {
 			Eventually(func(g Gomega) {
 				output := getField("pocketidusergroup", recoveryGroupName, userNS, ".status.customClaims[?(@.key=='team')].value")
 				g.Expect(output).To(Equal("beta"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 
@@ -175,7 +175,7 @@ var _ = Describe("PocketIDUserGroup and PocketIDOIDCClient", Ordered, func() {
 				output := getField("pocketidoidcclient", recoveryOIDCName, userNS, ".status.allowedUserGroupIDs[*]")
 				g.Expect(output).To(ContainSubstring(groupID))
 				g.Expect(output).To(ContainSubstring(groupIDAlt))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 })
@@ -218,7 +218,7 @@ var _ = Describe("Bidirectional UserGroup and OIDCClient Assignment", Ordered, f
 			Eventually(func(g Gomega) {
 				output := getField("pocketidusergroup", biReverseGroup, userNS, ".status.allowedOIDCClientIDs[*]")
 				g.Expect(output).To(ContainSubstring(clientID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		It("should also reflect the group in the OIDC client's allowedUserGroupIDs", func() {
@@ -227,7 +227,7 @@ var _ = Describe("Bidirectional UserGroup and OIDCClient Assignment", Ordered, f
 			Eventually(func(g Gomega) {
 				output := getField("pocketidoidcclient", biClientName, userNS, ".status.allowedUserGroupIDs[*]")
 				g.Expect(output).To(ContainSubstring(groupID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 
@@ -268,7 +268,7 @@ var _ = Describe("Bidirectional UserGroup and OIDCClient Assignment", Ordered, f
 				output := getField("pocketidusergroup", biUnionGroup, userNS, ".status.allowedOIDCClientIDs[*]")
 				g.Expect(output).To(ContainSubstring(clientID1))
 				g.Expect(output).To(ContainSubstring(clientID2))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		It("should include the group in both clients' allowedUserGroupIDs", func() {
@@ -280,7 +280,7 @@ var _ = Describe("Bidirectional UserGroup and OIDCClient Assignment", Ordered, f
 
 				output2 := getField("pocketidoidcclient", biClientAltName, userNS, ".status.allowedUserGroupIDs[*]")
 				g.Expect(output2).To(ContainSubstring(groupID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 
@@ -312,7 +312,7 @@ var _ = Describe("Bidirectional UserGroup and OIDCClient Assignment", Ordered, f
 			Eventually(func(g Gomega) {
 				output := getField("pocketidusergroup", biRecoveryGroup, userNS, ".status.allowedOIDCClientIDs[*]")
 				g.Expect(output).To(ContainSubstring(clientID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 })
@@ -347,7 +347,7 @@ var _ = Describe("Group-OIDC Reference Removal", Ordered, func() {
 			Eventually(func(g Gomega) {
 				output := getField("pocketidoidcclient", fwdRemovalClient, userNS, ".status.allowedUserGroupIDs[*]")
 				g.Expect(output).To(ContainSubstring(groupID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		It("should remove the group from allowedUserGroupIDs after reference is dropped", func() {
@@ -365,7 +365,7 @@ var _ = Describe("Group-OIDC Reference Removal", Ordered, func() {
 			Eventually(func(g Gomega) {
 				output := getField("pocketidoidcclient", fwdRemovalClient, userNS, ".status.allowedUserGroupIDs[*]")
 				g.Expect(output).NotTo(ContainSubstring(groupID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 
@@ -401,7 +401,7 @@ var _ = Describe("Group-OIDC Reference Removal", Ordered, func() {
 			Eventually(func(g Gomega) {
 				output := getField("pocketidoidcclient", revRemovalClient, userNS, ".status.allowedUserGroupIDs[*]")
 				g.Expect(output).To(ContainSubstring(groupID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		It("should remove the group from the OIDCClient's allowedUserGroupIDs after reverse reference is dropped", func() {
@@ -423,7 +423,7 @@ var _ = Describe("Group-OIDC Reference Removal", Ordered, func() {
 			Eventually(func(g Gomega) {
 				output := getField("pocketidoidcclient", revRemovalClient, userNS, ".status.allowedUserGroupIDs[*]")
 				g.Expect(output).NotTo(ContainSubstring(groupID))
-			}, 5*time.Minute, 5*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 })
@@ -471,7 +471,7 @@ var _ = Describe("UserGroup with Usernames and UserIds", Ordered, func() {
 			Eventually(func(g Gomega) {
 				userIDs := getField("pocketidusergroup", usernameGroupName, userNS, ".status.managedUserIDs[*]")
 				g.Expect(userIDs).To(ContainSubstring(userID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		It("should report error for non-existent username", func() {
@@ -523,7 +523,7 @@ var _ = Describe("UserGroup with Usernames and UserIds", Ordered, func() {
 			Eventually(func(g Gomega) {
 				userIDs := getField("pocketidusergroup", userIdGroupName, userNS, ".status.managedUserIDs[*]")
 				g.Expect(userIDs).To(ContainSubstring(userID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 
@@ -584,7 +584,7 @@ var _ = Describe("UserGroup with Usernames and UserIds", Ordered, func() {
 				g.Expect(userIDs).To(ContainSubstring(userRefsUserID))
 				g.Expect(userIDs).To(ContainSubstring(usernameUserID))
 				g.Expect(userIDs).To(ContainSubstring(mixedUserIdUserID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 
 		It("should deduplicate users specified multiple ways", func() {
@@ -611,7 +611,7 @@ var _ = Describe("UserGroup with Usernames and UserIds", Ordered, func() {
 				userIDs := getField("pocketidusergroup", dedupeGroupName, userNS, ".status.managedUserIDs[*]")
 				// Should contain the user ID exactly once (no duplicates)
 				g.Expect(userIDs).To(Equal(usernameUserID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 
@@ -652,7 +652,7 @@ var _ = Describe("UserGroup with Usernames and UserIds", Ordered, func() {
 			Eventually(func(g Gomega) {
 				userIDs := getField("pocketidusergroup", recoveryUsernameGroupName, userNS, ".status.managedUserIDs[*]")
 				g.Expect(userIDs).To(ContainSubstring(userID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 })
@@ -782,7 +782,7 @@ var _ = Describe("OIDC Client Secrets", Ordered, func() {
 			disabledSecretName := disabledSecretClient + "-oidc-credentials"
 			Consistently(func(g Gomega) {
 				g.Expect(objectExists("secret", disabledSecretName, userNS)).To(BeFalse())
-			}, 10*time.Second, 2*time.Second).Should(Succeed())
+			}, 10*time.Second).Should(Succeed())
 		})
 	})
 
@@ -812,7 +812,7 @@ var _ = Describe("OIDC Client Secrets", Ordered, func() {
 			Consistently(func(g Gomega) {
 				currentSecret := secretData(preserveSecretName, userNS, "client_secret")
 				g.Expect(currentSecret).To(Equal(originalSecret))
-			}, 20*time.Second, 2*time.Second).Should(Succeed())
+			}, 20*time.Second).Should(Succeed())
 		})
 
 		It("should regenerate client_secret each time the annotation is added", func() {
@@ -829,14 +829,14 @@ var _ = Describe("OIDC Client Secrets", Ordered, func() {
 				firstRegenSecret = secretData(preserveSecretName, userNS, "client_secret")
 				g.Expect(firstRegenSecret).NotTo(BeEmpty())
 				g.Expect(firstRegenSecret).NotTo(Equal(originalSecret))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying the annotation is removed")
 			Eventually(func(g Gomega) {
 				output := getField("pocketidoidcclient", regenerateSecretClient, userNS,
 					".metadata.annotations.pocketid\\.internal/regenerate-client-secret")
 				g.Expect(output).To(BeEmpty())
-			}, time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("adding the regenerate annotation a second time")
 			Expect(annotateObject("pocketidoidcclient", regenerateSecretClient, userNS,
@@ -848,14 +848,14 @@ var _ = Describe("OIDC Client Secrets", Ordered, func() {
 				g.Expect(currentSecret).NotTo(BeEmpty())
 				g.Expect(currentSecret).NotTo(Equal(originalSecret))
 				g.Expect(currentSecret).NotTo(Equal(firstRegenSecret))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 
 			By("verifying the annotation is removed again")
 			Eventually(func(g Gomega) {
 				output := getField("pocketidoidcclient", regenerateSecretClient, userNS,
 					".metadata.annotations.pocketid\\.internal/regenerate-client-secret")
 				g.Expect(output).To(BeEmpty())
-			}, time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		})
 	})
 })
@@ -908,7 +908,7 @@ var _ = Describe("Multiple OIDC Clients Sharing a User Group", Ordered, func() {
 				output := getField("pocketidoidcclient", clientName, userNS, ".status.allowedUserGroupIDs[*]")
 				g.Expect(output).To(ContainSubstring(groupID),
 					"client %s should have the shared group in allowedUserGroupIDs", clientName)
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		}
 	})
 
@@ -938,7 +938,7 @@ var _ = Describe("Multiple OIDC Clients Sharing a User Group", Ordered, func() {
 			Eventually(func(g Gomega) {
 				output := getField("pocketidoidcclient", clientName, userNS, ".status.allowedUserGroupIDs[*]")
 				g.Expect(output).To(ContainSubstring(groupID))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+			}).Should(Succeed())
 		}
 	})
 })
@@ -983,7 +983,7 @@ var _ = Describe("OIDCClient attaching groups that have no PocketIDUserGroup CR"
 		Eventually(func(g Gomega) {
 			body := getFromPocketID("/api/oidc/clients/" + clientID)
 			g.Expect(body).To(ContainSubstring(externalGroupID))
-		}, 2*time.Minute, 5*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 
 	It("should leave no PocketIDUserGroup behind for the external group", func() {
@@ -1018,7 +1018,7 @@ var _ = Describe("OIDCClient attaching groups that have no PocketIDUserGroup CR"
 		Consistently(func(g Gomega) {
 			output := getField("pocketidoidcclient", badIDClient, userNS, ".status.conditions[?(@.type=='Ready')].status")
 			g.Expect(output).To(Equal("False"))
-		}, 30*time.Second, 5*time.Second).Should(Succeed())
+		}, 30*time.Second).Should(Succeed())
 	})
 
 	It("should report UserGroupNotFound for a group that does not exist", func() {
@@ -1114,7 +1114,7 @@ var _ = Describe("OIDCClient mixing CR, name, and ID group references", Ordered,
 				g.Expect(output).To(ContainSubstring(id))
 			}
 			g.Expect(strings.Fields(output)).To(HaveLen(4))
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 
 	It("should push all four groups through to Pocket-ID", func() {
@@ -1125,7 +1125,7 @@ var _ = Describe("OIDCClient mixing CR, name, and ID group references", Ordered,
 			for _, id := range []string{crGroupID, extAID, extBID, extByIDGid} {
 				g.Expect(body).To(ContainSubstring(id))
 			}
-		}, 2*time.Minute, 5*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 
 	It("should collapse duplicate references to the same group", func() {
@@ -1142,7 +1142,7 @@ var _ = Describe("OIDCClient mixing CR, name, and ID group references", Ordered,
 		Eventually(func(g Gomega) {
 			output := getField("pocketidoidcclient", comboClient, userNS, ".status.allowedUserGroupIDs[*]")
 			g.Expect(strings.Fields(output)).To(Equal([]string{crGroupID}))
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 
 	It("should detach external groups when their references are removed", func() {
@@ -1156,7 +1156,7 @@ var _ = Describe("OIDCClient mixing CR, name, and ID group references", Ordered,
 		Eventually(func(g Gomega) {
 			output := getField("pocketidoidcclient", comboClient, userNS, ".status.allowedUserGroupIDs[*]")
 			g.Expect(strings.Fields(output)).To(Equal([]string{extAID}))
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 
 	It("should not add a finalizer to the CR group for external references", func() {
@@ -1165,7 +1165,7 @@ var _ = Describe("OIDCClient mixing CR, name, and ID group references", Ordered,
 		Eventually(func(g Gomega) {
 			finalizers := getField("pocketidusergroup", comboCRGroup, userNS, ".metadata.finalizers")
 			g.Expect(finalizers).NotTo(ContainSubstring("pocketid.internal/oidc-client-finalizer"))
-		}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		}).Should(Succeed())
 	})
 })
 
