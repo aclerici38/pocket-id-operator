@@ -41,7 +41,7 @@ var _ = Describe("Resource Adoption", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketiduser", userName, userNS)
+			deleteObject("pocketiduser", userName, userNS)
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 		})
 	})
@@ -70,7 +70,7 @@ var _ = Describe("Resource Adoption", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketidusergroup", groupName, userNS)
+			deleteObject("pocketidusergroup", groupName, userNS)
 			waitForResourceDeleted("pocketidusergroup", groupName, userNS)
 		})
 	})
@@ -99,7 +99,7 @@ var _ = Describe("Resource Adoption", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketidoidcclient", clientName, userNS)
+			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
 	})
@@ -131,7 +131,7 @@ var _ = Describe("Resource Adoption", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketidoidcclient", clientName, userNS)
+			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
 	})

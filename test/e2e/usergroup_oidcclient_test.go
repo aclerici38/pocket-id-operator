@@ -755,7 +755,7 @@ var _ = Describe("OIDC Client Secrets", Ordered, func() {
 			publicSecretName := publicClientName + "-oidc-credentials"
 			waitForSecretExists(publicSecretName, userNS)
 
-			Expect(kubectlGetSecretData(publicSecretName, userNS, "client_secret")).To(BeEmpty(),
+			Expect(secretData(publicSecretName, userNS, "client_secret")).To(BeEmpty(),
 				"a public client has no client secret to store")
 		})
 
@@ -810,7 +810,7 @@ var _ = Describe("OIDC Client Secrets", Ordered, func() {
 
 			By("verifying the client_secret is unchanged")
 			Consistently(func(g Gomega) {
-				currentSecret := kubectlGetSecretData(preserveSecretName, userNS, "client_secret")
+				currentSecret := secretData(preserveSecretName, userNS, "client_secret")
 				g.Expect(currentSecret).To(Equal(originalSecret))
 			}, 20*time.Second, 2*time.Second).Should(Succeed())
 		})
@@ -820,30 +820,31 @@ var _ = Describe("OIDC Client Secrets", Ordered, func() {
 			originalSecret := waitForSecretKey(preserveSecretName, userNS, "client_secret")
 
 			By("adding the regenerate annotation the first time")
-			Expect(kubectlAnnotate("pocketidoidcclient", regenerateSecretClient, userNS,
+			Expect(annotateObject("pocketidoidcclient", regenerateSecretClient, userNS,
 				"pocketid.internal/regenerate-client-secret=true")).To(Succeed())
 
 			By("verifying the client_secret is regenerated")
 			var firstRegenSecret string
 			Eventually(func(g Gomega) {
-				firstRegenSecret = kubectlGetSecretData(preserveSecretName, userNS, "client_secret")
+				firstRegenSecret = secretData(preserveSecretName, userNS, "client_secret")
 				g.Expect(firstRegenSecret).NotTo(BeEmpty())
 				g.Expect(firstRegenSecret).NotTo(Equal(originalSecret))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
 			By("verifying the annotation is removed")
 			Eventually(func(g Gomega) {
-				output := getField("pocketidoidcclient", regenerateSecretClient, userNS, ".metadata.annotations.pocketid\\.internal/regenerate-client-secret")
+				output := getField("pocketidoidcclient", regenerateSecretClient, userNS,
+					".metadata.annotations.pocketid\\.internal/regenerate-client-secret")
 				g.Expect(output).To(BeEmpty())
 			}, time.Minute, 2*time.Second).Should(Succeed())
 
 			By("adding the regenerate annotation a second time")
-			Expect(kubectlAnnotate("pocketidoidcclient", regenerateSecretClient, userNS,
+			Expect(annotateObject("pocketidoidcclient", regenerateSecretClient, userNS,
 				"pocketid.internal/regenerate-client-secret=true")).To(Succeed())
 
 			By("verifying the client_secret is regenerated again to a new value")
 			Eventually(func(g Gomega) {
-				currentSecret := kubectlGetSecretData(preserveSecretName, userNS, "client_secret")
+				currentSecret := secretData(preserveSecretName, userNS, "client_secret")
 				g.Expect(currentSecret).NotTo(BeEmpty())
 				g.Expect(currentSecret).NotTo(Equal(originalSecret))
 				g.Expect(currentSecret).NotTo(Equal(firstRegenSecret))
@@ -851,7 +852,8 @@ var _ = Describe("OIDC Client Secrets", Ordered, func() {
 
 			By("verifying the annotation is removed again")
 			Eventually(func(g Gomega) {
-				output := getField("pocketidoidcclient", regenerateSecretClient, userNS, ".metadata.annotations.pocketid\\.internal/regenerate-client-secret")
+				output := getField("pocketidoidcclient", regenerateSecretClient, userNS,
+					".metadata.annotations.pocketid\\.internal/regenerate-client-secret")
 				g.Expect(output).To(BeEmpty())
 			}, time.Minute, 2*time.Second).Should(Succeed())
 		})
@@ -919,7 +921,7 @@ var _ = Describe("Multiple OIDC Clients Sharing a User Group", Ordered, func() {
 			Email:    secondUser + "@example.com",
 		})
 
-		err := kubectlPatch("pocketidusergroup", sharedGroupName, userNS,
+		err := patchObject("pocketidusergroup", sharedGroupName, userNS,
 			`{"spec":{"users":{"userRefs":[{"name":"`+sharedUserName+`"},{"name":"`+secondUser+`"}]}}}`)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1044,7 +1046,7 @@ var _ = Describe("OIDCClient attaching groups that have no PocketIDUserGroup CR"
 	})
 
 	It("should not block deletion of the client on the external group", func() {
-		Expect(kubectlDeleteWait("pocketidoidcclient", byNameClient, userNS, 2*time.Minute)).To(Succeed())
+		Expect(deleteObjectAndWait("pocketidoidcclient", byNameClient, userNS, 2*time.Minute)).To(Succeed())
 		waitForResourceDeleted("pocketidoidcclient", byNameClient, userNS)
 	})
 

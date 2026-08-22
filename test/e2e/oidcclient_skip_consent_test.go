@@ -36,7 +36,7 @@ var _ = Describe("OIDC Client Skip Consent", Ordered, func() {
 	})
 
 	AfterAll(func() {
-		kubectlDelete("pocketidoidcclient", clientName, userNS)
+		deleteObject("pocketidoidcclient", clientName, userNS)
 		waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 	})
 })

@@ -30,26 +30,29 @@ var _ = Describe("PocketIDInstance", Serial, Ordered, func() {
 			originalToken := waitForSecretKey(staticSecretName, instanceNS, "token")
 
 			By("getting the current deployment's pod template hash annotation")
-			originalHash := getField("deployment", instanceName, instanceNS, ".spec.template.metadata.annotations.pocketid\\.internal/static-api-key-hash")
+			originalHash := getField("deployment", instanceName, instanceNS,
+				".spec.template.metadata.annotations.pocketid\\.internal/static-api-key-hash")
 			Expect(originalHash).NotTo(BeEmpty(), "Deployment should have static-api-key-hash annotation")
 
 			By("getting the current pod name")
-			originalPodName := getFieldBySelector("pod", instanceNS, "app.kubernetes.io/instance="+instanceName, ".metadata.name")
+			originalPodName := getFieldBySelector("pod", instanceNS, "app.kubernetes.io/instance="+instanceName,
+				".metadata.name")
 			Expect(originalPodName).NotTo(BeEmpty())
 
 			By("deleting the static API key secret")
-			Expect(kubectlDeleteWait("secret", staticSecretName, instanceNS, 30*time.Second)).To(Succeed())
+			Expect(deleteObjectAndWait("secret", staticSecretName, instanceNS, 30*time.Second)).To(Succeed())
 
 			By("verifying secret is recreated with new token")
 			Eventually(func(g Gomega) {
-				newToken := kubectlGetSecretData(staticSecretName, instanceNS, "token")
+				newToken := secretData(staticSecretName, instanceNS, "token")
 				g.Expect(newToken).NotTo(BeEmpty())
 				g.Expect(newToken).NotTo(Equal(originalToken))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
 			By("verifying deployment's hash annotation changed (triggers rollout)")
 			Eventually(func(g Gomega) {
-				newHash := getField("deployment", instanceName, instanceNS, ".spec.template.metadata.annotations.pocketid\\.internal/static-api-key-hash")
+				newHash := getField("deployment", instanceName, instanceNS,
+					".spec.template.metadata.annotations.pocketid\\.internal/static-api-key-hash")
 				g.Expect(newHash).NotTo(BeEmpty())
 				g.Expect(newHash).NotTo(Equal(originalHash))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
@@ -57,7 +60,8 @@ var _ = Describe("PocketIDInstance", Serial, Ordered, func() {
 			By("verifying instance rolled out with new pod")
 			Eventually(func(g Gomega) {
 				// Get the current pod name - should be different after rollout
-				currentPodName := getFieldBySelector("pod", instanceNS, "app.kubernetes.io/instance="+instanceName, ".metadata.name")
+				currentPodName := getFieldBySelector("pod", instanceNS, "app.kubernetes.io/instance="+instanceName,
+					".metadata.name")
 				g.Expect(currentPodName).NotTo(BeEmpty())
 				g.Expect(currentPodName).NotTo(Equal(originalPodName), "Pod should have been replaced by rollout")
 			}, 3*time.Minute, 5*time.Second).Should(Succeed())
@@ -86,7 +90,7 @@ var _ = Describe("PocketIDInstance", Serial, Ordered, func() {
 			Expect(userID).NotTo(BeEmpty())
 
 			By("cleaning up test user")
-			kubectlDelete("pocketiduser", testUserName, userNS)
+			deleteObject("pocketiduser", testUserName, userNS)
 		})
 	})
 })
@@ -122,10 +126,10 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Serial, Ordered, fu
 			Expect(userID).NotTo(BeEmpty())
 
 			By("cleaning up user")
-			Expect(kubectlDeleteWait("pocketiduser", selectorUser, userNS, 30*time.Second)).To(Succeed())
+			Expect(deleteObjectAndWait("pocketiduser", selectorUser, userNS, 30*time.Second)).To(Succeed())
 
 			By("cleaning up instance")
-			Expect(kubectlDeleteWait("pocketidinstance", selectorInstance, instanceNS, 60*time.Second)).To(Succeed())
+			Expect(deleteObjectAndWait("pocketidinstance", selectorInstance, instanceNS, 60*time.Second)).To(Succeed())
 		})
 	})
 
@@ -139,9 +143,9 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Serial, Ordered, fu
 			// A leftover second instance would break every later spec that selects the
 			// shared instance without a selector, so clean up even on failure.
 			DeferCleanup(func() {
-				kubectlDelete("pocketiduser", tlsUser, userNS)
-				_ = kubectlDeleteWait("pocketidinstance", tlsInstance, instanceNS, 60*time.Second)
-				kubectlDelete("secret", tlsSecret, instanceNS)
+				deleteObject("pocketiduser", tlsUser, userNS)
+				_ = deleteObjectAndWait("pocketidinstance", tlsInstance, instanceNS, 60*time.Second)
+				deleteObject("secret", tlsSecret, instanceNS)
 			})
 
 			// The hostname is not the Service DNS name the operator dials, mirroring a
@@ -157,15 +161,19 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Serial, Ordered, fu
 			})
 
 			By("verifying the certificate is mounted and pointed at with the _FILE variants")
-			Expect(getField("deployment", tlsInstance, instanceNS, ".spec.template.spec.containers[0].env[?(@.name=='TLS_CERT_FILE')].value")).
+			Expect(getField("deployment", tlsInstance, instanceNS,
+				".spec.template.spec.containers[0].env[?(@.name=='TLS_CERT_FILE')].value")).
 				To(Equal("/etc/pocket-id/tls/tls.crt"))
-			Expect(getField("deployment", tlsInstance, instanceNS, ".spec.template.spec.containers[0].env[?(@.name=='TLS_KEY_FILE')].value")).
+			Expect(getField("deployment", tlsInstance, instanceNS,
+				".spec.template.spec.containers[0].env[?(@.name=='TLS_KEY_FILE')].value")).
 				To(Equal("/etc/pocket-id/tls/tls.key"))
-			Expect(getField("deployment", tlsInstance, instanceNS, ".spec.template.spec.volumes[?(@.name=='tls')].secret.secretName")).
+			Expect(getField("deployment", tlsInstance, instanceNS,
+				".spec.template.spec.volumes[?(@.name=='tls')].secret.secretName")).
 				To(Equal(tlsSecret))
 
 			By("verifying the probes use the HTTPS scheme")
-			Expect(getField("deployment", tlsInstance, instanceNS, ".spec.template.spec.containers[0].readinessProbe.httpGet.scheme")).
+			Expect(getField("deployment", tlsInstance, instanceNS,
+				".spec.template.spec.containers[0].readinessProbe.httpGet.scheme")).
 				To(Equal("HTTPS"))
 
 			By("verifying the Service advertises the https appProtocol")
@@ -206,7 +214,7 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Serial, Ordered, fu
 			waitForSecretKey(staticSecretName, instanceNS, "token")
 
 			By("deleting the instance")
-			Expect(kubectlDeleteWait("pocketidinstance", testInstance, instanceNS, 30*time.Second)).To(Succeed())
+			Expect(deleteObjectAndWait("pocketidinstance", testInstance, instanceNS, 30*time.Second)).To(Succeed())
 
 			By("verifying secret is deleted")
 			waitForSecretNotExists(staticSecretName, instanceNS)

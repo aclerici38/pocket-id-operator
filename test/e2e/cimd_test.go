@@ -48,7 +48,7 @@ var _ = Describe("Client ID Metadata Documents", Ordered, func() {
 			ClientID: "https://apps.example.com/never-authorized/client-metadata.json",
 		})
 		DeferCleanup(func() {
-			kubectlDelete("pocketidoidcclient", clientName, userNS)
+			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
 
@@ -176,12 +176,12 @@ var _ = Describe("Client ID Metadata Documents", Ordered, func() {
 			})
 
 			AfterAll(func() {
-				_ = kubectlDeleteWait("pocketidapi", apiName, userNS, time.Minute)
+				_ = deleteObjectAndWait("pocketidapi", apiName, userNS, time.Minute)
 			})
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketidoidcclient", clientName, userNS)
+			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
 	})

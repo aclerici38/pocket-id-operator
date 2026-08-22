@@ -101,7 +101,7 @@ var _ = Describe("PocketIDUser Declarative User ID", Ordered, func() {
 
 		It("should adopt the same Pocket-ID user when the resource is recreated", func() {
 			By("deleting the resource (the Pocket-ID user is retained without the delete annotation)")
-			kubectlDelete("pocketiduser", userName, userNS)
+			deleteObject("pocketiduser", userName, userNS)
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 
 			By("verifying the user still exists in Pocket-ID")
@@ -121,7 +121,7 @@ var _ = Describe("PocketIDUser Declarative User ID", Ordered, func() {
 			By("verifying the existing user was adopted rather than a second one created")
 			waitForStatusField("pocketiduser", userName, userNS, ".status.userID", declaredID)
 			Eventually(func(g Gomega) {
-				g.Expect(kubectlGetSecretData(userName+"-user-data", userNS, "username")).
+				g.Expect(secretData(userName+"-user-data", userNS, "username")).
 					To(Equal(userName + "-readopted"))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
@@ -131,7 +131,7 @@ var _ = Describe("PocketIDUser Declarative User ID", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketiduser", userName, userNS)
+			deleteObject("pocketiduser", userName, userNS)
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 		})
 	})
@@ -154,7 +154,7 @@ var _ = Describe("PocketIDUser Declarative User ID", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketiduser", userName, userNS)
+			deleteObject("pocketiduser", userName, userNS)
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 		})
 	})

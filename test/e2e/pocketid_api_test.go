@@ -4,7 +4,6 @@
 package e2e
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -29,28 +28,19 @@ func testCtx() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), 30*time.Second)
 }
 
-// pocketIDRequest issues an authenticated request against the shared instance and returns
-// the response body and status code. It fails the spec only if the request could not be
-// made at all; callers decide what to make of the status.
-func pocketIDRequest(method, apiPath string, body any) (string, int) {
+// pocketIDRequest issues an authenticated read against the shared instance and returns the
+// response body and status code. It fails the spec only if the request could not be made at
+// all; callers decide what to make of the status. Writes go through the typed `pid` client,
+// so no request body is needed here.
+func pocketIDRequest(method, apiPath string) (string, int) {
 	GinkgoHelper()
-
-	var payload io.Reader
-	if body != nil {
-		encoded, err := json.Marshal(body)
-		Expect(err).NotTo(HaveOccurred(), "encoding request body")
-		payload = bytes.NewReader(encoded)
-	}
 
 	ctx, cancel := testCtx()
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, method, pocketIDBaseURL()+apiPath, payload)
+	req, err := http.NewRequestWithContext(ctx, method, pocketIDBaseURL()+apiPath, nil)
 	Expect(err).NotTo(HaveOccurred(), "building request for %s", apiPath)
 	req.Header.Set("X-API-KEY", staticAPIKey())
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
 
 	resp, err := http.DefaultClient.Do(req)
 	Expect(err).NotTo(HaveOccurred(), "calling %s %s", method, apiPath)
@@ -66,7 +56,7 @@ func pocketIDRequest(method, apiPath string, body any) (string, int) {
 // Pocket-ID's database.
 func getFromPocketID(apiPath string) string {
 	GinkgoHelper()
-	body, code := pocketIDRequest(http.MethodGet, apiPath, nil)
+	body, code := pocketIDRequest(http.MethodGet, apiPath)
 	Expect(code).To(BeNumerically("<", 300), "GET %s returned %d: %s", apiPath, code, body)
 	return body
 }
@@ -75,7 +65,7 @@ func getFromPocketID(apiPath string) string {
 // something is absent rather than reading it.
 func getStatusFromPocketID(apiPath string) int {
 	GinkgoHelper()
-	_, code := pocketIDRequest(http.MethodGet, apiPath, nil)
+	_, code := pocketIDRequest(http.MethodGet, apiPath)
 	return code
 }
 
@@ -83,7 +73,7 @@ func getStatusFromPocketID(apiPath string) int {
 // performed out-of-band — in the UI, or by another cluster.
 func deleteFromPocketID(apiPath string) {
 	GinkgoHelper()
-	body, code := pocketIDRequest(http.MethodDelete, apiPath, nil)
+	body, code := pocketIDRequest(http.MethodDelete, apiPath)
 	Expect(code).To(BeNumerically("<", 300), "DELETE %s returned %d: %s", apiPath, code, body)
 }
 

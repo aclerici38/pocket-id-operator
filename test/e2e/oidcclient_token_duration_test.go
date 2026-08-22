@@ -64,7 +64,7 @@ var _ = Describe("OIDC Client Token Lifetimes", Ordered, func() {
 	})
 
 	AfterAll(func() {
-		kubectlDelete("pocketidoidcclient", clientName, userNS)
+		deleteObject("pocketidoidcclient", clientName, userNS)
 		waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 	})
 })

@@ -31,7 +31,7 @@ var _ = Describe("PocketIDInstance Maximal Environment", Serial, Ordered, func()
 		// A leftover second instance would break every later spec that selects the
 		// shared instance without a selector, so clean up even on failure.
 		DeferCleanup(func() {
-			_ = kubectlDeleteWait("pocketidinstance", maximalInstance, instanceNS, 60*time.Second)
+			_ = deleteObjectAndWait("pocketidinstance", maximalInstance, instanceNS, 60*time.Second)
 		})
 
 		// kubectl apply defaults to --validate=strict, so a field the CRD does not
@@ -44,7 +44,7 @@ var _ = Describe("PocketIDInstance Maximal Environment", Serial, Ordered, func()
 			// Fail immediately rather than burning the full timeout: once
 			// Pocket-ID has rejected a variable it exits, and the pod only
 			// crash-loops from here.
-			if logs := kubectlLogs(pocketIDPodName(maximalInstance), instanceNS); strings.Contains(logs, envRejectedMarker) {
+			if logs := podLogs(pocketIDPodName(maximalInstance), instanceNS); strings.Contains(logs, envRejectedMarker) {
 				StopTrying("Pocket-ID rejected the operator's environment").
 					Attach("pocket-id logs", logs).
 					Now()
@@ -55,7 +55,7 @@ var _ = Describe("PocketIDInstance Maximal Environment", Serial, Ordered, func()
 	})
 
 	It("should not have logged an app config validation failure", func() {
-		logs := kubectlLogs(pocketIDPodName(maximalInstance), instanceNS)
+		logs := podLogs(pocketIDPodName(maximalInstance), instanceNS)
 		Expect(logs).NotTo(ContainSubstring(envRejectedMarker))
 	})
 

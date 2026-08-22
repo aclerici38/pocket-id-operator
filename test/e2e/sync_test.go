@@ -39,7 +39,7 @@ var _ = Describe("User State Sync", func() {
 			secretName := userName + "-user-data"
 
 			By("verifying initial firstName in user-data secret")
-			Expect(kubectlGetSecretData(secretName, userNS, "firstName")).To(Equal("OriginalFirst"))
+			Expect(secretData(secretName, userNS, "firstName")).To(Equal("OriginalFirst"))
 
 			By("updating the firstName in spec")
 			createUser(UserOptions{
@@ -53,7 +53,7 @@ var _ = Describe("User State Sync", func() {
 
 			By("verifying the updated firstName appears in the user-data secret")
 			Eventually(func(g Gomega) {
-				g.Expect(kubectlGetSecretData(secretName, userNS, "firstName")).To(Equal("UpdatedFirst"))
+				g.Expect(secretData(secretName, userNS, "firstName")).To(Equal("UpdatedFirst"))
 			}, time.Minute, 2*time.Second).Should(Succeed())
 		})
 
@@ -72,7 +72,7 @@ var _ = Describe("User State Sync", func() {
 
 			By("verifying the updated displayName appears in the user-data secret")
 			Eventually(func(g Gomega) {
-				g.Expect(kubectlGetSecretData(secretName, userNS, "displayName")).To(Equal("Totally New Name"))
+				g.Expect(secretData(secretName, userNS, "displayName")).To(Equal("Totally New Name"))
 			}, time.Minute, 2*time.Second).Should(Succeed())
 		})
 	})
@@ -338,10 +338,10 @@ var _ = Describe("EmailVerified Preservation", Ordered, func() {
 	})
 
 	AfterAll(func() {
-		kubectlDelete("pocketiduser", crName, userNS)
+		deleteObject("pocketiduser", crName, userNS)
 		waitForResourceDeleted("pocketiduser", crName, userNS)
-		kubectlDelete("pod", "create-verified-user", userNS)
-		kubectlDelete("pod", "check-email-verified", userNS)
+		deleteObject("pod", "create-verified-user", userNS)
+		deleteObject("pod", "check-email-verified", userNS)
 	})
 })
 

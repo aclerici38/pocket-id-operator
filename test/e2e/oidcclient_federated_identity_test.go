@@ -43,7 +43,7 @@ var _ = Describe("OIDC Client Federated Identity", Ordered, func() {
 	})
 
 	AfterAll(func() {
-		kubectlDelete("pocketidoidcclient", clientName, userNS)
+		deleteObject("pocketidoidcclient", clientName, userNS)
 		waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 	})
 })

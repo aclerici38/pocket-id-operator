@@ -96,9 +96,9 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pod", "add-external-user", userNS)
-			kubectlDelete("pod", "check-members-1", userNS)
-			kubectlDelete("pod", "check-members-2", userNS)
+			deleteObject("pod", "add-external-user", userNS)
+			deleteObject("pod", "check-members-1", userNS)
+			deleteObject("pod", "check-members-2", userNS)
 		})
 	})
 
@@ -159,7 +159,7 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 
 		AfterAll(func() {
 			for _, pod := range []string{"add-ext-for-remove", "check-3-members", "check-after-remove"} {
-				kubectlDelete("pod", pod, userNS)
+				deleteObject("pod", pod, userNS)
 			}
 		})
 	})
@@ -216,7 +216,7 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 
 		AfterAll(func() {
 			for _, pod := range []string{"add-ext-for-clear", "check-before-clear", "check-after-clear"} {
-				kubectlDelete("pod", pod, userNS)
+				deleteObject("pod", pod, userNS)
 			}
 		})
 	})
@@ -271,10 +271,10 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketidusergroup", adoptGroupName, userNS)
+			deleteObject("pocketidusergroup", adoptGroupName, userNS)
 			waitForResourceDeleted("pocketidusergroup", adoptGroupName, userNS)
 			for _, pod := range []string{"create-adopt-merge-group", "add-pre-existing", "check-adopt-members"} {
-				kubectlDelete("pod", pod, userNS)
+				deleteObject("pod", pod, userNS)
 			}
 		})
 	})
@@ -324,7 +324,7 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pod", "add-ext-for-count", userNS)
+			deleteObject("pod", "add-ext-for-count", userNS)
 		})
 	})
 })

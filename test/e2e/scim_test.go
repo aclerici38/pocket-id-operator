@@ -89,7 +89,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketidoidcclient", clientName, userNS)
+			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
 	})
@@ -132,9 +132,9 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketidoidcclient", clientName, userNS)
+			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
-			kubectlDelete("secret", secretName, userNS)
+			deleteObject("secret", secretName, userNS)
 		})
 	})
 
@@ -159,19 +159,19 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			Expect(scimID).NotTo(BeEmpty())
 
 			By("deleting the OIDC client CR")
-			kubectlDelete("pocketidoidcclient", clientName, userNS)
+			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 
 			By("verifying the SCIM provider no longer exists in Pocket-ID")
 			Eventually(func(g Gomega) {
-				kubectlDelete("pod", "verify-scim-gone-after-oidc-delete", userNS)
+				deleteObject("pod", "verify-scim-gone-after-oidc-delete", userNS)
 				gone := checkSCIMProviderGone(oidcClientID)
 				g.Expect(gone).To(BeTrue(), "SCIM provider should be deleted after OIDC client deletion")
 			}, 2*time.Minute, 5*time.Second).Should(Succeed())
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketidoidcclient", clientName, userNS)
+			deleteObject("pocketidoidcclient", clientName, userNS)
 		})
 	})
 
@@ -204,7 +204,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketidoidcclient", clientName, userNS)
+			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
 	})
@@ -228,20 +228,20 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			Expect(initialEndpoint).To(Equal("https://idempotent.example.com/scim"))
 
 			By("triggering another reconcile by annotating the client")
-			Expect(kubectlAnnotate("pocketidoidcclient", clientName, userNS, "test/trigger-reconcile=1")).To(Succeed())
+			Expect(annotateObject("pocketidoidcclient", clientName, userNS, "test/trigger-reconcile=1")).To(Succeed())
 			// The RESYNC_INTERVAL env var is 5s in e2e — wait for at least two cycles.
 			time.Sleep(15 * time.Second)
 			waitForReady("pocketidoidcclient", clientName, userNS)
 
 			By("verifying the SCIM endpoint is unchanged after no-op reconcile")
 			// Clean up any previous check pod from this name
-			kubectlDelete("pod", "scim-idempotent-check-2", userNS)
+			deleteObject("pod", "scim-idempotent-check-2", userNS)
 			endpointAfter := getSCIMProviderEndpoint(oidcClientID)
 			Expect(endpointAfter).To(Equal("https://idempotent.example.com/scim"))
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketidoidcclient", clientName, userNS)
+			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
 	})
@@ -270,7 +270,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			By("verifying the stale SCIM provider was deleted from Pocket-ID")
 			_ = scimID
 			Eventually(func(g Gomega) {
-				kubectlDelete("pod", "verify-stale-scim-gone", userNS)
+				deleteObject("pod", "verify-stale-scim-gone", userNS)
 				gone := checkSCIMProviderGone(pocketIDClientID)
 				g.Expect(gone).To(BeTrue(), "stale SCIM provider should be deleted")
 			}, 2*time.Minute, 5*time.Second).Should(Succeed())
@@ -281,7 +281,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketidoidcclient", clientName, userNS)
+			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
 	})
@@ -295,7 +295,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 func getSCIMProviderEndpoint(oidcClientID string) string {
 	GinkgoHelper()
 
-	body, code := pocketIDRequest(http.MethodGet, "/api/oidc/clients/"+oidcClientID+"/scim-service-provider", nil)
+	body, code := pocketIDRequest(http.MethodGet, "/api/oidc/clients/"+oidcClientID+"/scim-service-provider")
 	if code == http.StatusNotFound {
 		return ""
 	}

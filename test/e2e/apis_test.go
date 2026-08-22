@@ -277,8 +277,8 @@ var _ = Describe("PocketIDAPI Client Access", Ordered, func() {
 	})
 
 	AfterAll(func() {
-		kubectlDelete("pocketidoidcclient", clientName, userNS)
-		_ = kubectlDeleteWait("pocketidapi", apiName, userNS, time.Minute)
+		deleteObject("pocketidoidcclient", clientName, userNS)
+		_ = deleteObjectAndWait("pocketidapi", apiName, userNS, time.Minute)
 	})
 })
 
@@ -412,7 +412,7 @@ var _ = Describe("PocketIDAPI CIMD Access", Ordered, func() {
 	})
 
 	AfterAll(func() {
-		_ = kubectlDeleteWait("pocketidapi", apiName, userNS, time.Minute)
+		_ = deleteObjectAndWait("pocketidapi", apiName, userNS, time.Minute)
 	})
 })
 
@@ -507,8 +507,8 @@ var _ = Describe("PocketIDAPI Scopeless Client Grant", Ordered, func() {
 	})
 
 	AfterAll(func() {
-		kubectlDelete("pocketidoidcclient", clientName, userNS)
-		_ = kubectlDeleteWait("pocketidapi", apiName, userNS, time.Minute)
+		deleteObject("pocketidoidcclient", clientName, userNS)
+		_ = deleteObjectAndWait("pocketidapi", apiName, userNS, time.Minute)
 	})
 })
 
@@ -592,9 +592,9 @@ var _ = Describe("PocketIDAPI Multi-API Grants", Ordered, func() {
 	})
 
 	AfterAll(func() {
-		kubectlDelete("pocketidoidcclient", clientName, userNS)
-		_ = kubectlDeleteWait("pocketidapi", ordersName, userNS, time.Minute)
-		_ = kubectlDeleteWait("pocketidapi", billingName, userNS, time.Minute)
+		deleteObject("pocketidoidcclient", clientName, userNS)
+		_ = deleteObjectAndWait("pocketidapi", ordersName, userNS, time.Minute)
+		_ = deleteObjectAndWait("pocketidapi", billingName, userNS, time.Minute)
 	})
 })
 
@@ -621,7 +621,7 @@ var _ = Describe("PocketIDAPI Reference Finalizer", Ordered, func() {
 		})
 
 		By("requesting deletion of the API")
-		kubectlDelete("pocketidapi", apiName, userNS)
+		deleteObject("pocketidapi", apiName, userNS)
 
 		By("verifying deletion is blocked by the reference finalizer")
 		Eventually(func(g Gomega) {
@@ -644,7 +644,7 @@ var _ = Describe("PocketIDAPI Reference Finalizer", Ordered, func() {
 	})
 
 	AfterAll(func() {
-		kubectlDelete("pocketidoidcclient", clientName, userNS)
+		deleteObject("pocketidoidcclient", clientName, userNS)
 	})
 })
 
@@ -677,7 +677,7 @@ var _ = Describe("PocketIDAPI External Deletion Recovery", Ordered, func() {
 	})
 
 	AfterAll(func() {
-		_ = kubectlDeleteWait("pocketidapi", apiName, userNS, time.Minute)
+		_ = deleteObjectAndWait("pocketidapi", apiName, userNS, time.Minute)
 	})
 })
 
@@ -711,6 +711,6 @@ var _ = Describe("PocketIDAPI Adoption", Ordered, func() {
 	})
 
 	AfterAll(func() {
-		_ = kubectlDeleteWait("pocketidapi", apiName, userNS, time.Minute)
+		_ = deleteObjectAndWait("pocketidapi", apiName, userNS, time.Minute)
 	})
 })

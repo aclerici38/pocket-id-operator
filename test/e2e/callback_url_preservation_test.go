@@ -52,7 +52,7 @@ var _ = Describe("Callback URL Preservation", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketidoidcclient", clientName, userNS)
+			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
 	})
@@ -77,7 +77,7 @@ spec: {}`, clientName, userNS))
 				[]string{"https://oob-set.example.com/callback"})
 
 			By("triggering a reconcile via annotation change")
-			err := kubectlAnnotate("pocketidoidcclient", clientName, userNS, "test/trigger=reconcile")
+			err := annotateObject("pocketidoidcclient", clientName, userNS, "test/trigger=reconcile")
 			Expect(err).NotTo(HaveOccurred())
 
 			By("verifying the out-of-band callback URL appears in status after reconcile")
@@ -96,7 +96,7 @@ spec: {}`, clientName, userNS))
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketidoidcclient", clientName, userNS)
+			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
 	})
@@ -132,7 +132,7 @@ spec: {}`, clientName, userNS))
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketidoidcclient", clientName, userNS)
+			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
 	})

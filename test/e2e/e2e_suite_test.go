@@ -187,10 +187,12 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 		"Pocket-ID should be reachable on the published NodePort")
 })
 
-// staticAPIKey reads the shared instance's static API key, which the operator generates
-// and stores alongside the instance.
+// staticAPIKey reads the shared instance's static API key, which the operator generates and
+// stores alongside the instance. Deliberately read per call rather than cached: the
+// regenerate-on-delete spec in instance_test.go replaces this token mid-suite, and a Get
+// against the local apiserver is far cheaper than the staleness it would otherwise invite.
 func staticAPIKey() string {
-	return kubectlGetSecretData(instanceName+"-static-api-key", instanceNS, "token")
+	return secretData(instanceName+"-static-api-key", instanceNS, "token")
 }
 
 var _ = SynchronizedAfterSuite(func() {

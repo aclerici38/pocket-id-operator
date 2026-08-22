@@ -75,7 +75,7 @@ spec:
 	})
 
 	AfterAll(func() {
-		kubectlDelete("secret", sourceSecretName, userNS)
+		deleteObject("secret", sourceSecretName, userNS)
 	})
 
 	Context("Declared Secret Lifecycle", func() {
@@ -92,7 +92,7 @@ spec:
 
 			By("verifying the generated Secret holds the declared value, not a generated one")
 			Eventually(func() string {
-				return kubectlGetSecretData(credentialsSecret, userNS, "client_secret")
+				return secretData(credentialsSecret, userNS, "client_secret")
 			}, time.Minute, 2*time.Second).Should(Equal(declaredValue))
 
 			By("verifying status records the source revision that was pushed")
@@ -119,7 +119,7 @@ spec:
 
 			By("verifying the new value reaches the generated Secret")
 			Eventually(func() string {
-				return kubectlGetSecretData(credentialsSecret, userNS, "client_secret")
+				return secretData(credentialsSecret, userNS, "client_secret")
 			}, 3*time.Minute, 2*time.Second).Should(Equal(rotatedValue))
 
 			By("verifying the recorded source revision advanced")
@@ -141,33 +141,34 @@ spec:
 
 		It("should ignore the regenerate-client-secret annotation", func() {
 			By("setting the regenerate-client-secret annotation")
-			Expect(kubectlAnnotate("pocketidoidcclient", clientName, userNS,
+			Expect(annotateObject("pocketidoidcclient", clientName, userNS,
 				"pocketid.internal/regenerate-client-secret=true")).To(Succeed())
 
 			By("waiting for the operator to consume and remove the annotation")
 			Eventually(func() string {
-				return getField("pocketidoidcclient", clientName, userNS, ".metadata.annotations.pocketid\\.internal/regenerate-client-secret")
+				return getField("pocketidoidcclient", clientName, userNS,
+					".metadata.annotations.pocketid\\.internal/regenerate-client-secret")
 			}, 2*time.Minute, 2*time.Second).Should(BeEmpty())
 
 			By("verifying the declared secret was not regenerated")
 			Consistently(func() string {
-				return kubectlGetSecretData(credentialsSecret, userNS, "client_secret")
+				return secretData(credentialsSecret, userNS, "client_secret")
 			}, 15*time.Second, 3*time.Second).Should(Equal(rotatedValue))
 		})
 
 		It("should report an error when the referenced key is missing", func() {
 			By("pointing clientSecretRef at a key that does not exist")
-			Expect(kubectlPatch("pocketidoidcclient", clientName, userNS,
+			Expect(patchObject("pocketidoidcclient", clientName, userNS,
 				`{"spec":{"clientSecretRef":{"name":"`+sourceSecretName+`","key":"absent-key"}}}`)).To(Succeed())
 
 			By("verifying the client reports the sync failure rather than generating a secret")
 			waitForConditionReason("pocketidoidcclient", clientName, userNS, "Ready", "ClientSecretSyncError")
-			Expect(kubectlGetSecretData(credentialsSecret, userNS, "client_secret")).To(Equal(rotatedValue),
+			Expect(secretData(credentialsSecret, userNS, "client_secret")).To(Equal(rotatedValue),
 				"the previously declared secret should be left untouched")
 		})
 
 		AfterAll(func() {
-			kubectlDelete("pocketidoidcclient", clientName, userNS)
+			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
 	})

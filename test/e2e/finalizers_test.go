@@ -34,7 +34,7 @@ var _ = Describe("Reference Finalizers", Ordered, func() {
 			})
 
 			By("requesting deletion of the user group")
-			kubectlDelete("pocketidusergroup", finalizerGroupName, userNS)
+			deleteObject("pocketidusergroup", finalizerGroupName, userNS)
 
 			By("verifying deletion is blocked by the OIDC client finalizer")
 			Eventually(func(g Gomega) {
@@ -45,7 +45,7 @@ var _ = Describe("Reference Finalizers", Ordered, func() {
 			}, time.Minute, 2*time.Second).Should(Succeed())
 
 			By("deleting the OIDC client")
-			kubectlDelete("pocketidoidcclient", finalizerOIDCName, userNS)
+			deleteObject("pocketidoidcclient", finalizerOIDCName, userNS)
 
 			By("verifying the user group is deleted")
 			waitForResourceDeleted("pocketidusergroup", finalizerGroupName, userNS)
@@ -74,7 +74,7 @@ var _ = Describe("Reference Finalizers", Ordered, func() {
 			})
 
 			By("requesting deletion of the OIDC client")
-			kubectlDelete("pocketidoidcclient", revFinalizerOIDCName, userNS)
+			deleteObject("pocketidoidcclient", revFinalizerOIDCName, userNS)
 
 			By("verifying deletion is blocked by the user group finalizer")
 			Eventually(func(g Gomega) {
@@ -85,7 +85,7 @@ var _ = Describe("Reference Finalizers", Ordered, func() {
 			}, time.Minute, 2*time.Second).Should(Succeed())
 
 			By("deleting the user group")
-			kubectlDelete("pocketidusergroup", revFinalizerGroupName, userNS)
+			deleteObject("pocketidusergroup", revFinalizerGroupName, userNS)
 
 			By("verifying the OIDC client is deleted")
 			waitForResourceDeleted("pocketidoidcclient", revFinalizerOIDCName, userNS)
@@ -115,7 +115,7 @@ var _ = Describe("Reference Finalizers", Ordered, func() {
 			})
 
 			By("requesting deletion of the user")
-			kubectlDelete("pocketiduser", finalizerUserName, userNS)
+			deleteObject("pocketiduser", finalizerUserName, userNS)
 
 			By("verifying deletion is blocked by the user group finalizer")
 			Eventually(func(g Gomega) {
@@ -126,7 +126,7 @@ var _ = Describe("Reference Finalizers", Ordered, func() {
 			}, time.Minute, 2*time.Second).Should(Succeed())
 
 			By("deleting the user group")
-			kubectlDelete("pocketidusergroup", finalizerUserGroupName, userNS)
+			deleteObject("pocketidusergroup", finalizerUserGroupName, userNS)
 
 			By("verifying the user is deleted")
 			waitForResourceDeleted("pocketiduser", finalizerUserName, userNS)

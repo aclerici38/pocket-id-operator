@@ -35,7 +35,7 @@ var _ = Describe("HTTPRoute", Serial, Ordered, func() {
 			strings.Join(quotedHostnames, ","),
 		)
 
-		err := kubectlPatch("pocketidinstance", instanceName, instanceNS, patch)
+		err := patchObject("pocketidinstance", instanceName, instanceNS, patch)
 		Expect(err).NotTo(HaveOccurred())
 	}
 
@@ -83,7 +83,7 @@ var _ = Describe("HTTPRoute", Serial, Ordered, func() {
 			podName := operatorControllerPodName()
 			g.Expect(podName).NotTo(BeEmpty())
 
-			logs := kubectlLogs(podName, namespace)
+			logs := podLogs(podName, namespace)
 			g.Expect(logs).To(ContainSubstring("httproute is enabled but Gateway API CRDs are not installed"))
 
 			g.Expect(objectExists("httproute", routeName, instanceNS)).To(BeFalse(),

@@ -706,31 +706,15 @@ spec:
 
 // --- kubectl Helpers ---
 
-// kubectlGetSecretData returns one decoded value from a Secret, or "" when the Secret or
+// secretData returns one decoded value from a Secret, or "" when the Secret or
 // the key is absent.
-func kubectlGetSecretData(secretName, namespace, key string) string {
+func secretData(secretName, namespace, key string) string {
 	secret := &corev1.Secret{}
 	if err := k8sClient.Get(context.Background(),
 		client.ObjectKey{Name: secretName, Namespace: namespace}, secret); err != nil {
 		return ""
 	}
 	return string(secret.Data[key])
-}
-
-func kubectlDelete(resource, name, namespace string) {
-	deleteObject(resource, name, namespace)
-}
-
-func kubectlDeleteWait(resource, name, namespace string, timeout time.Duration) error {
-	return deleteObjectAndWait(resource, name, namespace, timeout)
-}
-
-func kubectlAnnotate(resource, name, namespace, annotation string) error {
-	return annotateObject(resource, name, namespace, annotation)
-}
-
-func kubectlPatch(resource, name, namespace, patch string) error {
-	return patchObject(resource, name, namespace, patch)
 }
 
 // removeFinalizers clears finalizers from every operator-owned resource in the namespace,
@@ -803,7 +787,7 @@ func waitForStatusFieldNotEmpty(resource, name, namespace, path string) string {
 func waitForSecretKey(secretName, namespace, key string) string {
 	var result string
 	Eventually(func(g Gomega) {
-		result = kubectlGetSecretData(secretName, namespace, key)
+		result = secretData(secretName, namespace, key)
 		g.Expect(result).NotTo(BeEmpty())
 	}, time.Minute, 2*time.Second).Should(Succeed())
 	return result
@@ -976,9 +960,9 @@ data:
 		base64.StdEncoding.EncodeToString(keyPEM)))
 }
 
-// kubectlLogs returns a pod's logs. Logs are a subresource the typed client cannot read,
+// podLogs returns a pod's logs. Logs are a subresource the typed client cannot read,
 // so this is the one place the suite still needs a clientset.
-func kubectlLogs(name, namespace string) string {
+func podLogs(name, namespace string) string {
 	stream, err := clientSet.CoreV1().Pods(namespace).GetLogs(name, &corev1.PodLogOptions{}).
 		Stream(context.Background())
 	if err != nil {

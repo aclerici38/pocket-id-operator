@@ -36,12 +36,12 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 
 		It("should default username to CR name", func() {
 			secretName := userName + "-user-data"
-			Expect(kubectlGetSecretData(secretName, userNS, "username")).To(Equal(userName))
+			Expect(secretData(secretName, userNS, "username")).To(Equal(userName))
 		})
 
 		It("should set placeholder email default", func() {
 			secretName := userName + "-user-data"
-			Expect(kubectlGetSecretData(secretName, userNS, "email")).To(Equal(userName + "@placeholder.local"))
+			Expect(secretData(secretName, userNS, "email")).To(Equal(userName + "@placeholder.local"))
 		})
 
 		It("should set one-time login status fields", func() {
@@ -74,9 +74,9 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 
 		It("should reflect provided values in secret", func() {
 			secretName := userName + "-user-data"
-			Expect(kubectlGetSecretData(secretName, userNS, "username")).To(Equal("explicit-username"))
-			Expect(kubectlGetSecretData(secretName, userNS, "email")).To(Equal("john.doe@example.com"))
-			Expect(kubectlGetSecretData(secretName, userNS, "displayName")).To(Equal("John Doe"))
+			Expect(secretData(secretName, userNS, "username")).To(Equal("explicit-username"))
+			Expect(secretData(secretName, userNS, "email")).To(Equal("john.doe@example.com"))
+			Expect(secretData(secretName, userNS, "displayName")).To(Equal("John Doe"))
 		})
 
 		It("should not show isAdmin when false", func() {
@@ -152,13 +152,13 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 
 			By("verifying overrides take precedence")
 			outSecret := userName + "-user-data"
-			Expect(kubectlGetSecretData(outSecret, userNS, "username")).To(Equal("override-username"))
-			Expect(kubectlGetSecretData(outSecret, userNS, "displayName")).To(Equal("Override Name"))
+			Expect(secretData(outSecret, userNS, "username")).To(Equal("override-username"))
+			Expect(secretData(outSecret, userNS, "displayName")).To(Equal("Override Name"))
 
 			By("verifying secret defaults are used for non-overridden values")
-			Expect(kubectlGetSecretData(outSecret, userNS, "firstName")).To(Equal("Secret"))
-			Expect(kubectlGetSecretData(outSecret, userNS, "lastName")).To(Equal("User"))
-			Expect(kubectlGetSecretData(outSecret, userNS, "email")).To(Equal("secret@example.com"))
+			Expect(secretData(outSecret, userNS, "firstName")).To(Equal("Secret"))
+			Expect(secretData(outSecret, userNS, "lastName")).To(Equal("User"))
+			Expect(secretData(outSecret, userNS, "email")).To(Equal("secret@example.com"))
 		})
 
 		It("should apply defaults for missing keys in partial secret", func() {
@@ -180,11 +180,11 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 
 			By("verifying defaults are applied for missing keys")
 			outSecret := userName + "-user-data"
-			Expect(kubectlGetSecretData(outSecret, userNS, "firstName")).To(Equal("Partial"))
-			Expect(kubectlGetSecretData(outSecret, userNS, "lastName")).To(Equal("User"))
-			Expect(kubectlGetSecretData(outSecret, userNS, "email")).To(Equal("partial@example.com"))
-			Expect(kubectlGetSecretData(outSecret, userNS, "username")).To(Equal(userName))
-			Expect(kubectlGetSecretData(outSecret, userNS, "displayName")).To(Equal("Partial User"))
+			Expect(secretData(outSecret, userNS, "firstName")).To(Equal("Partial"))
+			Expect(secretData(outSecret, userNS, "lastName")).To(Equal("User"))
+			Expect(secretData(outSecret, userNS, "email")).To(Equal("partial@example.com"))
+			Expect(secretData(outSecret, userNS, "username")).To(Equal(userName))
+			Expect(secretData(outSecret, userNS, "displayName")).To(Equal("Partial User"))
 		})
 
 		It("should apply defaults for empty string values", func() {
@@ -208,9 +208,9 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 
 			By("verifying defaults are applied")
 			outSecret := userName + "-user-data"
-			Expect(kubectlGetSecretData(outSecret, userNS, "username")).To(Equal(userName))
-			Expect(kubectlGetSecretData(outSecret, userNS, "firstName")).To(Equal(userName))
-			Expect(kubectlGetSecretData(outSecret, userNS, "email")).To(Equal(userName + "@placeholder.local"))
+			Expect(secretData(outSecret, userNS, "username")).To(Equal(userName))
+			Expect(secretData(outSecret, userNS, "firstName")).To(Equal(userName))
+			Expect(secretData(outSecret, userNS, "email")).To(Equal(userName + "@placeholder.local"))
 		})
 	})
 
@@ -256,10 +256,11 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 			})
 
 			By("getting secret name and token")
-			secretName := getField("pocketiduser", userName, userNS, fmt.Sprintf(".status.apiKeys[?(@.name=='%s')].secretName", apiKeyName))
+			secretName := getField("pocketiduser", userName, userNS,
+				fmt.Sprintf(".status.apiKeys[?(@.name=='%s')].secretName", apiKeyName))
 			Expect(secretName).NotTo(BeEmpty())
 
-			token := kubectlGetSecretData(secretName, userNS, "token")
+			token := secretData(secretName, userNS, "token")
 			Expect(token).NotTo(BeEmpty())
 
 			By("verifying the token authenticates as that user")
@@ -343,7 +344,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 			userID := waitForStatusFieldNotEmpty("pocketiduser", userName, userNS, ".status.userID")
 
 			By("deleting the PocketIDUser resource")
-			kubectlDelete("pocketiduser", userName, userNS)
+			deleteObject("pocketiduser", userName, userNS)
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 
 			By("verifying user still exists in Pocket-ID")
@@ -365,7 +366,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 			userID := waitForStatusFieldNotEmpty("pocketiduser", userName, userNS, ".status.userID")
 
 			By("deleting the PocketIDUser resource")
-			kubectlDelete("pocketiduser", userName, userNS)
+			deleteObject("pocketiduser", userName, userNS)
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 
 			By("verifying user still exists in Pocket-ID")
@@ -387,7 +388,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 			userID := waitForStatusFieldNotEmpty("pocketiduser", userName, userNS, ".status.userID")
 
 			By("deleting the PocketIDUser resource")
-			kubectlDelete("pocketiduser", userName, userNS)
+			deleteObject("pocketiduser", userName, userNS)
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 
 			By("verifying user no longer exists in Pocket-ID (expect 404)")
@@ -405,11 +406,11 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 			userID := waitForStatusFieldNotEmpty("pocketiduser", userName, userNS, ".status.userID")
 
 			By("adding the delete annotation")
-			Expect(kubectlAnnotate("pocketiduser", userName, userNS,
+			Expect(annotateObject("pocketiduser", userName, userNS,
 				user.DeleteFromPocketIDAnnotation+"=true")).To(Succeed())
 
 			By("deleting the PocketIDUser resource")
-			kubectlDelete("pocketiduser", userName, userNS)
+			deleteObject("pocketiduser", userName, userNS)
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 
 			By("verifying user no longer exists in Pocket-ID (expect 404)")
