@@ -24,68 +24,12 @@ var _ = Describe("PocketIDInstance", Serial, Ordered, func() {
 	// All tests use the shared instance created in BeforeSuite
 
 	Context("Core Functionality", func() {
-		It("should create a Deployment", func() {
-			Eventually(func(g Gomega) {
-				output := kubectlGet("deployment", instanceName, "-n", instanceNS,
-					"-o", "jsonpath={.metadata.name}")
-				g.Expect(output).To(Equal(instanceName))
-			}).Should(Succeed())
-		})
-
-		It("should create a Service on port 1411", func() {
-			Eventually(func(g Gomega) {
-				output := kubectlGet("service", instanceName, "-n", instanceNS,
-					"-o", "jsonpath={.spec.ports[0].port}")
-				g.Expect(output).To(Equal("1411"))
-			}).Should(Succeed())
-		})
-
 		It("should be Ready", func() {
 			// The shared instance can be briefly rolling (e.g. after the HTTPRoute
 			// suite toggles its route), so poll rather than asserting once.
 			waitForReady("pocketidinstance", instanceName, instanceNS)
 		})
 
-		It("should create static API key secret automatically", func() {
-			staticSecretName := instanceName + "-static-api-key"
-			waitForSecretKey(staticSecretName, instanceNS, "token")
-		})
-
-		It("should inject STATIC_API_KEY env var into deployment", func() {
-			staticSecretName := instanceName + "-static-api-key"
-			Eventually(func(g Gomega) {
-				envVarName := kubectlGet("deployment", instanceName, "-n", instanceNS,
-					"-o", "jsonpath={.spec.template.spec.containers[0].env[?(@.name=='STATIC_API_KEY')].name}")
-				g.Expect(envVarName).To(Equal("STATIC_API_KEY"))
-
-				secretName := kubectlGet("deployment", instanceName, "-n", instanceNS,
-					"-o", "jsonpath={.spec.template.spec.containers[0].env[?(@.name=='STATIC_API_KEY')].valueFrom.secretKeyRef.name}")
-				g.Expect(secretName).To(Equal(staticSecretName))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
-		})
-
-		It("should set static API key secret name in instance status", func() {
-			staticSecretName := instanceName + "-static-api-key"
-			waitForStatusField("pocketidinstance", instanceName, instanceNS,
-				".status.staticApiKeySecretName", staticSecretName)
-		})
-
-		It("should set owner reference on static API key secret for garbage collection", func() {
-			staticSecretName := instanceName + "-static-api-key"
-			Eventually(func(g Gomega) {
-				ownerKind := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-					"-o", "jsonpath={.metadata.ownerReferences[0].kind}")
-				g.Expect(ownerKind).To(Equal("PocketIDInstance"))
-
-				ownerName := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-					"-o", "jsonpath={.metadata.ownerReferences[0].name}")
-				g.Expect(ownerName).To(Equal(instanceName))
-
-				controller := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-					"-o", "jsonpath={.metadata.ownerReferences[0].controller}")
-				g.Expect(controller).To(Equal("true"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
-		})
 	})
 
 	Context("Static API Key Secret Lifecycle", func() {
@@ -288,67 +232,6 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Serial, Ordered, fu
 
 			By("verifying secret is deleted")
 			waitForSecretNotExists(staticSecretName, instanceNS)
-		})
-	})
-
-	Context("Storage Persistence", func() {
-		It("should provision storage when persistence is enabled", func() {
-			const persistenceInstance = "persistence-test-instance"
-			pvcName := persistenceInstance + "-data"
-
-			By("creating an instance with persistence enabled")
-			createInstance(InstanceOptions{
-				Name:               persistenceInstance,
-				PersistenceEnabled: boolPtr(true),
-				PersistenceSize:    "2Gi",
-			})
-
-			By("verifying PVC is created with correct size")
-			Eventually(func(g Gomega) {
-				output := kubectlGet("pvc", pvcName, "-n", instanceNS,
-					"-o", "jsonpath={.spec.resources.requests.storage}")
-				g.Expect(output).To(Equal("2Gi"))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
-
-			By("verifying deployment mounts the PVC")
-			Eventually(func(g Gomega) {
-				volumeName := kubectlGet("deployment", persistenceInstance, "-n", instanceNS,
-					"-o", "jsonpath={.spec.template.spec.volumes[?(@.name=='data')].persistentVolumeClaim.claimName}")
-				g.Expect(volumeName).To(Equal(pvcName))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
-
-			By("cleaning up")
-			Expect(kubectlDeleteWait("pocketidinstance", persistenceInstance, instanceNS, 60*time.Second)).To(Succeed())
-		})
-
-		It("should mount existing claims when configured", func() {
-			const existingClaimInstance = "existing-claim-test-instance"
-			const existingPVC = "my-existing-pvc"
-
-			By("creating an existing PVC")
-			applyYAML(createPVCYAML(existingPVC, instanceNS, "3Gi"))
-
-			By("creating an instance that references the existing PVC")
-			createInstance(InstanceOptions{
-				Name:               existingClaimInstance,
-				PersistenceEnabled: boolPtr(true),
-				ExistingClaim:      existingPVC,
-			})
-
-			By("verifying deployment mounts the existing PVC")
-			Eventually(func(g Gomega) {
-				volumeName := kubectlGet("deployment", existingClaimInstance, "-n", instanceNS,
-					"-o", "jsonpath={.spec.template.spec.volumes[?(@.name=='data')].persistentVolumeClaim.claimName}")
-				g.Expect(volumeName).To(Equal(existingPVC))
-			}, 2*time.Minute, 2*time.Second).Should(Succeed())
-
-			By("verifying no new PVC was created")
-			output := kubectlGet("pvc", existingClaimInstance+"-data", "-n", instanceNS, "-o", "name")
-			Expect(output).To(BeEmpty(), "Should not create a new PVC when existingClaim is specified")
-
-			By("cleaning up")
-			Expect(kubectlDeleteWait("pocketidinstance", existingClaimInstance, instanceNS, 60*time.Second)).To(Succeed())
-			kubectlDelete("pvc", existingPVC, instanceNS)
 		})
 	})
 

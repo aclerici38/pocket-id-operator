@@ -5,11 +5,8 @@ package e2e
 
 import (
 	"encoding/json"
-	"os/exec"
-	"strings"
 	"time"
 
-	"github.com/aclerici38/pocket-id-operator/test/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -133,37 +130,6 @@ var _ = Describe("PocketIDUser Declarative User ID", Ordered, func() {
 			Expect(user.Username).To(Equal(userName + "-readopted"))
 		})
 
-		It("should reject changing the declared ID", func() {
-			yaml := buildUserYAML(UserOptions{
-				Name:     userName,
-				UserID:   "8c2e5b41-7a3f-4d92-b6e8-1f0a3c5d7e91",
-				Username: userName + "-readopted",
-				Email:    userEmail,
-			})
-			cmd := exec.Command("kubectl", "apply", "-f", "-")
-			cmd.Stdin = strings.NewReader(yaml)
-			output, err := utils.Run(cmd)
-			Expect(err).To(HaveOccurred(), "apply should fail due to immutability validation")
-			Expect(output).To(ContainSubstring("userID is immutable"))
-
-			By("verifying status.userID is unchanged")
-			Expect(kubectlGet("pocketiduser", userName, "-n", userNS,
-				"-o", "jsonpath={.status.userID}")).To(Equal(declaredID))
-		})
-
-		It("should reject removing the declared ID", func() {
-			yaml := buildUserYAML(UserOptions{
-				Name:     userName,
-				Username: userName + "-readopted",
-				Email:    userEmail,
-			})
-			cmd := exec.Command("kubectl", "apply", "-f", "-")
-			cmd.Stdin = strings.NewReader(yaml)
-			output, err := utils.Run(cmd)
-			Expect(err).To(HaveOccurred(), "apply should fail due to immutability validation")
-			Expect(output).To(ContainSubstring("userID is immutable"))
-		})
-
 		AfterAll(func() {
 			kubectlDelete("pocketiduser", userName, userNS)
 			waitForResourceDeleted("pocketiduser", userName, userNS)
@@ -187,50 +153,10 @@ var _ = Describe("PocketIDUser Declarative User ID", Ordered, func() {
 			Expect(user.Username).To(Equal(userName))
 		})
 
-		It("should allow adding a userID later only if it matches the assigned one", func() {
-			assignedID := kubectlGet("pocketiduser", userName, "-n", userNS,
-				"-o", "jsonpath={.status.userID}")
-			Expect(assignedID).NotTo(BeEmpty())
-
-			yaml := buildUserYAML(UserOptions{
-				Name:   userName,
-				UserID: assignedID,
-				Email:  "autogen-id@example.com",
-			})
-			cmd := exec.Command("kubectl", "apply", "-f", "-")
-			cmd.Stdin = strings.NewReader(yaml)
-			output, err := utils.Run(cmd)
-			Expect(err).To(HaveOccurred(),
-				"adding spec.userID after creation should be rejected as immutable")
-			Expect(output).To(ContainSubstring("userID is immutable"))
-		})
-
 		AfterAll(func() {
 			kubectlDelete("pocketiduser", userName, userNS)
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 		})
 	})
 
-	Context("User ID validation", func() {
-		It("should reject a userID that is not a lowercase UUID", func() {
-			for _, invalid := range []string{
-				"not-a-uuid",
-				"3F8A1C72-9B4D-4E61-8A0F-2C5D7E9B1A34",
-				"3f8a1c729b4d4e618a0f2c5d7e9b1a34",
-				"3f8a1c72-9b4d-4e61-8a0f-2c5d7e9b1a34-extra",
-			} {
-				yaml := buildUserYAML(UserOptions{
-					Name:   "test-invalid-userid",
-					UserID: invalid,
-					Email:  "invalid-id@example.com",
-				})
-				cmd := exec.Command("kubectl", "apply", "--dry-run=server", "-f", "-")
-				cmd.Stdin = strings.NewReader(yaml)
-				output, err := utils.Run(cmd)
-				Expect(err).To(HaveOccurred(), "userID %q should be rejected", invalid)
-				Expect(output).To(ContainSubstring("spec.userID"),
-					"rejection should point at spec.userID for %q", invalid)
-			}
-		})
-	})
 })

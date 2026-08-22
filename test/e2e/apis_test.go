@@ -613,58 +613,6 @@ var _ = Describe("PocketIDAPI Multi-API Grants", Ordered, func() {
 	})
 })
 
-var _ = Describe("PocketIDAPI Access Admission Validation", func() {
-	// The access flags grant a flow that selects no permissions. Combining a false flag with a
-	// permission list is contradictory, and admission is the only place it can be caught: the
-	// controller would resolve the permissions, push the flow as off, and drop them silently.
-	// The referenced API is never created: every spec here must be refused before any
-	// reconcile, so a rule that stops matching shows up as an accepted apply, not as a client
-	// that fails to resolve its permissions later.
-	const apiName = "admission-api"
-
-	// Removing a rule turns these applies into successful ones, so clean up the clients they
-	// would create rather than leaving them for later specs to trip over.
-	AfterEach(func() {
-		for _, name := range []string{"test-admission-delegated", "test-admission-client", "test-admission-public"} {
-			kubectlDelete("pocketidoidcclient", name, userNS)
-		}
-	})
-
-	grantYAML := func(name, extra string) string {
-		return fmt.Sprintf(`apiVersion: pocketid.internal/v1alpha1
-kind: PocketIDOIDCClient
-metadata:
-  name: %s
-  namespace: %s
-spec:
-  callbackUrls:
-  - https://admission.e2e.example.com/callback
-  apiAccess:
-  - apiRef:
-      name: %s
-%s
-`, name, userNS, apiName, extra)
-	}
-
-	It("should reject delegatedAccess false alongside delegatedPermissions", func() {
-		expectApplyRejected(
-			grantYAML("test-admission-delegated", "    delegatedPermissions:\n    - read:data\n    delegatedAccess: false"),
-			"delegatedAccess: false conflicts with delegatedPermissions")
-	})
-
-	It("should reject clientAccess false alongside clientPermissions", func() {
-		expectApplyRejected(
-			grantYAML("test-admission-client", "    clientPermissions:\n    - read:data\n    clientAccess: false"),
-			"clientAccess: false conflicts with clientPermissions")
-	})
-
-	It("should reject clientAccess on a public client", func() {
-		expectApplyRejected(
-			grantYAML("test-admission-public", "    clientAccess: true")+"  isPublic: true\n",
-			"require a confidential client (isPublic must be false)")
-	})
-})
-
 var _ = Describe("PocketIDAPI Reference Finalizer", Ordered, func() {
 	const (
 		apiName    = "finalizer-api"

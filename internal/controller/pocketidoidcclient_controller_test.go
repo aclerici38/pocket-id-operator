@@ -502,6 +502,58 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 			Expect(err.Error()).To(ContainSubstring("clientSecretRotation cannot be enabled when clientSecretRef is set"))
 		})
 
+		// A rotation regenerates a client secret whose value would then be discarded, so
+		// rotation and storeClientSecret=false are mutually exclusive. Unlike the rules
+		// above this one has no clientSecretRef involved, so it is built from scratch.
+		It("should reject clientSecretRotation when secret.storeClientSecret is false", func() {
+			resource := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-oidc-store-secret", Namespace: namespace},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+					CallbackURLs: []string{"https://store-secret.example.com/callback"},
+					Secret:       &pocketidinternalv1alpha1.OIDCClientSecretSpec{StoreClientSecret: ptr.To(false)},
+					ClientSecretRotation: &pocketidinternalv1alpha1.ClientSecretRotation{
+						Enabled:  true,
+						Interval: &metav1.Duration{Duration: 720 * time.Hour},
+					},
+				},
+			}
+			err := k8sClient.Create(ctx, resource)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("clientSecretRotation cannot be enabled when secret.storeClientSecret is false"))
+		})
+
+		// The rule has to hold on update too: storeClientSecret=false is legal on its own,
+		// so rotation can only be refused when it is switched on afterwards.
+		It("should reject enabling rotation on an admitted storeClientSecret=false client", func() {
+			resource := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-oidc-store-secret-update", Namespace: namespace},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+					CallbackURLs: []string{"https://store-secret.example.com/callback"},
+					Secret:       &pocketidinternalv1alpha1.OIDCClientSecretSpec{StoreClientSecret: ptr.To(false)},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, resource) })
+
+			// The reconciler adds a finalizer to the new client, so updating the stale
+			// in-memory copy races it and fails on resourceVersion rather than on the rule
+			// under test. Re-read inside RetryOnConflict: conflicts retry, and the CEL
+			// rejection is returned as-is because it is not a conflict.
+			err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				current := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
+				if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(resource), current); err != nil {
+					return err
+				}
+				current.Spec.ClientSecretRotation = &pocketidinternalv1alpha1.ClientSecretRotation{
+					Enabled:  true,
+					Interval: &metav1.Duration{Duration: 720 * time.Hour},
+				}
+				return k8sClient.Update(ctx, current)
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("clientSecretRotation cannot be enabled when secret.storeClientSecret is false"))
+		})
+
 		It("should accept clientSecretRef with rotation present but disabled", func() {
 			resource := newClient("test-oidc-declared-rotation-off", func(s *pocketidinternalv1alpha1.PocketIDOIDCClientSpec) {
 				s.ClientSecretRotation = &pocketidinternalv1alpha1.ClientSecretRotation{Enabled: false}
@@ -758,6 +810,17 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 				ClientPermissions: []string{"read"},
 				ClientAccess:      ptr.To(false),
 			}), "clientAccess: false conflicts with clientPermissions")
+		})
+
+		// The client-credentials flow authenticates with a client secret, which a public
+		// client does not have. The sibling case in pocketidapi_controller_test.go covers
+		// the clientPermissions half of this same rule; this is the clientAccess half.
+		It("rejects clientAccess on a public client", func() {
+			resource := newClient("flags-cel-public", pocketidinternalv1alpha1.OIDCClientAPIAccess{
+				ClientAccess: ptr.To(true),
+			})
+			resource.Spec.IsPublic = true
+			expectRejectedWith(resource, "require a confidential client (isPublic must be false)")
 		})
 
 		It("accepts a false flag on the flow that selects no permissions", func() {

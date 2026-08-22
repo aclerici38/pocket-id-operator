@@ -79,24 +79,6 @@ spec:
 		kubectlDelete("secret", sourceSecretName, userNS)
 	})
 
-	Context("Admission Validation", func() {
-		It("should reject a public client with clientSecretRef", func() {
-			By("applying a PocketIDOIDCClient with isPublic and clientSecretRef")
-			output, err := apply(declaredClientYAML("test-declared-secret-public", true, false))
-			Expect(err).To(HaveOccurred(), "apply should fail CEL validation")
-			Expect(output).To(ContainSubstring("clientSecretRef requires a confidential client"),
-				"error should indicate a public client cannot have a declared secret")
-		})
-
-		It("should reject enabling clientSecretRotation with clientSecretRef", func() {
-			By("applying a PocketIDOIDCClient with clientSecretRef and rotation enabled")
-			output, err := apply(declaredClientYAML("test-declared-secret-rotation", false, true))
-			Expect(err).To(HaveOccurred(), "apply should fail CEL validation")
-			Expect(output).To(ContainSubstring("clientSecretRotation cannot be enabled when clientSecretRef is set"),
-				"error should indicate rotation cannot replace a declared secret")
-		})
-	})
-
 	Context("Declared Secret Lifecycle", func() {
 		const clientName = "test-declared-secret"
 		var credentialsSecret = clientName + "-oidc-credentials"
