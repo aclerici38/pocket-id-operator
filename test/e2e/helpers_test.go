@@ -18,8 +18,10 @@ import (
 	"strings"
 	"time"
 
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 	"github.com/aclerici38/pocket-id-operator/test/utils"
 )
 
@@ -45,6 +47,10 @@ type InstanceOptions struct {
 	// TLSSecretName makes the instance terminate TLS from that kubernetes.io/tls
 	// Secret, which also forces appUrl to https.
 	TLSSecretName string
+	// NodePort publishes the instance's http port on that node port, which Kind maps to
+	// the same port on the host (see setup-test-e2e). Set on the shared instance so the
+	// suite can call Pocket-ID's API directly instead of through a pod in the cluster.
+	NodePort int
 }
 
 const defaultPocketIDImage = "ghcr.io/pocket-id/pocket-id:v2.14.0-distroless@sha256:e0f83a42a78d0759b6d2d8c7380ef0fa8a4c95dfa01ad88740a073ae9cc4ba94"
@@ -99,6 +105,15 @@ func buildInstanceYAML(opts InstanceOptions) string {
 		}
 	}
 	persistence += cimd
+
+	if opts.NodePort != 0 {
+		persistence += fmt.Sprintf(`  serviceTemplate:
+    type: NodePort
+    ports:
+    - name: http
+      nodePort: %d
+`, opts.NodePort)
+	}
 
 	scheme := "http"
 	if opts.TLSSecretName != "" {
@@ -948,64 +963,6 @@ data:
 		base64.StdEncoding.EncodeToString(keyPEM)))
 }
 
-func createPVCYAML(name, namespace, size string) string {
-	return fmt.Sprintf(`apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: %s
-  namespace: %s
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: %s
-`, name, namespace, size)
-}
-
-func createCurlPodYAML(name, namespace, script string) string {
-	return fmt.Sprintf(`apiVersion: v1
-kind: Pod
-metadata:
-  name: %s
-  namespace: %s
-spec:
-  restartPolicy: Never
-  containers:
-  - name: curl
-    image: curlimages/curl:latest
-    command: ["/bin/sh", "-c"]
-    args:
-    - |
-%s
-    securityContext:
-      allowPrivilegeEscalation: false
-      capabilities:
-        drop: ["ALL"]
-      runAsNonRoot: true
-      runAsUser: 1000
-`, name, namespace, indentScript(script, 6))
-}
-
-func indentScript(script string, spaces int) string {
-	indent := strings.Repeat(" ", spaces)
-	lines := strings.Split(script, "\n")
-	for i, line := range lines {
-		if line != "" {
-			lines[i] = indent + line
-		}
-	}
-	return strings.Join(lines, "\n")
-}
-
-func waitForPodSucceeded(name, namespace string) {
-	Eventually(func(g Gomega) {
-		output := kubectlGet("pod", name, "-n", namespace, "-o", "jsonpath={.status.phase}")
-		g.Expect(output).To(Equal("Succeeded"))
-	}, 2*time.Minute, 2*time.Second).Should(Succeed())
-}
-
-// kubectlLogs retrieves logs from a pod
 func kubectlLogs(name, namespace string) string {
 	cmd := exec.Command("kubectl", "logs", name, "-n", namespace)
 	output, err := utils.Run(cmd)
@@ -1015,169 +972,48 @@ func kubectlLogs(name, namespace string) string {
 	return strings.TrimSpace(output)
 }
 
-// getPodLogs waits for a pod to succeed and retrieves its logs
-func getPodLogs(name, namespace string) string {
-	waitForPodSucceeded(name, namespace)
-	return kubectlLogs(name, namespace)
-}
-
-// formatInstanceURL returns the internal service URL for the e2e instance
-func formatInstanceURL() string {
-	return fmt.Sprintf("http://%s.%s.svc:1411", instanceName, instanceNS)
-}
-
 // addUserToGroupInPocketID adds a user to a group directly via the Pocket-ID API,
-// bypassing the operator. This simulates a user being added through the UI.
-// It GETs the current users, appends the new one, and PUTs the full list.
-func addUserToGroupInPocketID(podName, namespace, groupID, userID string) {
-	staticSecretName := instanceName + "-static-api-key"
+// bypassing the operator. This simulates a user being added through the UI. The API
+// replaces the whole membership list, so the current members are read first and the new
+// user appended.
+func addUserToGroupInPocketID(groupID, userID string) {
+	GinkgoHelper()
+	ctx, cancel := testCtx()
+	defer cancel()
 
-	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
+	group, err := pid.GetUserGroup(ctx, groupID)
+	Expect(err).NotTo(HaveOccurred(), "reading group %s", groupID)
 
-	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-# GET current group to find existing user IDs
-BODY=$(curl -s -H "X-API-KEY: $API_KEY" %s/api/user-groups/%s)
-# Extract user IDs: find the "users" array, then collect all "id" fields within it.
-# Use awk to extract just the users array portion, then grep for IDs.
-USERS_JSON=$(echo "$BODY" | awk -F'"users":' '{print $2}' | awk '{
-  depth=0; out=""; started=0
-  for(i=1;i<=length($0);i++){
-    c=substr($0,i,1)
-    if(c=="[" && !started){started=1; depth=1; out=out c; continue}
-    if(started){
-      out=out c
-      if(c=="[") depth++
-      if(c=="]") depth--
-      if(depth==0){print out; exit}
-    }
-  }
-}')
-EXISTING_IDS=$(echo "$USERS_JSON" | grep -o '"id":"[^"]*"' | sed 's/"id":"//;s/"//' | tr '\n' ',' | sed 's/,$//')
-# Build new list with the additional user
-if [ -z "$EXISTING_IDS" ]; then
-  USER_IDS='["%s"]'
-else
-  USER_IDS=$(echo "[$(echo "$EXISTING_IDS" | sed 's/\([^,]*\)/"\1"/g'),\"%s\"]")
-fi
-# PUT the updated user list
-HTTP_CODE=$(curl -s -o /dev/null -w '%%{http_code}' -X PUT \
-  -H "X-API-KEY: $API_KEY" -H "Content-Type: application/json" \
-  -d "{\"userIds\": $USER_IDS}" \
-  %s/api/user-groups/%s/users)
-if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "204" ]; then
-  echo "Failed to add user to group: HTTP $HTTP_CODE" >&2
-  exit 1
-fi
-echo "User added to group successfully"`,
-		apiKeyBase64, formatInstanceURL(), groupID, userID, userID, formatInstanceURL(), groupID)
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	waitForPodSucceeded(podName, namespace)
-}
-
-// getFromPocketID performs a GET against the Pocket-ID API using the instance's static
-// API key and returns the raw response body. Used to assert that operator-managed state
-// is actually reflected in Pocket-ID's database. Each call needs a unique podName.
-func getFromPocketID(podName, namespace, apiPath string) string {
-	staticSecretName := instanceName + "-static-api-key"
-
-	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
-
-	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-curl -sf -H "X-API-KEY: $API_KEY" %s%s`,
-		apiKeyBase64, formatInstanceURL(), apiPath)
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	return getPodLogs(podName, namespace)
-}
-
-// getAppConfigFieldFromPocketID returns a single field from Pocket-ID's public
-// application configuration. This endpoint needs no auth: it is the same payload the
-// login page reads in the browser before the user has a session. The response is a flat
-// array of {"key","type","value"} objects rather than an object keyed by field name, so
-// this pulls the entry whose "key" matches and reads its "value". Values are always
-// strings, so booleans come back as "true"/"false".
-func getAppConfigFieldFromPocketID(podName, namespace, field string) string {
-	script := fmt.Sprintf(`curl -sf %s/api/application-configuration \
-  | grep -o '{[^{}]*"key":"%s"[^{}]*}' \
-  | grep -o '"value":"[^"]*"' | head -1 | sed 's/.*":"//;s/"$//'`,
-		formatInstanceURL(), field)
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	return getPodLogs(podName, namespace)
+	Expect(pid.UpdateUserGroupUsers(ctx, groupID, append(group.UserIDs, userID))).
+		To(Succeed(), "adding user %s to group %s", userID, groupID)
 }
 
 // createAPIInPocketID creates an API directly via the Pocket-ID API (bypassing the
 // operator, simulating creation through the UI) and returns the new API's ID. Used to
 // test adoption of a pre-existing API by resource.
-func createAPIInPocketID(podName, namespace, name, resource string) string {
-	staticSecretName := instanceName + "-static-api-key"
+func createAPIInPocketID(name, resource string) string {
+	GinkgoHelper()
+	ctx, cancel := testCtx()
+	defer cancel()
 
-	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
-
-	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-BODY=$(curl -sf -X POST -H "X-API-KEY: $API_KEY" -H "Content-Type: application/json" \
-  -d '{"name":"%s","resource":"%s"}' %s/api/apis)
-echo "$BODY" | grep -o '"id":"[^"]*"' | head -1 | sed 's/"id":"//;s/"//'`,
-		apiKeyBase64, name, resource, formatInstanceURL())
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	return getPodLogs(podName, namespace)
+	api, err := pid.CreateAPI(ctx, pocketid.APIInput{Name: name, Resource: resource})
+	Expect(err).NotTo(HaveOccurred(), "creating API %q", name)
+	Expect(api.ID).NotTo(BeEmpty())
+	return api.ID
 }
 
 // deleteUserGroupInPocketID deletes a user group directly via the Pocket-ID API,
 // simulating a group removed out-of-band (another cluster, or the UI).
-func deleteUserGroupInPocketID(podName, namespace, groupID string) {
-	staticSecretName := instanceName + "-static-api-key"
+func deleteUserGroupInPocketID(groupID string) {
+	GinkgoHelper()
+	ctx, cancel := testCtx()
+	defer cancel()
 
-	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
-
-	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-HTTP_CODE=$(curl -s -o /dev/null -w '%%{http_code}' -X DELETE \
-  -H "X-API-KEY: $API_KEY" %s/api/user-groups/%s)
-if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "204" ]; then
-  echo "Failed to delete user group: HTTP $HTTP_CODE" >&2
-  exit 1
-fi
-echo "User group deleted"`,
-		apiKeyBase64, formatInstanceURL(), groupID)
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	waitForPodSucceeded(podName, namespace)
+	Expect(pid.DeleteUserGroup(ctx, groupID)).To(Succeed(), "deleting group %s", groupID)
 }
 
-// clientSecretAuthResult reports what Pocket-ID makes of a client_id/client_secret pair, by asking
-// its token endpoint for a client_credentials grant. It answers "ok" when a token comes back and
-// the OAuth error code otherwise — "invalid_client" being the one that means the secret is not
-// accepted. This is the only way to tell that a secret Pocket-ID still lists is actually usable,
-// and that a retired one really stopped working.
-func clientSecretAuthResult(podName, namespace, clientID, clientSecret string) string {
-	script := fmt.Sprintf(`BODY=$(curl -s -u '%s:%s'   -d 'grant_type=client_credentials' %s/api/oidc/token)
-if echo "$BODY" | grep -q '"access_token"'; then
-  echo ok
-else
-  echo "$BODY" | grep -o '"error":"[^"]*"' | head -1 | sed 's/"error":"//;s/"//'
-fi`, clientID, clientSecret, formatInstanceURL())
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	return getPodLogs(podName, namespace)
-}
-
-// clientSecretsSectionFromPocketID returns the credentials.secrets array of a client, as read from
-// the same endpoint the operator reconciles from. Reading it here rather than from the dedicated
-// /secrets endpoint is deliberate: the operator derives the whole secret set from this one client
-// GET, so a release that stopped embedding it would break every retirement decision, and this is
-// what notices. Secret entries hold only scalars, so the array ends at the first "]".
-func clientSecretsSectionFromPocketID(podName, namespace, clientID string) string {
-	body := getFromPocketID(podName, namespace, "/api/oidc/clients/"+clientID)
+func clientSecretsSectionFromPocketID(clientID string) string {
+	body := getFromPocketID("/api/oidc/clients/" + clientID)
 	section := regexp.MustCompile(`"secrets":\[[^\]]*\]`).FindString(body)
 	Expect(section).NotTo(BeEmpty(),
 		"a client read must carry credentials.secrets; the operator has no other source for them: %s", body)
@@ -1186,15 +1022,15 @@ func clientSecretsSectionFromPocketID(podName, namespace, clientID string) strin
 
 // clientSecretIDsFromPocketID returns the IDs of the secrets Pocket-ID holds for a client, in the
 // order the API reports them.
-func clientSecretIDsFromPocketID(podName, namespace, clientID string) []string {
-	return matchAllInClientSecrets(clientSecretsSectionFromPocketID(podName, namespace, clientID), "id")
+func clientSecretIDsFromPocketID(clientID string) []string {
+	return matchAllInClientSecrets(clientSecretsSectionFromPocketID(clientID), "id")
 }
 
 // clientSecretPrefixesFromPocketID returns the clear-text prefixes Pocket-ID recorded for a
 // client's secrets. The operator identifies its own credential by matching these, so how much of
 // the value they carry is a contract with Pocket-ID rather than an implementation detail.
-func clientSecretPrefixesFromPocketID(podName, namespace, clientID string) []string {
-	return matchAllInClientSecrets(clientSecretsSectionFromPocketID(podName, namespace, clientID), "prefix")
+func clientSecretPrefixesFromPocketID(clientID string) []string {
+	return matchAllInClientSecrets(clientSecretsSectionFromPocketID(clientID), "prefix")
 }
 
 func matchAllInClientSecrets(section, field string) []string {
@@ -1205,57 +1041,23 @@ func matchAllInClientSecrets(section, field string) []string {
 	return values
 }
 
-// deleteClientSecretInPocketID removes a client secret directly via the Pocket-ID API, simulating
-// one revoked through the UI or by another cluster.
-func deleteClientSecretInPocketID(podName, namespace, clientID, secretID string) {
-	staticSecretName := instanceName + "-static-api-key"
+// deleteClientSecretInPocketID retires a client secret directly via the Pocket-ID API,
+// simulating one revoked through the UI or by another cluster.
+func deleteClientSecretInPocketID(clientID, secretID string) {
+	GinkgoHelper()
+	ctx, cancel := testCtx()
+	defer cancel()
 
-	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
-
-	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-HTTP_CODE=$(curl -s -o /dev/null -w '%%{http_code}' -X DELETE \
-  -H "X-API-KEY: $API_KEY" %s/api/oidc/clients/%s/secrets/%s)
-if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "204" ]; then
-  echo "Failed to delete client secret: HTTP $HTTP_CODE" >&2
-  exit 1
-fi
-echo "Client secret deleted"`,
-		apiKeyBase64, formatInstanceURL(), clientID, secretID)
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	waitForPodSucceeded(podName, namespace)
+	Expect(pid.DeleteOIDCClientSecret(ctx, clientID, secretID)).
+		To(Succeed(), "deleting secret %s of client %s", secretID, clientID)
 }
 
-// getGroupMembersFromPocketID returns the space-separated user IDs of a group
-// by querying the Pocket-ID API directly.
-func getGroupMembersFromPocketID(podName, namespace, groupID string) string {
-	staticSecretName := instanceName + "-static-api-key"
+func getGroupMembersFromPocketID(groupID string) string {
+	GinkgoHelper()
+	ctx, cancel := testCtx()
+	defer cancel()
 
-	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
-
-	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-BODY=$(curl -s -H "X-API-KEY: $API_KEY" %s/api/user-groups/%s)
-# Extract user IDs from the users array using bracket-matching awk
-USERS_JSON=$(echo "$BODY" | awk -F'"users":' '{print $2}' | awk '{
-  depth=0; out=""; started=0
-  for(i=1;i<=length($0);i++){
-    c=substr($0,i,1)
-    if(c=="[" && !started){started=1; depth=1; out=out c; continue}
-    if(started){
-      out=out c
-      if(c=="[") depth++
-      if(c=="]") depth--
-      if(depth==0){print out; exit}
-    }
-  }
-}')
-echo "$USERS_JSON" | grep -o '"id":"[^"]*"' | sed 's/"id":"//;s/"//' | tr '\n' ' ' | sed 's/ $//'`,
-		apiKeyBase64, formatInstanceURL(), groupID)
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	return getPodLogs(podName, namespace)
+	group, err := pid.GetUserGroup(ctx, groupID)
+	Expect(err).NotTo(HaveOccurred(), "reading group %s", groupID)
+	return strings.Join(group.UserIDs, " ")
 }

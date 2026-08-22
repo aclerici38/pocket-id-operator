@@ -4,11 +4,13 @@
 package e2e
 
 import (
-	"fmt"
+	"strconv"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
 // These tests verify that state-diff reconciliation correctly syncs changes to Pocket-ID
@@ -320,7 +322,7 @@ var _ = Describe("EmailVerified Preservation", Ordered, func() {
 
 	BeforeAll(func() {
 		By("creating a user directly in Pocket-ID with emailVerified=true")
-		createUserInPocketIDWithVerifiedEmail("create-verified-user", userNS, username, "sync-verified@example.local")
+		createUserInPocketIDWithVerifiedEmail(username, "sync-verified@example.local")
 	})
 
 	It("should adopt the pre-existing user and reflect emailVerified=true in status", func() {
@@ -348,7 +350,7 @@ var _ = Describe("EmailVerified Preservation", Ordered, func() {
 		By("verifying Pocket-ID still has emailVerified=true for the user")
 		userID := kubectlGet("pocketiduser", crName, "-n", userNS,
 			"-o", "jsonpath={.status.userID}")
-		Expect(getUserEmailVerified("check-email-verified", userNS, userID)).To(Equal("true"))
+		Expect(getUserEmailVerified(userID)).To(Equal("true"))
 	})
 
 	AfterAll(func() {
@@ -361,50 +363,31 @@ var _ = Describe("EmailVerified Preservation", Ordered, func() {
 
 // --- User API Helpers ---
 
-// createUserInPocketIDWithVerifiedEmail creates a user directly in Pocket-ID via the API
-// with emailVerified=true and waits for the curl pod to succeed.
-func createUserInPocketIDWithVerifiedEmail(podName, namespace, username, email string) {
-	staticSecretName := instanceName + "-static-api-key"
-	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
+// createUserInPocketIDWithVerifiedEmail creates a user out-of-band whose email is already
+// verified, so the operator's handling of an externally verified address can be observed.
+func createUserInPocketIDWithVerifiedEmail(username, email string) {
+	GinkgoHelper()
+	ctx, cancel := testCtx()
+	defer cancel()
 
-	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-BODY=$(curl -s -X POST \
-  -H "X-API-KEY: $API_KEY" -H "Content-Type: application/json" \
-  -d '{"username":"%s","firstName":"%s","displayName":"%s","email":"%s","emailVerified":true}' \
-  -o /tmp/body -w '%%{http_code}' \
-  %s/api/users)
-HTTP_CODE="$BODY"
-BODY=$(cat /tmp/body)
-if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
-  echo "Failed to create user: HTTP $HTTP_CODE: $BODY" >&2
-  exit 1
-fi`,
-		apiKeyBase64, username, username, username, email, formatInstanceURL())
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	waitForPodSucceeded(podName, namespace)
+	_, err := pid.CreateUser(ctx, pocketid.UserInput{
+		Username:      username,
+		FirstName:     username,
+		DisplayName:   username,
+		Email:         email,
+		EmailVerified: true,
+	})
+	Expect(err).NotTo(HaveOccurred(), "creating verified user %q", username)
 }
 
-// getUserEmailVerified queries Pocket-ID for a user by ID and returns "true" or "false"
-// based on the emailVerified field.
-func getUserEmailVerified(podName, namespace, userID string) string {
-	staticSecretName := instanceName + "-static-api-key"
-	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
+// getUserEmailVerified reports whether Pocket-ID considers the user's email verified,
+// as "true" or "false" so callers can compare against the CR's string status field.
+func getUserEmailVerified(userID string) string {
+	GinkgoHelper()
+	ctx, cancel := testCtx()
+	defer cancel()
 
-	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-BODY=$(curl -s -H "X-API-KEY: $API_KEY" %s/api/users/%s)
-if echo "$BODY" | grep -q '"emailVerified":true'; then
-  echo "true"
-else
-  echo "false"
-fi`,
-		apiKeyBase64, formatInstanceURL(), userID)
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	waitForPodSucceeded(podName, namespace)
-	return kubectlLogs(podName, namespace)
+	user, err := pid.GetUser(ctx, userID)
+	Expect(err).NotTo(HaveOccurred(), "reading user %s", userID)
+	return strconv.FormatBool(user.EmailVerified)
 }

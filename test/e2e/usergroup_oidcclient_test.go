@@ -1004,7 +1004,7 @@ var _ = Describe("OIDCClient attaching groups that have no PocketIDUserGroup CR"
 
 	BeforeAll(func() {
 		By("creating a user group directly in Pocket-ID, with no CR in this cluster")
-		externalGroupID = createUserGroupInPocketID(createGroupPod, userNS, externalGroup, "External Only Group")
+		externalGroupID = createUserGroupInPocketID(externalGroup, "External Only Group")
 		Expect(externalGroupID).NotTo(BeEmpty(), "expected a group ID from Pocket-ID")
 	})
 
@@ -1025,7 +1025,7 @@ var _ = Describe("OIDCClient attaching groups that have no PocketIDUserGroup CR"
 			"-o", "jsonpath={.status.clientID}")
 
 		Eventually(func(g Gomega) {
-			body := getFromPocketID(verifyAttachedPod, userNS, "/api/oidc/clients/"+clientID)
+			body := getFromPocketID("/api/oidc/clients/" + clientID)
 			g.Expect(body).To(ContainSubstring(externalGroupID))
 		}, 2*time.Minute, 5*time.Second).Should(Succeed())
 	})
@@ -1078,7 +1078,7 @@ var _ = Describe("OIDCClient attaching groups that have no PocketIDUserGroup CR"
 	})
 
 	It("should recover once the referenced group exists in Pocket-ID", func() {
-		createUserGroupInPocketID("create-late-group", userNS, nonexistentGroup, "Late Group")
+		createUserGroupInPocketID(nonexistentGroup, "Late Group")
 		waitForReady("pocketidoidcclient", missingRefClient, userNS)
 	})
 
@@ -1086,7 +1086,7 @@ var _ = Describe("OIDCClient attaching groups that have no PocketIDUserGroup CR"
 		// The core promise: the operator resolves the group but never manages it.
 		// friendlyName is the field a PocketIDUserGroup would overwrite on every
 		// resync, so its survival is the strongest available signal.
-		body := getFromPocketID("verify-external-group-unmodified", userNS, "/api/user-groups/"+externalGroupID)
+		body := getFromPocketID("/api/user-groups/" + externalGroupID)
 		Expect(body).To(ContainSubstring("External Only Group"))
 		Expect(body).To(ContainSubstring(externalGroup))
 	})
@@ -1103,7 +1103,7 @@ var _ = Describe("OIDCClient attaching groups that have no PocketIDUserGroup CR"
 		waitForStatusField("pocketidoidcclient", byIDClient, userNS,
 			".status.allowedUserGroupIDs[0]", externalGroupID)
 
-		body := getFromPocketID("verify-external-group-survives", userNS, "/api/user-groups/"+externalGroupID)
+		body := getFromPocketID("/api/user-groups/" + externalGroupID)
 		Expect(body).To(ContainSubstring(externalGroupID))
 	})
 })
@@ -1137,9 +1137,9 @@ var _ = Describe("OIDCClient mixing CR, name, and ID group references", Ordered,
 		Expect(crGroupID).NotTo(BeEmpty())
 
 		By("creating three groups directly in Pocket-ID with no CR")
-		extAID = createUserGroupInPocketID("create-combo-a", userNS, comboExtA, "Combo External A")
-		extBID = createUserGroupInPocketID("create-combo-b", userNS, comboExtB, "Combo External B")
-		extByIDGid = createUserGroupInPocketID("create-combo-id", userNS, comboExtByID, "Combo External By ID")
+		extAID = createUserGroupInPocketID(comboExtA, "Combo External A")
+		extBID = createUserGroupInPocketID(comboExtB, "Combo External B")
+		extByIDGid = createUserGroupInPocketID(comboExtByID, "Combo External By ID")
 		Expect(extAID).NotTo(BeEmpty())
 		Expect(extBID).NotTo(BeEmpty())
 		Expect(extByIDGid).NotTo(BeEmpty())
@@ -1170,7 +1170,7 @@ var _ = Describe("OIDCClient mixing CR, name, and ID group references", Ordered,
 			"-o", "jsonpath={.status.clientID}")
 
 		Eventually(func(g Gomega) {
-			body := getFromPocketID("verify-combo-groups", userNS, "/api/oidc/clients/"+clientID)
+			body := getFromPocketID("/api/oidc/clients/" + clientID)
 			for _, id := range []string{crGroupID, extAID, extBID, extByIDGid} {
 				g.Expect(body).To(ContainSubstring(id))
 			}
@@ -1232,7 +1232,7 @@ var _ = Describe("OIDCClient referencing a group deleted upstream", Ordered, fun
 
 	BeforeAll(func() {
 		By("creating a group directly in Pocket-ID, with no CR in this cluster")
-		doomedGroupID = createUserGroupInPocketID("create-doomed-group", userNS, doomedGroup, "Doomed Group")
+		doomedGroupID = createUserGroupInPocketID(doomedGroup, "Doomed Group")
 		Expect(doomedGroupID).NotTo(BeEmpty())
 
 		By("attaching two clients, one by groupID and one by groupName")
@@ -1258,7 +1258,7 @@ var _ = Describe("OIDCClient referencing a group deleted upstream", Ordered, fun
 
 	It("should go not Ready after the group is deleted in Pocket-ID", func() {
 		By("deleting the group out-of-band")
-		deleteUserGroupInPocketID("delete-doomed-group", userNS, doomedGroupID)
+		deleteUserGroupInPocketID(doomedGroupID)
 
 		// Nothing in the cluster changed, so this is only caught because references
 		// are re-resolved against Pocket-ID on every reconcile.
@@ -1272,7 +1272,7 @@ var _ = Describe("OIDCClient referencing a group deleted upstream", Ordered, fun
 	It("should recover a groupName reference when the group is recreated", func() {
 		// A name can be re-resolved to whatever group now holds it; a groupID cannot,
 		// since a recreated group gets a new ID.
-		newID := createUserGroupInPocketID("recreate-doomed-group", userNS, doomedGroup, "Doomed Group")
+		newID := createUserGroupInPocketID(doomedGroup, "Doomed Group")
 		Expect(newID).NotTo(BeEmpty())
 		Expect(newID).NotTo(Equal(doomedGroupID))
 

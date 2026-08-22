@@ -9,9 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aclerici38/pocket-id-operator/test/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/aclerici38/pocket-id-operator/test/utils"
 )
 
 var _ = Describe("OIDC Client Declarative Client Secret", Ordered, func() {
@@ -107,7 +108,7 @@ spec:
 			// is what it actually kept.
 			By("verifying Pocket-ID accepts the declared value as the client secret")
 			clientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
-			Expect(clientSecretAuthResult("auth-declared", userNS, clientID, declaredValue)).To(Equal("ok"))
+			Expect(clientSecretAuthResult(clientID, declaredValue)).To(Equal("ok"))
 		})
 
 		It("should re-push after the source Secret changes", func() {
@@ -136,11 +137,10 @@ spec:
 			clientID := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
 				"-o", "jsonpath={.status.clientID}")
 			Eventually(func() []string {
-				return clientSecretIDsFromPocketID(
-					fmt.Sprintf("list-declared-%d", time.Now().UnixNano()), userNS, clientID)
+				return clientSecretIDsFromPocketID(clientID)
 			}, time.Minute, 10*time.Second).Should(HaveLen(1))
-			Expect(clientSecretAuthResult("auth-declared-new", userNS, clientID, rotatedValue)).To(Equal("ok"))
-			Expect(clientSecretAuthResult("auth-declared-old", userNS, clientID, declaredValue)).
+			Expect(clientSecretAuthResult(clientID, rotatedValue)).To(Equal("ok"))
+			Expect(clientSecretAuthResult(clientID, declaredValue)).
 				To(Equal("invalid_client"))
 		})
 

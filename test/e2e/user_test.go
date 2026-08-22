@@ -5,23 +5,13 @@ package e2e
 
 import (
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/aclerici38/pocket-id-operator/internal/controller/user"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
-
-// staticAPIKeySecretName returns the name of the static API key secret for the e2e instance
-func staticAPIKeySecretName() string {
-	return instanceName + "-static-api-key"
-}
-
-// getStaticAPIKeyToken retrieves the base64-encoded static API key token
-func getStaticAPIKeyToken() string {
-	return kubectlGet("secret", staticAPIKeySecretName(), "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-}
 
 var _ = Describe("PocketIDUser", Ordered, func() {
 	Context("Minimal User", func() {
@@ -280,17 +270,11 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 				"-o", fmt.Sprintf("jsonpath={.status.apiKeys[?(@.name=='%s')].secretName}", apiKeyName))
 			Expect(secretName).NotTo(BeEmpty())
 
-			tokenBase64 := kubectlGet("secret", secretName, "-n", userNS,
-				"-o", "jsonpath={.data.token}")
-			Expect(tokenBase64).NotTo(BeEmpty())
+			token := kubectlGetSecretData(secretName, userNS, "token")
+			Expect(token).NotTo(BeEmpty())
 
-			By("creating a curl pod to verify the token belongs to the user")
-			script := fmt.Sprintf(`TOKEN=$(echo '%s' | base64 -d)
-curl -sf -H "X-API-KEY: $TOKEN" %s/api/users/me | grep -q '"username":"%s"'`,
-				tokenBase64, formatInstanceURL(), userName)
-			applyYAML(createCurlPodYAML(podName, userNS, script))
-
-			waitForPodSucceeded(podName, userNS)
+			By("verifying the token authenticates as that user")
+			Expect(pocketIDUsernameForAPIKey(token)).To(Equal(userName))
 		})
 	})
 
@@ -338,8 +322,7 @@ curl -sf -H "X-API-KEY: $TOKEN" %s/api/users/me | grep -q '"username":"%s"'`,
 				".status.oneTimeLoginToken")
 
 			By("confirming email one-time access is off, so the page requires the long code")
-			Expect(getAppConfigFieldFromPocketID(podName, userNS,
-				"emailOneTimeAccessAsUnauthenticatedEnabled")).To(Equal("false"))
+			Expect(getAppConfigFieldFromPocketID("emailOneTimeAccessAsUnauthenticatedEnabled")).To(Equal("false"))
 
 			Expect(len(token)).To(BeNumerically(">", shortLoginCodeLength),
 				"expected the long link code; a %d-character code means either "+
@@ -361,20 +344,8 @@ curl -sf -H "X-API-KEY: $TOKEN" %s/api/users/me | grep -q '"username":"%s"'`,
 				g.Expect(token).NotTo(BeEmpty())
 			}, time.Minute, 2*time.Second).Should(Succeed())
 
-			By("creating a curl pod to exchange the token")
-			script := fmt.Sprintf(`TOKEN='%s'
-curl -sf -D /tmp/headers -o /tmp/user.json -X POST %s/api/one-time-access-token/$TOKEN
-COOKIE=$(awk -F': ' 'tolower($1)=="set-cookie" && $2 ~ /access_token=/ {print $2; exit}' /tmp/headers)
-if [ -z "$COOKIE" ]; then
-  echo "missing access token cookie" >&2
-  exit 1
-fi
-COOKIE_PAIR=$(echo "$COOKIE" | cut -d';' -f1)
-curl -sf -H "Cookie: $COOKIE_PAIR" %s/api/users/me | grep -q '"username":"%s"'`,
-				token, formatInstanceURL(), formatInstanceURL(), userName)
-
-			applyYAML(createCurlPodYAML(podName, userNS, script))
-			waitForPodSucceeded(podName, userNS)
+			By("redeeming the token and verifying the session belongs to that user")
+			Expect(pocketIDUsernameForOneTimeToken(token)).To(Equal(userName))
 		})
 	})
 
@@ -394,13 +365,7 @@ curl -sf -H "Cookie: $COOKIE_PAIR" %s/api/users/me | grep -q '"username":"%s"'`,
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 
 			By("verifying user still exists in Pocket-ID")
-			tokenBase64 := getStaticAPIKeyToken()
-			Expect(tokenBase64).NotTo(BeEmpty())
-			script := fmt.Sprintf(`TOKEN=$(echo '%s' | base64 -d)
-curl -sf -H "X-API-KEY: $TOKEN" %s/api/users/%s | grep -q '"id":"%s"'`,
-				tokenBase64, formatInstanceURL(), userID, userID)
-			applyYAML(createCurlPodYAML(podName, userNS, script))
-			waitForPodSucceeded(podName, userNS)
+			Expect(getFromPocketID("/api/users/" + userID)).To(ContainSubstring(userID))
 		})
 
 		It("should NOT delete user from Pocket-ID when annotation is set to false", func() {
@@ -423,13 +388,7 @@ curl -sf -H "X-API-KEY: $TOKEN" %s/api/users/%s | grep -q '"id":"%s"'`,
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 
 			By("verifying user still exists in Pocket-ID")
-			tokenBase64 := getStaticAPIKeyToken()
-			Expect(tokenBase64).NotTo(BeEmpty())
-			script := fmt.Sprintf(`TOKEN=$(echo '%s' | base64 -d)
-curl -sf -H "X-API-KEY: $TOKEN" %s/api/users/%s | grep -q '"id":"%s"'`,
-				tokenBase64, formatInstanceURL(), userID, userID)
-			applyYAML(createCurlPodYAML(podName, userNS, script))
-			waitForPodSucceeded(podName, userNS)
+			Expect(getFromPocketID("/api/users/" + userID)).To(ContainSubstring(userID))
 		})
 
 		It("should delete user from Pocket-ID when annotation is set to true", func() {
@@ -452,20 +411,8 @@ curl -sf -H "X-API-KEY: $TOKEN" %s/api/users/%s | grep -q '"id":"%s"'`,
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 
 			By("verifying user no longer exists in Pocket-ID (expect 404)")
-			tokenBase64 := getStaticAPIKeyToken()
-			Expect(tokenBase64).NotTo(BeEmpty())
-			script := fmt.Sprintf(`TOKEN=$(echo '%s' | base64 -d)
-HTTP_CODE=$(curl -s -o /dev/null -w "%%{http_code}" -H "X-API-KEY: $TOKEN" %s/api/users/%s)
-if [ "$HTTP_CODE" = "404" ]; then
-  echo "User correctly deleted (got 404)"
-  exit 0
-else
-  echo "Expected 404 but got $HTTP_CODE"
-  exit 1
-fi`,
-				tokenBase64, formatInstanceURL(), userID)
-			applyYAML(createCurlPodYAML(podName, userNS, script))
-			waitForPodSucceeded(podName, userNS)
+			Expect(getStatusFromPocketID("/api/users/"+userID)).To(Equal(http.StatusNotFound),
+				"the user should have been deleted from Pocket-ID")
 		})
 
 		It("should delete user from Pocket-ID when annotation is added before deletion", func() {
@@ -487,20 +434,8 @@ fi`,
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 
 			By("verifying user no longer exists in Pocket-ID (expect 404)")
-			tokenBase64 := getStaticAPIKeyToken()
-			Expect(tokenBase64).NotTo(BeEmpty())
-			script := fmt.Sprintf(`TOKEN=$(echo '%s' | base64 -d)
-HTTP_CODE=$(curl -s -o /dev/null -w "%%{http_code}" -H "X-API-KEY: $TOKEN" %s/api/users/%s)
-if [ "$HTTP_CODE" = "404" ]; then
-  echo "User correctly deleted (got 404)"
-  exit 0
-else
-  echo "Expected 404 but got $HTTP_CODE"
-  exit 1
-fi`,
-				tokenBase64, formatInstanceURL(), userID)
-			applyYAML(createCurlPodYAML(podName, userNS, script))
-			waitForPodSucceeded(podName, userNS)
+			Expect(getStatusFromPocketID("/api/users/"+userID)).To(Equal(http.StatusNotFound),
+				"the user should have been deleted from Pocket-ID")
 		})
 	})
 })

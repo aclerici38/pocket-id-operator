@@ -17,7 +17,6 @@ var _ = Describe("External Deletion Recovery", Ordered, func() {
 
 	Context("User External Deletion", func() {
 		const userName = "test-external-delete-user"
-		const podName = "delete-user-test"
 
 		It("should recreate user after external deletion from Pocket-ID", func() {
 			By("creating a user and waiting for it to be ready")
@@ -33,7 +32,7 @@ var _ = Describe("External Deletion Recovery", Ordered, func() {
 			originalUserID := waitForStatusFieldNotEmpty("pocketiduser", userName, userNS, ".status.userID")
 
 			By("deleting the user directly from Pocket-ID via API")
-			deleteFromPocketID(podName+"-user", userNS, fmt.Sprintf("/api/users/%s", originalUserID))
+			deleteFromPocketID(fmt.Sprintf("/api/users/%s", originalUserID))
 
 			By("waiting for the operator to detect deletion and recreate the user")
 			Eventually(func(g Gomega) {
@@ -51,7 +50,6 @@ var _ = Describe("External Deletion Recovery", Ordered, func() {
 
 	Context("UserGroup External Deletion", func() {
 		const groupName = "test-external-delete-group"
-		const podName = "delete-group-test"
 
 		It("should recreate user group after external deletion from Pocket-ID", func() {
 			By("creating a user group and waiting for it to be ready")
@@ -65,7 +63,7 @@ var _ = Describe("External Deletion Recovery", Ordered, func() {
 			originalGroupID := waitForStatusFieldNotEmpty("pocketidusergroup", groupName, userNS, ".status.groupID")
 
 			By("deleting the group directly from Pocket-ID via API")
-			deleteFromPocketID(podName+"-group", userNS, fmt.Sprintf("/api/user-groups/%s", originalGroupID))
+			deleteFromPocketID(fmt.Sprintf("/api/user-groups/%s", originalGroupID))
 
 			By("waiting for the operator to detect deletion and recreate the group")
 			Eventually(func(g Gomega) {
@@ -83,7 +81,6 @@ var _ = Describe("External Deletion Recovery", Ordered, func() {
 
 	Context("OIDCClient External Deletion", func() {
 		const clientName = "test-external-delete-oidc"
-		const podName = "delete-oidc-test"
 
 		It("should recreate OIDC client after external deletion from Pocket-ID", func() {
 			By("creating an OIDC client and waiting for it to be ready")
@@ -96,7 +93,7 @@ var _ = Describe("External Deletion Recovery", Ordered, func() {
 			originalClientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
 
 			By("deleting the client directly from Pocket-ID via API")
-			deleteFromPocketID(podName+"-oidc", userNS, fmt.Sprintf("/api/oidc/clients/%s", originalClientID))
+			deleteFromPocketID(fmt.Sprintf("/api/oidc/clients/%s", originalClientID))
 
 			By("waiting for the operator to detect deletion and recreate the client")
 			Eventually(func(g Gomega) {
@@ -113,25 +110,3 @@ var _ = Describe("External Deletion Recovery", Ordered, func() {
 		})
 	})
 })
-
-// deleteFromPocketID creates a curl pod that deletes a resource from Pocket-ID via the API
-func deleteFromPocketID(podName, namespace, apiPath string) {
-	staticSecretName := instanceName + "-static-api-key"
-
-	// Get the API key from the secret
-	apiKeyBase64 := kubectlGet("secret", staticSecretName, "-n", instanceNS,
-		"-o", "jsonpath={.data.token}")
-	Expect(apiKeyBase64).NotTo(BeEmpty(), "static API key secret should exist")
-
-	script := fmt.Sprintf(`API_KEY=$(echo '%s' | base64 -d)
-HTTP_CODE=$(curl -sf -o /dev/null -w '%%{http_code}' -X DELETE -H "X-API-KEY: $API_KEY" %s%s)
-if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "204" ]; then
-  echo "Delete failed with HTTP $HTTP_CODE" >&2
-  exit 1
-fi
-echo "Delete succeeded with HTTP $HTTP_CODE"`,
-		apiKeyBase64, formatInstanceURL(), apiPath)
-
-	applyYAML(createCurlPodYAML(podName, namespace, script))
-	waitForPodSucceeded(podName, namespace)
-}
