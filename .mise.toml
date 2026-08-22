@@ -204,16 +204,20 @@ if [ -n "$out" ]; then echo "$out" | kubectl delete --ignore-not-found="${IGNORE
 description = "Deploy the controller to the cluster in ~/.kube/config"
 depends = ["manifests"]
 run = '''
-(cd config/manager && kustomize edit set image ghcr.io/aclerici38/pocket-id-operator="${IMG:-$DEFAULT_IMG}")
-kustomize build config/default | kubectl apply --server-side -f -
+image="${IMG:-$DEFAULT_IMG}"
+kustomize build config/default \
+  | image="$image" yq '(select(.kind == "Deployment") | .spec.template.spec.containers[] | select(.name == "manager") | .image) = strenv(image)' \
+  | kubectl apply --server-side -f -
 '''
 
 [tasks.deploy-e2e]
 description = "Deploy the controller with a faster resync interval for e2e tests"
 depends = ["manifests"]
 run = '''
-(cd config/manager && kustomize edit set image ghcr.io/aclerici38/pocket-id-operator="${IMG:-$DEFAULT_IMG}")
-kustomize build config/e2e | kubectl apply --server-side -f -
+image="${IMG:-$DEFAULT_IMG}"
+kustomize build config/e2e \
+  | image="$image" yq '(select(.kind == "Deployment") | .spec.template.spec.containers[] | select(.name == "manager") | .image) = strenv(image)' \
+  | kubectl apply --server-side -f -
 '''
 
 [tasks.undeploy]
