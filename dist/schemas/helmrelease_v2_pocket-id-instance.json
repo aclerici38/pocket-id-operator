@@ -4679,7 +4679,7 @@
                         ]
                       },
                       "serviceTemplate": {
-                        "description": "ServiceTemplate is merged with the operator-built Service spec.\nOperator-managed fields (the selector and the http/metrics ports) always take precedence.",
+                        "description": "ServiceTemplate is merged with the operator-built Service spec.\nOperator-managed fields (the selector and the number, protocol and appProtocol of\nthe http/metrics ports) always take precedence. A nodePort set on those ports is\nhonoured, as are extra ports and every other field.",
                         "x-kubernetes-preserve-unknown-fields": true
                       },
                       "smtp": {
