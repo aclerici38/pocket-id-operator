@@ -50,7 +50,7 @@ postinstall = "command -v lefthook >/dev/null 2>&1 && lefthook install || true"
 # Kept separate from IMG so it never leaks into the e2e suite's image logic.
 DEFAULT_IMG = "ghcr.io/aclerici38/pocket-id-operator:v0.14.1@sha256:a7c738f6eefe2cfcafa9382d7358da9cf294b30a06a736979babb2f2d1ea97bb"
 KIND_CLUSTER = "pocket-id-operator-test-e2e"
-# Host port the shared e2e Pocket-ID instance is published on.
+# Host port the shared e2e Pocket-ID instance is published on, in the NodePort range (30000-32767).
 POCKET_ID_NODE_PORT = "31411"
 CONTAINER_TOOL = "docker"
 PLATFORMS = "linux/arm64,linux/amd64,linux/s390x,linux/ppc64le"

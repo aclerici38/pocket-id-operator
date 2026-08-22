@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -35,10 +36,10 @@ const (
 	defaultProjectImage = "pocket-id-operator:e2e"
 	namespace           = "pocket-id-operator-system"
 
-	// pocketIDNodePort must match POCKET_ID_NODE_PORT in .mise.toml, which maps it from
-	// the Kind node to the same port on the host. The shared instance publishes its http
-	// port here so the suite can reach Pocket-ID's API over localhost.
-	pocketIDNodePort = 31411
+	// defaultPocketIDNodePort is the fallback when POCKET_ID_NODE_PORT is unset, and must
+	// stay equal to the default in .mise.toml so running ginkgo directly behaves the same
+	// as running it through mise.
+	defaultPocketIDNodePort = 31411
 )
 
 var projectImage = defaultProjectImage
@@ -56,6 +57,24 @@ var (
 	// code path rather than a shell reimplementation of it.
 	pid *pocketid.Client
 )
+
+// pocketIDNodePort is the host port the shared instance is published on. It is read from
+// the same variable setup-test-e2e uses to build the Kind port mapping, so an override
+// cannot leave the mapping and this client pointing at different ports.
+var pocketIDNodePort = resolvePocketIDNodePort()
+
+func resolvePocketIDNodePort() int {
+	raw := os.Getenv("POCKET_ID_NODE_PORT")
+	if raw == "" {
+		return defaultPocketIDNodePort
+	}
+	port, err := strconv.Atoi(raw)
+	if err != nil {
+		panic(fmt.Sprintf("POCKET_ID_NODE_PORT=%q is not a number; it has to be the port "+
+			"setup-test-e2e publishes from the Kind node", raw))
+	}
+	return port
+}
 
 // pocketIDBaseURL is the shared instance's API address as seen from the test binary.
 func pocketIDBaseURL() string {
