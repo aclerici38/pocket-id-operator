@@ -24,12 +24,13 @@ import (
 // v2.14.0 while every unit test still passed.
 const envRejectedMarker = "invalid environment app configuration"
 
-var _ = Describe("PocketIDInstance Maximal Environment", Serial, Ordered, func() {
+var _ = Describe("PocketIDInstance Maximal Environment", Ordered, func() {
 	const maximalInstance = "maximal-env-instance"
 
 	BeforeAll(func() {
-		// A leftover second instance would break every later spec that selects the
-		// shared instance without a selector, so clean up even on failure.
+		// Every resource names its instance explicitly, so this one existing alongside
+		// the shared instance is harmless; it is still cleaned up on failure so the
+		// cluster does not accumulate pods across specs.
 		DeferCleanup(func() {
 			_ = deleteObjectAndWait("pocketidinstance", maximalInstance, instanceNS, 60*time.Second)
 		})

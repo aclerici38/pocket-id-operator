@@ -226,12 +226,16 @@ var _ = Describe("PocketIDAPI Client Access", Ordered, func() {
 	})
 
 	It("should reflect the delegated/client split in Pocket-ID's database", func() {
-		body := getFromPocketID("/api/api-access/" + clientID + "/apis")
-		// read:data was granted for the user-delegated flow, sync:data for client-credentials.
-		Expect(body).To(ContainSubstring(fmt.Sprintf(`"userDelegatedPermissionIds":["%s"]`, readID)))
-		Expect(body).To(ContainSubstring(fmt.Sprintf(`"clientPermissionIds":["%s"]`, syncID)))
-		Expect(body).To(ContainSubstring(`"userDelegatedAccess":true`))
-		Expect(body).To(ContainSubstring(`"clientAccess":true`))
+		// Wrapped in Eventually as a stopgap: the client can report Ready for a generation
+		// it has not pushed yet, so a bare read here races the operator. See issue #588.
+		Eventually(func(g Gomega) {
+			body := getFromPocketID("/api/api-access/" + clientID + "/apis")
+			// read:data was granted for the user-delegated flow, sync:data for client-credentials.
+			g.Expect(body).To(ContainSubstring(fmt.Sprintf(`"userDelegatedPermissionIds":["%s"]`, readID)))
+			g.Expect(body).To(ContainSubstring(fmt.Sprintf(`"clientPermissionIds":["%s"]`, syncID)))
+			g.Expect(body).To(ContainSubstring(`"userDelegatedAccess":true`))
+			g.Expect(body).To(ContainSubstring(`"clientAccess":true`))
+		}).Should(Succeed())
 	})
 
 	It("should update access in Pocket-ID when the grant changes", func() {
@@ -247,12 +251,16 @@ var _ = Describe("PocketIDAPI Client Access", Ordered, func() {
 		waitForReconciled("pocketidoidcclient", clientName, userNS)
 
 		By("verifying Pocket-ID moved sync:data to the delegated bucket and cleared client permissions")
-		body := getFromPocketID("/api/api-access/" + clientID + "/apis")
-		// clientPermissionIds empty + both IDs present proves both are now user-delegated.
-		Expect(body).To(ContainSubstring(`"clientPermissionIds":[]`))
-		Expect(body).To(ContainSubstring(`"clientAccess":false`))
-		Expect(body).To(ContainSubstring(readID))
-		Expect(body).To(ContainSubstring(syncID))
+		// Wrapped in Eventually as a stopgap: the client can report Ready for a generation
+		// it has not pushed yet, so a bare read here races the operator. See issue #588.
+		Eventually(func(g Gomega) {
+			body := getFromPocketID("/api/api-access/" + clientID + "/apis")
+			// clientPermissionIds empty + both IDs present proves both are now user-delegated.
+			g.Expect(body).To(ContainSubstring(`"clientPermissionIds":[]`))
+			g.Expect(body).To(ContainSubstring(`"clientAccess":false`))
+			g.Expect(body).To(ContainSubstring(readID))
+			g.Expect(body).To(ContainSubstring(syncID))
+		}).Should(Succeed())
 	})
 
 	It("should clear access in Pocket-ID when apiAccess is emptied", func() {
@@ -271,9 +279,13 @@ var _ = Describe("PocketIDAPI Client Access", Ordered, func() {
 		}).Should(Succeed())
 
 		By("confirming Pocket-ID's database has no access for the client")
-		body := getFromPocketID("/api/api-access/" + clientID + "/apis")
-		Expect(body).NotTo(ContainSubstring(readID))
-		Expect(body).NotTo(ContainSubstring(syncID))
+		// Wrapped in Eventually as a stopgap: the client can report Ready for a generation
+		// it has not pushed yet, so a bare read here races the operator. See issue #588.
+		Eventually(func(g Gomega) {
+			body := getFromPocketID("/api/api-access/" + clientID + "/apis")
+			g.Expect(body).NotTo(ContainSubstring(readID))
+			g.Expect(body).NotTo(ContainSubstring(syncID))
+		}).Should(Succeed())
 	})
 
 	AfterAll(func() {

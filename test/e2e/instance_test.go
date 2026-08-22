@@ -4,19 +4,19 @@
 package e2e
 
 import (
+	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("PocketIDInstance", Serial, Ordered, func() {
-	// All tests use the shared instance created in BeforeSuite
+var _ = Describe("PocketIDInstance", Ordered, func() {
 
 	Context("Core Functionality", func() {
 		It("should be Ready", func() {
-			// The shared instance can be briefly rolling (e.g. after the HTTPRoute
-			// suite toggles its route), so poll rather than asserting once.
+			// Read-only against the shared instance: nothing in this file rolls it any
+			// more, but polling costs nothing and tolerates a resync landing mid-check.
 			waitForReady("pocketidinstance", instanceName, instanceNS)
 		})
 
@@ -24,18 +24,34 @@ var _ = Describe("PocketIDInstance", Serial, Ordered, func() {
 
 	Context("Static API Key Secret Lifecycle", func() {
 		It("should regenerate static API key secret if deleted and rollout instance", func() {
-			staticSecretName := instanceName + "-static-api-key"
+			// Its own instance: this deletes the static API key and waits out a full
+			// rollout. Doing that to the shared instance would restart the Pocket-ID
+			// every other spec is talking to, and with no persistence configured a
+			// restart takes its database with it.
+			const keyInstance = "static-key-test-instance"
+			keyInstanceLabels := map[string]string{"e2e-instance": "static-key"}
+			staticSecretName := keyInstance + "-static-api-key"
+
+			DeferCleanup(func() {
+				_ = deleteObjectAndWait("pocketidinstance", keyInstance, instanceNS, 2*time.Minute)
+			})
+
+			By("creating an instance of its own to rotate the key on")
+			createInstanceAndWaitReady(InstanceOptions{
+				Name:   keyInstance,
+				Labels: keyInstanceLabels,
+			})
 
 			By("reading the original token")
 			originalToken := waitForSecretKey(staticSecretName, instanceNS, "token")
 
 			By("getting the current deployment's pod template hash annotation")
-			originalHash := getField("deployment", instanceName, instanceNS,
+			originalHash := getField("deployment", keyInstance, instanceNS,
 				".spec.template.metadata.annotations.pocketid\\.internal/static-api-key-hash")
 			Expect(originalHash).NotTo(BeEmpty(), "Deployment should have static-api-key-hash annotation")
 
 			By("getting the current pod name")
-			originalPodName := getFieldBySelector("pod", instanceNS, "app.kubernetes.io/instance="+instanceName,
+			originalPodName := getFieldBySelector("pod", instanceNS, "app.kubernetes.io/instance="+keyInstance,
 				".metadata.name")
 			Expect(originalPodName).NotTo(BeEmpty())
 
@@ -51,7 +67,7 @@ var _ = Describe("PocketIDInstance", Serial, Ordered, func() {
 
 			By("verifying deployment's hash annotation changed (triggers rollout)")
 			Eventually(func(g Gomega) {
-				newHash := getField("deployment", instanceName, instanceNS,
+				newHash := getField("deployment", keyInstance, instanceNS,
 					".spec.template.metadata.annotations.pocketid\\.internal/static-api-key-hash")
 				g.Expect(newHash).NotTo(BeEmpty())
 				g.Expect(newHash).NotTo(Equal(originalHash))
@@ -60,7 +76,7 @@ var _ = Describe("PocketIDInstance", Serial, Ordered, func() {
 			By("verifying instance rolled out with new pod")
 			Eventually(func(g Gomega) {
 				// Get the current pod name - should be different after rollout
-				currentPodName := getFieldBySelector("pod", instanceNS, "app.kubernetes.io/instance="+instanceName,
+				currentPodName := getFieldBySelector("pod", instanceNS, "app.kubernetes.io/instance="+keyInstance,
 					".metadata.name")
 				g.Expect(currentPodName).NotTo(BeEmpty())
 				g.Expect(currentPodName).NotTo(Equal(originalPodName), "Pod should have been replaced by rollout")
@@ -68,18 +84,21 @@ var _ = Describe("PocketIDInstance", Serial, Ordered, func() {
 
 			By("verifying the new pod is running")
 			Eventually(func(g Gomega) {
-				status := getFieldBySelector("pod", instanceNS, "app.kubernetes.io/instance="+instanceName, ".status.phase")
+				status := getFieldBySelector("pod", instanceNS, "app.kubernetes.io/instance="+keyInstance, ".status.phase")
 				g.Expect(status).To(Equal("Running"))
 			}).Should(Succeed())
 
+			// Selected onto the rotated instance on purpose: against the shared instance
+			// this would succeed using a key that never changed, proving nothing.
 			By("verifying operator can still authenticate with new API key by creating a user")
 			testUserName := "api-key-rotation-test-user"
 			createUser(UserOptions{
-				Name:      testUserName,
-				Username:  "api-key-rotation-test",
-				FirstName: "APIKey",
-				LastName:  "RotationTest",
-				Email:     "apikey-rotation@example.local",
+				Name:             testUserName,
+				Username:         "api-key-rotation-test",
+				FirstName:        "APIKey",
+				LastName:         "RotationTest",
+				Email:            "apikey-rotation@example.local",
+				InstanceSelector: keyInstanceLabels,
 			})
 
 			By("verifying the user becomes Ready (confirms operator authenticated successfully)")
@@ -96,7 +115,7 @@ var _ = Describe("PocketIDInstance", Serial, Ordered, func() {
 })
 
 // Tests that require creating additional instances - must run serially
-var _ = Describe("PocketIDInstance Multi-Instance Features", Serial, Ordered, func() {
+var _ = Describe("PocketIDInstance Multi-Instance Features", Ordered, func() {
 	Context("Instance Selector", func() {
 		It("should reconcile a labeled instance with a matching user selector", func() {
 			const selectorUser = "selector-test-user"
@@ -199,4 +218,45 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Serial, Ordered, fu
 		})
 	})
 
+})
+
+// Ginkgo runs Serial specs last, on process 1, once every parallel spec has finished and its
+// own instance has been cleaned up — so by the time this runs the shared instance is the only
+// one in the cluster. That is exactly the condition it needs, and the scheduler provides it
+// without any coordination of our own.
+//
+// Every other resource in this suite names its instance explicitly, which keeps second
+// instances from making anyone's reconcile ambiguous but also means nothing else exercises the
+// default: no instanceSelector at all. That is the configuration nearly every real deployment
+// has, so it is worth one spec that pays for a short serial tail.
+//
+// A failure here reads two ways, and both are worth knowing: either the selectorless path
+// broke, or a spec leaked an instance and left the cluster ambiguous.
+var _ = Describe("PocketIDInstance Default Selection", Serial, func() {
+	It("should reconcile a resource that names no instance when only one exists", func() {
+		const defaultUser = "default-selection-user"
+
+		DeferCleanup(func() {
+			_ = deleteObjectAndWait("pocketiduser", defaultUser, userNS, time.Minute)
+		})
+
+		By("confirming the shared instance is the only one in the cluster")
+		Expect(listNames("pocketidinstance", instanceNS)).To(ConsistOf(instanceName),
+			"a spec leaked an instance; a resource without a selector cannot resolve one")
+
+		// Written out rather than built through createUser: the helper defaults an unset
+		// selector to the shared instance, which is the opposite of what this asserts. The
+		// manifest below is what a user's first PocketIDUser actually looks like.
+		By("creating a user whose manifest has no instanceSelector")
+		applyYAML(fmt.Sprintf(`apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDUser
+metadata:
+  name: %s
+  namespace: %s
+spec: {}`, defaultUser, userNS))
+
+		By("verifying it reconciled against the only instance")
+		waitForReady("pocketiduser", defaultUser, userNS)
+		Expect(getField("pocketiduser", defaultUser, userNS, ".status.userID")).NotTo(BeEmpty())
+	})
 })
