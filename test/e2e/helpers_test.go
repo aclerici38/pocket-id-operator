@@ -4,6 +4,7 @@
 package e2e
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -11,9 +12,9 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"math/big"
 	"os"
-	"os/exec"
 	"regexp"
 	"strings"
 	"time"
@@ -22,7 +23,12 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
-	"github.com/aclerici38/pocket-id-operator/test/utils"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Test constants
@@ -700,65 +706,51 @@ spec:
 
 // --- kubectl Helpers ---
 
-func applyYAML(yaml string) {
-	cmd := exec.Command("kubectl", "apply", "-f", "-")
-	cmd.Stdin = strings.NewReader(yaml)
-	_, err := utils.Run(cmd)
-	Expect(err).NotTo(HaveOccurred())
-}
-
-func kubectlGet(args ...string) string {
-	fullArgs := append([]string{"get"}, args...)
-	cmd := exec.Command("kubectl", fullArgs...)
-	output, err := utils.Run(cmd)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(output)
-}
-
+// kubectlGetSecretData returns one decoded value from a Secret, or "" when the Secret or
+// the key is absent.
 func kubectlGetSecretData(secretName, namespace, key string) string {
-	output := kubectlGet("secret", secretName, "-n", namespace,
-		"-o", fmt.Sprintf("jsonpath={.data.%s}", key))
-	if output == "" {
+	secret := &corev1.Secret{}
+	if err := k8sClient.Get(context.Background(),
+		client.ObjectKey{Name: secretName, Namespace: namespace}, secret); err != nil {
 		return ""
 	}
-	decoded, err := base64.StdEncoding.DecodeString(output)
-	if err != nil {
-		return ""
-	}
-	return string(decoded)
+	return string(secret.Data[key])
 }
 
 func kubectlDelete(resource, name, namespace string) {
-	cmd := exec.Command("kubectl", "delete", resource, name, "-n", namespace, "--ignore-not-found")
-	_, _ = utils.Run(cmd)
+	deleteObject(resource, name, namespace)
 }
 
 func kubectlDeleteWait(resource, name, namespace string, timeout time.Duration) error {
-	cmd := exec.Command("kubectl", "delete", resource, name, "-n", namespace,
-		"--ignore-not-found", fmt.Sprintf("--timeout=%s", timeout))
-	_, err := utils.Run(cmd)
-	return err
+	return deleteObjectAndWait(resource, name, namespace, timeout)
 }
 
 func kubectlAnnotate(resource, name, namespace, annotation string) error {
-	cmd := exec.Command("kubectl", "annotate", resource, name, "-n", namespace, annotation, "--overwrite")
-	_, err := utils.Run(cmd)
-	return err
+	return annotateObject(resource, name, namespace, annotation)
 }
 
 func kubectlPatch(resource, name, namespace, patch string) error {
-	cmd := exec.Command("kubectl", "patch", resource, name, "-n", namespace, "--type=merge", "-p", patch)
-	_, err := utils.Run(cmd)
-	return err
+	return patchObject(resource, name, namespace, patch)
 }
 
+// removeFinalizers clears finalizers from every operator-owned resource in the namespace,
+// so teardown cannot hang on a controller that is already being torn down itself.
 func removeFinalizers(namespace string) {
-	cmd := exec.Command("bash", "-c",
-		fmt.Sprintf("kubectl get pocketiduser,pocketidusergroup,pocketidoidcclient,pocketidapi,pocketidinstance -n %s -o name 2>/dev/null | xargs -I {} kubectl patch {} -n %s --type=merge -p '{\"metadata\":{\"finalizers\":null}}' 2>/dev/null || true",
-			namespace, namespace))
-	_, _ = utils.Run(cmd)
+	for _, resource := range []string{
+		"pocketiduser", "pocketidusergroup", "pocketidoidcclient", "pocketidapi", "pocketidinstance",
+	} {
+		list := &unstructured.UnstructuredList{}
+		gvk := resourceGVK[resource]
+		gvk.Kind += "List"
+		list.SetGroupVersionKind(gvk)
+		if err := k8sClient.List(context.Background(), list, client.InNamespace(namespace)); err != nil {
+			continue
+		}
+		for i := range list.Items {
+			_ = patchObject(resource, list.Items[i].GetName(), namespace,
+				`{"metadata":{"finalizers":null}}`)
+		}
+	}
 }
 
 // --- Wait Helpers ---
@@ -768,33 +760,42 @@ func waitForReady(resource, name, namespace string) {
 }
 
 func waitForCondition(resource, name, namespace, conditionType, status string) {
+	GinkgoHelper()
 	Eventually(func(g Gomega) {
-		output := kubectlGet(resource, name, "-n", namespace,
-			"-o", fmt.Sprintf("jsonpath={.status.conditions[?(@.type=='%s')].status}", conditionType))
-		g.Expect(output).To(Equal(status), "%s/%s should have condition %s=%s", resource, name, conditionType, status)
+		obj, err := getObject(resource, name, namespace)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(conditionField(obj, conditionType, "status")).To(Equal(status),
+			"%s/%s should have condition %s=%s", resource, name, conditionType, status)
 	}, 2*time.Minute, 2*time.Second).Should(Succeed())
 }
 
 func waitForConditionReason(resource, name, namespace, conditionType, reason string) {
+	GinkgoHelper()
 	Eventually(func(g Gomega) {
-		output := kubectlGet(resource, name, "-n", namespace,
-			"-o", fmt.Sprintf("jsonpath={.status.conditions[?(@.type=='%s')].reason}", conditionType))
-		g.Expect(output).To(Equal(reason))
+		obj, err := getObject(resource, name, namespace)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(conditionField(obj, conditionType, "reason")).To(Equal(reason))
 	}, 2*time.Minute, 2*time.Second).Should(Succeed())
 }
 
-func waitForStatusField(resource, name, namespace, jsonpath, expected string) {
+func waitForStatusField(resource, name, namespace, path, expected string) {
+	GinkgoHelper()
 	Eventually(func(g Gomega) {
-		output := kubectlGet(resource, name, "-n", namespace, "-o", fmt.Sprintf("jsonpath={%s}", jsonpath))
-		g.Expect(output).To(Equal(expected))
+		obj, err := getObject(resource, name, namespace)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(fieldString(obj, path)).To(Equal(expected),
+			"%s/%s field %s", resource, name, path)
 	}, 2*time.Minute, 2*time.Second).Should(Succeed())
 }
 
-func waitForStatusFieldNotEmpty(resource, name, namespace, jsonpath string) string {
+func waitForStatusFieldNotEmpty(resource, name, namespace, path string) string {
+	GinkgoHelper()
 	var result string
 	Eventually(func(g Gomega) {
-		result = kubectlGet(resource, name, "-n", namespace, "-o", fmt.Sprintf("jsonpath={%s}", jsonpath))
-		g.Expect(result).NotTo(BeEmpty())
+		obj, err := getObject(resource, name, namespace)
+		g.Expect(err).NotTo(HaveOccurred())
+		result = fieldString(obj, path)
+		g.Expect(result).NotTo(BeEmpty(), "%s/%s field %s", resource, name, path)
 	}, 2*time.Minute, 2*time.Second).Should(Succeed())
 	return result
 }
@@ -813,37 +814,50 @@ func waitForSecretKey(secretName, namespace, key string) string {
 // reconciled the latest spec. Use this after updating a spec whose effect is not visible
 // in a pollable status field, before asserting directly against Pocket-ID.
 func waitForReconciled(resource, name, namespace string) {
-	gen := kubectlGet(resource, name, "-n", namespace, "-o", "jsonpath={.metadata.generation}")
+	GinkgoHelper()
+	current, err := getObject(resource, name, namespace)
+	Expect(err).NotTo(HaveOccurred())
+	gen := fieldString(current, ".metadata.generation")
 	Expect(gen).NotTo(BeEmpty())
+
 	Eventually(func(g Gomega) {
-		observed := kubectlGet(resource, name, "-n", namespace,
-			"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].observedGeneration}")
-		status := kubectlGet(resource, name, "-n", namespace,
-			"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
-		g.Expect(observed).To(Equal(gen), "observedGeneration should catch up to spec generation")
-		g.Expect(status).To(Equal("True"))
+		obj, err := getObject(resource, name, namespace)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(conditionField(obj, "Ready", "observedGeneration")).To(Equal(gen),
+			"observedGeneration should catch up to spec generation")
+		g.Expect(conditionField(obj, "Ready", "status")).To(Equal("True"))
 	}, 2*time.Minute, 2*time.Second).Should(Succeed())
 }
 
 func waitForResourceDeleted(resource, name, namespace string) {
+	GinkgoHelper()
 	Eventually(func(g Gomega) {
-		output := kubectlGet(resource, name, "-n", namespace, "-o", "name")
-		g.Expect(output).To(BeEmpty())
+		_, err := getObject(resource, name, namespace)
+		g.Expect(isGone(err)).To(BeTrue(), "%s/%s should be gone, got %v", resource, name, err)
 	}, 2*time.Minute, 2*time.Second).Should(Succeed())
 }
 
+// isGone reports whether a Get proves the object is absent. A missing object is the usual
+// case; a missing *kind* also counts, because the httproute specs uninstall the Gateway API
+// CRD at runtime and nothing of that kind can exist once its definition is gone.
+func isGone(err error) bool {
+	return apierrors.IsNotFound(err) || meta.IsNoMatchError(err) ||
+		runtime.IsNotRegisteredError(err)
+}
+
 func waitForSecretExists(secretName, namespace string) {
+	GinkgoHelper()
 	Eventually(func(g Gomega) {
-		output := kubectlGet("secret", secretName, "-n", namespace, "-o", "name")
-		g.Expect(output).To(Equal("secret/" + secretName))
+		_, err := getObject("secret", secretName, namespace)
+		g.Expect(err).NotTo(HaveOccurred(), "secret %s should exist", secretName)
 	}, time.Minute, 2*time.Second).Should(Succeed())
 }
 
 func waitForSecretNotExists(secretName, namespace string) {
+	GinkgoHelper()
 	Eventually(func(g Gomega) {
-		cmd := exec.Command("kubectl", "get", "secret", secretName, "-n", namespace)
-		_, err := utils.Run(cmd)
-		g.Expect(err).To(HaveOccurred())
+		_, err := getObject("secret", secretName, namespace)
+		g.Expect(isGone(err)).To(BeTrue(), "secret %s should be gone, got %v", secretName, err)
 	}, 2*time.Minute, 2*time.Second).Should(Succeed())
 }
 
@@ -857,8 +871,7 @@ func createInstanceAndWaitReady(opts InstanceOptions) {
 	opts = opts.withDefaults()
 	createInstance(opts)
 	Eventually(func(g Gomega) {
-		output := kubectlGet("pocketidinstance", opts.Name, "-n", opts.Namespace,
-			"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+		output := getField("pocketidinstance", opts.Name, opts.Namespace, ".status.conditions[?(@.type=='Ready')].status")
 		g.Expect(output).To(Equal("True"))
 	}, 5*time.Minute, 5*time.Second).Should(Succeed())
 }
@@ -963,13 +976,21 @@ data:
 		base64.StdEncoding.EncodeToString(keyPEM)))
 }
 
+// kubectlLogs returns a pod's logs. Logs are a subresource the typed client cannot read,
+// so this is the one place the suite still needs a clientset.
 func kubectlLogs(name, namespace string) string {
-	cmd := exec.Command("kubectl", "logs", name, "-n", namespace)
-	output, err := utils.Run(cmd)
+	stream, err := clientSet.CoreV1().Pods(namespace).GetLogs(name, &corev1.PodLogOptions{}).
+		Stream(context.Background())
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(output)
+	defer func() { _ = stream.Close() }()
+
+	out, err := io.ReadAll(stream)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // addUserToGroupInPocketID adds a user to a group directly via the Pocket-ID API,

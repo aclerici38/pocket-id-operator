@@ -37,8 +37,7 @@ var _ = Describe("External Deletion Recovery", Ordered, func() {
 			By("waiting for the operator to detect deletion and recreate the user")
 			Eventually(func(g Gomega) {
 				// The user should become ready again with a new ID
-				newUserID := kubectlGet("pocketiduser", userName, "-n", userNS,
-					"-o", "jsonpath={.status.userID}")
+				newUserID := getField("pocketiduser", userName, userNS, ".status.userID")
 				g.Expect(newUserID).NotTo(BeEmpty())
 				g.Expect(newUserID).NotTo(Equal(originalUserID), "user should have a new ID after recreation")
 			}, 2*time.Minute, 5*time.Second).Should(Succeed())
@@ -68,8 +67,7 @@ var _ = Describe("External Deletion Recovery", Ordered, func() {
 			By("waiting for the operator to detect deletion and recreate the group")
 			Eventually(func(g Gomega) {
 				// The group should become ready again with a new ID
-				newGroupID := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.groupID}")
+				newGroupID := getField("pocketidusergroup", groupName, userNS, ".status.groupID")
 				g.Expect(newGroupID).NotTo(BeEmpty())
 				g.Expect(newGroupID).NotTo(Equal(originalGroupID), "group should have a new ID after recreation")
 			}, 2*time.Minute, 5*time.Second).Should(Succeed())
@@ -99,8 +97,7 @@ var _ = Describe("External Deletion Recovery", Ordered, func() {
 			Eventually(func(g Gomega) {
 				// The client should become ready again
 				// Note: OIDC client IDs may be the same if specified in spec, so we check ready state
-				condition := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				condition := getField("pocketidoidcclient", clientName, userNS, ".status.conditions[?(@.type=='Ready')].status")
 				g.Expect(condition).To(Equal("True"))
 			}, 2*time.Minute, 5*time.Second).Should(Succeed())
 

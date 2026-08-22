@@ -31,8 +31,7 @@ var _ = Describe("Callback URL Preservation", Ordered, func() {
 
 			By("verifying callback URLs appear in status")
 			Eventually(func(g Gomega) {
-				urls := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-					"-o", "jsonpath={.status.callbackUrls}")
+				urls := getField("pocketidoidcclient", clientName, userNS, ".status.callbackUrls")
 				g.Expect(urls).To(ContainSubstring("https://preserve.example.com/callback"))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
@@ -47,8 +46,7 @@ var _ = Describe("Callback URL Preservation", Ordered, func() {
 
 			By("verifying callback URLs are still in status after reconcile")
 			Eventually(func(g Gomega) {
-				urls := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-					"-o", "jsonpath={.status.callbackUrls}")
+				urls := getField("pocketidoidcclient", clientName, userNS, ".status.callbackUrls")
 				g.Expect(urls).To(ContainSubstring("https://preserve.example.com/callback"))
 			}, time.Minute, 5*time.Second).Should(Succeed())
 		})
@@ -84,16 +82,14 @@ spec: {}`, clientName, userNS))
 
 			By("verifying the out-of-band callback URL appears in status after reconcile")
 			Eventually(func(g Gomega) {
-				urls := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-					"-o", "jsonpath={.status.callbackUrls}")
+				urls := getField("pocketidoidcclient", clientName, userNS, ".status.callbackUrls")
 				g.Expect(urls).To(ContainSubstring("https://oob-set.example.com/callback"),
 					"out-of-band callback URL must survive operator reconcile when spec has no callbackUrls")
 			}, time.Minute, 5*time.Second).Should(Succeed())
 
 			By("verifying the out-of-band callback URL persists across multiple reconciles")
 			Consistently(func(g Gomega) {
-				urls := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-					"-o", "jsonpath={.status.callbackUrls}")
+				urls := getField("pocketidoidcclient", clientName, userNS, ".status.callbackUrls")
 				g.Expect(urls).To(ContainSubstring("https://oob-set.example.com/callback"),
 					"out-of-band callback URL must not be wiped by subsequent reconciles")
 			}, 20*time.Second, 5*time.Second).Should(Succeed())
@@ -117,8 +113,7 @@ spec: {}`, clientName, userNS))
 
 			By("verifying initial callback URLs appear in status")
 			Eventually(func(g Gomega) {
-				urls := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-					"-o", "jsonpath={.status.callbackUrls}")
+				urls := getField("pocketidoidcclient", clientName, userNS, ".status.callbackUrls")
 				g.Expect(urls).To(ContainSubstring("https://initial.example.com/callback"))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
@@ -130,8 +125,7 @@ spec: {}`, clientName, userNS))
 
 			By("verifying status reflects the updated callback URLs")
 			Eventually(func(g Gomega) {
-				urls := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-					"-o", "jsonpath={.status.callbackUrls}")
+				urls := getField("pocketidoidcclient", clientName, userNS, ".status.callbackUrls")
 				g.Expect(urls).To(ContainSubstring("https://updated.example.com/callback"))
 				g.Expect(urls).NotTo(ContainSubstring("https://initial.example.com/callback"))
 			}, time.Minute, 5*time.Second).Should(Succeed())

@@ -59,7 +59,7 @@ var _ = Describe("Client ID Metadata Documents", Ordered, func() {
 		// Asserted via the whole status, not jsonpath={.status.clientID}: kubectlGet returns
 		// "" when the command itself fails, so an empty-string assertion cannot tell an
 		// absent client ID from a broken query.
-		Expect(kubectlGet("pocketidoidcclient", clientName, "-n", userNS, "-o", "jsonpath={.status}")).
+		Expect(getField("pocketidoidcclient", clientName, userNS, ".status")).
 			NotTo(ContainSubstring(`"clientID"`),
 				"the operator must not create a client for an unmaterialized metadata document")
 	})
@@ -89,9 +89,9 @@ var _ = Describe("Client ID Metadata Documents", Ordered, func() {
 			waitForReady("pocketidoidcclient", clientName, userNS)
 
 			By("verifying status reports the adopted client")
-			Expect(kubectlGet("pocketidoidcclient", clientName, "-n", userNS, "-o", "jsonpath={.status.clientType}")).
+			Expect(getField("pocketidoidcclient", clientName, userNS, ".status.clientType")).
 				To(Equal("cimd"))
-			Expect(kubectlGet("pocketidoidcclient", clientName, "-n", userNS, "-o", "jsonpath={.status.clientID}")).
+			Expect(getField("pocketidoidcclient", clientName, userNS, ".status.clientID")).
 				To(Equal(cimdMetadataURL))
 		})
 
@@ -145,15 +145,12 @@ var _ = Describe("Client ID Metadata Documents", Ordered, func() {
 
 			It("reports the API in status without claiming to manage it", func() {
 				Eventually(func(g Gomega) {
-					g.Expect(kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-						"-o", "jsonpath={.status.cimdGrantedAPIs[*]}")).To(Equal(apiResource))
+					g.Expect(getField("pocketidoidcclient", clientName, userNS, ".status.cimdGrantedAPIs[*]")).To(Equal(apiResource))
 				}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
 				By("verifying the operator claims no ownership of API-side access")
-				Expect(kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-					"-o", "jsonpath={.status.managedAPIs[*]}")).To(BeEmpty())
-				Expect(kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-					"-o", "jsonpath={.status.managedAPIPermissionIDs[*]}")).To(BeEmpty())
+				Expect(getField("pocketidoidcclient", clientName, userNS, ".status.managedAPIs[*]")).To(BeEmpty())
+				Expect(getField("pocketidoidcclient", clientName, userNS, ".status.managedAPIPermissionIDs[*]")).To(BeEmpty())
 			})
 
 			It("matches what Pocket-ID reports for the client", func() {
@@ -174,8 +171,7 @@ var _ = Describe("Client ID Metadata Documents", Ordered, func() {
 				waitForReconciled("pocketidapi", apiName, userNS)
 
 				Eventually(func(g Gomega) {
-					g.Expect(kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-						"-o", "jsonpath={.status.cimdGrantedAPIs[*]}")).To(BeEmpty())
+					g.Expect(getField("pocketidoidcclient", clientName, userNS, ".status.cimdGrantedAPIs[*]")).To(BeEmpty())
 				}, 2*time.Minute, 2*time.Second).Should(Succeed())
 			})
 

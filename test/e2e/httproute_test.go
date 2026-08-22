@@ -40,7 +40,7 @@ var _ = Describe("HTTPRoute", Serial, Ordered, func() {
 	}
 
 	operatorControllerPodName := func() string {
-		return kubectlGet("pod", "-n", namespace, "-l", "control-plane=controller-manager", "-o", "jsonpath={.items[0].metadata.name}")
+		return getFieldBySelector("pod", namespace, "control-plane=controller-manager", ".metadata.name")
 	}
 
 	installGatewayHTTPRouteCRD := func() {
@@ -86,8 +86,8 @@ var _ = Describe("HTTPRoute", Serial, Ordered, func() {
 			logs := kubectlLogs(podName, namespace)
 			g.Expect(logs).To(ContainSubstring("httproute is enabled but Gateway API CRDs are not installed"))
 
-			route := kubectlGet("httproute", routeName, "-n", instanceNS, "-o", "name")
-			g.Expect(route).To(BeEmpty())
+			g.Expect(objectExists("httproute", routeName, instanceNS)).To(BeFalse(),
+				"no HTTPRoute should exist while the Gateway API CRDs are absent")
 		}, 2*time.Minute, 2*time.Second).Should(Succeed())
 	})
 
@@ -96,22 +96,22 @@ var _ = Describe("HTTPRoute", Serial, Ordered, func() {
 		setSharedInstanceRoute(true, []string{updatedHostname})
 
 		Eventually(func(g Gomega) {
-			name := kubectlGet("httproute", routeName, "-n", instanceNS, "-o", "jsonpath={.metadata.name}")
+			name := getField("httproute", routeName, instanceNS, ".metadata.name")
 			g.Expect(name).To(Equal(routeName))
 
-			backendName := kubectlGet("httproute", routeName, "-n", instanceNS, "-o", "jsonpath={.spec.rules[0].backendRefs[0].name}")
+			backendName := getField("httproute", routeName, instanceNS, ".spec.rules[0].backendRefs[0].name")
 			g.Expect(backendName).To(Equal(instanceName))
 
-			backendPort := kubectlGet("httproute", routeName, "-n", instanceNS, "-o", "jsonpath={.spec.rules[0].backendRefs[0].port}")
+			backendPort := getField("httproute", routeName, instanceNS, ".spec.rules[0].backendRefs[0].port")
 			g.Expect(backendPort).To(Equal("1411"))
 
-			hostname := kubectlGet("httproute", routeName, "-n", instanceNS, "-o", "jsonpath={.spec.hostnames[0]}")
+			hostname := getField("httproute", routeName, instanceNS, ".spec.hostnames[0]")
 			g.Expect(hostname).To(Equal(updatedHostname))
 		}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
 		setSharedInstanceRoute(true, []string{initialHostname})
 		Eventually(func(g Gomega) {
-			hostname := kubectlGet("httproute", routeName, "-n", instanceNS, "-o", "jsonpath={.spec.hostnames[0]}")
+			hostname := getField("httproute", routeName, instanceNS, ".spec.hostnames[0]")
 			g.Expect(hostname).To(Equal(initialHostname))
 		}, 2*time.Minute, 2*time.Second).Should(Succeed())
 

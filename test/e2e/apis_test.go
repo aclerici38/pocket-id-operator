@@ -5,13 +5,10 @@ package e2e
 
 import (
 	"fmt"
-	"os/exec"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	"github.com/aclerici38/pocket-id-operator/test/utils"
 )
 
 // permIDFromStatus returns the Pocket-ID permission ID that the operator resolved for a
@@ -79,8 +76,7 @@ var _ = Describe("PocketIDAPI", Ordered, func() {
 
 			By("waiting for the new permission ID to appear in status")
 			Eventually(func(g Gomega) {
-				out := kubectlGet("pocketidapi", apiName, "-n", userNS,
-					"-o", "jsonpath={.status.permissions[?(@.key=='delete:orders')].id}")
+				out := getField("pocketidapi", apiName, userNS, ".status.permissions[?(@.key=='delete:orders')].id")
 				g.Expect(out).NotTo(BeEmpty())
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
@@ -101,8 +97,7 @@ var _ = Describe("PocketIDAPI", Ordered, func() {
 
 			By("waiting for the dropped permission to leave status")
 			Eventually(func(g Gomega) {
-				out := kubectlGet("pocketidapi", apiName, "-n", userNS,
-					"-o", "jsonpath={.status.permissions[?(@.key=='delete:orders')].id}")
+				out := getField("pocketidapi", apiName, userNS, ".status.permissions[?(@.key=='delete:orders')].id")
 				g.Expect(out).To(BeEmpty())
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
@@ -127,8 +122,7 @@ var _ = Describe("PocketIDAPI", Ordered, func() {
 
 			By("waiting for the new display name to reflect in status")
 			Eventually(func(g Gomega) {
-				out := kubectlGet("pocketidapi", apiName, "-n", userNS,
-					"-o", "jsonpath={.status.permissions[?(@.key=='write:orders')].name}")
+				out := getField("pocketidapi", apiName, userNS, ".status.permissions[?(@.key=='write:orders')].name")
 				g.Expect(out).To(Equal("Write and modify orders"))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
@@ -156,10 +150,8 @@ var _ = Describe("PocketIDAPI", Ordered, func() {
 			waitForStatusField("pocketidapi", apiName, userNS, ".status.name", "Orders API Renamed")
 
 			By("verifying the apiID and resource are unchanged")
-			Expect(kubectlGet("pocketidapi", apiName, "-n", userNS,
-				"-o", "jsonpath={.status.apiID}")).To(Equal(apiID))
-			Expect(kubectlGet("pocketidapi", apiName, "-n", userNS,
-				"-o", "jsonpath={.status.resource}")).To(Equal(resource))
+			Expect(getField("pocketidapi", apiName, userNS, ".status.apiID")).To(Equal(apiID))
+			Expect(getField("pocketidapi", apiName, userNS, ".status.resource")).To(Equal(resource))
 
 			By("confirming Pocket-ID's database reflects the rename")
 			body := getFromPocketID("/api/apis/" + apiID)
@@ -227,8 +219,7 @@ var _ = Describe("PocketIDAPI Client Access", Ordered, func() {
 
 	It("should record the resolved permission IDs in the client status", func() {
 		Eventually(func(g Gomega) {
-			out := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-				"-o", "jsonpath={.status.managedAPIPermissionIDs[*]}")
+			out := getField("pocketidoidcclient", clientName, userNS, ".status.managedAPIPermissionIDs[*]")
 			g.Expect(out).To(ContainSubstring(readID))
 			g.Expect(out).To(ContainSubstring(syncID))
 		}, 2*time.Minute, 2*time.Second).Should(Succeed())
@@ -275,8 +266,7 @@ var _ = Describe("PocketIDAPI Client Access", Ordered, func() {
 
 		By("waiting for managed permission IDs to clear from status")
 		Eventually(func(g Gomega) {
-			out := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-				"-o", "jsonpath={.status.managedAPIPermissionIDs[*]}")
+			out := getField("pocketidoidcclient", clientName, userNS, ".status.managedAPIPermissionIDs[*]")
 			g.Expect(out).To(BeEmpty())
 		}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
@@ -465,10 +455,8 @@ var _ = Describe("PocketIDAPI Scopeless Client Grant", Ordered, func() {
 	It("should record the API in status even though no permission was resolved", func() {
 		apiID := waitForStatusFieldNotEmpty("pocketidapi", apiName, userNS, ".status.apiID")
 		Eventually(func(g Gomega) {
-			g.Expect(kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-				"-o", "jsonpath={.status.managedAPIs[*]}")).To(Equal(apiID))
-			g.Expect(kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-				"-o", "jsonpath={.status.managedAPIPermissionIDs[*]}")).To(BeEmpty())
+			g.Expect(getField("pocketidoidcclient", clientName, userNS, ".status.managedAPIs[*]")).To(Equal(apiID))
+			g.Expect(getField("pocketidoidcclient", clientName, userNS, ".status.managedAPIPermissionIDs[*]")).To(BeEmpty())
 		}, 2*time.Minute, 2*time.Second).Should(Succeed())
 	})
 
@@ -511,8 +499,7 @@ var _ = Describe("PocketIDAPI Scopeless Client Grant", Ordered, func() {
 		waitForReconciled("pocketidoidcclient", clientName, userNS)
 
 		Eventually(func(g Gomega) {
-			g.Expect(kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-				"-o", "jsonpath={.status.managedAPIs[*]}")).To(BeEmpty())
+			g.Expect(getField("pocketidoidcclient", clientName, userNS, ".status.managedAPIs[*]")).To(BeEmpty())
 			body := getFromPocketID("/api/api-access/" + clientID + "/apis")
 			g.Expect(body).NotTo(ContainSubstring(`"clientAccess":true`))
 			g.Expect(body).NotTo(ContainSubstring(`"userDelegatedAccess":true`))
@@ -572,8 +559,7 @@ var _ = Describe("PocketIDAPI Multi-API Grants", Ordered, func() {
 
 		By("verifying status tracks both API IDs")
 		Eventually(func(g Gomega) {
-			out := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-				"-o", "jsonpath={.status.managedAPIs[*]}")
+			out := getField("pocketidoidcclient", clientName, userNS, ".status.managedAPIs[*]")
 			g.Expect(out).To(ContainSubstring(ordersID))
 			g.Expect(out).To(ContainSubstring(billingID))
 		}, 2*time.Minute, 2*time.Second).Should(Succeed())
@@ -600,8 +586,7 @@ var _ = Describe("PocketIDAPI Multi-API Grants", Ordered, func() {
 
 		By("verifying status dropped only the revoked API")
 		Eventually(func(g Gomega) {
-			out := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-				"-o", "jsonpath={.status.managedAPIs[*]}")
+			out := getField("pocketidoidcclient", clientName, userNS, ".status.managedAPIs[*]")
 			g.Expect(out).To(Equal(ordersID))
 		}, 2*time.Minute, 2*time.Second).Should(Succeed())
 	})
@@ -636,16 +621,12 @@ var _ = Describe("PocketIDAPI Reference Finalizer", Ordered, func() {
 		})
 
 		By("requesting deletion of the API")
-		cmd := exec.Command("kubectl", "delete", "pocketidapi", apiName, "-n", userNS, "--wait=false")
-		_, err := utils.Run(cmd)
-		Expect(err).NotTo(HaveOccurred())
+		kubectlDelete("pocketidapi", apiName, userNS)
 
 		By("verifying deletion is blocked by the reference finalizer")
 		Eventually(func(g Gomega) {
-			ts := kubectlGet("pocketidapi", apiName, "-n", userNS,
-				"-o", "jsonpath={.metadata.deletionTimestamp}")
-			fin := kubectlGet("pocketidapi", apiName, "-n", userNS,
-				"-o", "jsonpath={.metadata.finalizers}")
+			ts := getField("pocketidapi", apiName, userNS, ".metadata.deletionTimestamp")
+			fin := getField("pocketidapi", apiName, userNS, ".metadata.finalizers")
 			g.Expect(ts).NotTo(BeEmpty())
 			g.Expect(fin).To(ContainSubstring("pocketid.internal/oidc-client-api-finalizer"))
 		}, time.Minute, 2*time.Second).Should(Succeed())
@@ -685,8 +666,7 @@ var _ = Describe("PocketIDAPI External Deletion Recovery", Ordered, func() {
 
 		By("waiting for the operator to detect deletion and recreate with a new ID")
 		Eventually(func(g Gomega) {
-			newID := kubectlGet("pocketidapi", apiName, "-n", userNS,
-				"-o", "jsonpath={.status.apiID}")
+			newID := getField("pocketidapi", apiName, userNS, ".status.apiID")
 			g.Expect(newID).NotTo(BeEmpty())
 			g.Expect(newID).NotTo(Equal(originalAPIID), "API should have a new ID after recreation")
 		}, 2*time.Minute, 5*time.Second).Should(Succeed())

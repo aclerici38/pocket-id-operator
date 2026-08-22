@@ -49,8 +49,7 @@ var _ = Describe("PocketIDInstance Maximal Environment", Serial, Ordered, func()
 					Attach("pocket-id logs", logs).
 					Now()
 			}
-			status := kubectlGet("pocketidinstance", maximalInstance, "-n", instanceNS,
-				"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+			status := getField("pocketidinstance", maximalInstance, instanceNS, ".status.conditions[?(@.type=='Ready')].status")
 			g.Expect(status).To(Equal("True"))
 		}, 5*time.Minute, 5*time.Second).Should(Succeed())
 	})
@@ -61,8 +60,7 @@ var _ = Describe("PocketIDInstance Maximal Environment", Serial, Ordered, func()
 	})
 
 	It("should not have restarted the container", func() {
-		restarts := kubectlGet("pod", pocketIDPodName(maximalInstance), "-n", instanceNS,
-			"-o", "jsonpath={.status.containerStatuses[0].restartCount}")
+		restarts := getField("pod", pocketIDPodName(maximalInstance), instanceNS, ".status.containerStatuses[0].restartCount")
 		Expect(restarts).To(Equal("0"), "Pocket-ID restarted, which a rejected environment causes")
 	})
 })
@@ -70,9 +68,7 @@ var _ = Describe("PocketIDInstance Maximal Environment", Serial, Ordered, func()
 // pocketIDPodName returns the pod backing the named instance, or "" while it is
 // still being created.
 func pocketIDPodName(instance string) string {
-	return kubectlGet("pod", "-n", instanceNS,
-		"-l", "app.kubernetes.io/instance="+instance,
-		"-o", "jsonpath={.items[0].metadata.name}")
+	return getFieldBySelector("pod", instanceNS, "app.kubernetes.io/instance="+instance, ".metadata.name")
 }
 
 // maximalInstanceYAML renders an instance that sets every spec field the

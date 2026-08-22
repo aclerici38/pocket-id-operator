@@ -19,6 +19,12 @@ import (
 	pocketidv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 	"github.com/aclerici38/pocket-id-operator/test/utils"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
@@ -41,6 +47,9 @@ var (
 	// k8sClient talks to the Kind cluster with typed objects, replacing jsonpath strings
 	// parsed out of kubectl's stdout.
 	k8sClient client.Client
+
+	// clientSet backs the one read the typed client cannot do: pod logs.
+	clientSet *kubernetes.Clientset
 
 	// pid is the Pocket-ID API client for the shared instance, reached over the published
 	// NodePort. It is the same client the operator uses, so the suite exercises the real
@@ -65,6 +74,12 @@ func newK8sClient() (client.Client, error) {
 	if err := gatewayv1.Install(scheme.Scheme); err != nil {
 		return nil, err
 	}
+	cs, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+	clientSet = cs
+
 	return client.New(cfg, client.Options{Scheme: scheme.Scheme})
 }
 
@@ -117,11 +132,11 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 
 	By("waiting for operator to be ready")
 	Eventually(func(g Gomega) {
-		cmd := exec.Command("kubectl", "get", "deployment", "pocket-id-operator",
-			"-n", namespace, "-o", "jsonpath={.status.availableReplicas}")
-		output, err := utils.Run(cmd)
-		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(output).To(Equal("1"))
+		deployment := &appsv1.Deployment{}
+		g.Expect(k8sClient.Get(context.Background(),
+			client.ObjectKey{Name: "pocket-id-operator", Namespace: namespace}, deployment)).To(Succeed())
+		g.Expect(deployment.Status.AvailableReplicas).To(BeNumerically(">=", 1),
+			"the operator deployment should have an available replica")
 	}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
 	By("creating test namespaces")
@@ -144,13 +159,11 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 
 	By("waiting for the shared instance to be Ready")
 	Eventually(func(g Gomega) {
-		output := kubectlGet("pocketidinstance", instanceName, "-n", instanceNS,
-			"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+		output := getField("pocketidinstance", instanceName, instanceNS, ".status.conditions[?(@.type=='Ready')].status")
 		g.Expect(output).To(Equal("True"))
 	}, 5*time.Minute, 5*time.Second).Should(Succeed())
 
-	actualImage := kubectlGet("pod", "-n", instanceNS, "-l", "app.kubernetes.io/name=pocket-id",
-		"-o", "jsonpath={.items[0].spec.containers[0].image}")
+	actualImage := getFieldBySelector("pod", instanceNS, "app.kubernetes.io/name=pocket-id", ".spec.containers[0].image")
 	By(fmt.Sprintf("pocket-id pod is running image: %s", actualImage))
 
 	return nil
@@ -232,46 +245,40 @@ func gatewayAPIHTTPRouteCRDPath() (string, error) {
 }
 
 func createNamespace(ns string) {
-	cmd := exec.Command("kubectl", "create", "ns", ns, "--dry-run=client", "-o", "yaml")
-	output, err := utils.Run(cmd)
-	Expect(err).NotTo(HaveOccurred())
-
-	cmd = exec.Command("kubectl", "apply", "-f", "-")
-	cmd.Stdin = strings.NewReader(output)
-	_, err = utils.Run(cmd)
-	Expect(err).NotTo(HaveOccurred())
+	namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: ns}}
+	err := k8sClient.Create(context.Background(), namespace)
+	if apierrors.IsAlreadyExists(err) {
+		return
+	}
+	Expect(err).NotTo(HaveOccurred(), "creating namespace %s", ns)
 }
 
 func deleteNamespace(ns string) {
-	cmd := exec.Command("kubectl", "delete", "ns", ns, "--ignore-not-found", "--timeout=30s")
-	_, _ = utils.Run(cmd)
+	namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: ns}}
+	_ = k8sClient.Delete(context.Background(), namespace)
 }
 
 func cleanupAllResources() {
-	resources := []string{"pocketidusers", "pocketidusergroups", "pocketidoidcclients", "pocketidapis", "pocketidinstances"}
-
-	// Remove finalizers from all resources
-	for _, resource := range resources {
-		cmd := exec.Command("kubectl", "get", resource, "-A",
-			"-o", "jsonpath={range .items[*]}{.metadata.namespace}/{.metadata.name}{\"\\n\"}{end}")
-		if output, err := utils.Run(cmd); err == nil && output != "" {
-			for _, item := range utils.GetNonEmptyLines(output) {
-				ns, name, found := strings.Cut(item, "/")
-				if found {
-					singularResource := strings.TrimSuffix(resource, "s")
-					patchCmd := exec.Command("kubectl", "patch", singularResource, name,
-						"-n", ns, "--type=merge", "-p", `{"metadata":{"finalizers":null}}`)
-					_, _ = utils.Run(patchCmd)
-				}
-			}
-		}
+	resources := []string{
+		"pocketiduser", "pocketidusergroup", "pocketidoidcclient", "pocketidapi", "pocketidinstance",
 	}
 
-	// Delete all resources
+	// Clear finalizers first: a controller that is itself being torn down would otherwise
+	// leave these objects stuck in Terminating and stall the next run.
 	for _, resource := range resources {
-		cmd := exec.Command("kubectl", "delete", resource, "--all", "-A",
-			"--ignore-not-found", "--wait=true", "--timeout=30s")
-		_, _ = utils.Run(cmd)
+		list := &unstructured.UnstructuredList{}
+		gvk := resourceGVK[resource]
+		gvk.Kind += "List"
+		list.SetGroupVersionKind(gvk)
+		if err := k8sClient.List(context.Background(), list); err != nil {
+			continue
+		}
+		for i := range list.Items {
+			item := &list.Items[i]
+			_ = patchObject(resource, item.GetName(), item.GetNamespace(),
+				`{"metadata":{"finalizers":null}}`)
+			_ = k8sClient.Delete(context.Background(), item)
+		}
 	}
 
 	// Delete test namespaces

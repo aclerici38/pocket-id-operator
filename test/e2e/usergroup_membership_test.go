@@ -54,8 +54,7 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 
 			By("verifying the managed user is in status.managedUserIDs")
 			Eventually(func(g Gomega) {
-				ids := kubectlGet("pocketidusergroup", mergeGroupName, "-n", userNS,
-					"-o", "jsonpath={.status.managedUserIDs[*]}")
+				ids := getField("pocketidusergroup", mergeGroupName, userNS, ".status.managedUserIDs[*]")
 				g.Expect(ids).To(ContainSubstring(managedUserID))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
@@ -90,8 +89,7 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
 			By("verifying status.managedUserIDs only contains the managed user")
-			ids := kubectlGet("pocketidusergroup", mergeGroupName, "-n", userNS,
-				"-o", "jsonpath={.status.managedUserIDs[*]}")
+			ids := getField("pocketidusergroup", mergeGroupName, userNS, ".status.managedUserIDs[*]")
 			Expect(ids).To(ContainSubstring(managedUserID))
 			Expect(ids).NotTo(ContainSubstring(externalUserID),
 				"external user should NOT appear in managedUserIDs")
@@ -153,8 +151,7 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 
 			By("verifying status.managedUserIDs reflects only the remaining managed user")
 			Eventually(func(g Gomega) {
-				ids := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.managedUserIDs[*]}")
+				ids := getField("pocketidusergroup", groupName, userNS, ".status.managedUserIDs[*]")
 				g.Expect(ids).To(ContainSubstring(managedUserID))
 				g.Expect(ids).NotTo(ContainSubstring(managedUser2ID))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
@@ -212,8 +209,7 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 
 			By("verifying status.managedUserIDs is empty")
 			Eventually(func(g Gomega) {
-				ids := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.managedUserIDs}")
+				ids := getField("pocketidusergroup", groupName, userNS, ".status.managedUserIDs")
 				g.Expect(ids).To(BeEmpty())
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 		})
@@ -268,8 +264,7 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
 			By("verifying status.managedUserIDs only contains the CR-declared user")
-			ids := kubectlGet("pocketidusergroup", adoptGroupName, "-n", userNS,
-				"-o", "jsonpath={.status.managedUserIDs[*]}")
+			ids := getField("pocketidusergroup", adoptGroupName, userNS, ".status.managedUserIDs[*]")
 			Expect(ids).To(ContainSubstring(managedUserID))
 			Expect(ids).NotTo(ContainSubstring(preExistingUserID),
 				"pre-existing user should NOT be in managedUserIDs")
@@ -317,15 +312,13 @@ var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
 			waitForReady("pocketidusergroup", groupName, userNS)
 
 			Eventually(func(g Gomega) {
-				count := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.totalUserCount}")
+				count := getField("pocketidusergroup", groupName, userNS, ".status.totalUserCount")
 				g.Expect(count).To(Equal("2"),
 					"totalUserCount should include both managed and external users")
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
 			By("verifying managedUserIDs still only has 1 entry")
-			ids := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-				"-o", "jsonpath={.status.managedUserIDs[*]}")
+			ids := getField("pocketidusergroup", groupName, userNS, ".status.managedUserIDs[*]")
 			Expect(strings.Fields(ids)).To(HaveLen(1))
 			Expect(ids).To(ContainSubstring(managedUserID))
 		})

@@ -5,14 +5,10 @@ package e2e
 
 import (
 	"fmt"
-	"os/exec"
-	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	"github.com/aclerici38/pocket-id-operator/test/utils"
 )
 
 var _ = Describe("OIDC Client Declarative Client Secret", Ordered, func() {
@@ -28,9 +24,11 @@ var _ = Describe("OIDC Client Declarative Client Secret", Ordered, func() {
 	)
 
 	apply := func(yaml string) (string, error) {
-		cmd := exec.Command("kubectl", "apply", "-f", "-")
-		cmd.Stdin = strings.NewReader(yaml)
-		return utils.Run(cmd)
+		err := applyYAMLErr(yaml)
+		if err != nil {
+			return err.Error(), err
+		}
+		return "", nil
 	}
 
 	sourceSecretYAML := func(value string) string {
@@ -113,8 +111,7 @@ spec:
 
 		It("should re-push after the source Secret changes", func() {
 			By("recording the source revision pushed so far")
-			before := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-				"-o", "jsonpath={.status.clientSecretSourceVersion}")
+			before := getField("pocketidoidcclient", clientName, userNS, ".status.clientSecretSourceVersion")
 
 			By("updating the value in the source Secret")
 			_, err := apply(sourceSecretYAML(rotatedValue))
@@ -127,15 +124,13 @@ spec:
 
 			By("verifying the recorded source revision advanced")
 			Eventually(func() string {
-				return kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-					"-o", "jsonpath={.status.clientSecretSourceVersion}")
+				return getField("pocketidoidcclient", clientName, userNS, ".status.clientSecretSourceVersion")
 			}, time.Minute, 2*time.Second).ShouldNot(Equal(before))
 
 			// A push appends rather than replaces, so without retirement the value the user
 			// rotated away from would keep authenticating indefinitely.
 			By("verifying the new value works and the one it replaced was retired")
-			clientID := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-				"-o", "jsonpath={.status.clientID}")
+			clientID := getField("pocketidoidcclient", clientName, userNS, ".status.clientID")
 			Eventually(func() []string {
 				return clientSecretIDsFromPocketID(clientID)
 			}, time.Minute, 10*time.Second).Should(HaveLen(1))
@@ -151,8 +146,7 @@ spec:
 
 			By("waiting for the operator to consume and remove the annotation")
 			Eventually(func() string {
-				return kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-					"-o", "jsonpath={.metadata.annotations.pocketid\\.internal/regenerate-client-secret}")
+				return getField("pocketidoidcclient", clientName, userNS, ".metadata.annotations.pocketid\\.internal/regenerate-client-secret")
 			}, 2*time.Minute, 2*time.Second).Should(BeEmpty())
 
 			By("verifying the declared secret was not regenerated")

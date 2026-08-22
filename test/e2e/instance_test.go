@@ -30,13 +30,11 @@ var _ = Describe("PocketIDInstance", Serial, Ordered, func() {
 			originalToken := waitForSecretKey(staticSecretName, instanceNS, "token")
 
 			By("getting the current deployment's pod template hash annotation")
-			originalHash := kubectlGet("deployment", instanceName, "-n", instanceNS,
-				"-o", "jsonpath={.spec.template.metadata.annotations.pocketid\\.internal/static-api-key-hash}")
+			originalHash := getField("deployment", instanceName, instanceNS, ".spec.template.metadata.annotations.pocketid\\.internal/static-api-key-hash")
 			Expect(originalHash).NotTo(BeEmpty(), "Deployment should have static-api-key-hash annotation")
 
 			By("getting the current pod name")
-			originalPodName := kubectlGet("pod", "-l", "app.kubernetes.io/instance="+instanceName, "-n", instanceNS,
-				"-o", "jsonpath={.items[0].metadata.name}")
+			originalPodName := getFieldBySelector("pod", instanceNS, "app.kubernetes.io/instance="+instanceName, ".metadata.name")
 			Expect(originalPodName).NotTo(BeEmpty())
 
 			By("deleting the static API key secret")
@@ -51,8 +49,7 @@ var _ = Describe("PocketIDInstance", Serial, Ordered, func() {
 
 			By("verifying deployment's hash annotation changed (triggers rollout)")
 			Eventually(func(g Gomega) {
-				newHash := kubectlGet("deployment", instanceName, "-n", instanceNS,
-					"-o", "jsonpath={.spec.template.metadata.annotations.pocketid\\.internal/static-api-key-hash}")
+				newHash := getField("deployment", instanceName, instanceNS, ".spec.template.metadata.annotations.pocketid\\.internal/static-api-key-hash")
 				g.Expect(newHash).NotTo(BeEmpty())
 				g.Expect(newHash).NotTo(Equal(originalHash))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
@@ -60,16 +57,14 @@ var _ = Describe("PocketIDInstance", Serial, Ordered, func() {
 			By("verifying instance rolled out with new pod")
 			Eventually(func(g Gomega) {
 				// Get the current pod name - should be different after rollout
-				currentPodName := kubectlGet("pod", "-l", "app.kubernetes.io/instance="+instanceName, "-n", instanceNS,
-					"-o", "jsonpath={.items[0].metadata.name}")
+				currentPodName := getFieldBySelector("pod", instanceNS, "app.kubernetes.io/instance="+instanceName, ".metadata.name")
 				g.Expect(currentPodName).NotTo(BeEmpty())
 				g.Expect(currentPodName).NotTo(Equal(originalPodName), "Pod should have been replaced by rollout")
 			}, 3*time.Minute, 5*time.Second).Should(Succeed())
 
 			By("verifying the new pod is running")
 			Eventually(func(g Gomega) {
-				status := kubectlGet("pod", "-l", "app.kubernetes.io/instance="+instanceName, "-n", instanceNS,
-					"-o", "jsonpath={.items[0].status.phase}")
+				status := getFieldBySelector("pod", instanceNS, "app.kubernetes.io/instance="+instanceName, ".status.phase")
 				g.Expect(status).To(Equal("Running"))
 			}, 2*time.Minute, 5*time.Second).Should(Succeed())
 
@@ -123,8 +118,7 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Serial, Ordered, fu
 			})
 
 			By("verifying userID is set")
-			userID := kubectlGet("pocketiduser", selectorUser, "-n", userNS,
-				"-o", "jsonpath={.status.userID}")
+			userID := getField("pocketiduser", selectorUser, userNS, ".status.userID")
 			Expect(userID).NotTo(BeEmpty())
 
 			By("cleaning up user")
@@ -163,24 +157,19 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Serial, Ordered, fu
 			})
 
 			By("verifying the certificate is mounted and pointed at with the _FILE variants")
-			Expect(kubectlGet("deployment", tlsInstance, "-n", instanceNS,
-				"-o", "jsonpath={.spec.template.spec.containers[0].env[?(@.name=='TLS_CERT_FILE')].value}")).
+			Expect(getField("deployment", tlsInstance, instanceNS, ".spec.template.spec.containers[0].env[?(@.name=='TLS_CERT_FILE')].value")).
 				To(Equal("/etc/pocket-id/tls/tls.crt"))
-			Expect(kubectlGet("deployment", tlsInstance, "-n", instanceNS,
-				"-o", "jsonpath={.spec.template.spec.containers[0].env[?(@.name=='TLS_KEY_FILE')].value}")).
+			Expect(getField("deployment", tlsInstance, instanceNS, ".spec.template.spec.containers[0].env[?(@.name=='TLS_KEY_FILE')].value")).
 				To(Equal("/etc/pocket-id/tls/tls.key"))
-			Expect(kubectlGet("deployment", tlsInstance, "-n", instanceNS,
-				"-o", "jsonpath={.spec.template.spec.volumes[?(@.name=='tls')].secret.secretName}")).
+			Expect(getField("deployment", tlsInstance, instanceNS, ".spec.template.spec.volumes[?(@.name=='tls')].secret.secretName")).
 				To(Equal(tlsSecret))
 
 			By("verifying the probes use the HTTPS scheme")
-			Expect(kubectlGet("deployment", tlsInstance, "-n", instanceNS,
-				"-o", "jsonpath={.spec.template.spec.containers[0].readinessProbe.httpGet.scheme}")).
+			Expect(getField("deployment", tlsInstance, instanceNS, ".spec.template.spec.containers[0].readinessProbe.httpGet.scheme")).
 				To(Equal("HTTPS"))
 
 			By("verifying the Service advertises the https appProtocol")
-			Expect(kubectlGet("service", tlsInstance, "-n", instanceNS,
-				"-o", "jsonpath={.spec.ports[?(@.name=='http')].appProtocol}")).
+			Expect(getField("service", tlsInstance, instanceNS, ".spec.ports[?(@.name=='http')].appProtocol")).
 				To(Equal("https"))
 
 			// Readiness only proves the pod passes its HTTPS probes; the reported version
@@ -197,8 +186,7 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Serial, Ordered, fu
 				InstanceSelector: tlsLabels,
 				APIKeys:          []APIKeySpec{{Name: "tls-key", Description: "over TLS"}},
 			})
-			secretName := kubectlGet("pocketiduser", tlsUser, "-n", userNS,
-				"-o", "jsonpath={.status.apiKeys[0].secretName}")
+			secretName := getField("pocketiduser", tlsUser, userNS, ".status.apiKeys[0].secretName")
 			Expect(secretName).NotTo(BeEmpty())
 			waitForSecretKey(secretName, userNS, "token")
 		})

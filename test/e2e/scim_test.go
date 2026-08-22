@@ -53,8 +53,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			}))
 
 			By("waiting for the change to propagate")
-			oidcClientID := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-				"-o", "jsonpath={.status.clientID}")
+			oidcClientID := getField("pocketidoidcclient", clientName, userNS, ".status.clientID")
 			Eventually(func(g Gomega) {
 				endpoint := getSCIMProviderEndpoint(oidcClientID)
 				g.Expect(endpoint).To(Equal("https://scim-updated.example.com/v2"))
@@ -66,8 +65,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 
 		It("should delete the SCIM service provider when spec.scim is removed", func() {
 			By("getting the current SCIM provider ID")
-			scimID := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-				"-o", "jsonpath={.status.scimProviderID}")
+			scimID := getField("pocketidoidcclient", clientName, userNS, ".status.scimProviderID")
 			Expect(scimID).NotTo(BeEmpty())
 
 			By("removing spec.scim from the OIDC client")
@@ -77,8 +75,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 
 			By("waiting for the SCIM provider ID to be cleared from status")
 			Eventually(func(g Gomega) {
-				id := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-					"-o", "jsonpath={.status.scimProviderID}")
+				id := getField("pocketidoidcclient", clientName, userNS, ".status.scimProviderID")
 				g.Expect(id).To(BeEmpty())
 			}, 2*time.Minute, 5*time.Second).Should(Succeed())
 
@@ -86,8 +83,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			waitForReady("pocketidoidcclient", clientName, userNS)
 
 			By("verifying the SCIM provider no longer exists in Pocket-ID")
-			oidcClientID := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-				"-o", "jsonpath={.status.clientID}")
+			oidcClientID := getField("pocketidoidcclient", clientName, userNS, ".status.clientID")
 			scimExists := checkSCIMProviderExists(oidcClientID)
 			Expect(scimExists).To(BeFalse())
 		})
@@ -280,8 +276,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			}, 2*time.Minute, 5*time.Second).Should(Succeed())
 
 			By("verifying the scimProviderID status field is empty")
-			id := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-				"-o", "jsonpath={.status.scimProviderID}")
+			id := getField("pocketidoidcclient", clientName, userNS, ".status.scimProviderID")
 			Expect(id).To(BeEmpty())
 		})
 

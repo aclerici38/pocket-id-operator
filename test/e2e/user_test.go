@@ -46,12 +46,9 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 
 		It("should set one-time login status fields", func() {
 			Eventually(func(g Gomega) {
-				token := kubectlGet("pocketiduser", userName, "-n", userNS,
-					"-o", "jsonpath={.status.oneTimeLoginToken}")
-				loginURL := kubectlGet("pocketiduser", userName, "-n", userNS,
-					"-o", "jsonpath={.status.oneTimeLoginURL}")
-				expiresAt := kubectlGet("pocketiduser", userName, "-n", userNS,
-					"-o", "jsonpath={.status.oneTimeLoginExpiresAt}")
+				token := getField("pocketiduser", userName, userNS, ".status.oneTimeLoginToken")
+				loginURL := getField("pocketiduser", userName, userNS, ".status.oneTimeLoginURL")
+				expiresAt := getField("pocketiduser", userName, userNS, ".status.oneTimeLoginExpiresAt")
 				g.Expect(token).NotTo(BeEmpty())
 				g.Expect(loginURL).To(ContainSubstring("/lc/"))
 				g.Expect(loginURL).To(ContainSubstring(token))
@@ -83,8 +80,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 		})
 
 		It("should not show isAdmin when false", func() {
-			output := kubectlGet("pocketiduser", userName, "-n", userNS,
-				"-o", "jsonpath={.status.isAdmin}")
+			output := getField("pocketiduser", userName, userNS, ".status.isAdmin")
 			Expect(output).To(BeEmpty())
 		})
 	})
@@ -100,8 +96,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 		})
 
 		It("should set isAdmin true in status", func() {
-			output := kubectlGet("pocketiduser", userName, "-n", userNS,
-				"-o", "jsonpath={.status.isAdmin}")
+			output := getField("pocketiduser", userName, userNS, ".status.isAdmin")
 			Expect(output).To(Equal("true"))
 		})
 	})
@@ -127,8 +122,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 
 			By("verifying isAdmin becomes true")
 			Eventually(func(g Gomega) {
-				output := kubectlGet("pocketiduser", userName, "-n", userNS,
-					"-o", "jsonpath={.status.isAdmin}")
+				output := getField("pocketiduser", userName, userNS, ".status.isAdmin")
 				g.Expect(output).To(Equal("true"))
 			}, time.Minute, 2*time.Second).Should(Succeed())
 		})
@@ -235,19 +229,16 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 
 			By("verifying API key appears in status")
 			Eventually(func(g Gomega) {
-				output := kubectlGet("pocketiduser", userName, "-n", userNS,
-					"-o", "jsonpath={.status.apiKeys[0].name}")
+				output := getField("pocketiduser", userName, userNS, ".status.apiKeys[0].name")
 				g.Expect(output).To(Equal(apiKeyName))
 			}).Should(Succeed())
 
 			By("verifying API key has ID from Pocket-ID")
-			output := kubectlGet("pocketiduser", userName, "-n", userNS,
-				"-o", "jsonpath={.status.apiKeys[0].id}")
+			output := getField("pocketiduser", userName, userNS, ".status.apiKeys[0].id")
 			Expect(output).NotTo(BeEmpty())
 
 			By("verifying secret was created with token")
-			secretName := kubectlGet("pocketiduser", userName, "-n", userNS,
-				"-o", "jsonpath={.status.apiKeys[0].secretName}")
+			secretName := getField("pocketiduser", userName, userNS, ".status.apiKeys[0].secretName")
 			Expect(secretName).NotTo(BeEmpty())
 			waitForSecretKey(secretName, userNS, "token")
 		})
@@ -255,7 +246,6 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 		It("should create API key owned by the target user", func() {
 			const userName = "test-apikey-owner-user"
 			const apiKeyName = "owner-key"
-			const podName = "api-key-owner-test"
 
 			createUserAndWaitReady(UserOptions{
 				Name:  userName,
@@ -266,8 +256,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 			})
 
 			By("getting secret name and token")
-			secretName := kubectlGet("pocketiduser", userName, "-n", userNS,
-				"-o", fmt.Sprintf("jsonpath={.status.apiKeys[?(@.name=='%s')].secretName}", apiKeyName))
+			secretName := getField("pocketiduser", userName, userNS, fmt.Sprintf(".status.apiKeys[?(@.name=='%s')].secretName", apiKeyName))
 			Expect(secretName).NotTo(BeEmpty())
 
 			token := kubectlGetSecretData(secretName, userNS, "token")
@@ -285,12 +274,9 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 			createUserAndWaitReady(UserOptions{Name: userName})
 
 			Eventually(func(g Gomega) {
-				token := kubectlGet("pocketiduser", userName, "-n", userNS,
-					"-o", "jsonpath={.status.oneTimeLoginToken}")
-				loginURL := kubectlGet("pocketiduser", userName, "-n", userNS,
-					"-o", "jsonpath={.status.oneTimeLoginURL}")
-				expiresAt := kubectlGet("pocketiduser", userName, "-n", userNS,
-					"-o", "jsonpath={.status.oneTimeLoginExpiresAt}")
+				token := getField("pocketiduser", userName, userNS, ".status.oneTimeLoginToken")
+				loginURL := getField("pocketiduser", userName, userNS, ".status.oneTimeLoginURL")
+				expiresAt := getField("pocketiduser", userName, userNS, ".status.oneTimeLoginExpiresAt")
 
 				g.Expect(token).NotTo(BeEmpty())
 				g.Expect(loginURL).To(ContainSubstring("/lc/"))
@@ -312,7 +298,6 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 		// That is why the session-exchange test below cannot catch this on its own.
 		It("should issue the long link login code", func() {
 			const userName = "test-login-code-length"
-			const podName = "login-code-config-check"
 			// Pocket-ID's shortTokenLength, the code the browser login page cannot submit.
 			const shortLoginCodeLength = 6
 
@@ -333,14 +318,12 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 
 		It("should exchange the one-time access token for a session", func() {
 			const userName = "test-login-token-exchange"
-			const podName = "login-token-exchange-test"
 
 			createUserAndWaitReady(UserOptions{Name: userName})
 
 			var token string
 			Eventually(func(g Gomega) {
-				token = kubectlGet("pocketiduser", userName, "-n", userNS,
-					"-o", "jsonpath={.status.oneTimeLoginToken}")
+				token = getField("pocketiduser", userName, userNS, ".status.oneTimeLoginToken")
 				g.Expect(token).NotTo(BeEmpty())
 			}, time.Minute, 2*time.Second).Should(Succeed())
 
@@ -352,7 +335,6 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 	Context("User Deletion Behavior", func() {
 		It("should NOT delete user from Pocket-ID when annotation is missing", func() {
 			const userName = "test-delete-no-annotation"
-			const podName = "check-user-exists-no-annotation"
 
 			By("creating a user without the delete annotation")
 			createUserAndWaitReady(UserOptions{Name: userName})
@@ -370,7 +352,6 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 
 		It("should NOT delete user from Pocket-ID when annotation is set to false", func() {
 			const userName = "test-delete-annotation-false"
-			const podName = "check-user-exists-annotation-false"
 
 			By("creating a user with annotation set to false")
 			createUserAndWaitReady(UserOptions{
@@ -393,7 +374,6 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 
 		It("should delete user from Pocket-ID when annotation is set to true", func() {
 			const userName = "test-delete-annotation-true"
-			const podName = "check-user-deleted-annotation-true"
 
 			By("creating a user with annotation set to true")
 			createUserAndWaitReady(UserOptions{
@@ -417,7 +397,6 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 
 		It("should delete user from Pocket-ID when annotation is added before deletion", func() {
 			const userName = "test-delete-add-annotation"
-			const podName = "check-user-deleted-add-annotation"
 
 			By("creating a user without annotation")
 			createUserAndWaitReady(UserOptions{Name: userName})

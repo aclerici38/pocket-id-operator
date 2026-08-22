@@ -42,12 +42,10 @@ var _ = Describe("Logo Auto-Generation", Ordered, func() {
 			}, 2*time.Minute, 5*time.Second).Should(Succeed())
 
 			By("verifying the logo status fields are set")
-			logoURL := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-				"-o", "jsonpath={.status.logoUrl}")
+			logoURL := getField("pocketidoidcclient", clientName, userNS, ".status.logoUrl")
 			Expect(logoURL).To(ContainSubstring("grafana"))
 
-			logoReachable := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-				"-o", "jsonpath={.status.logoReachable}")
+			logoReachable := getField("pocketidoidcclient", clientName, userNS, ".status.logoReachable")
 			Expect(logoReachable).To(Equal("true"))
 		})
 

@@ -92,8 +92,7 @@ var _ = Describe("User State Sync", func() {
 
 		It("should reflect the claim in status.customClaims", func() {
 			Eventually(func(g Gomega) {
-				val := kubectlGet("pocketiduser", userName, "-n", userNS,
-					"-o", "jsonpath={.status.customClaims[?(@.key=='department')].value}")
+				val := getField("pocketiduser", userName, userNS, ".status.customClaims[?(@.key=='department')].value")
 				g.Expect(val).To(Equal("engineering"))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 		})
@@ -108,8 +107,7 @@ var _ = Describe("User State Sync", func() {
 			})
 
 			Eventually(func(g Gomega) {
-				val := kubectlGet("pocketiduser", userName, "-n", userNS,
-					"-o", "jsonpath={.status.customClaims[?(@.key=='department')].value}")
+				val := getField("pocketiduser", userName, userNS, ".status.customClaims[?(@.key=='department')].value")
 				g.Expect(val).To(Equal("platform"))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 		})
@@ -124,8 +122,7 @@ var _ = Describe("User State Sync", func() {
 			})
 
 			Eventually(func(g Gomega) {
-				val := kubectlGet("pocketiduser", userName, "-n", userNS,
-					"-o", "jsonpath={.status.customClaims}")
+				val := getField("pocketiduser", userName, userNS, ".status.customClaims")
 				g.Expect(val).To(BeEmpty())
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
@@ -160,8 +157,7 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 			By("verifying the user appears in status.managedUserIDs")
 			userID := waitForStatusFieldNotEmpty("pocketiduser", syncTestUser, userNS, ".status.userID")
 			Eventually(func(g Gomega) {
-				ids := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.managedUserIDs[*]}")
+				ids := getField("pocketidusergroup", groupName, userNS, ".status.managedUserIDs[*]")
 				g.Expect(ids).To(ContainSubstring(userID))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
@@ -174,8 +170,7 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 
 			By("verifying status.managedUserIDs becomes empty")
 			Eventually(func(g Gomega) {
-				ids := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.managedUserIDs}")
+				ids := getField("pocketidusergroup", groupName, userNS, ".status.managedUserIDs")
 				g.Expect(ids).To(BeEmpty())
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
@@ -196,8 +191,7 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 
 			By("verifying the claim appears in status.customClaims")
 			Eventually(func(g Gomega) {
-				val := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.customClaims[?(@.key=='env')].value}")
+				val := getField("pocketidusergroup", groupName, userNS, ".status.customClaims[?(@.key=='env')].value")
 				g.Expect(val).To(Equal("staging"))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
@@ -210,8 +204,7 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 
 			By("verifying status.customClaims becomes empty")
 			Eventually(func(g Gomega) {
-				val := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.customClaims}")
+				val := getField("pocketidusergroup", groupName, userNS, ".status.customClaims")
 				g.Expect(val).To(BeEmpty())
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
@@ -242,11 +235,9 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 
 			By("verifying status reflects the updated name")
 			Eventually(func(g Gomega) {
-				name := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.name}")
+				name := getField("pocketidusergroup", groupName, userNS, ".status.name")
 				g.Expect(name).To(Equal("sync-updated-name"))
-				friendly := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.friendlyName}")
+				friendly := getField("pocketidusergroup", groupName, userNS, ".status.friendlyName")
 				g.Expect(friendly).To(Equal("Updated Friendly"))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
@@ -271,11 +262,9 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 
 			By("verifying initial user and claim are present")
 			Eventually(func(g Gomega) {
-				ids := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.managedUserIDs[*]}")
+				ids := getField("pocketidusergroup", groupName, userNS, ".status.managedUserIDs[*]")
 				g.Expect(ids).To(ContainSubstring(userID))
-				val := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.customClaims[?(@.key=='tier')].value}")
+				val := getField("pocketidusergroup", groupName, userNS, ".status.customClaims[?(@.key=='tier')].value")
 				g.Expect(val).To(Equal("gold"))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
@@ -290,18 +279,15 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 
 			By("verifying the name updated in status")
 			Eventually(func(g Gomega) {
-				name := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.name}")
+				name := getField("pocketidusergroup", groupName, userNS, ".status.name")
 				g.Expect(name).To(Equal("sync-name-only-new"))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
 			By("verifying users and claims are still present")
 			Eventually(func(g Gomega) {
-				ids := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.managedUserIDs[*]}")
+				ids := getField("pocketidusergroup", groupName, userNS, ".status.managedUserIDs[*]")
 				g.Expect(ids).To(ContainSubstring(userID))
-				val := kubectlGet("pocketidusergroup", groupName, "-n", userNS,
-					"-o", "jsonpath={.status.customClaims[?(@.key=='tier')].value}")
+				val := getField("pocketidusergroup", groupName, userNS, ".status.customClaims[?(@.key=='tier')].value")
 				g.Expect(val).To(Equal("gold"))
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
@@ -344,12 +330,10 @@ var _ = Describe("EmailVerified Preservation", Ordered, func() {
 		time.Sleep(15 * time.Second)
 
 		By("verifying status.emailVerified is still true")
-		Expect(kubectlGet("pocketiduser", crName, "-n", userNS,
-			"-o", "jsonpath={.status.emailVerified}")).To(Equal("true"))
+		Expect(getField("pocketiduser", crName, userNS, ".status.emailVerified")).To(Equal("true"))
 
 		By("verifying Pocket-ID still has emailVerified=true for the user")
-		userID := kubectlGet("pocketiduser", crName, "-n", userNS,
-			"-o", "jsonpath={.status.userID}")
+		userID := getField("pocketiduser", crName, userNS, ".status.userID")
 		Expect(getUserEmailVerified(userID)).To(Equal("true"))
 	})
 

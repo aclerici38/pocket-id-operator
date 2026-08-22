@@ -4,13 +4,10 @@
 package e2e
 
 import (
-	"os/exec"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	"github.com/aclerici38/pocket-id-operator/test/utils"
 )
 
 var _ = Describe("Reference Finalizers", Ordered, func() {
@@ -37,25 +34,18 @@ var _ = Describe("Reference Finalizers", Ordered, func() {
 			})
 
 			By("requesting deletion of the user group")
-			cmd := exec.Command("kubectl", "delete", "pocketidusergroup", finalizerGroupName,
-				"-n", userNS, "--wait=false")
-			_, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
+			kubectlDelete("pocketidusergroup", finalizerGroupName, userNS)
 
 			By("verifying deletion is blocked by the OIDC client finalizer")
 			Eventually(func(g Gomega) {
-				deletionTimestamp := kubectlGet("pocketidusergroup", finalizerGroupName, "-n", userNS,
-					"-o", "jsonpath={.metadata.deletionTimestamp}")
-				finalizers := kubectlGet("pocketidusergroup", finalizerGroupName, "-n", userNS,
-					"-o", "jsonpath={.metadata.finalizers}")
+				deletionTimestamp := getField("pocketidusergroup", finalizerGroupName, userNS, ".metadata.deletionTimestamp")
+				finalizers := getField("pocketidusergroup", finalizerGroupName, userNS, ".metadata.finalizers")
 				g.Expect(deletionTimestamp).NotTo(BeEmpty())
 				g.Expect(finalizers).To(ContainSubstring("pocketid.internal/oidc-client-finalizer"))
 			}, time.Minute, 2*time.Second).Should(Succeed())
 
 			By("deleting the OIDC client")
-			cmd = exec.Command("kubectl", "delete", "pocketidoidcclient", finalizerOIDCName, "-n", userNS)
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
+			kubectlDelete("pocketidoidcclient", finalizerOIDCName, userNS)
 
 			By("verifying the user group is deleted")
 			waitForResourceDeleted("pocketidusergroup", finalizerGroupName, userNS)
@@ -84,25 +74,18 @@ var _ = Describe("Reference Finalizers", Ordered, func() {
 			})
 
 			By("requesting deletion of the OIDC client")
-			cmd := exec.Command("kubectl", "delete", "pocketidoidcclient", revFinalizerOIDCName,
-				"-n", userNS, "--wait=false")
-			_, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
+			kubectlDelete("pocketidoidcclient", revFinalizerOIDCName, userNS)
 
 			By("verifying deletion is blocked by the user group finalizer")
 			Eventually(func(g Gomega) {
-				deletionTimestamp := kubectlGet("pocketidoidcclient", revFinalizerOIDCName, "-n", userNS,
-					"-o", "jsonpath={.metadata.deletionTimestamp}")
-				finalizers := kubectlGet("pocketidoidcclient", revFinalizerOIDCName, "-n", userNS,
-					"-o", "jsonpath={.metadata.finalizers}")
+				deletionTimestamp := getField("pocketidoidcclient", revFinalizerOIDCName, userNS, ".metadata.deletionTimestamp")
+				finalizers := getField("pocketidoidcclient", revFinalizerOIDCName, userNS, ".metadata.finalizers")
 				g.Expect(deletionTimestamp).NotTo(BeEmpty())
 				g.Expect(finalizers).To(ContainSubstring("pocketid.internal/user-group-oidc-client-finalizer"))
 			}, time.Minute, 2*time.Second).Should(Succeed())
 
 			By("deleting the user group")
-			cmd = exec.Command("kubectl", "delete", "pocketidusergroup", revFinalizerGroupName, "-n", userNS)
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
+			kubectlDelete("pocketidusergroup", revFinalizerGroupName, userNS)
 
 			By("verifying the OIDC client is deleted")
 			waitForResourceDeleted("pocketidoidcclient", revFinalizerOIDCName, userNS)
@@ -132,25 +115,18 @@ var _ = Describe("Reference Finalizers", Ordered, func() {
 			})
 
 			By("requesting deletion of the user")
-			cmd := exec.Command("kubectl", "delete", "pocketiduser", finalizerUserName,
-				"-n", userNS, "--wait=false")
-			_, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
+			kubectlDelete("pocketiduser", finalizerUserName, userNS)
 
 			By("verifying deletion is blocked by the user group finalizer")
 			Eventually(func(g Gomega) {
-				deletionTimestamp := kubectlGet("pocketiduser", finalizerUserName, "-n", userNS,
-					"-o", "jsonpath={.metadata.deletionTimestamp}")
-				finalizers := kubectlGet("pocketiduser", finalizerUserName, "-n", userNS,
-					"-o", "jsonpath={.metadata.finalizers}")
+				deletionTimestamp := getField("pocketiduser", finalizerUserName, userNS, ".metadata.deletionTimestamp")
+				finalizers := getField("pocketiduser", finalizerUserName, userNS, ".metadata.finalizers")
 				g.Expect(deletionTimestamp).NotTo(BeEmpty())
 				g.Expect(finalizers).To(ContainSubstring("pocketid.internal/user-group-finalizer"))
 			}, time.Minute, 2*time.Second).Should(Succeed())
 
 			By("deleting the user group")
-			cmd = exec.Command("kubectl", "delete", "pocketidusergroup", finalizerUserGroupName, "-n", userNS)
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
+			kubectlDelete("pocketidusergroup", finalizerUserGroupName, userNS)
 
 			By("verifying the user is deleted")
 			waitForResourceDeleted("pocketiduser", finalizerUserName, userNS)

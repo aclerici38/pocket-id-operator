@@ -103,8 +103,7 @@ var _ = Describe("OIDC Client spec.name", Ordered, func() {
 			waitForStatusField("pocketidoidcclient", clientName, userNS, ".status.name", "Updated Display Name")
 
 			By("verifying status.clientID is unchanged after adding spec.name")
-			currentClientID := kubectlGet("pocketidoidcclient", clientName, "-n", userNS,
-				"-o", "jsonpath={.status.clientID}")
+			currentClientID := getField("pocketidoidcclient", clientName, userNS, ".status.clientID")
 			Expect(currentClientID).To(Equal(originalClientID),
 				"status.clientID should not change when spec.name is added to an existing resource")
 		})
