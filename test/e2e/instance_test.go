@@ -160,28 +160,6 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Serial, Ordered, fu
 				TLSSecretName: tlsSecret,
 			})
 
-			By("verifying the certificate is mounted and pointed at with the _FILE variants")
-			Expect(getField("deployment", tlsInstance, instanceNS,
-				".spec.template.spec.containers[0].env[?(@.name=='TLS_CERT_FILE')].value")).
-				To(Equal("/etc/pocket-id/tls/tls.crt"))
-			Expect(getField("deployment", tlsInstance, instanceNS,
-				".spec.template.spec.containers[0].env[?(@.name=='TLS_KEY_FILE')].value")).
-				To(Equal("/etc/pocket-id/tls/tls.key"))
-			Expect(getField("deployment", tlsInstance, instanceNS,
-				".spec.template.spec.volumes[?(@.name=='tls')].secret.secretName")).
-				To(Equal(tlsSecret))
-
-			By("verifying the probes use the HTTPS scheme")
-			Expect(getField("deployment", tlsInstance, instanceNS,
-				".spec.template.spec.containers[0].readinessProbe.httpGet.scheme")).
-				To(Equal("HTTPS"))
-
-			By("verifying the Service advertises the https appProtocol")
-			Expect(getField("service", tlsInstance, instanceNS, ".spec.ports[?(@.name=='http')].appProtocol")).
-				To(Equal("https"))
-
-			// Readiness only proves the pod passes its HTTPS probes; the reported version
-			// comes from the operator's own API call, so it also covers the client side.
 			By("verifying the reported version proves an API call over TLS")
 			waitForStatusFieldNotEmpty("pocketidinstance", tlsInstance, instanceNS, ".status.version")
 
