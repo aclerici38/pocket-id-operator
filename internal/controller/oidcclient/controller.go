@@ -90,10 +90,6 @@ type Reconciler struct {
 	// DefaultDarkLogoTemplate is the default URL template for dark logos (from DEFAULT_DARK_LOGO_URL env var).
 	DefaultDarkLogoTemplate string
 
-	// skipUpdate gates the update phase of reconciliation
-	// and just fetches the state
-	skipUpdate map[types.NamespacedName]bool
-
 	// pendingInitialMint marks clients created (not adopted) by the operator whose client
 	// secret has not yet been stored. It lets storeClientSecret=false permit the one-time
 	// initial mint for brand-new clients while never regenerating pre-existing credentials.
@@ -210,19 +206,24 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		metrics.OIDCClientSecretCount.WithLabelValues(oidcClient.Namespace, oidcClient.Name).Set(float64(len(current.Secrets)))
 	}
 
-	// Skip the push if this reconcile was triggered for post-update status refresh
-	key := client.ObjectKeyFromObject(oidcClient)
-	if r.skipUpdate[key] {
-		delete(r.skipUpdate, key)
-		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionTrue, "Reconciled", "OIDC client is in sync")
-		return common.ApplyResync(ctrl.Result{}), nil
-	}
-
 	updated, err := r.pushOIDCClientState(ctx, oidcClient, apiClient, current)
 	if err != nil {
 		log.Error(err, "Failed to push OIDC client state")
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, reconcileErrorReason(err), err.Error())
 		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
+	}
+
+	// Read the write back in this same pass. Ready below stamps observedGeneration, so status
+	// has to already describe what Pocket-ID holds for that generation.
+	if updated {
+		if current, err = apiClient.GetOIDCClient(ctx, oidcClient.Status.ClientID); err != nil {
+			_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "GetError", err.Error())
+			return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
+		}
+		if err := r.UpdateOIDCClientStatus(ctx, oidcClient, current); err != nil {
+			log.Error(err, "Failed to update OIDC client status")
+			return ctrl.Result{RequeueAfter: common.Requeue}, nil
+		}
 	}
 
 	if err := r.ReconcileSCIM(ctx, oidcClient, apiClient); err != nil {
@@ -249,30 +250,35 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 	}
 
-	if removed, err := helpers.CheckAndRemoveAnnotation(ctx, r.Client, oidcClient, regenerateClientSecretAnnotation, "true"); err != nil {
+	if err := r.clearRegenerateClientSecretAnnotation(ctx, oidcClient); err != nil {
 		log.Error(err, "Failed to remove regenerate-client-secret annotation")
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
-	} else if removed {
-		// The annotation is removed even when it was ignored, so it cannot fire unexpectedly
-		// once the condition that ignored it no longer holds.
-		switch {
-		case hasDeclaredClientSecret(oidcClient):
-			log.Info("Removed regenerate-client-secret annotation without regenerating: spec.clientSecretRef is set")
-		case !storeClientSecret(oidcClient):
-			log.Info("Removed regenerate-client-secret annotation without regenerating: secret.storeClientSecret is false")
-		default:
-			log.Info("Removed regenerate-client-secret annotation after secret regeneration")
-		}
 	}
 
 	_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionTrue, "Reconciled", "OIDC client is in sync")
 
-	if updated {
-		r.markSkipUpdate(oidcClient)
-		return ctrl.Result{RequeueAfter: common.RequeueImmediate}, nil
+	return common.ApplyResync(ctrl.Result{}), nil
+}
+
+// clearRegenerateClientSecretAnnotation services the regenerate-client-secret annotation and
+// records why the request was honoured or ignored. The annotation is removed even when it was
+// ignored, so it cannot fire unexpectedly once the condition that ignored it no longer holds.
+func (r *Reconciler) clearRegenerateClientSecretAnnotation(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) error {
+	removed, err := helpers.CheckAndRemoveAnnotation(ctx, r.Client, oidcClient, regenerateClientSecretAnnotation, "true")
+	if err != nil || !removed {
+		return err
 	}
 
-	return common.ApplyResync(ctrl.Result{}), nil
+	log := logf.FromContext(ctx)
+	switch {
+	case hasDeclaredClientSecret(oidcClient):
+		log.Info("Removed regenerate-client-secret annotation without regenerating: spec.clientSecretRef is set")
+	case !storeClientSecret(oidcClient):
+		log.Info("Removed regenerate-client-secret annotation without regenerating: secret.storeClientSecret is false")
+	default:
+		log.Info("Removed regenerate-client-secret annotation after secret regeneration")
+	}
+	return nil
 }
 
 // PocketIDOIDCClientAPI defines the minimal interface needed for OIDC client operations
@@ -546,17 +552,6 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 	metrics.ResourceOperations.WithLabelValues("PocketIDOIDCClient", "updated").Inc()
 
 	return true, nil
-}
-
-// markSkipUpdate records that the next reconcile is the status refresh triggered by an update we
-// just pushed, so it can skip re-pushing the same state. It is deliberately only called once the
-// entire reconcile has succeeded: recording it earlier would let the skip branch consume the
-// retry of a downstream step that failed after the push.
-func (r *Reconciler) markSkipUpdate(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) {
-	if r.skipUpdate == nil {
-		r.skipUpdate = make(map[types.NamespacedName]bool)
-	}
-	r.skipUpdate[client.ObjectKeyFromObject(oidcClient)] = true
 }
 
 // aggregateAllowedUserGroupIDs returns the union of:

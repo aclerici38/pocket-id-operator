@@ -22,7 +22,6 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -53,9 +52,6 @@ type Reconciler struct {
 	common.BaseReconciler
 	APIReader client.Reader
 	Scheme    *runtime.Scheme
-
-	// skipUpdate gates the update phase of reconciliation and just fetches the state.
-	skipUpdate map[types.NamespacedName]bool
 }
 
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidapis,verbs=get;list;watch;create;update;patch;delete
@@ -141,14 +137,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
-	// Skip the push if this reconcile was triggered for post-update status refresh.
-	key := client.ObjectKeyFromObject(api)
-	if r.skipUpdate[key] {
-		delete(r.skipUpdate, key)
-		_ = r.SetReadyCondition(ctx, api, metav1.ConditionTrue, "Reconciled", "API is in sync")
-		return common.ApplyResync(ctrl.Result{}), nil
-	}
-
 	updated, err := r.pushAPIState(ctx, api, apiClient, current)
 	if err != nil {
 		log.Error(err, "Failed to push API state")
@@ -156,11 +144,20 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 	}
 
-	_ = r.SetReadyCondition(ctx, api, metav1.ConditionTrue, "Reconciled", "API is in sync")
-
+	// Read the write back in this same pass, so Ready below never stamps observedGeneration
+	// against state the operator has not observed yet.
 	if updated {
-		return ctrl.Result{RequeueAfter: common.RequeueImmediate}, nil
+		if current, err = apiClient.GetAPI(ctx, api.Status.APIID); err != nil {
+			_ = r.SetReadyCondition(ctx, api, metav1.ConditionFalse, "GetError", err.Error())
+			return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
+		}
+		if err := r.updateAPIStatus(ctx, api, current); err != nil {
+			log.Error(err, "Failed to update API status")
+			return ctrl.Result{RequeueAfter: common.Requeue}, nil
+		}
 	}
+
+	_ = r.SetReadyCondition(ctx, api, metav1.ConditionTrue, "Reconciled", "API is in sync")
 
 	return common.ApplyResync(ctrl.Result{}), nil
 }
@@ -278,11 +275,6 @@ func (r *Reconciler) pushAPIState(ctx context.Context, api *pocketidinternalv1al
 	}
 
 	metrics.ResourceOperations.WithLabelValues("PocketIDAPI", "updated").Inc()
-
-	if r.skipUpdate == nil {
-		r.skipUpdate = make(map[types.NamespacedName]bool)
-	}
-	r.skipUpdate[client.ObjectKeyFromObject(api)] = true
 
 	return true, nil
 }
