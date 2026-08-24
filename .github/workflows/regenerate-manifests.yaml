@@ -71,7 +71,7 @@ jobs:
         with:
           # renovate: datasource=github-releases depName=jdx/mise
           version: "2026.8.6"
-          install_args: "go:sigs.k8s.io/controller-tools/cmd/controller-gen kustomize aqua:sholdee/crd-schema-publisher"
+          install_args: "go go:sigs.k8s.io/controller-tools/cmd/controller-gen kustomize aqua:sholdee/crd-schema-publisher"
 
       - name: Regenerate manifests
         run: |

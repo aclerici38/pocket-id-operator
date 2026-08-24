@@ -131,7 +131,7 @@ jobs:
         with:
           # renovate: datasource=github-releases depName=jdx/mise
           version: "2026.8.6"
-          install_args: "kind kubectl kustomize go:sigs.k8s.io/controller-tools/cmd/controller-gen go:github.com/onsi/ginkgo/v2/ginkgo"
+          install_args: "go kind kubectl kustomize go:sigs.k8s.io/controller-tools/cmd/controller-gen go:github.com/onsi/ginkgo/v2/ginkgo"
 
       - name: Log in to GHCR
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
