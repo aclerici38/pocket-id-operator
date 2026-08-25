@@ -86,6 +86,31 @@ spec:
   localIPv6Ranges: "fd00::/8,fe80::/10"
 ```
 
+## Image
+
+`spec.image` is optional. When it is omitted the operator runs the Pocket-ID version it
+was released and tested against.
+
+Set it to pin a specific version:
+
+```yaml
+spec:
+  image: ghcr.io/pocket-id/pocket-id:v2.14.0-distroless
+```
+
+> [!IMPORTANT]
+> I finally learned how CRDs work. Instances created before v0.14.2 (08/24/26) have an image written into `spec.image` even if they
+> never set one. Earlier operators declared the default in the CRD schema, so the API
+> server stamped it into the object at creation, leaving those
+> instances pinned to whichever Pocket-ID version was current when they were created,
+> and eventually below the operator's minimum supported version. To hand the image back
+> to the operator, drop the field:
+>
+> ```sh
+> kubectl patch pocketidinstance <name> -n <namespace> \
+>   --type=json -p '[{"op":"remove","path":"/spec/image"}]'
+> ```
+
 ## S3 File Backend
 
 When the `s3` block is present, the operator automatically sets `FILE_BACKEND=s3`.

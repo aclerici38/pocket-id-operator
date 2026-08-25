@@ -71,6 +71,9 @@ const (
 	// on an instance crashloops the operator to prevent unwanted changes via an incompatible api
 	firstUnsupportedPocketIDVersion = "v3.0.0"
 
+	// DefaultPocketIDImage is the image used when spec.image is empty.
+	DefaultPocketIDImage = "ghcr.io/pocket-id/pocket-id:v2.14.0-distroless@sha256:e0f83a42a78d0759b6d2d8c7380ef0fa8a4c95dfa01ad88740a073ae9cc4ba94"
+
 	// Environment variable mapping
 	envEncryptionKey      = "ENCRYPTION_KEY"
 	envDBConnectionString = "DB_CONNECTION_STRING"
@@ -293,6 +296,15 @@ func specToApplyConfig[T any](spec any) (*T, error) {
 	return &out, nil
 }
 
+// resolveImage returns the pocket-id image to run: spec.image when set, otherwise the
+// default for this operator release.
+func resolveImage(instance *pocketidinternalv1alpha1.PocketIDInstance) string {
+	if instance.Spec.Image != "" {
+		return instance.Spec.Image
+	}
+	return DefaultPocketIDImage
+}
+
 func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketIDInstance, staticAPIKeyHash string) corev1.PodTemplateSpec {
 	var pt corev1.PodTemplateSpec
 	if instance.Spec.PodTemplate != nil {
@@ -368,7 +380,7 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 
 	container := corev1.Container{
 		Name:            appName,
-		Image:           instance.Spec.Image,
+		Image:           resolveImage(instance),
 		SecurityContext: buildContainerSecurityContext(instance),
 		Resources:       buildResources(instance),
 		Env:             buildEnvVars(instance),
