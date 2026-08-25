@@ -34,6 +34,7 @@ import (
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
+	instancectrl "github.com/aclerici38/pocket-id-operator/internal/controller/instance"
 )
 
 // Environment variable names used in tests (mirrors instance controller constants)
@@ -2852,6 +2853,108 @@ var _ = Describe("PocketIDInstance Controller", func() {
 			}
 			Expect(volumeNames).To(HaveKey("data"))
 			Expect(volumeNames).To(HaveKey("extra-config"))
+		})
+	})
+})
+
+// spec.image is resolved by the controller rather than by a CRD schema default. These
+// specs run against a real API server loading the generated CRD, which is the only place
+// that distinction is observable: the fake client the unit tests use never applies
+// OpenAPI defaults, so it cannot tell a stamped default from a resolved one.
+var _ = Describe("PocketIDInstance image defaulting", func() {
+	const (
+		timeout  = time.Second * 10
+		interval = time.Millisecond * 250
+	)
+
+	var (
+		ctx       context.Context
+		namespace string
+		inst      *pocketidinternalv1alpha1.PocketIDInstance
+	)
+
+	newInstance := func(name, image string) *pocketidinternalv1alpha1.PocketIDInstance {
+		return &pocketidinternalv1alpha1.PocketIDInstance{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: namespace,
+			},
+			Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+				Image:         image,
+				AppURL:        "https://auth.example.com",
+				EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{Value: "test-encryption-key-32chars!!!!!"},
+			},
+		}
+	}
+
+	// containerImage reports the image the operator put on the pocket-id container, once
+	// the Deployment exists.
+	containerImage := func() string {
+		deployment := &appsv1.Deployment{}
+		if err := k8sClient.Get(ctx, types.NamespacedName{
+			Name:      inst.Name,
+			Namespace: namespace,
+		}, deployment); err != nil {
+			return ""
+		}
+		if len(deployment.Spec.Template.Spec.Containers) == 0 {
+			return ""
+		}
+		return deployment.Spec.Template.Spec.Containers[0].Image
+	}
+
+	BeforeEach(func() {
+		ctx = context.Background()
+		namespace = defaultNamespace
+	})
+
+	AfterEach(func() {
+		if inst != nil {
+			_ = k8sClient.Delete(ctx, inst)
+			inst = nil
+		}
+	})
+
+	Context("When creating a PocketIDInstance without spec.image", func() {
+		BeforeEach(func() {
+			inst = newInstance("test-unpinned-image-instance", "")
+			Expect(k8sClient.Create(ctx, inst)).To(Succeed())
+		})
+
+		// The bug this replaced: a +kubebuilder:default on spec.image made the API server
+		// write the operator's image into the stored object at creation and never revisit
+		// it, so the instance stayed on that image through every later operator upgrade.
+		// The stored spec must come back exactly as it was submitted.
+		It("Should not have an image stamped into the stored spec", func() {
+			stored := &pocketidinternalv1alpha1.PocketIDInstance{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      inst.Name,
+					Namespace: namespace,
+				}, stored)
+			}, timeout, interval).Should(Succeed())
+
+			Expect(stored.Spec.Image).To(BeEmpty(),
+				"the API server defaulted spec.image; it would then be frozen at this value for the life of the instance")
+		})
+
+		// Leaving spec.image empty is how an instance opts into following the operator, so
+		// the workload has to run the current release's image.
+		It("Should run the operator's default image", func() {
+			Eventually(containerImage, timeout, interval).Should(Equal(instancectrl.DefaultPocketIDImage))
+		})
+	})
+
+	Context("When creating a PocketIDInstance that pins spec.image", func() {
+		const pinned = "ghcr.io/pocket-id/pocket-id:v2.14.0-distroless"
+
+		BeforeEach(func() {
+			inst = newInstance("test-pinned-image-instance", pinned)
+			Expect(k8sClient.Create(ctx, inst)).To(Succeed())
+		})
+
+		It("Should run the pinned image rather than the operator default", func() {
+			Eventually(containerImage, timeout, interval).Should(Equal(pinned))
 		})
 	})
 })
