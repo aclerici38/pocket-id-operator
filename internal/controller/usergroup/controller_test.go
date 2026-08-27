@@ -172,15 +172,16 @@ func TestReconcileDelete_BlockWhenReferencedByOIDCClient(t *testing.T) {
 		t.Fatalf("failed to get updated group: %v", err)
 	}
 
-	hasOIDCClientFinalizer := false
+	// The group is already deleting here, so OIDCClientUserGroupFinalizer can no longer be added.
+	hasUserGroupFinalizer := false
 	for _, f := range updatedGroup.Finalizers {
-		if f == OIDCClientUserGroupFinalizer {
-			hasOIDCClientFinalizer = true
+		if f == UserGroupFinalizer {
+			hasUserGroupFinalizer = true
 			break
 		}
 	}
-	if !hasOIDCClientFinalizer {
-		t.Error("expected OIDCClientUserGroupFinalizer to be added when blocked")
+	if !hasUserGroupFinalizer {
+		t.Error("expected UserGroupFinalizer to be retained so deletion stays blocked")
 	}
 }
 

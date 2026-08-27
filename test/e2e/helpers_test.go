@@ -829,6 +829,16 @@ func waitForReconciled(resource, name, namespace string) {
 	}).Should(Succeed())
 }
 
+// waitForFinalizer waits for a cross-reference finalizer to land. A finalizer cannot be
+// added once deletion has started, so a spec that deletes a resource to prove the finalizer
+// blocks it must wait for the finalizer first or it is racing the reconcile that adds it.
+func waitForFinalizer(resource, name, namespace, finalizer string) {
+	GinkgoHelper()
+	Eventually(func() string {
+		return getField(resource, name, namespace, ".metadata.finalizers")
+	}).Should(ContainSubstring(finalizer), "%s/%s should carry %s", resource, name, finalizer)
+}
+
 func waitForResourceDeleted(resource, name, namespace string) {
 	GinkgoHelper()
 	Eventually(func(g Gomega) {

@@ -47,8 +47,13 @@ func ReconcileFinalizers(ctx context.Context, c client.Client, obj client.Object
 
 // EnsureFinalizer adds a single finalizer if it doesn't exist.
 // Returns true if an update was performed, false otherwise.
+//
+// Adding a finalizer to an object that is already being deleted is rejected by the API
+// server, permanently and unrecoverably. A delete path that keeps retrying such a write
+// never reaches the cleanup below it, leaving the object undeletable, so a finalizer that
+// arrives too late is skipped rather than attempted.
 func EnsureFinalizer(ctx context.Context, c client.Client, obj client.Object, finalizerName string) (bool, error) {
-	if controllerutil.ContainsFinalizer(obj, finalizerName) {
+	if controllerutil.ContainsFinalizer(obj, finalizerName) || obj.GetDeletionTimestamp() != nil {
 		return false, nil
 	}
 
