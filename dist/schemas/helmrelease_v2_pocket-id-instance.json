@@ -1694,7 +1694,7 @@
                                 "description": "Selects a key of a ConfigMap.",
                                 "properties": {
                                   "key": {
-                                    "description": "The key to select.",
+                                    "description": "The key to select from the ConfigMap's Data field.\nKeys in the BinaryData field are not currently propagated to container env vars.",
                                     "type": "string"
                                   },
                                   "name": {
@@ -1951,7 +1951,7 @@
                                 "description": "Selects a key of a ConfigMap.",
                                 "properties": {
                                   "key": {
-                                    "description": "The key to select.",
+                                    "description": "The key to select from the ConfigMap's Data field.\nKeys in the BinaryData field are not currently propagated to container env vars.",
                                     "type": "string"
                                   },
                                   "name": {
@@ -2152,7 +2152,7 @@
                                   "description": "Selects a key of a ConfigMap.",
                                   "properties": {
                                     "key": {
-                                      "description": "The key to select.",
+                                      "description": "The key to select from the ConfigMap's Data field.\nKeys in the BinaryData field are not currently propagated to container env vars.",
                                       "type": "string"
                                     },
                                     "name": {
@@ -2424,7 +2424,7 @@
                                     "description": "Selects a key of a ConfigMap.",
                                     "properties": {
                                       "key": {
-                                        "description": "The key to select.",
+                                        "description": "The key to select from the ConfigMap's Data field.\nKeys in the BinaryData field are not currently propagated to container env vars.",
                                         "type": "string"
                                       },
                                       "name": {
@@ -2619,7 +2619,7 @@
                                     "description": "Selects a key of a ConfigMap.",
                                     "properties": {
                                       "key": {
-                                        "description": "The key to select.",
+                                        "description": "The key to select from the ConfigMap's Data field.\nKeys in the BinaryData field are not currently propagated to container env vars.",
                                         "type": "string"
                                       },
                                       "name": {
@@ -2944,7 +2944,7 @@
                                     "description": "Selects a key of a ConfigMap.",
                                     "properties": {
                                       "key": {
-                                        "description": "The key to select.",
+                                        "description": "The key to select from the ConfigMap's Data field.\nKeys in the BinaryData field are not currently propagated to container env vars.",
                                         "type": "string"
                                       },
                                       "name": {
@@ -3199,6 +3199,13 @@
                             "additionalProperties": false,
                             "description": "GRPC specifies a GRPC HealthCheckRequest.",
                             "properties": {
+                              "mode": {
+                                "description": "mode specifies the connection mode for the gRPC health probe.\nSet to \"TLS\" to use TLS without certificate verification.\nSet to \"Plaintext\" to use a plaintext (insecure) connection explicitly.\nIf not specified, the probe uses a plaintext (insecure) connection.",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
                               "port": {
                                 "description": "Port number of the gRPC service. Number must be in the range 1 to 65535.",
                                 "format": "int32",
@@ -3277,6 +3284,13 @@
                                   }
                                 ],
                                 "x-kubernetes-int-or-string": true
+                              },
+                              "protocol": {
+                                "description": "Protocol selects the wire protocol for the probe connection.\nNil defaults to HTTP/1.1.",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
                               },
                               "scheme": {
                                 "description": "Scheme to use for connecting to the host.\nDefaults to HTTP.",
@@ -3480,8 +3494,19 @@
                               "additionalProperties": false,
                               "description": "VolumeMount describes a mounting of a Volume within a container.",
                               "properties": {
+                                "bindMountOptions": {
+                                  "description": "bindMountOptions is the list of additional bind mount options to apply when\nmounting this volume into the container. Allowed values are noexec,\nnodev, and nosuid. These are Linux mount options and have no effect on\nWindows nodes.\nThis field is not supported with image volumes.\nThis is an alpha field and requires enabling the VolumeBindMountOptions feature gate.",
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": [
+                                    "array",
+                                    "null"
+                                  ],
+                                  "x-kubernetes-list-type": "set"
+                                },
                                 "mountPath": {
-                                  "description": "Path within the container at which the volume should be mounted.  Must\nnot contain ':'.",
+                                  "description": "Path within the container at which the volume should be mounted.",
                                   "type": "string"
                                 },
                                 "mountPropagation": {
@@ -3650,7 +3675,7 @@
                             ]
                           },
                           "seLinuxChangePolicy": {
-                            "description": "seLinuxChangePolicy defines how the container's SELinux label is applied to all volumes used by the Pod.\nIt has no effect on nodes that do not support SELinux or to volumes does not support SELinux.\nValid values are \"MountOption\" and \"Recursive\".\n\n\"Recursive\" means relabeling of all files on all Pod volumes by the container runtime.\nThis may be slow for large volumes, but allows mixing privileged and unprivileged Pods sharing the same volume on the same node.\n\n\"MountOption\" mounts all eligible Pod volumes with `-o context` mount option.\nThis requires all Pods that share the same volume to use the same SELinux label.\nIt is not possible to share the same volume among privileged and unprivileged Pods.\nEligible volumes are in-tree FibreChannel and iSCSI volumes, and all CSI volumes\nwhose CSI driver announces SELinux support by setting spec.seLinuxMount: true in their\nCSIDriver instance. Other volumes are always re-labelled recursively.\n\"MountOption\" value is allowed only when SELinuxMount feature gate is enabled.\n\nIf not specified and SELinuxMount feature gate is enabled, \"MountOption\" is used.\nIf not specified and SELinuxMount feature gate is disabled, \"MountOption\" is used for ReadWriteOncePod volumes\nand \"Recursive\" for all other volumes.\n\nThis field affects only Pods that have SELinux label set, either in PodSecurityContext or in SecurityContext of all containers.\n\nAll Pods that use the same volume should use the same seLinuxChangePolicy, otherwise some pods can get stuck in ContainerCreating state.\nNote that this field cannot be set when spec.os.name is windows.",
+                            "description": "seLinuxChangePolicy defines how the container's SELinux label is applied to all volumes used by the Pod.\nIt has no effect on nodes that do not support SELinux or to volumes does not support SELinux.\nValid values are \"MountOption\" and \"Recursive\".\n\n\"Recursive\" means relabeling of all files on all Pod volumes by the container runtime.\nThis may be slow for large volumes, but allows mixing privileged and unprivileged Pods sharing the same volume on the same node.\n\n\"MountOption\" mounts all eligible Pod volumes with `-o context` mount option.\nThis requires all Pods that share the same volume to use the same SELinux label.\nIt is not possible to share the same volume among privileged and unprivileged Pods.\nEligible volumes are in-tree FibreChannel and iSCSI volumes, and all CSI volumes\nwhose CSI driver announces SELinux support by setting spec.seLinuxMount: true in their\nCSIDriver instance. Other volumes are always re-labelled recursively.\n\nIf not specified, \"MountOption\" is used.\n\nThis field affects only Pods that have SELinux label set, either in PodSecurityContext or in SecurityContext of all containers.\n\nAll Pods that use the same volume should use the same seLinuxChangePolicy, otherwise some pods can get stuck in ContainerCreating state.\nNote that this field cannot be set when spec.os.name is windows.",
                             "type": [
                               "string",
                               "null"
@@ -3857,6 +3882,13 @@
                             "additionalProperties": false,
                             "description": "GRPC specifies a GRPC HealthCheckRequest.",
                             "properties": {
+                              "mode": {
+                                "description": "mode specifies the connection mode for the gRPC health probe.\nSet to \"TLS\" to use TLS without certificate verification.\nSet to \"Plaintext\" to use a plaintext (insecure) connection explicitly.\nIf not specified, the probe uses a plaintext (insecure) connection.",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
                               "port": {
                                 "description": "Port number of the gRPC service. Number must be in the range 1 to 65535.",
                                 "format": "int32",
@@ -3935,6 +3967,13 @@
                                   }
                                 ],
                                 "x-kubernetes-int-or-string": true
+                              },
+                              "protocol": {
+                                "description": "Protocol selects the wire protocol for the probe connection.\nNil defaults to HTTP/1.1.",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
                               },
                               "scheme": {
                                 "description": "Scheme to use for connecting to the host.\nDefaults to HTTP.",
@@ -4270,7 +4309,7 @@
                                     "description": "Selects a key of a ConfigMap.",
                                     "properties": {
                                       "key": {
-                                        "description": "The key to select.",
+                                        "description": "The key to select from the ConfigMap's Data field.\nKeys in the BinaryData field are not currently propagated to container env vars.",
                                         "type": "string"
                                       },
                                       "name": {
@@ -4493,7 +4532,7 @@
                                     "description": "Selects a key of a ConfigMap.",
                                     "properties": {
                                       "key": {
-                                        "description": "The key to select.",
+                                        "description": "The key to select from the ConfigMap's Data field.\nKeys in the BinaryData field are not currently propagated to container env vars.",
                                         "type": "string"
                                       },
                                       "name": {
@@ -4713,7 +4752,7 @@
                                     "description": "Selects a key of a ConfigMap.",
                                     "properties": {
                                       "key": {
-                                        "description": "The key to select.",
+                                        "description": "The key to select from the ConfigMap's Data field.\nKeys in the BinaryData field are not currently propagated to container env vars.",
                                         "type": "string"
                                       },
                                       "name": {
