@@ -31,6 +31,10 @@ var _ = Describe("Reference Finalizers", Ordered, func() {
 				AllowedUserGroups:  []string{finalizerGroupName},
 			})
 
+			By("waiting for the OIDC client finalizer to land on the user group")
+			waitForFinalizer("pocketidusergroup", finalizerGroupName, userNS,
+				"pocketid.internal/oidc-client-finalizer")
+
 			By("requesting deletion of the user group")
 			deleteObject("pocketidusergroup", finalizerGroupName, userNS)
 
@@ -70,6 +74,10 @@ var _ = Describe("Reference Finalizers", Ordered, func() {
 				FriendlyName:       "Rev Finalizer Group",
 				AllowedOIDCClients: []ResourceRef{{Name: revFinalizerOIDCName}},
 			})
+
+			By("waiting for the user group finalizer to land on the OIDC client")
+			waitForFinalizer("pocketidoidcclient", revFinalizerOIDCName, userNS,
+				"pocketid.internal/user-group-oidc-client-finalizer")
 
 			By("requesting deletion of the OIDC client")
 			deleteObject("pocketidoidcclient", revFinalizerOIDCName, userNS)
@@ -111,6 +119,10 @@ var _ = Describe("Reference Finalizers", Ordered, func() {
 				FriendlyName: "Finalizer User Group",
 				UserRefs:     []ResourceRef{{Name: finalizerUserName, Namespace: userNS}},
 			})
+
+			By("waiting for the user group finalizer to land on the user")
+			waitForFinalizer("pocketiduser", finalizerUserName, userNS,
+				"pocketid.internal/user-group-finalizer")
 
 			By("requesting deletion of the user")
 			deleteObject("pocketiduser", finalizerUserName, userNS)
