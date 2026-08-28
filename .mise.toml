@@ -23,7 +23,7 @@ setup-envtest = "0.24.1"
 "go:github.com/onsi/ginkgo/v2/ginkgo" = "v2.32.1"
 
 # Linting
-golangci-lint = "2.13.1"
+golangci-lint = "2.13.2"
 zizmor = "1.29.0"
 
 # Local cluster / cluster CLIs for e2e and chart tests
