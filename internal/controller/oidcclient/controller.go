@@ -29,6 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -753,8 +754,17 @@ func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.Pocket
 // logoPlan is the outcome of reconcileLogos: the URLs to attach to the client update and
 // the record of what the operator has applied.
 type logoPlan struct {
-	pushLight, pushDark       string
-	appliedLight, appliedDark string
+	resolvedLight, resolvedDark string
+	pushLight, pushDark         string
+	appliedLight, appliedDark   string
+}
+
+// logoReachable reports whether Pocket-ID holds the logo the spec asks for on one side.
+func logoReachable(resolved, applied string) *bool {
+	if resolved == "" {
+		return nil
+	}
+	return ptr.To(applied == resolved)
 }
 
 func (p *logoPlan) hasPush() bool { return p.pushLight != "" || p.pushDark != "" }
@@ -776,7 +786,10 @@ func (r *Reconciler) reconcileLogos(ctx context.Context, oidcClient *pocketidint
 	r.expireFailedLogoURLs()
 	light, dark := r.resolveLogoURLs(oidcClient)
 
-	plan := logoPlan{appliedLight: oidcClient.Status.LogoURL, appliedDark: oidcClient.Status.DarkLogoURL}
+	plan := logoPlan{
+		resolvedLight: light, resolvedDark: dark,
+		appliedLight: oidcClient.Status.LogoURL, appliedDark: oidcClient.Status.DarkLogoURL,
+	}
 	var err error
 	plan.pushLight, plan.appliedLight, err = r.reconcileLogoSide(
 		ctx, apiClient, current.ID, true, light, plan.appliedLight, current.HasLogo)
@@ -857,12 +870,17 @@ func (r *Reconciler) markLogoURLsFailed(urls ...string) {
 
 // applyLogoStatus records which logo URLs the operator has successfully applied.
 func (r *Reconciler) applyLogoStatus(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, plan logoPlan) error {
-	if plan.appliedLight == oidcClient.Status.LogoURL && plan.appliedDark == oidcClient.Status.DarkLogoURL {
+	light := logoReachable(plan.resolvedLight, plan.appliedLight)
+	dark := logoReachable(plan.resolvedDark, plan.appliedDark)
+	if plan.appliedLight == oidcClient.Status.LogoURL && plan.appliedDark == oidcClient.Status.DarkLogoURL &&
+		ptr.Equal(light, oidcClient.Status.LogoReachable) && ptr.Equal(dark, oidcClient.Status.DarkLogoReachable) {
 		return nil
 	}
 	base := oidcClient.DeepCopy()
 	oidcClient.Status.LogoURL = plan.appliedLight
+	oidcClient.Status.LogoReachable = light
 	oidcClient.Status.DarkLogoURL = plan.appliedDark
+	oidcClient.Status.DarkLogoReachable = dark
 	return r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
 }
 

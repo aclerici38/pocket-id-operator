@@ -544,9 +544,19 @@ type PocketIDOIDCClientStatus struct {
 	// +optional
 	LogoURL string `json:"logoUrl,omitempty"`
 
+	// LogoReachable reports whether Pocket-ID could fetch and store the light logo from the
+	// URL the spec resolves to. Unset when the spec asks for no light logo.
+	// +optional
+	LogoReachable *bool `json:"logoReachable,omitempty"`
+
 	// DarkLogoURL is the dark logo URL the operator last successfully applied to Pocket-ID.
 	// +optional
 	DarkLogoURL string `json:"darkLogoUrl,omitempty"`
+
+	// DarkLogoReachable reports whether Pocket-ID could fetch and store the dark logo from the
+	// URL the spec resolves to. Unset when the spec asks for no dark logo.
+	// +optional
+	DarkLogoReachable *bool `json:"darkLogoReachable,omitempty"`
 
 	// SCIMProviderID is the pocket-id ID of the SCIM service provider for this client, if configured.
 	// +optional

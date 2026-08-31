@@ -564,7 +564,9 @@ The operator takes ownership of a light or dark logo only while a URL resolves f
 ```yaml
 status:
   darkLogoUrl: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/immich-dark.png
+  darkLogoReachable: true
   logoUrl: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/immich.png
+  logoReachable: true
 ```
 
 - A logo uploaded through the Pocket-ID UI has no applied record, so the operator never

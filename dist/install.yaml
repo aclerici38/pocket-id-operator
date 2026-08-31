@@ -4066,6 +4066,11 @@ spec:
               createdAt:
                 description: CreatedAt is the creation timestamp from Pocket-ID
                 type: string
+              darkLogoReachable:
+                description: |-
+                  DarkLogoReachable reports whether Pocket-ID could fetch and store the dark logo from the
+                  URL the spec resolves to. Unset when the spec asks for no dark logo.
+                type: boolean
               darkLogoUrl:
                 description: DarkLogoURL is the dark logo URL the operator last successfully
                   applied to Pocket-ID.
@@ -4076,6 +4081,11 @@ spec:
                   operator. Used to determine when the next scheduled rotation is due.
                 format: date-time
                 type: string
+              logoReachable:
+                description: |-
+                  LogoReachable reports whether Pocket-ID could fetch and store the light logo from the
+                  URL the spec resolves to. Unset when the spec asks for no light logo.
+                type: boolean
               logoUrl:
                 description: LogoURL is the light logo URL the operator last successfully
                   applied to Pocket-ID.

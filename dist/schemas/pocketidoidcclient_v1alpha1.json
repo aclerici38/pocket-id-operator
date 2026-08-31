@@ -937,6 +937,13 @@
             "null"
           ]
         },
+        "darkLogoReachable": {
+          "description": "DarkLogoReachable reports whether Pocket-ID could fetch and store the dark logo from the\nURL the spec resolves to. Unset when the spec asks for no dark logo.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "darkLogoUrl": {
           "description": "DarkLogoURL is the dark logo URL the operator last successfully applied to Pocket-ID.",
           "type": [
@@ -949,6 +956,13 @@
           "format": "date-time",
           "type": [
             "string",
+            "null"
+          ]
+        },
+        "logoReachable": {
+          "description": "LogoReachable reports whether Pocket-ID could fetch and store the light logo from the\nURL the spec resolves to. Unset when the spec asks for no light logo.",
+          "type": [
+            "boolean",
             "null"
           ]
         },

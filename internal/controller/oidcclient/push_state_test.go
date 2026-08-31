@@ -13,6 +13,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
@@ -487,6 +488,36 @@ func TestReconcileLogos_BehaviorTable(t *testing.T) {
 	}
 }
 
+func TestLogoReachable(t *testing.T) {
+	const url = "https://cdn.example.com/logo.png"
+
+	tests := []struct {
+		name              string
+		resolved, applied string
+		want              *bool
+	}{
+		{name: "no logo asked for", want: nil},
+		{name: "applied is what the spec asks for", resolved: url, applied: url, want: ptr.To(true)},
+		{name: "refused, old logo still stranded", resolved: url, applied: "https://cdn.example.com/old.png", want: ptr.To(false)},
+		{name: "refused, stranded logo deleted", resolved: url, want: ptr.To(false)},
+		{name: "spec dropped a logo the operator applied", applied: url, want: nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := logoReachable(tt.resolved, tt.applied)
+			switch {
+			case tt.want == nil && got != nil:
+				t.Errorf("got %v, want nil", *got)
+			case tt.want != nil && got == nil:
+				t.Errorf("got nil, want %v", *tt.want)
+			case tt.want != nil && *got != *tt.want:
+				t.Errorf("got %v, want %v", *got, *tt.want)
+			}
+		})
+	}
+}
+
 func TestLogoDeletePending(t *testing.T) {
 	const url = "https://cdn.example.com/logo.png"
 
@@ -539,9 +570,12 @@ func TestLogoDeletePending(t *testing.T) {
 
 // A client that resolves only a light URL must not disturb an uploaded dark logo.
 func TestReconcileLogos_OnlyLightResolvedLeavesUploadedDarkLogo(t *testing.T) {
-	r := &Reconciler{}
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
 	api := &fakeLogoAPI{}
 	oidcClient := logoClient("https://cdn.example.com/logo.png", "", "")
+	r := newPushStateOIDCReconciler(scheme, oidcClient)
 	current := &pocketid.OIDCClient{ID: "client-id", HasDarkLogo: true}
 
 	plan, err := r.reconcileLogos(context.Background(), oidcClient, api, current)
