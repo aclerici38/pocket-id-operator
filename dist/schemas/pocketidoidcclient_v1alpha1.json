@@ -937,15 +937,8 @@
             "null"
           ]
         },
-        "darkLogoReachable": {
-          "description": "DarkLogoReachable indicates whether the dark logo URL was reachable when last checked.",
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
         "darkLogoUrl": {
-          "description": "DarkLogoURL is the last resolved dark logo URL that was applied to Pocket-ID.",
+          "description": "DarkLogoURL is the dark logo URL the operator last successfully applied to Pocket-ID.\nEmpty means the operator does not own the dark logo.",
           "type": [
             "string",
             "null"
@@ -959,15 +952,8 @@
             "null"
           ]
         },
-        "logoReachable": {
-          "description": "LogoReachable indicates whether the light logo URL was reachable when last checked.",
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
         "logoUrl": {
-          "description": "LogoURL is the last resolved light logo URL that was applied to Pocket-ID.",
+          "description": "LogoURL is the light logo URL the operator last successfully applied to Pocket-ID.\nEmpty means the operator does not own the light logo: either no URL resolves for this\nclient, or the logo it has was uploaded out of band.",
           "type": [
             "string",
             "null"

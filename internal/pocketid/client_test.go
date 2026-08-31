@@ -551,12 +551,6 @@ func TestOIDCClientToInput_MapsAllFields(t *testing.T) {
 	if input.LaunchURL != "https://app.example.com" {
 		t.Errorf("LaunchURL: got %q", input.LaunchURL)
 	}
-	if !input.HasLogo {
-		t.Error("HasLogo: expected true")
-	}
-	if !input.HasDarkLogo {
-		t.Error("HasDarkLogo: expected true")
-	}
 	if !input.IsPublic {
 		t.Error("IsPublic: expected true")
 	}
@@ -924,7 +918,7 @@ func TestUserGroupToInput_MapsAllFields(t *testing.T) {
 // --- OIDCClientInput.Equal() ---
 
 func TestOIDCClientInputEqual_IdenticalInputsAreEqual(t *testing.T) {
-	a := OIDCClientInput{Name: "test", CallbackURLs: []string{"https://a.example.com/cb"}, HasLogo: true}
+	a := OIDCClientInput{Name: "test", CallbackURLs: []string{"https://a.example.com/cb"}}
 	b := a
 	if !a.Equal(b) {
 		t.Error("expected identical inputs to be equal")

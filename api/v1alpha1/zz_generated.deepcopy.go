@@ -1082,16 +1082,6 @@ func (in *PocketIDOIDCClientStatus) DeepCopyInto(out *PocketIDOIDCClientStatus) 
 		*out = new(bool)
 		**out = **in
 	}
-	if in.LogoReachable != nil {
-		in, out := &in.LogoReachable, &out.LogoReachable
-		*out = new(bool)
-		**out = **in
-	}
-	if in.DarkLogoReachable != nil {
-		in, out := &in.DarkLogoReachable, &out.DarkLogoReachable
-		*out = new(bool)
-		**out = **in
-	}
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
 		*out = make([]v1.Condition, len(*in))

@@ -243,3 +243,84 @@ func TestErrorMessageCarriesRequestID(t *testing.T) {
 		t.Errorf("Error():\n got %q\nwant %q", got, want)
 	}
 }
+
+// Pocket-ID commits the client update before it fetches the logo, so these codes have to be
+// separable from a failure that rejected the configuration itself.
+func TestIsLogoError(t *testing.T) {
+	tests := []struct {
+		name     string
+		status   int
+		envelope errorEnvelope
+		want     bool
+	}{
+		{
+			name:   "download failed",
+			status: http.StatusUnprocessableEntity,
+			envelope: errorEnvelope{Error: "Logo could not be downloaded",
+				Code: string(models.ApperrorCodeLogoDownloadFailed)},
+			want: true,
+		},
+		{
+			name:   "unsupported type",
+			status: http.StatusUnprocessableEntity,
+			envelope: errorEnvelope{Error: "Logo type not supported",
+				Code: string(models.ApperrorCodeLogoTypeNotSupported)},
+			want: true,
+		},
+		{
+			name:   "too large",
+			status: http.StatusUnprocessableEntity,
+			envelope: errorEnvelope{Error: "Logo too large",
+				Code: string(models.ApperrorCodeLogoTooLarge)},
+			want: true,
+		},
+		{
+			// An unusable URL has no code of its own; the blamed field is the only signal.
+			name:   "invalid URL blamed on logoUrl",
+			status: http.StatusBadRequest,
+			envelope: errorEnvelope{Error: "Validation failed",
+				Code:    string(models.ApperrorCodeValidationFailed),
+				Details: map[string]any{"fields": []any{map[string]any{"field": "logoUrl", "message": "invalid"}}}},
+			want: true,
+		},
+		{
+			name:   "invalid URL blamed on darkLogoUrl",
+			status: http.StatusBadRequest,
+			envelope: errorEnvelope{Error: "Validation failed",
+				Code:    string(models.ApperrorCodeValidationFailed),
+				Details: map[string]any{"fields": []any{map[string]any{"field": "darkLogoUrl", "message": "invalid"}}}},
+			want: true,
+		},
+		{
+			name:   "validation failure on another field is not a logo error",
+			status: http.StatusBadRequest,
+			envelope: errorEnvelope{Error: "Validation failed",
+				Code:    string(models.ApperrorCodeValidationFailed),
+				Details: map[string]any{"fields": []any{map[string]any{"field": "callbackURLs"}}}},
+		},
+		{
+			name:     "validation failure with no details is not a logo error",
+			status:   http.StatusBadRequest,
+			envelope: errorEnvelope{Error: "Validation failed", Code: string(models.ApperrorCodeValidationFailed)},
+		},
+		{
+			// No envelope means no attribution, so the whole update has to be treated as failed.
+			name:   "envelope-less failure is not a logo error",
+			status: http.StatusBadGateway,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := envelopeServer(t, tt.status, tt.envelope, nil)
+			_, err := newTestClient(t, ts.URL).UpdateOIDCClient(context.Background(), "client-id",
+				OIDCClientInput{Name: "client", LogoURL: "https://cdn.example.com/logo.png"})
+			if err == nil {
+				t.Fatal("UpdateOIDCClient: expected an error")
+			}
+			if got := IsLogoError(err); got != tt.want {
+				t.Errorf("IsLogoError: got %v, want %v (%v)", got, tt.want, err)
+			}
+		})
+	}
+}

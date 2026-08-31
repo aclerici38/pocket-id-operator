@@ -556,18 +556,28 @@ spec:
     autoGenerate: false
 ```
 
-The final URLs and status of the logos are displayed under `status` in the `PocketIDOIDCClient` resource
+### Ownership
+
+The operator takes ownership of a light or dark logo only while a URL resolves for it.
+`status.logoUrl` and `status.darkLogoUrl` record the URL the operator last successfully applied for that side:
 
 ```yaml
 status:
-  darkLogoReachable: false
   darkLogoUrl: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/immich-dark.png
-  logoReachable: true
   logoUrl: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/immich.png
 ```
 
-Logs for the logos are set to `debug` by default to prevent spamming the console with unavailable logos.
-To view the logs add the `--zap-log-level=debug` arg on the operator container.
+- A logo uploaded through the Pocket-ID UI has no applied record, so the operator never
+  touches it. Set `logo.autoGenerate: false` (with no explicit URL) to manage a client's
+  logo by hand on the side you care about.
+- When a light or dark logo stops resolving a URL but its applied record is set in the status, the operator deletes the
+  logo it put there. It never deletes one it did not apply.
+- Ownership is per side, so a client that resolves only a light URL keeps an uploaded dark
+  logo.
+
+### Unusable logo URLs
+
+For simplicity, each url rejected by pocket-id is remembered in memory and not attempted again. To retry a url simply restart the operator.
 
 ## Generated Secret
 

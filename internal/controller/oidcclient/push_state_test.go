@@ -3,9 +3,10 @@ package oidcclient
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
+	"slices"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -131,11 +132,12 @@ func TestOidcClientInput_SpecCallbackURLsTakePrecedenceOverCurrent(t *testing.T)
 
 func boolPtr(b bool) *bool { return &b }
 
-func alwaysReachable(_ string) bool { return true }
-
-func neverReachable(_ string) bool { return false }
-
-func onlyLightReachable(url string) bool { return !strings.Contains(url, "-dark") }
+// namedClient builds a bare CR whose metadata.name drives {{name}} substitution.
+func namedClient(name string) *pocketidinternalv1alpha1.PocketIDOIDCClient {
+	return &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace},
+	}
+}
 
 func TestResolveLogoURLs_DeprecatedFieldsTakePrecedence(t *testing.T) {
 	r := &Reconciler{DefaultLogoTemplate: "https://cdn.example.com/{{name}}.png"}
@@ -147,39 +149,28 @@ func TestResolveLogoURLs_DeprecatedFieldsTakePrecedence(t *testing.T) {
 			Logo:        &pocketidinternalv1alpha1.OIDCClientLogoSpec{AutoGenerate: boolPtr(true)},
 		},
 	}
-	logoURL, logoReachable, darkLogoURL, darkLogoReachable := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
+	logoURL, darkLogoURL := r.resolveLogoURLs(oidcClient)
 	if logoURL != "https://explicit.example.com/logo.png" {
 		t.Errorf("expected deprecated logoUrl to win, got %q", logoURL)
-	}
-	if !logoReachable {
-		t.Error("expected logoReachable to be true for deprecated field")
 	}
 	if darkLogoURL != "https://explicit.example.com/logo-dark.png" {
 		t.Errorf("expected deprecated darkLogoUrl to win, got %q", darkLogoURL)
 	}
-	if !darkLogoReachable {
-		t.Error("expected darkLogoReachable to be true for deprecated field")
-	}
 
-	// Verify OidcClientInput correctly passes through reachable logo URLs
+	// Verify OidcClientInput passes the resolved URLs through to the payload
 	input := r.OidcClientInput(oidcClient, nil, logoURL, darkLogoURL)
-	if input.LogoURL != "https://explicit.example.com/logo.png" {
+	if input.LogoURL != logoURL {
 		t.Errorf("expected logoUrl in OidcClientInput, got %q", input.LogoURL)
 	}
-	if input.DarkLogoURL != "https://explicit.example.com/logo-dark.png" {
+	if input.DarkLogoURL != darkLogoURL {
 		t.Errorf("expected darkLogoUrl in OidcClientInput, got %q", input.DarkLogoURL)
-	}
-	if !input.HasLogo {
-		t.Error("expected HasLogo to be true")
-	}
-	if !input.HasDarkLogo {
-		t.Error("expected HasDarkLogo to be true")
 	}
 }
 
 func TestResolveLogoURLs_NameOverride(t *testing.T) {
-	r := &Reconciler{IsLogoReachable: alwaysReachable}
+	r := &Reconciler{}
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-app", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{
 				AutoGenerate: boolPtr(true),
@@ -188,7 +179,7 @@ func TestResolveLogoURLs_NameOverride(t *testing.T) {
 			},
 		},
 	}
-	logoURL, _, _, _ := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
+	logoURL, _ := r.resolveLogoURLs(oidcClient)
 	if logoURL != "https://cdn.example.com/custom-icon.png" {
 		t.Errorf("expected nameOverride to be used, got %q", logoURL)
 	}
@@ -198,16 +189,16 @@ func TestResolveLogoURLs_EnvVarFallback(t *testing.T) {
 	r := &Reconciler{
 		DefaultLogoTemplate:     "https://cdn.example.com/{{name}}.png",
 		DefaultDarkLogoTemplate: "https://cdn.example.com/{{name}}-dark.png",
-		IsLogoReachable:         alwaysReachable,
 	}
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "grafana", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{
 				AutoGenerate: boolPtr(true),
 			},
 		},
 	}
-	logoURL, _, darkLogoURL, _ := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
+	logoURL, darkLogoURL := r.resolveLogoURLs(oidcClient)
 	if logoURL != "https://cdn.example.com/grafana.png" {
 		t.Errorf("expected env var fallback, got %q", logoURL)
 	}
@@ -217,15 +208,16 @@ func TestResolveLogoURLs_EnvVarFallback(t *testing.T) {
 }
 
 func TestResolveLogoURLs_HardcodedDefaults(t *testing.T) {
-	r := &Reconciler{IsLogoReachable: alwaysReachable}
+	r := &Reconciler{}
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "grafana", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{
 				AutoGenerate: boolPtr(true),
 			},
 		},
 	}
-	logoURL, _, darkLogoURL, _ := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
+	logoURL, darkLogoURL := r.resolveLogoURLs(oidcClient)
 	if logoURL != grafanaLogoURL {
 		t.Errorf("expected hardcoded default logo template, got %q", logoURL)
 	}
@@ -237,24 +229,23 @@ func TestResolveLogoURLs_HardcodedDefaults(t *testing.T) {
 func TestResolveLogoURLs_AutoGenerateFalse(t *testing.T) {
 	r := &Reconciler{}
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-app", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{
 				AutoGenerate: boolPtr(false),
 			},
 		},
 	}
-	logoURL, logoReachable, darkLogoURL, darkLogoReachable := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
+	logoURL, darkLogoURL := r.resolveLogoURLs(oidcClient)
 	if logoURL != "" || darkLogoURL != "" {
 		t.Errorf("expected empty URLs when autoGenerate=false, got %q %q", logoURL, darkLogoURL)
-	}
-	if logoReachable || darkLogoReachable {
-		t.Error("expected reachable to be false when autoGenerate=false")
 	}
 }
 
 func TestResolveLogoURLs_ExplicitURLIgnoresAutoGenerateFalse(t *testing.T) {
-	r := &Reconciler{IsLogoReachable: alwaysReachable}
+	r := &Reconciler{}
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-app", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{
 				AutoGenerate: boolPtr(false),
@@ -262,37 +253,26 @@ func TestResolveLogoURLs_ExplicitURLIgnoresAutoGenerateFalse(t *testing.T) {
 			},
 		},
 	}
-	logoURL, logoReachable, darkLogoURL, darkLogoReachable := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
+	logoURL, darkLogoURL := r.resolveLogoURLs(oidcClient)
 	if logoURL != "https://cdn.example.com/my-app.png" {
 		t.Errorf("expected explicit logoUrl to be used despite autoGenerate=false, got %q", logoURL)
 	}
-	if !logoReachable {
-		t.Error("expected logoReachable to be true")
-	}
 	if darkLogoURL != "" {
 		t.Errorf("expected dark logo to be empty when not set and autoGenerate=false, got %q", darkLogoURL)
-	}
-	if darkLogoReachable {
-		t.Error("expected darkLogoReachable to be false")
 	}
 }
 
 func TestResolveLogoURLs_NilLogoSpecEnvFalse(t *testing.T) {
 	r := &Reconciler{DefaultAutoGenerateLogos: false}
-	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
-	logoURL, logoReachable, darkLogoURL, darkLogoReachable := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
+	logoURL, darkLogoURL := r.resolveLogoURLs(namedClient("my-app"))
 	if logoURL != "" || darkLogoURL != "" {
 		t.Errorf("expected empty URLs when logo spec is nil and env is false, got %q %q", logoURL, darkLogoURL)
-	}
-	if logoReachable || darkLogoReachable {
-		t.Error("expected reachable to be false when env is false")
 	}
 }
 
 func TestResolveLogoURLs_NilLogoSpecEnvTrue(t *testing.T) {
-	r := &Reconciler{DefaultAutoGenerateLogos: true, IsLogoReachable: alwaysReachable}
-	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
-	logoURL, _, darkLogoURL, _ := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
+	r := &Reconciler{DefaultAutoGenerateLogos: true}
+	logoURL, darkLogoURL := r.resolveLogoURLs(namedClient("my-app"))
 	if logoURL != "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/my-app.png" {
 		t.Errorf("expected hardcoded default when logo spec is nil and env is true, got %q", logoURL)
 	}
@@ -302,13 +282,14 @@ func TestResolveLogoURLs_NilLogoSpecEnvTrue(t *testing.T) {
 }
 
 func TestResolveLogoURLs_AutoGenerateNilDefaultsToEnvTrue(t *testing.T) {
-	r := &Reconciler{DefaultAutoGenerateLogos: true, IsLogoReachable: alwaysReachable}
+	r := &Reconciler{DefaultAutoGenerateLogos: true}
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-app", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{},
 		},
 	}
-	logoURL, _, _, _ := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
+	logoURL, _ := r.resolveLogoURLs(oidcClient)
 	if logoURL != "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/my-app.png" {
 		t.Errorf("expected nil autoGenerate to follow env default true, got %q", logoURL)
 	}
@@ -317,82 +298,37 @@ func TestResolveLogoURLs_AutoGenerateNilDefaultsToEnvTrue(t *testing.T) {
 func TestResolveLogoURLs_AutoGenerateNilDefaultsToEnvFalse(t *testing.T) {
 	r := &Reconciler{DefaultAutoGenerateLogos: false}
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-app", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{},
 		},
 	}
-	logoURL, logoReachable, darkLogoURL, darkLogoReachable := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
+	logoURL, darkLogoURL := r.resolveLogoURLs(oidcClient)
 	if logoURL != "" || darkLogoURL != "" {
 		t.Errorf("expected empty URLs when env default is false, got %q %q", logoURL, darkLogoURL)
-	}
-	if logoReachable || darkLogoReachable {
-		t.Error("expected reachable to be false when env default is false")
 	}
 }
 
 func TestResolveLogoURLs_ExplicitTrueOverridesEnvFalse(t *testing.T) {
-	r := &Reconciler{DefaultAutoGenerateLogos: false, IsLogoReachable: alwaysReachable}
+	r := &Reconciler{DefaultAutoGenerateLogos: false}
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-app", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{
 				AutoGenerate: boolPtr(true),
 			},
 		},
 	}
-	logoURL, logoReachable, _, _ := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
+	logoURL, _ := r.resolveLogoURLs(oidcClient)
 	if logoURL == "" {
 		t.Error("expected explicit autoGenerate=true to override env default false")
-	}
-	if !logoReachable {
-		t.Error("expected logoReachable to be true")
-	}
-}
-
-func TestResolveLogoURLs_UnreachableLogosStillReturnURL(t *testing.T) {
-	r := &Reconciler{DefaultAutoGenerateLogos: true, IsLogoReachable: neverReachable}
-	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
-		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{
-				AutoGenerate: boolPtr(true),
-			},
-		},
-	}
-	logoURL, logoReachable, darkLogoURL, darkLogoReachable := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
-	if logoURL == "" || darkLogoURL == "" {
-		t.Errorf("expected URLs to still be returned when unreachable, got %q %q", logoURL, darkLogoURL)
-	}
-	if logoReachable || darkLogoReachable {
-		t.Error("expected reachable to be false when logos are unreachable")
-	}
-}
-
-func TestResolveLogoURLs_OnlyLightReachable(t *testing.T) {
-	r := &Reconciler{DefaultAutoGenerateLogos: true, IsLogoReachable: onlyLightReachable}
-	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
-		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{
-				AutoGenerate: boolPtr(true),
-			},
-		},
-	}
-	logoURL, logoReachable, darkLogoURL, darkLogoReachable := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
-	if logoURL != grafanaLogoURL {
-		t.Errorf("expected light logo URL, got %q", logoURL)
-	}
-	if !logoReachable {
-		t.Error("expected light logo to be reachable")
-	}
-	if darkLogoURL != grafanaDarkLogoURL {
-		t.Errorf("expected dark logo URL to still be returned, got %q", darkLogoURL)
-	}
-	if darkLogoReachable {
-		t.Error("expected dark logo to be unreachable")
 	}
 }
 
 func TestResolveLogoURLs_PerClientTemplateOverridesEnvVar(t *testing.T) {
-	r := &Reconciler{DefaultLogoTemplate: "https://default.example.com/{{name}}.png", IsLogoReachable: alwaysReachable}
+	r := &Reconciler{DefaultLogoTemplate: "https://default.example.com/{{name}}.png"}
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-app", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{
 				AutoGenerate: boolPtr(true),
@@ -400,110 +336,194 @@ func TestResolveLogoURLs_PerClientTemplateOverridesEnvVar(t *testing.T) {
 			},
 		},
 	}
-	logoURL, _, _, _ := r.resolveLogoURLs(context.Background(), oidcClient, "my-app")
+	logoURL, _ := r.resolveLogoURLs(oidcClient)
 	if logoURL != "https://custom.example.com/my-app.png" {
 		t.Errorf("expected per-client template to override env var, got %q", logoURL)
 	}
 }
 
-func TestResolveLogoURLs_SkipsHEADWhenStatusMatchesAndReachable(t *testing.T) {
-	headCalled := false
-	r := &Reconciler{
-		DefaultAutoGenerateLogos: true,
-		IsLogoReachable: func(string) bool {
-			headCalled = true
-			return true
-		},
+// --- reconcileLogos ---
+
+// fakeLogoAPI records logo deletions. The embedded interface leaves every other method nil,
+// so an unexpected call panics rather than silently passing.
+type fakeLogoAPI struct {
+	PocketIDOIDCClientAPI
+	deleted []bool // one entry per delete, true for the light side
+	err     error
+}
+
+func (f *fakeLogoAPI) DeleteOIDCClientLogo(_ context.Context, _ string, light bool) error {
+	if f.err != nil {
+		return f.err
 	}
-	expectedLogo := grafanaLogoURL
-	expectedDark := grafanaDarkLogoURL
-	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+	f.deleted = append(f.deleted, light)
+	return nil
+}
+
+// logoClient builds a CR whose spec resolves to the given URLs via the deprecated fields,
+// with appliedLight/appliedDark already recorded in status.
+func logoClient(light, dark, appliedLight, appliedDark string) *pocketidinternalv1alpha1.PocketIDOIDCClient {
+	return &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-app", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			LogoURL:     light,
+			DarkLogoURL: dark,
+			Logo:        &pocketidinternalv1alpha1.OIDCClientLogoSpec{AutoGenerate: boolPtr(false)},
+		},
 		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
-			LogoURL:           expectedLogo,
-			LogoReachable:     boolPtr(true),
-			DarkLogoURL:       expectedDark,
-			DarkLogoReachable: boolPtr(true),
+			LogoURL:     appliedLight,
+			DarkLogoURL: appliedDark,
 		},
-	}
-	logoURL, logoReachable, darkLogoURL, darkLogoReachable := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
-	if headCalled {
-		t.Error("expected HEAD check to be skipped when status matches and logo was reachable")
-	}
-	if logoURL != expectedLogo {
-		t.Errorf("expected %q, got %q", expectedLogo, logoURL)
-	}
-	if !logoReachable {
-		t.Error("expected logoReachable to be true")
-	}
-	if darkLogoURL != expectedDark {
-		t.Errorf("expected %q, got %q", expectedDark, darkLogoURL)
-	}
-	if !darkLogoReachable {
-		t.Error("expected darkLogoReachable to be true")
 	}
 }
 
-func TestResolveLogoURLs_RunsHEADWhenURLChanges(t *testing.T) {
-	headCalled := false
-	r := &Reconciler{
-		DefaultAutoGenerateLogos: true,
-		IsLogoReachable: func(string) bool {
-			headCalled = true
-			return true
+func TestReconcileLogos_BehaviorTable(t *testing.T) {
+	const url = "https://cdn.example.com/logo.png"
+
+	tests := []struct {
+		name                  string
+		resolved, applied     string
+		serverHasLogo         bool
+		failed                bool
+		wantPush, wantApplied string
+		wantDelete            bool
+	}{
+		{
+			name: "unowned side is left alone",
+		},
+		{
+			name:          "uploaded logo is never deleted",
+			serverHasLogo: true,
+		},
+		{
+			name:    "applied logo the spec dropped is deleted",
+			applied: url, serverHasLogo: true, wantDelete: true,
+		},
+		{
+			name:     "a URL Pocket-ID refused is not retried",
+			resolved: url, failed: true,
+		},
+		{
+			name:     "a new URL is pushed",
+			resolved: url, wantPush: url, wantApplied: url,
+		},
+		{
+			name:     "a changed URL is pushed",
+			resolved: url, applied: "https://cdn.example.com/old.png", serverHasLogo: true,
+			wantPush: url, wantApplied: url,
+		},
+		{
+			name:     "an applied logo deleted server-side is re-pushed",
+			resolved: url, applied: url, wantPush: url, wantApplied: url,
+		},
+		{
+			name:     "an applied logo still in place is left alone",
+			resolved: url, applied: url, serverHasLogo: true, wantApplied: url,
 		},
 	}
-	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
-		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
-			LogoURL:       "https://old-cdn.example.com/grafana.png",
-			LogoReachable: boolPtr(true),
-		},
-	}
-	logoURL, logoReachable, _, _ := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
-	if !headCalled {
-		t.Error("expected HEAD check when resolved URL differs from status URL")
-	}
-	if logoURL != grafanaLogoURL {
-		t.Errorf("unexpected logo URL: %q", logoURL)
-	}
-	if !logoReachable {
-		t.Error("expected logoReachable to be true")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &Reconciler{}
+			if tt.failed {
+				r.markLogoURLsFailed(tt.resolved)
+			}
+			api := &fakeLogoAPI{}
+
+			// Run each row on both sides so neither is special-cased.
+			for _, light := range []bool{true, false} {
+				oidcClient := logoClient("", "", "", "")
+				current := &pocketid.OIDCClient{ID: "client-id"}
+				if light {
+					oidcClient.Spec.LogoURL, oidcClient.Status.LogoURL, current.HasLogo = tt.resolved, tt.applied, tt.serverHasLogo
+				} else {
+					oidcClient.Spec.DarkLogoURL, oidcClient.Status.DarkLogoURL, current.HasDarkLogo = tt.resolved, tt.applied, tt.serverHasLogo
+				}
+
+				api.deleted = nil
+				plan, err := r.reconcileLogos(context.Background(), oidcClient, api, current)
+				if err != nil {
+					t.Fatalf("light=%v: reconcileLogos: %v", light, err)
+				}
+				plan.commit()
+
+				push, applied := plan.pushDark, plan.appliedDark
+				if light {
+					push, applied = plan.pushLight, plan.appliedLight
+				}
+				if push != tt.wantPush {
+					t.Errorf("light=%v: push: got %q, want %q", light, push, tt.wantPush)
+				}
+				if applied != tt.wantApplied {
+					t.Errorf("light=%v: applied: got %q, want %q", light, applied, tt.wantApplied)
+				}
+				if want := []bool(nil); !tt.wantDelete && !slices.Equal(api.deleted, want) {
+					t.Errorf("light=%v: expected no deletions, got %v", light, api.deleted)
+				}
+				if tt.wantDelete && !slices.Equal(api.deleted, []bool{light}) {
+					t.Errorf("light=%v: expected one deletion of that side, got %v", light, api.deleted)
+				}
+			}
+		})
 	}
 }
 
-func TestResolveLogoURLs_RunsHEADWhenNotReachable(t *testing.T) {
-	headCalled := false
-	r := &Reconciler{
-		DefaultAutoGenerateLogos: true,
-		IsLogoReachable: func(string) bool {
-			headCalled = true
-			return true
-		},
+// A client that resolves only a light URL must not disturb an uploaded dark logo.
+func TestReconcileLogos_OnlyLightResolvedLeavesUploadedDarkLogo(t *testing.T) {
+	r := &Reconciler{}
+	api := &fakeLogoAPI{}
+	oidcClient := logoClient("https://cdn.example.com/logo.png", "", "", "")
+	current := &pocketid.OIDCClient{ID: "client-id", HasDarkLogo: true}
+
+	plan, err := r.reconcileLogos(context.Background(), oidcClient, api, current)
+	if err != nil {
+		t.Fatalf("reconcileLogos: %v", err)
 	}
-	expectedLogo := grafanaLogoURL
-	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
-		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
-			LogoURL:       expectedLogo,
-			LogoReachable: boolPtr(false),
-		},
+	if len(api.deleted) != 0 {
+		t.Errorf("expected no deletions, got %v", api.deleted)
 	}
-	logoURL, logoReachable, _, _ := r.resolveLogoURLs(context.Background(), oidcClient, "grafana")
-	if !headCalled {
-		t.Error("expected HEAD check when logo URL matches but was not reachable")
+	if plan.pushDark != "" {
+		t.Errorf("expected no dark push, got %q", plan.pushDark)
 	}
-	if logoURL != expectedLogo {
-		t.Errorf("expected %q, got %q", expectedLogo, logoURL)
-	}
-	if !logoReachable {
-		t.Error("expected logoReachable to be true after successful HEAD check")
+	if plan.pushLight != "https://cdn.example.com/logo.png" {
+		t.Errorf("expected the light URL to be pushed, got %q", plan.pushLight)
 	}
 }
 
-func TestUpdateLogoStatus_SetsReachableFalseExplicitly(t *testing.T) {
+func TestReconcileLogos_DeleteFailurePropagates(t *testing.T) {
+	r := &Reconciler{}
+	api := &fakeLogoAPI{err: errors.New("boom")}
+	oidcClient := logoClient("", "", "https://cdn.example.com/logo.png", "")
+
+	if _, err := r.reconcileLogos(context.Background(), oidcClient, api, &pocketid.OIDCClient{ID: "client-id"}); err == nil {
+		t.Fatal("expected the delete failure to propagate")
+	}
+}
+
+func TestMarkLogoURLsFailed_IgnoresEmptyAndKeysByURL(t *testing.T) {
+	r := &Reconciler{}
+	r.markLogoURLsFailed("", "https://cdn.example.com/logo.png")
+	if r.logoURLFailed("") {
+		t.Error("an empty URL must not be recorded")
+	}
+	if !r.logoURLFailed("https://cdn.example.com/logo.png") {
+		t.Error("expected the URL to be recorded as failed")
+	}
+	if r.logoURLFailed("https://cdn.example.com/other.png") {
+		t.Error("a different URL must not inherit the failure")
+	}
+}
+
+func TestApplyLogoStatus_PersistsAppliedURLs(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
 
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-client", Namespace: testNamespace},
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
+			LogoURL:     "https://example.com/old.png",
+			DarkLogoURL: "https://example.com/old-dark.png",
+		},
 	}
 
 	fc := fake.NewClientBuilder().
@@ -516,32 +536,21 @@ func TestUpdateLogoStatus_SetsReachableFalseExplicitly(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Simulate: light logo reachable, dark logo not reachable
-	err := r.updateLogoStatus(ctx, oidcClient, "https://example.com/logo.png", true, "https://example.com/logo-dark.png", false)
-	if err != nil {
-		t.Fatalf("updateLogoStatus failed: %v", err)
+	// Light logo newly applied, dark logo released back to Pocket-ID.
+	plan := logoPlan{appliedLight: "https://example.com/logo.png"}
+	if err := r.applyLogoStatus(ctx, oidcClient, plan); err != nil {
+		t.Fatalf("applyLogoStatus failed: %v", err)
 	}
 
-	// Re-fetch from the fake API server
 	fetched := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
 	if err := fc.Get(ctx, client.ObjectKeyFromObject(oidcClient), fetched); err != nil {
 		t.Fatalf("get failed: %v", err)
 	}
-
 	if fetched.Status.LogoURL != "https://example.com/logo.png" {
-		t.Errorf("expected logoUrl to be set, got %q", fetched.Status.LogoURL)
+		t.Errorf("expected logoUrl to be recorded, got %q", fetched.Status.LogoURL)
 	}
-	if fetched.Status.LogoReachable == nil || *fetched.Status.LogoReachable != true {
-		t.Error("expected logoReachable to be explicitly true")
-	}
-	if fetched.Status.DarkLogoURL != "https://example.com/logo-dark.png" {
-		t.Errorf("expected darkLogoUrl to be set, got %q", fetched.Status.DarkLogoURL)
-	}
-	if fetched.Status.DarkLogoReachable == nil {
-		t.Fatal("expected darkLogoReachable to be explicitly set, got nil")
-	}
-	if *fetched.Status.DarkLogoReachable != false {
-		t.Error("expected darkLogoReachable to be false")
+	if fetched.Status.DarkLogoURL != "" {
+		t.Errorf("expected darkLogoUrl to be cleared, got %q", fetched.Status.DarkLogoURL)
 	}
 }
 
@@ -866,5 +875,193 @@ func TestPushOIDCClientState_IsGroupRestrictedReflectsAggregation(t *testing.T) 
 	}
 	if !groupsUpdateSent {
 		t.Error("expected group update when UserGroup reverse-references the OIDC client")
+	}
+}
+
+// --- Logo push behaviour ---
+
+// Issue #603: autoGenerate=false against a client whose logo was uploaded through the UI
+// used to diff hasLogo forever, re-issuing a PUT that could never converge.
+func TestPushOIDCClientState_UploadedLogoWithAutoGenerateOffMakesNoCalls(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	oidcClientCR := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "sync-client", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			CallbackURLs: []string{"https://example.com/cb"},
+			Logo:         &pocketidinternalv1alpha1.OIDCClientLogoSpec{AutoGenerate: boolPtr(false)},
+		},
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
+			ClientID:   "sync-id",
+			Conditions: readyCondition(),
+		},
+	}
+	current := &pocketid.OIDCClient{
+		ID:           "sync-id",
+		Name:         "sync-client",
+		CallbackURLs: []string{"https://example.com/cb"},
+		HasLogo:      true,
+		HasDarkLogo:  true,
+	}
+
+	r := newPushStateOIDCReconciler(scheme, oidcClientCR)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected %s %s: an uploaded logo is not the operator's to manage", r.Method, r.URL.Path)
+		http.Error(w, "unexpected", http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+	apiClient, _ := pocketid.NewClient(ts.URL, "")
+
+	updated, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if updated {
+		t.Error("expected no update")
+	}
+	if oidcClientCR.Status.LogoURL != "" || oidcClientCR.Status.DarkLogoURL != "" {
+		t.Errorf("expected no applied record for an uploaded logo, got %q %q",
+			oidcClientCR.Status.LogoURL, oidcClientCR.Status.DarkLogoURL)
+	}
+}
+
+// A logo Pocket-ID cannot fetch must not hold the client back: the configuration is already
+// committed by the time the download runs, and failing here would re-push every resync.
+func TestPushOIDCClientState_LogoErrorIsNonFatalAndNotRetried(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	oidcClientCR := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "logo-client", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			LogoURL: "https://cdn.example.com/missing.png",
+		},
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
+			ClientID:   "logo-id",
+			Conditions: readyCondition(),
+		},
+	}
+	current := &pocketid.OIDCClient{ID: "logo-id", Name: "logo-client"}
+
+	r := newPushStateOIDCReconciler(scheme, oidcClientCR)
+	var puts int
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodPut {
+			t.Errorf("unexpected %s %s", req.Method, req.URL.Path)
+			http.Error(w, "unexpected", http.StatusInternalServerError)
+			return
+		}
+		puts++
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": "Logo could not be downloaded", "code": "logo_download_failed", "request_id": "req-1",
+		})
+	}))
+	defer ts.Close()
+	apiClient, _ := pocketid.NewClient(ts.URL, "")
+
+	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
+		t.Fatalf("expected a logo failure to be non-fatal, got %v", err)
+	}
+	if puts != 1 {
+		t.Fatalf("expected exactly one PUT, got %d", puts)
+	}
+	if oidcClientCR.Status.LogoURL != "" {
+		t.Errorf("a rejected URL must not be recorded as applied, got %q", oidcClientCR.Status.LogoURL)
+	}
+
+	// Same URL: skipped entirely on the next pass.
+	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if puts != 1 {
+		t.Errorf("expected the failed URL not to be retried, got %d PUTs", puts)
+	}
+
+	// A different URL is a different key, so it is tried once.
+	oidcClientCR.Spec.LogoURL = "https://cdn.example.com/other.png"
+	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if puts != 2 {
+		t.Errorf("expected a changed URL to be attempted, got %d PUTs", puts)
+	}
+}
+
+// The default templates resolve a dark URL that dashboard-icons often does not have, so a
+// dark failure must leave the light logo owned, applied and retryable.
+func TestPushOIDCClientState_DarkLogoFailureLeavesLightLogoIntact(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	const lightURL = "https://cdn.example.com/app.png"
+	const darkURL = "https://cdn.example.com/app-dark.png"
+
+	oidcClientCR := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "logo-client", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			LogoURL:     lightURL,
+			DarkLogoURL: darkURL,
+		},
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
+			ClientID:   "logo-id",
+			Conditions: readyCondition(),
+		},
+	}
+	current := &pocketid.OIDCClient{ID: "logo-id", Name: "logo-client"}
+
+	r := newPushStateOIDCReconciler(scheme, oidcClientCR)
+	var sent []string // darkLogoUrl of each PUT, so the two updates are distinguishable
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(req.Body).Decode(&body)
+		dark, _ := body["darkLogoUrl"].(string)
+		sent = append(sent, dark)
+
+		if dark == "" { // the light update
+			okOIDCClientResponse(w, "logo-id", "logo-client")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": "Logo could not be downloaded", "code": "logo_download_failed",
+		})
+	}))
+	defer ts.Close()
+	apiClient, _ := pocketid.NewClient(ts.URL, "")
+
+	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
+		t.Fatalf("expected the dark failure to be non-fatal, got %v", err)
+	}
+	if len(sent) != 2 || sent[0] != "" || sent[1] != darkURL {
+		t.Fatalf("expected one update per side, got %q", sent)
+	}
+	if oidcClientCR.Status.LogoURL != lightURL {
+		t.Errorf("light logo should stay applied, got %q", oidcClientCR.Status.LogoURL)
+	}
+	if oidcClientCR.Status.DarkLogoURL != "" {
+		t.Errorf("rejected dark logo must not be recorded, got %q", oidcClientCR.Status.DarkLogoURL)
+	}
+	if r.logoURLFailed(lightURL) {
+		t.Error("the light URL must not inherit the dark failure")
+	}
+	if !r.logoURLFailed(darkURL) {
+		t.Error("the dark URL should be remembered as failed")
+	}
+
+	// Next pass: light is in place and dark is skipped, so nothing is sent at all.
+	current.HasLogo = true
+	sent = nil
+	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(sent) != 0 {
+		t.Errorf("expected no further updates, got %q", sent)
 	}
 }

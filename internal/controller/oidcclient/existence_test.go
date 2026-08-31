@@ -79,6 +79,10 @@ func (m *mockPocketIDOIDCClientClient) DeleteOIDCClientSecret(_ context.Context,
 	return nil
 }
 
+func (m *mockPocketIDOIDCClientClient) DeleteOIDCClientLogo(_ context.Context, _ string, _ bool) error {
+	return nil
+}
+
 func (m *mockPocketIDOIDCClientClient) GetOIDCClientSCIMServiceProvider(_ context.Context, _ string) (*pocketid.SCIMServiceProvider, error) {
 	return nil, nil
 }

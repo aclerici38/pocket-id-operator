@@ -1041,38 +1041,4 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 		})
 	})
 
-	Context("Logo status reachability", func() {
-		It("should persist logoReachable=false explicitly in the API server", func() {
-			clientName := "logo-reachable-test"
-			resource := &pocketidinternalv1alpha1.PocketIDOIDCClient{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      clientName,
-					Namespace: namespace,
-				},
-			}
-			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
-
-			// Patch status with light=true, dark=false
-			base := resource.DeepCopy()
-			logoTrue := true
-			darkFalse := false
-			resource.Status.LogoURL = "https://example.com/logo.png"
-			resource.Status.LogoReachable = &logoTrue
-			resource.Status.DarkLogoURL = "https://example.com/logo-dark.png"
-			resource.Status.DarkLogoReachable = &darkFalse
-			Expect(k8sClient.Status().Patch(ctx, resource, client.MergeFrom(base))).To(Succeed())
-
-			// Re-fetch from the real API server
-			fetched := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: clientName, Namespace: namespace}, fetched)).To(Succeed())
-
-			Expect(fetched.Status.LogoURL).To(Equal("https://example.com/logo.png"))
-			Expect(fetched.Status.LogoReachable).NotTo(BeNil())
-			Expect(*fetched.Status.LogoReachable).To(BeTrue())
-
-			Expect(fetched.Status.DarkLogoURL).To(Equal("https://example.com/logo-dark.png"))
-			Expect(fetched.Status.DarkLogoReachable).NotTo(BeNil(), "darkLogoReachable should be explicitly set, not nil")
-			Expect(*fetched.Status.DarkLogoReachable).To(BeFalse())
-		})
-	})
 })
