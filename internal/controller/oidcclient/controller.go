@@ -525,7 +525,7 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 
 	if !clientChanged && !shouldPushCredentials && !groupsChanged && !logos.hasPush() {
 		log.V(1).Info("OIDC client state is in sync, skipping update")
-		return false, r.applyLogoStatus(ctx, oidcClient, logos)
+		return false, nil
 	}
 
 	log.Info("Updating OIDC client", "name", oidcClient.Name)
@@ -766,19 +766,22 @@ func (p *logoPlan) commit() {
 func (r *Reconciler) reconcileLogos(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient PocketIDOIDCClientAPI, current *pocketid.OIDCClient) (logoPlan, error) {
 	light, dark := r.resolveLogoURLs(oidcClient)
 
-	var plan logoPlan
+	plan := logoPlan{appliedLight: oidcClient.Status.LogoURL, appliedDark: oidcClient.Status.DarkLogoURL}
 	var err error
 	plan.pushLight, plan.appliedLight, err = r.reconcileLogoSide(
-		ctx, apiClient, current.ID, true, light, oidcClient.Status.LogoURL, current.HasLogo)
-	if err != nil {
-		return logoPlan{}, err
+		ctx, apiClient, current.ID, true, light, plan.appliedLight, current.HasLogo)
+	if err == nil {
+		plan.pushDark, plan.appliedDark, err = r.reconcileLogoSide(
+			ctx, apiClient, current.ID, false, dark, plan.appliedDark, current.HasDarkLogo)
 	}
-	plan.pushDark, plan.appliedDark, err = r.reconcileLogoSide(
-		ctx, apiClient, current.ID, false, dark, oidcClient.Status.DarkLogoURL, current.HasDarkLogo)
-	if err != nil {
-		return logoPlan{}, err
+
+	// A deletion cannot be taken back, so drop the applied record now rather than after the
+	// push. Anything failing in between would otherwise leave status owning a logo that is
+	// gone, and delete whatever was uploaded in its place on the next pass.
+	if statusErr := r.applyLogoStatus(ctx, oidcClient, plan); err == nil {
+		err = statusErr
 	}
-	return plan, nil
+	return plan, err
 }
 
 // reconcileLogoSide resolves one side of the logo state, deleting a logo the operator
@@ -792,7 +795,7 @@ func (r *Reconciler) reconcileLogoSide(ctx context.Context, apiClient PocketIDOI
 	case resolved == "":
 		logf.FromContext(ctx).Info("Removing logo the spec no longer asks for", "url", applied, "light", light)
 		if err := apiClient.DeleteOIDCClientLogo(ctx, clientID, light); err != nil {
-			return "", "", fmt.Errorf("delete OIDC client logo: %w", err)
+			return "", applied, fmt.Errorf("delete OIDC client logo: %w", err)
 		}
 		return "", "", nil
 	case r.logoURLFailed(resolved):

@@ -348,27 +348,30 @@ func TestResolveLogoURLs_PerClientTemplateOverridesEnvVar(t *testing.T) {
 // so an unexpected call panics rather than silently passing.
 type fakeLogoAPI struct {
 	PocketIDOIDCClientAPI
-	deleted []bool // one entry per delete, true for the light side
-	err     error
+	deleted []bool         // one entry per delete, true for the light side
+	err     error          // fails every delete
+	errOn   map[bool]error // fails one side, keyed the same way as deleted
 }
 
 func (f *fakeLogoAPI) DeleteOIDCClientLogo(_ context.Context, _ string, light bool) error {
 	if f.err != nil {
 		return f.err
 	}
+	if err := f.errOn[light]; err != nil {
+		return err
+	}
 	f.deleted = append(f.deleted, light)
 	return nil
 }
 
-// logoClient builds a CR whose spec resolves to the given URLs via the deprecated fields,
-// with appliedLight/appliedDark already recorded in status.
-func logoClient(light, dark, appliedLight, appliedDark string) *pocketidinternalv1alpha1.PocketIDOIDCClient {
+// logoClient builds a CR resolving light via the deprecated field, with appliedLight and
+// appliedDark already recorded in status. Callers needing a dark URL set it on the spec.
+func logoClient(light, appliedLight, appliedDark string) *pocketidinternalv1alpha1.PocketIDOIDCClient {
 	return &pocketidinternalv1alpha1.PocketIDOIDCClient{
 		ObjectMeta: metav1.ObjectMeta{Name: "my-app", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-			LogoURL:     light,
-			DarkLogoURL: dark,
-			Logo:        &pocketidinternalv1alpha1.OIDCClientLogoSpec{AutoGenerate: boolPtr(false)},
+			LogoURL: light,
+			Logo:    &pocketidinternalv1alpha1.OIDCClientLogoSpec{AutoGenerate: boolPtr(false)},
 		},
 		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
 			LogoURL:     appliedLight,
@@ -422,17 +425,16 @@ func TestReconcileLogos_BehaviorTable(t *testing.T) {
 		},
 	}
 
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := &Reconciler{}
-			if tt.failed {
-				r.markLogoURLsFailed(tt.resolved)
-			}
 			api := &fakeLogoAPI{}
 
 			// Run each row on both sides so neither is special-cased.
 			for _, light := range []bool{true, false} {
-				oidcClient := logoClient("", "", "", "")
+				oidcClient := logoClient("", "", "")
 				current := &pocketid.OIDCClient{ID: "client-id"}
 				if light {
 					oidcClient.Spec.LogoURL, oidcClient.Status.LogoURL, current.HasLogo = tt.resolved, tt.applied, tt.serverHasLogo
@@ -440,6 +442,10 @@ func TestReconcileLogos_BehaviorTable(t *testing.T) {
 					oidcClient.Spec.DarkLogoURL, oidcClient.Status.DarkLogoURL, current.HasDarkLogo = tt.resolved, tt.applied, tt.serverHasLogo
 				}
 
+				r := newPushStateOIDCReconciler(scheme, oidcClient)
+				if tt.failed {
+					r.markLogoURLsFailed(tt.resolved)
+				}
 				api.deleted = nil
 				plan, err := r.reconcileLogos(context.Background(), oidcClient, api, current)
 				if err != nil {
@@ -472,7 +478,7 @@ func TestReconcileLogos_BehaviorTable(t *testing.T) {
 func TestReconcileLogos_OnlyLightResolvedLeavesUploadedDarkLogo(t *testing.T) {
 	r := &Reconciler{}
 	api := &fakeLogoAPI{}
-	oidcClient := logoClient("https://cdn.example.com/logo.png", "", "", "")
+	oidcClient := logoClient("https://cdn.example.com/logo.png", "", "")
 	current := &pocketid.OIDCClient{ID: "client-id", HasDarkLogo: true}
 
 	plan, err := r.reconcileLogos(context.Background(), oidcClient, api, current)
@@ -493,7 +499,7 @@ func TestReconcileLogos_OnlyLightResolvedLeavesUploadedDarkLogo(t *testing.T) {
 func TestReconcileLogos_DeleteFailurePropagates(t *testing.T) {
 	r := &Reconciler{}
 	api := &fakeLogoAPI{err: errors.New("boom")}
-	oidcClient := logoClient("", "", "https://cdn.example.com/logo.png", "")
+	oidcClient := logoClient("", "https://cdn.example.com/logo.png", "")
 
 	if _, err := r.reconcileLogos(context.Background(), oidcClient, api, &pocketid.OIDCClient{ID: "client-id"}); err == nil {
 		t.Fatal("expected the delete failure to propagate")
@@ -1063,5 +1069,40 @@ func TestPushOIDCClientState_DarkLogoFailureLeavesLightLogoIntact(t *testing.T) 
 	}
 	if len(sent) != 0 {
 		t.Errorf("expected no further updates, got %q", sent)
+	}
+}
+
+// A deletion that succeeded must be recorded even when the pass later fails, or the next
+// one deletes whatever was uploaded in its place.
+func TestReconcileLogos_RecordsDeletionWhenTheOtherSideFails(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	oidcClient := logoClient("", "https://cdn.example.com/logo.png", "https://cdn.example.com/dark.png")
+	r := newPushStateOIDCReconciler(scheme, oidcClient)
+
+	// Light deletes cleanly; dark fails.
+	api := &fakeLogoAPI{errOn: map[bool]error{false: errors.New("boom")}}
+
+	plan, err := r.reconcileLogos(context.Background(), oidcClient, api, &pocketid.OIDCClient{ID: "client-id"})
+	if err == nil {
+		t.Fatal("expected the dark deletion failure to propagate")
+	}
+	if plan.appliedLight != "" {
+		t.Errorf("light was deleted, so it must be disowned: got %q", plan.appliedLight)
+	}
+	if plan.appliedDark != "https://cdn.example.com/dark.png" {
+		t.Errorf("dark deletion failed, so it stays owned: got %q", plan.appliedDark)
+	}
+
+	fetched := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
+	if err := r.Get(context.Background(), client.ObjectKeyFromObject(oidcClient), fetched); err != nil {
+		t.Fatalf("get failed: %v", err)
+	}
+	if fetched.Status.LogoURL != "" {
+		t.Errorf("the completed deletion must be persisted, got %q", fetched.Status.LogoURL)
+	}
+	if fetched.Status.DarkLogoURL != "https://cdn.example.com/dark.png" {
+		t.Errorf("the failed deletion must keep its record, got %q", fetched.Status.DarkLogoURL)
 	}
 }
