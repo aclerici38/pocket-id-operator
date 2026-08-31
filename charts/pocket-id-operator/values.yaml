@@ -29,9 +29,9 @@ operator:
 
   # Default URL template for light logos ({{name}} is replaced with the client name)
   # Defaults to the dashboard-icons CDN if not set
-  # defaultLogoUrl: "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}.png"
+  # defaultLogoUrl: "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/{{name}}.webp"
   # Default URL template for dark logos
-  # defaultDarkLogoUrl: "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}-dark.png"
+  # defaultDarkLogoUrl: "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/{{name}}-light.webp"
 
   podSecurityContext:
     runAsNonRoot: true

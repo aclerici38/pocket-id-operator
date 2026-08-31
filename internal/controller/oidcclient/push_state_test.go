@@ -23,8 +23,8 @@ import (
 )
 
 const (
-	grafanaLogoURL     = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/grafana.png"
-	grafanaDarkLogoURL = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/grafana-dark.png"
+	grafanaLogoURL     = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/grafana.webp"
+	grafanaDarkLogoURL = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/grafana-light.webp"
 )
 
 // pocketIDOIDCClientAPIResponse is the JSON shape returned by Pocket-ID OIDC client
@@ -277,10 +277,10 @@ func TestResolveLogoURLs_NilLogoSpecEnvFalse(t *testing.T) {
 func TestResolveLogoURLs_NilLogoSpecEnvTrue(t *testing.T) {
 	r := &Reconciler{DefaultAutoGenerateLogos: true}
 	logoURL, darkLogoURL := r.resolveLogoURLs(namedClient("my-app"))
-	if logoURL != "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/my-app.png" {
+	if logoURL != "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/my-app.webp" {
 		t.Errorf("expected hardcoded default when logo spec is nil and env is true, got %q", logoURL)
 	}
-	if darkLogoURL != "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/my-app-dark.png" {
+	if darkLogoURL != "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/my-app-light.webp" {
 		t.Errorf("expected hardcoded dark default when logo spec is nil and env is true, got %q", darkLogoURL)
 	}
 }
@@ -294,7 +294,7 @@ func TestResolveLogoURLs_AutoGenerateNilDefaultsToEnvTrue(t *testing.T) {
 		},
 	}
 	logoURL, _ := r.resolveLogoURLs(oidcClient)
-	if logoURL != "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/my-app.png" {
+	if logoURL != "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/my-app.webp" {
 		t.Errorf("expected nil autoGenerate to follow env default true, got %q", logoURL)
 	}
 }

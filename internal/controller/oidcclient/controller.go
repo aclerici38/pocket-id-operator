@@ -63,8 +63,8 @@ const (
 	// its metadata document ahead of the cache TTL.
 	refreshClientMetadataAnnotation = "pocketid.internal/refresh-client-metadata"
 
-	defaultLogoTemplate     = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}.png"
-	defaultDarkLogoTemplate = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}-dark.png"
+	defaultLogoTemplate     = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/{{name}}.webp"
+	defaultDarkLogoTemplate = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/{{name}}-light.webp"
 
 	// failedLogoURLTTL is how long a URL Pocket-ID refused stays suppressed.
 	failedLogoURLTTL = 24 * time.Hour
