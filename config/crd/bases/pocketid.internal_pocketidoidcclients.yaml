@@ -729,9 +729,8 @@ spec:
                 description: CreatedAt is the creation timestamp from Pocket-ID
                 type: string
               darkLogoUrl:
-                description: |-
-                  DarkLogoURL is the dark logo URL the operator last successfully applied to Pocket-ID.
-                  Empty means the operator does not own the dark logo.
+                description: DarkLogoURL is the dark logo URL the operator last successfully
+                  applied to Pocket-ID.
                 type: string
               lastRotatedAt:
                 description: |-
@@ -740,10 +739,8 @@ spec:
                 format: date-time
                 type: string
               logoUrl:
-                description: |-
-                  LogoURL is the light logo URL the operator last successfully applied to Pocket-ID.
-                  Empty means the operator does not own the light logo: either no URL resolves for this
-                  client, or the logo it has was uploaded out of band.
+                description: LogoURL is the light logo URL the operator last successfully
+                  applied to Pocket-ID.
                 type: string
               logoutCallbackUrls:
                 description: LogoutCallbackURLs are the current logout callback URLs
