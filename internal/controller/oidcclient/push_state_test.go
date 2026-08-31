@@ -409,6 +409,15 @@ func TestReconcileLogos_BehaviorTable(t *testing.T) {
 			resolved: url, failed: true,
 		},
 		{
+			name:     "an applied logo the spec replaced with a refused URL is deleted",
+			resolved: url, applied: "https://cdn.example.com/old.png", serverHasLogo: true,
+			failed: true, wantDelete: true,
+		},
+		{
+			name:     "an applied logo whose own URL is refused is kept",
+			resolved: url, applied: url, serverHasLogo: true, failed: true, wantApplied: url,
+		},
+		{
 			name:     "a new URL is pushed",
 			resolved: url, wantPush: url, wantApplied: url,
 		},

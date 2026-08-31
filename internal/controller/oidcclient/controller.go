@@ -785,23 +785,20 @@ func (r *Reconciler) reconcileLogos(ctx context.Context, oidcClient *pocketidint
 }
 
 // reconcileLogoSide resolves one side of the logo state, deleting a logo the operator
-// applied and the spec has stopped asking for. It returns the URL to send with the client
+// applied that no later pass can replace. It returns the URL to send with the client
 // update ("" sends nothing) and the applied record as it stands after any deletion.
 func (r *Reconciler) reconcileLogoSide(ctx context.Context, apiClient PocketIDOIDCClientAPI, clientID string, light bool, resolved, applied string, serverHasLogo bool) (push, stillApplied string, err error) {
 	switch {
-	case resolved == "" && applied == "":
-		// Nothing resolves and nothing was applied: this side is not the operator's.
-		return "", "", nil
-	case resolved == "":
+	case resolved == "" || r.logoURLFailed(resolved):
+		// Nothing will be pushed here: the spec asks for no logo, or for a URL Pocket-ID already refused
+		if applied == "" || applied == resolved {
+			return "", applied, nil
+		}
 		logf.FromContext(ctx).Info("Removing logo the spec no longer asks for", "url", applied, "light", light)
 		if err := apiClient.DeleteOIDCClientLogo(ctx, clientID, light); err != nil {
 			return "", applied, fmt.Errorf("delete OIDC client logo: %w", err)
 		}
 		return "", "", nil
-	case r.logoURLFailed(resolved):
-		// Pocket-ID already refused this URL. Re-sending it costs a download attempt per
-		// resync and converges on nothing.
-		return "", applied, nil
 	case resolved != applied || !serverHasLogo:
 		return resolved, applied, nil
 	default:
