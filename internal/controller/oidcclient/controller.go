@@ -778,8 +778,8 @@ func (r *Reconciler) reconcileLogos(ctx context.Context, oidcClient *pocketidint
 	// A deletion cannot be taken back, so drop the applied record now rather than after the
 	// push. Anything failing in between would otherwise leave status owning a logo that is
 	// gone, and delete whatever was uploaded in its place on the next pass.
-	if statusErr := r.applyLogoStatus(ctx, oidcClient, plan); err == nil {
-		err = statusErr
+	if statusErr := r.applyLogoStatus(ctx, oidcClient, plan); statusErr != nil {
+		err = stderrors.Join(err, statusErr)
 	}
 	return plan, err
 }

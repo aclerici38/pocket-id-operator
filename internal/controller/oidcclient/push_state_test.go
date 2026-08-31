@@ -7,12 +7,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
@@ -1104,5 +1106,34 @@ func TestReconcileLogos_RecordsDeletionWhenTheOtherSideFails(t *testing.T) {
 	}
 	if fetched.Status.DarkLogoURL != "https://cdn.example.com/dark.png" {
 		t.Errorf("the failed deletion must keep its record, got %q", fetched.Status.DarkLogoURL)
+	}
+}
+
+// Neither failure should hide the other: the delete failure explains the reconcile, and the
+// status failure explains why the completed deletion was not recorded.
+func TestReconcileLogos_ReportsBothDeleteAndStatusFailures(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	oidcClient := logoClient("", "https://cdn.example.com/logo.png", "https://cdn.example.com/dark.png")
+	r := newPushStateOIDCReconciler(scheme, oidcClient)
+	r.Client = interceptor.NewClient(r.Client.(client.WithWatch), interceptor.Funcs{
+		SubResourcePatch: func(_ context.Context, _ client.Client, _ string, _ client.Object, _ client.Patch, _ ...client.SubResourcePatchOption) error {
+			return errors.New("simulated status patch failure")
+		},
+	})
+	r.EnsureClient(r.Client)
+
+	api := &fakeLogoAPI{errOn: map[bool]error{false: errors.New("delete refused")}}
+
+	_, err := r.reconcileLogos(context.Background(), oidcClient, api, &pocketid.OIDCClient{ID: "client-id"})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), "delete refused") {
+		t.Errorf("delete failure missing from %v", err)
+	}
+	if !strings.Contains(err.Error(), "simulated status patch failure") {
+		t.Errorf("status failure missing from %v", err)
 	}
 }
