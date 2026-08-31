@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -456,6 +457,7 @@ func TestReconcileLogos_BehaviorTable(t *testing.T) {
 				r := newPushStateOIDCReconciler(scheme, oidcClient)
 				if tt.failed {
 					r.markLogoURLsFailed(tt.resolved)
+					r.failedLogoURLsResetAt = time.Now()
 				}
 				api.deleted = nil
 				plan, err := r.reconcileLogos(context.Background(), oidcClient, api, current)
@@ -528,6 +530,43 @@ func TestMarkLogoURLsFailed_IgnoresEmptyAndKeysByURL(t *testing.T) {
 	}
 	if r.logoURLFailed("https://cdn.example.com/other.png") {
 		t.Error("a different URL must not inherit the failure")
+	}
+}
+
+// A URL refused once must be retried after the TTL, so a logo Pocket-ID lost is restored
+// without an operator restart.
+func TestReconcileLogos_RefusedURLIsRetriedAfterTTL(t *testing.T) {
+	const url = "https://cdn.example.com/logo.png"
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	oidcClient := logoClient(url, url, "")
+	r := newPushStateOIDCReconciler(scheme, oidcClient)
+	r.markLogoURLsFailed(url)
+	r.failedLogoURLsResetAt = time.Now()
+
+	current := &pocketid.OIDCClient{ID: "client-id"}
+	plan, err := r.reconcileLogos(context.Background(), oidcClient, &fakeLogoAPI{}, current)
+	if err != nil {
+		t.Fatalf("reconcileLogos: %v", err)
+	}
+	if plan.pushLight != "" {
+		t.Errorf("expected the refused URL to stay suppressed, got %q", plan.pushLight)
+	}
+
+	r.failedLogoURLsResetAt = time.Now().Add(-failedLogoURLTTL - time.Minute)
+	plan, err = r.reconcileLogos(context.Background(), oidcClient, &fakeLogoAPI{}, current)
+	if err != nil {
+		t.Fatalf("reconcileLogos after TTL: %v", err)
+	}
+	if plan.pushLight != url {
+		t.Errorf("expected the URL to be retried after the TTL, got %q", plan.pushLight)
+	}
+	if r.logoURLFailed(url) {
+		t.Error("the refusal set should have been dropped")
+	}
+	if time.Since(r.failedLogoURLsResetAt) > time.Minute {
+		t.Error("expected the reset deadline to be restamped, not expired every reconcile")
 	}
 }
 

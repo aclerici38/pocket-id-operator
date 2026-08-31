@@ -572,12 +572,14 @@ status:
   logo by hand on the side you care about.
 - When a light or dark logo stops resolving a URL but its applied record is set in the status, the operator deletes the
   logo it put there. It never deletes one it did not apply.
+- The same applies when the spec moves to a URL Pocket-ID refuses: the logo the operator
+  applied from the old URL is deleted rather than left in place, since no later reconcile would replace it. A refused URL that is still the one in the applied record is left alone.
 - Ownership is per side, so a client that resolves only a light URL keeps an uploaded dark
   logo.
 
 ### Unusable logo URLs
 
-For simplicity, each url rejected by pocket-id is remembered in memory and not attempted again. To retry a url simply restart the operator.
+A URL Pocket-ID rejects is remembered in memory and not attempted again for 24 hours, so a permanently missing icon costs one download attempt a day rather than one every resync. Restarting the operator also clears it.
 
 ## Generated Secret
 

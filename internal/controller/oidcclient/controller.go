@@ -64,6 +64,9 @@ const (
 
 	defaultLogoTemplate     = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}.png"
 	defaultDarkLogoTemplate = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}-dark.png"
+
+	// failedLogoURLTTL is how long a URL Pocket-ID refused stays suppressed.
+	failedLogoURLTTL = 24 * time.Hour
 )
 
 // errAwaitingCIMD reports that a metadata-document client does not exist in Pocket-ID yet.
@@ -87,9 +90,11 @@ type Reconciler struct {
 	// DefaultDarkLogoTemplate is the default URL template for dark logos (from DEFAULT_DARK_LOGO_URL env var).
 	DefaultDarkLogoTemplate string
 
-	// failedLogoURLs records logo URLs Pocket-ID refused and will mnot be retried during the lifecycle of this container.
+	// failedLogoURLs records logo URLs Pocket-ID refused, which are not retried until the whole set is dropped on the failedLogoURLTTL deadline below.
 	// This is safe as long as max concurrent reconciles is 1
 	failedLogoURLs map[string]struct{}
+	// failedLogoURLsResetAt is when failedLogoURLs was last dropped. The zero value expires immediately, so the first reconcile after startup stamps it.
+	failedLogoURLsResetAt time.Time
 
 	// pendingInitialMint marks clients created (not adopted) by the operator whose client
 	// secret has not yet been stored. It lets storeClientSecret=false permit the one-time
@@ -764,6 +769,7 @@ func (p *logoPlan) commit() {
 // UI — which never gets an applied record — is never deleted, and a client that resolves
 // only a light URL keeps its uploaded dark logo.
 func (r *Reconciler) reconcileLogos(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient PocketIDOIDCClientAPI, current *pocketid.OIDCClient) (logoPlan, error) {
+	r.expireFailedLogoURLs()
 	light, dark := r.resolveLogoURLs(oidcClient)
 
 	plan := logoPlan{appliedLight: oidcClient.Status.LogoURL, appliedDark: oidcClient.Status.DarkLogoURL}
@@ -804,6 +810,15 @@ func (r *Reconciler) reconcileLogoSide(ctx context.Context, apiClient PocketIDOI
 	default:
 		return "", applied, nil
 	}
+}
+
+// expireFailedLogoURLs drops the whole refusal set once per TTL.
+func (r *Reconciler) expireFailedLogoURLs() {
+	if time.Since(r.failedLogoURLsResetAt) < failedLogoURLTTL {
+		return
+	}
+	r.failedLogoURLs = nil
+	r.failedLogoURLsResetAt = time.Now()
 }
 
 func (r *Reconciler) logoURLFailed(url string) bool {
