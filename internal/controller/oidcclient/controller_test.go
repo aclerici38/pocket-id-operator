@@ -76,11 +76,11 @@ func TestOidcClientInput(t *testing.T) {
 	if input.Description != "a test client" {
 		t.Errorf("expected Description %q, got %q", "a test client", input.Description)
 	}
-	if !input.HasLogo {
-		t.Error("expected HasLogo to be true")
+	if input.LogoURL != "https://example.com/logo.png" {
+		t.Errorf("expected LogoURL to pass through, got %q", input.LogoURL)
 	}
-	if !input.HasDarkLogo {
-		t.Error("expected HasDarkLogo to be true")
+	if input.DarkLogoURL != "https://example.com/logo-dark.png" {
+		t.Errorf("expected DarkLogoURL to pass through, got %q", input.DarkLogoURL)
 	}
 	if !input.IsGroupRestricted {
 		t.Error("expected IsGroupRestricted to be true")
@@ -2639,6 +2639,9 @@ func (f *fakeSCIMAPI) CreateOIDCClientSecret(_ context.Context, _, _ string) (po
 	panic("not implemented")
 }
 func (f *fakeSCIMAPI) DeleteOIDCClientSecret(_ context.Context, _, _ string) error {
+	panic("not implemented")
+}
+func (f *fakeSCIMAPI) DeleteOIDCClientLogo(_ context.Context, _ string, _ bool) error {
 	panic("not implemented")
 }
 func (f *fakeSCIMAPI) GetOIDCClientSCIMServiceProvider(_ context.Context, oidcClientID string) (*pocketid.SCIMServiceProvider, error) {

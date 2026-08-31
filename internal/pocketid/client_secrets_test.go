@@ -229,3 +229,50 @@ func TestDeleteOIDCClientSecret(t *testing.T) {
 		}
 	})
 }
+
+func TestDeleteOIDCClientLogo(t *testing.T) {
+	t.Run("targets the requested side", func(t *testing.T) {
+		var path, query string
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			path, query = r.URL.Path, r.URL.RawQuery
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		defer ts.Close()
+
+		client, _ := NewClient(ts.URL, "")
+		if err := client.DeleteOIDCClientLogo(context.Background(), "client-123", false); err != nil {
+			t.Fatalf("DeleteOIDCClientLogo: %v", err)
+		}
+		if path != "/api/oidc/clients/client-123/logo" {
+			t.Errorf("path: got %q", path)
+		}
+		if query != "light=false" {
+			t.Errorf("query: got %q, want light=false", query)
+		}
+	})
+
+	// Removal is retried until it sticks, so a logo already gone is the desired end state.
+	t.Run("treats an already-deleted logo as deleted", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer ts.Close()
+
+		client, _ := NewClient(ts.URL, "")
+		if err := client.DeleteOIDCClientLogo(context.Background(), "client-123", true); err != nil {
+			t.Fatalf("expected a missing logo to count as deleted, got %v", err)
+		}
+	})
+
+	t.Run("propagates other failures", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer ts.Close()
+
+		client, _ := NewClient(ts.URL, "")
+		if err := client.DeleteOIDCClientLogo(context.Background(), "client-123", true); err == nil {
+			t.Fatal("expected a server error to propagate rather than count as deleted")
+		}
+	})
+}

@@ -540,19 +540,21 @@ type PocketIDOIDCClientStatus struct {
 	// +optional
 	PKCESupported *bool `json:"pkceSupported,omitempty"`
 
-	// LogoURL is the last resolved light logo URL that was applied to Pocket-ID.
+	// LogoURL is the light logo URL the operator last successfully applied to Pocket-ID.
 	// +optional
 	LogoURL string `json:"logoUrl,omitempty"`
 
-	// LogoReachable indicates whether the light logo URL was reachable when last checked.
+	// LogoReachable reports whether Pocket-ID could fetch and store the light logo from the
+	// URL the spec resolves to. Unset when the spec asks for no light logo.
 	// +optional
 	LogoReachable *bool `json:"logoReachable,omitempty"`
 
-	// DarkLogoURL is the last resolved dark logo URL that was applied to Pocket-ID.
+	// DarkLogoURL is the dark logo URL the operator last successfully applied to Pocket-ID.
 	// +optional
 	DarkLogoURL string `json:"darkLogoUrl,omitempty"`
 
-	// DarkLogoReachable indicates whether the dark logo URL was reachable when last checked.
+	// DarkLogoReachable reports whether Pocket-ID could fetch and store the dark logo from the
+	// URL the spec resolves to. Unset when the spec asks for no dark logo.
 	// +optional
 	DarkLogoReachable *bool `json:"darkLogoReachable,omitempty"`
 

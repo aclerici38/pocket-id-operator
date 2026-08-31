@@ -20,13 +20,18 @@ import (
 // regen fails here instead of silently never being pushed. Keys Pocket-ID
 // documents as read-only are exempt and listed as such.
 
+// Pocket-ID derives logo presence from the files it has stored and ignores what a write
+// claims, so these keys are never sent. Logos are attached with logoUrl/darkLogoUrl and
+// removed through the logo endpoint.
+var logoPresenceKeys = []string{"hasLogo", "hasDarkLogo"}
+
 func TestCreateOIDCClient_PayloadCoversWriteDTO(t *testing.T) {
 	body := captureOIDCClientWrite(t, http.MethodPost, "/api/oidc/clients", func(c *Client, input OIDCClientInput) error {
 		_, err := c.CreateOIDCClient(context.Background(), input)
 		return err
 	})
 
-	assertDTOFieldsSet(t, models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientCreateDto{}, body, "")
+	assertDTOFieldsSet(t, models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientCreateDto{}, body, "", logoPresenceKeys...)
 	assertFederatedIdentityFieldsSet(t, body)
 }
 
@@ -36,7 +41,7 @@ func TestUpdateOIDCClient_PayloadCoversWriteDTO(t *testing.T) {
 		return err
 	})
 
-	assertDTOFieldsSet(t, models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientUpdateDto{}, body, "")
+	assertDTOFieldsSet(t, models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientUpdateDto{}, body, "", logoPresenceKeys...)
 	assertFederatedIdentityFieldsSet(t, body)
 }
 
@@ -75,8 +80,6 @@ func captureOIDCClientWrite(t *testing.T, method, path string, write func(*Clien
 		LaunchURL:                           "https://example.com",
 		LogoURL:                             "https://example.com/logo.png",
 		DarkLogoURL:                         "https://example.com/logo-dark.png",
-		HasLogo:                             true,
-		HasDarkLogo:                         true,
 		IsPublic:                            true,
 		IsGroupRestricted:                   true,
 		PKCEEnabled:                         true,

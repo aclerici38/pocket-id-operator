@@ -61,6 +61,20 @@ func (e *APIError) Error() string {
 
 func (e *APIError) Unwrap() error { return e.err }
 
+// HasFieldError reports whether a validation failure blames any of fields. The envelope
+// carries them as {"details": {"fields": [{"field": "logoUrl", "message": "..."}]}}.
+func (e *APIError) HasFieldError(fields ...string) bool {
+	entries, _ := e.Details["fields"].([]any)
+	for _, entry := range entries {
+		object, _ := entry.(map[string]any)
+		name, _ := object["field"].(string)
+		if slices.Contains(fields, name) {
+			return true
+		}
+	}
+	return false
+}
+
 // AsAPIError returns the *APIError in err's chain, or nil if the call never got a response.
 func AsAPIError(err error) *APIError {
 	var apiErr *APIError
@@ -102,6 +116,25 @@ var validationCodes = []models.ApperrorCode{
 	models.ApperrorCodeReservedClaim,
 	models.ApperrorCodeDuplicateClaim,
 	models.ApperrorCodeInvalidAPIKeyExpiration,
+}
+
+var logoCodes = []models.ApperrorCode{
+	models.ApperrorCodeLogoDownloadFailed,
+	models.ApperrorCodeLogoTypeNotSupported,
+	models.ApperrorCodeLogoTooLarge,
+}
+
+// IsLogoError reports a failure Pocket-ID blames on a logo URL rather than on the client
+// configuration, which it has already committed by the time it fetches the logo. A URL it
+// rejects outright — not http/https, no host, a private address — is reported as a plain
+// validation failure, so that case is recognised by the field it names instead of by a code.
+func IsLogoError(err error) bool {
+	if classify(err, logoCodes) {
+		return true
+	}
+	apiErr := AsAPIError(err)
+	return apiErr != nil && apiErr.Code == models.ApperrorCodeValidationFailed &&
+		apiErr.HasFieldError("logoUrl", "darkLogoUrl")
 }
 
 func IsNotFoundError(err error) bool {

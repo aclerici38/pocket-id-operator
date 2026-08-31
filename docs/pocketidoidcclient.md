@@ -456,8 +456,8 @@ The operator can automatically set logo URLs for OIDC clients using a configurab
 By default it uses the [dashboard-icons](https://github.com/homarr-labs/dashboard-icons) CDN:
 
 ```
-https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}.png
-https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{{name}}-dark.png
+https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/{{name}}.webp
+https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/{{name}}-light.webp
 ```
 
 The `{{name}}` placeholder in templates is replaced with the resource's `metadata.name` or `spec.logo.nameOverride`.
@@ -512,8 +512,8 @@ Within the `spec.logo` struct, any entries in `spec.logo.logoUrl` or `spec.logo.
 | Variable                  | Default | Description                                        |
 |---------------------------|---------|----------------------------------------------------|
 | `AUTOGENERATE_LOGOS`      | `true`  | Global default for `spec.logo.autoGenerate`.       |
-| `DEFAULT_LOGO_URL`        | *(dashboard-icons PNG)* | Default URL template for light logos. |
-| `DEFAULT_DARK_LOGO_URL`   | *(dashboard-icons PNG)* | Default URL template for dark logos.  |
+| `DEFAULT_LOGO_URL`        | *(dashboard-icons WebP)* | Default URL template for light logos. |
+| `DEFAULT_DARK_LOGO_URL`   | *(dashboard-icons WebP)* | Default URL template for dark logos.  |
 
 ### Examples
 
@@ -528,7 +528,7 @@ spec:
   logo: {}
 ```
 
-This resolves to `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/grafana.png`.
+This resolves to `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/grafana.webp`.
 
 Override the icon name when it doesn't match the client name:
 
@@ -556,18 +556,32 @@ spec:
     autoGenerate: false
 ```
 
-The final URLs and status of the logos are displayed under `status` in the `PocketIDOIDCClient` resource
+### Ownership
+
+The operator takes ownership of a light or dark logo only while a URL resolves for it.
+`status.logoUrl` and `status.darkLogoUrl` record the URL the operator last successfully applied for that side:
 
 ```yaml
 status:
-  darkLogoReachable: false
-  darkLogoUrl: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/immich-dark.png
+  darkLogoUrl: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/immich-light.webp
+  darkLogoReachable: true
+  logoUrl: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/immich.webp
   logoReachable: true
-  logoUrl: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/immich.png
 ```
 
-Logs for the logos are set to `debug` by default to prevent spamming the console with unavailable logos.
-To view the logs add the `--zap-log-level=debug` arg on the operator container.
+- A logo uploaded through the Pocket-ID UI has no applied record, so the operator never
+  touches it. Set `logo.autoGenerate: false` (with no explicit URL) to manage a client's
+  logo by hand on the side you care about.
+- When a light or dark logo stops resolving a URL but its applied record is set in the status, the operator deletes the
+  logo it put there. It never deletes one it did not apply.
+- The same applies when the spec moves to a URL Pocket-ID refuses: the logo the operator
+  applied from the old URL is deleted rather than left in place, since no later reconcile would replace it. A refused URL that is still the one in the applied record is left alone.
+- Ownership is per side, so a client that resolves only a light URL keeps an uploaded dark
+  logo.
+
+### Unusable logo URLs
+
+A URL Pocket-ID rejects is remembered in memory and not attempted again for 24 hours, so a permanently missing icon costs one download attempt a day rather than one every resync. Restarting the operator also clears it.
 
 ## Generated Secret
 

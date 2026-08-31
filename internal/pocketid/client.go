@@ -177,8 +177,8 @@ func clientIDPathParam(id string) string {
 // ToInput converts an OIDCClient into an OIDCClientInput for comparison with desired state.
 // ID and Credentials are not included: federated identities aren't returned by the GET API, and
 // the secrets it carries have their own endpoints.
-// LogoURL and DarkLogoURL are write-only (not returned by the API); logo presence is
-// tracked via HasLogo/HasDarkLogo instead.
+// LogoURL and DarkLogoURL are write-only (not returned by the API) and are reconciled
+// separately, so they are left zero here.
 // AllowedUserGroupIDs is managed separately and excluded from the input.
 // PKCESupported is read-only (set by Pocket-ID, never pushed) and excluded from the input.
 func (c *OIDCClient) ToInput() OIDCClientInput {
@@ -188,8 +188,6 @@ func (c *OIDCClient) ToInput() OIDCClientInput {
 		CallbackURLs:                        c.CallbackURLs,
 		LogoutCallbackURLs:                  c.LogoutCallbackURLs,
 		LaunchURL:                           c.LaunchURL,
-		HasLogo:                             c.HasLogo,
-		HasDarkLogo:                         c.HasDarkLogo,
 		IsPublic:                            c.IsPublic,
 		IsGroupRestricted:                   c.IsGroupRestricted,
 		PKCEEnabled:                         c.PKCEEnabled,
@@ -225,8 +223,6 @@ type OIDCClientInput struct {
 	LaunchURL                           string
 	LogoURL                             string
 	DarkLogoURL                         string
-	HasLogo                             bool
-	HasDarkLogo                         bool
 	IsPublic                            bool
 	IsGroupRestricted                   bool
 	PKCEEnabled                         bool
@@ -239,15 +235,13 @@ type OIDCClientInput struct {
 }
 
 // Equal compares two OIDCClientInputs for equality on the fields that can be
-// compared (excludes ID and Credentials which are create-time or write-only,
-// and excludes LogoURL/DarkLogoURL which are not returned by the GET API —
-// logo presence is compared via HasLogo/HasDarkLogo instead).
+// compared (excludes ID and Credentials which are create-time or write-only, and
+// LogoURL/DarkLogoURL, which are attach-only instructions the GET API never echoes —
+// logos are reconciled separately against OIDCClient.HasLogo/HasDarkLogo).
 func (i OIDCClientInput) Equal(other OIDCClientInput) bool {
 	if i.Name != other.Name ||
 		i.Description != other.Description ||
 		i.LaunchURL != other.LaunchURL ||
-		i.HasLogo != other.HasLogo ||
-		i.HasDarkLogo != other.HasDarkLogo ||
 		i.IsPublic != other.IsPublic ||
 		i.IsGroupRestricted != other.IsGroupRestricted ||
 		i.PKCEEnabled != other.PKCEEnabled ||
@@ -706,8 +700,6 @@ func (c *Client) CreateOIDCClient(ctx context.Context, input OIDCClientInput) (*
 		LaunchURL:                           input.LaunchURL,
 		LogoURL:                             input.LogoURL,
 		DarkLogoURL:                         input.DarkLogoURL,
-		HasLogo:                             input.HasLogo,
-		HasDarkLogo:                         input.HasDarkLogo,
 		IsPublic:                            input.IsPublic,
 		IsGroupRestricted:                   input.IsGroupRestricted,
 		PkceEnabled:                         input.PKCEEnabled,
@@ -748,8 +740,6 @@ func (c *Client) UpdateOIDCClient(ctx context.Context, id string, input OIDCClie
 			LaunchURL:                           input.LaunchURL,
 			LogoURL:                             input.LogoURL,
 			DarkLogoURL:                         input.DarkLogoURL,
-			HasLogo:                             input.HasLogo,
-			HasDarkLogo:                         input.HasDarkLogo,
 			IsPublic:                            input.IsPublic,
 			IsGroupRestricted:                   input.IsGroupRestricted,
 			PkceEnabled:                         input.PKCEEnabled,
@@ -885,6 +875,23 @@ func (c *Client) DeleteOIDCClientSecret(ctx context.Context, id, secretID string
 	recordCall("delete_oidc_client_secret", err, time.Since(start))
 	if err != nil && !IsNotFoundError(err) {
 		return fmt.Errorf("delete OIDC client secret failed: %w", err)
+	}
+
+	return nil
+}
+
+// DeleteOIDCClientLogo removes the stored logo for one side of a client. One already gone
+// counts as deleted, so a retried removal converges.
+func (c *Client) DeleteOIDCClientLogo(ctx context.Context, id string, light bool) error {
+	params := oidc.NewDeleteAPIOidcClientsIDLogoParams().
+		WithID(clientIDPathParam(id)).
+		WithLight(&light)
+
+	start := time.Now()
+	_, err := c.raw.OIDc.DeleteAPIOidcClientsIDLogoContext(ctx, params)
+	recordCall("delete_oidc_client_logo", err, time.Since(start))
+	if err != nil && !IsNotFoundError(err) {
+		return fmt.Errorf("delete OIDC client logo failed: %w", err)
 	}
 
 	return nil
