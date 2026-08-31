@@ -487,6 +487,56 @@ func TestReconcileLogos_BehaviorTable(t *testing.T) {
 	}
 }
 
+func TestLogoDeletePending(t *testing.T) {
+	const url = "https://cdn.example.com/logo.png"
+
+	tests := []struct {
+		name              string
+		resolved, applied string
+		failed            bool
+		want              bool
+	}{
+		{
+			name:     "a URL still in play strands nothing",
+			resolved: url, applied: "https://cdn.example.com/old.png",
+		},
+		{
+			name:     "a refused URL stranding an applied logo",
+			resolved: url, applied: "https://cdn.example.com/old.png", failed: true, want: true,
+		},
+		{
+			name:     "a refused URL that is itself the applied one",
+			resolved: url, applied: url, failed: true,
+		},
+		{
+			name:     "a refused URL with nothing applied",
+			resolved: url, failed: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Run each row on both sides so neither is special-cased.
+			for _, light := range []bool{true, false} {
+				oidcClient := logoClient("", "", "")
+				if light {
+					oidcClient.Spec.LogoURL, oidcClient.Status.LogoURL = tt.resolved, tt.applied
+				} else {
+					oidcClient.Spec.DarkLogoURL, oidcClient.Status.DarkLogoURL = tt.resolved, tt.applied
+				}
+
+				r := &Reconciler{}
+				if tt.failed {
+					r.markLogoURLsFailed(tt.resolved)
+				}
+				if got := r.logoDeletePending(oidcClient); got != tt.want {
+					t.Errorf("light=%v: got %v, want %v", light, got, tt.want)
+				}
+			}
+		})
+	}
+}
+
 // A client that resolves only a light URL must not disturb an uploaded dark logo.
 func TestReconcileLogos_OnlyLightResolvedLeavesUploadedDarkLogo(t *testing.T) {
 	r := &Reconciler{}

@@ -263,6 +263,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionTrue, "Reconciled", "OIDC client is in sync")
 
+	if r.logoDeletePending(oidcClient) {
+		return ctrl.Result{RequeueAfter: common.RequeueImmediate}, nil
+	}
+
 	return common.ApplyResync(ctrl.Result{}), nil
 }
 
@@ -797,7 +801,7 @@ func (r *Reconciler) reconcileLogoSide(ctx context.Context, apiClient PocketIDOI
 	switch {
 	case resolved == "" || r.logoURLFailed(resolved):
 		// Nothing will be pushed here: the spec asks for no logo, or for a URL Pocket-ID already refused
-		if applied == "" || applied == resolved {
+		if !logoStranded(resolved, applied) {
 			return "", applied, nil
 		}
 		logf.FromContext(ctx).Info("Removing logo the spec no longer asks for", "url", applied, "light", light)
@@ -819,6 +823,19 @@ func (r *Reconciler) expireFailedLogoURLs() {
 	}
 	r.failedLogoURLs = nil
 	r.failedLogoURLsResetAt = time.Now()
+}
+
+// logoStranded reports an applied logo the spec has moved away from. A refused URL that is
+// still the applied one leaves nothing stranded.
+func logoStranded(resolved, applied string) bool {
+	return applied != "" && applied != resolved
+}
+
+// logoDeletePending reports a logo stranded by a URL refused during this pass.
+func (r *Reconciler) logoDeletePending(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) bool {
+	light, dark := r.resolveLogoURLs(oidcClient)
+	return (r.logoURLFailed(light) && logoStranded(light, oidcClient.Status.LogoURL)) ||
+		(r.logoURLFailed(dark) && logoStranded(dark, oidcClient.Status.DarkLogoURL))
 }
 
 func (r *Reconciler) logoURLFailed(url string) bool {
