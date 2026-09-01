@@ -70,14 +70,14 @@ jobs:
     permissions:
       actions: write
       contents: read
-    uses: ./.github/workflows/test.yaml
+    uses: $/.github/workflows/test.yaml
 
   lint:
     name: Lint
     permissions:
       actions: write
       contents: read
-    uses: ./.github/workflows/lint.yaml
+    uses: $/.github/workflows/lint.yaml
 
   build:
     name: Build Image
@@ -88,7 +88,7 @@ jobs:
       contents: write
       id-token: write
       packages: write
-    uses: ./.github/workflows/build-push-image.yaml
+    uses: $/.github/workflows/build-push-image.yaml
     with:
       image_repo: ${{ needs.meta.outputs.image_repo }}
       image_tag: ${{ needs.meta.outputs.image_tag }}
@@ -105,7 +105,7 @@ jobs:
       actions: write
       contents: read
       packages: read
-    uses: ./.github/workflows/test-e2e.yaml
+    uses: $/.github/workflows/test-e2e.yaml
     with:
       image_repo: ${{ needs.meta.outputs.image_repo }}
       image_tag: ${{ needs.meta.outputs.image_tag }}
@@ -120,7 +120,7 @@ jobs:
       actions: write
       contents: read
       packages: read
-    uses: ./.github/workflows/test-e2e.yaml
+    uses: $/.github/workflows/test-e2e.yaml
     with:
       image_repo: ${{ needs.meta.outputs.image_repo }}
       image_tag: ${{ needs.meta.outputs.image_tag }}
@@ -133,7 +133,7 @@ jobs:
       actions: write
       contents: read
       packages: read
-    uses: ./.github/workflows/test-e2e.yaml
+    uses: $/.github/workflows/test-e2e.yaml
     with:
       latest_release: true
 
@@ -146,7 +146,7 @@ jobs:
       actions: write
       contents: read
       packages: read
-    uses: ./.github/workflows/test-chart.yaml
+    uses: $/.github/workflows/test-chart.yaml
     with:
       image_repo: ${{ needs.meta.outputs.image_repo }}
       image_tag: ${{ needs.meta.outputs.image_tag }}

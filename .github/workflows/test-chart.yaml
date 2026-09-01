@@ -51,7 +51,7 @@ jobs:
 
       - name: Resolve latest release
         id: release
-        uses: ./.github/actions/latest-release
+        uses: $/.github/actions/latest-release
         with:
           token: ${{ github.token }}
 

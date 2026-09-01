@@ -65,7 +65,7 @@ jobs:
       - name: Resolve latest release
         if: inputs.latest_release
         id: release
-        uses: ./.github/actions/latest-release
+        uses: $/.github/actions/latest-release
         with:
           token: ${{ github.token }}
 

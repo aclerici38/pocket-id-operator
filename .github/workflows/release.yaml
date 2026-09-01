@@ -192,14 +192,28 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Setup mise
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          # renovate: datasource=github-releases depName=jdx/mise
+          version: "2026.8.15"
+          install_args: "aqua:orhun/git-cliff"
+
       # On a promotion the release tag already sits on this commit, so its history
       # is no longer "unreleased" and --current is what selects it.
+      # cliff-artifacthub.toml declares no [remote.github], so this needs no token.
       - name: Generate changelog
         id: changelog
-        uses: orhun/git-cliff-action@3d96a18cc4ec17e9dc69ddcc424ccafaf1f78ce2 # v4.9.0
-        with:
-          config: cliff-artifacthub.toml
-          args: ${{ needs.prepare.outputs.promote == 'true' && '--current' || '--unreleased' }} --strip header
+        env:
+          RANGE: ${{ needs.prepare.outputs.promote == 'true' && '--current' || '--unreleased' }}
+        run: |
+          git-cliff --config cliff-artifacthub.toml "$RANGE" --strip header \
+            --output /tmp/changelog.md
+          {
+            echo "content<<CHANGELOG_EOF"
+            cat /tmp/changelog.md
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
 
   retag-image:
     name: Retag Docker image
@@ -242,7 +256,7 @@ jobs:
     needs:
       - prepare
       - changelog
-    uses: ./.github/workflows/push-chart.yaml
+    uses: $/.github/workflows/push-chart.yaml
     with:
       changelog: ${{ needs.changelog.outputs.changelog }}
       ref: ${{ needs.prepare.outputs.sha }}
@@ -290,14 +304,22 @@ jobs:
       #     new prerelease and for a fresh full release without a prior one.
       #     dist/ and the chart schemas are committed and were bumped by prepare,
       #     so the assets are taken from the tree as-is. ---
+      - name: Setup mise
+        if: ${{ needs.prepare.outputs.promote != 'true' }}
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          # renovate: datasource=github-releases depName=jdx/mise
+          version: "2026.8.15"
+          install_args: "aqua:orhun/git-cliff"
+
+      # cliff.toml declares [remote.github] and templates commit.remote.username,
       - name: Generate changelog
         if: ${{ needs.prepare.outputs.promote != 'true' }}
-        uses: orhun/git-cliff-action@3d96a18cc4ec17e9dc69ddcc424ccafaf1f78ce2 # v4.9.0
-        with:
-          config: cliff.toml
-          args: --unreleased --strip header
         env:
-          OUTPUT: /tmp/changelog.md
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          git-cliff --config cliff.toml --unreleased --strip header \
+            --output /tmp/changelog.md
 
       - name: Prepend highlights
         if: ${{ needs.prepare.outputs.promote != 'true' && inputs.highlights != '' }}
