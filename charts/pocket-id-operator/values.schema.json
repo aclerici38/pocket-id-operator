@@ -5383,7 +5383,7 @@
                           },
                           "resource": {
                             "default": "resource",
-                            "description": "Resource is the key name for the audience to request tokens for, resolved from the\nAPIs referenced by apiAccess. It also prefixes the per-API key \"<resource>_<apiRef.name>\".\nDefaults to resource",
+                            "description": "Resource is the key name for the audience to request tokens for, taken from the APIs\nin apiAccess. It also prefixes the per-API key \"<resource>_<apiRef.name>\".\nDefaults to resource",
                             "type": [
                               "string",
                               "null"
@@ -5391,7 +5391,7 @@
                           },
                           "scopes": {
                             "default": "scopes",
-                            "description": "Scopes is the key name for the space-delimited scopes granted to the client-credentials\nflow by apiAccess. It also prefixes the per-API key \"<scopes>_<apiRef.name>\".\nDefaults to scopes",
+                            "description": "Scopes is the key name for the space-delimited scopes apiAccess grants the\nclient-credentials flow. It also prefixes the per-API key \"<scopes>_<apiRef.name>\".\nDefaults to scopes",
                             "type": [
                               "string",
                               "null"
