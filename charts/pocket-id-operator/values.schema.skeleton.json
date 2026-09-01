@@ -237,12 +237,13 @@
           "default": true
         },
         "defaultLogoUrl": {
-          "type": "string",
-          "description": "Default URL template for light logos. Use {{name}} as placeholder. Defaults to the dashboard-icons CDN."
+          "type": ["string", "null"],
+          "description": "URL template for auto-generated light logos. Use {{name}} as placeholder. Unset generates no light logo.",
+          "default": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/{{name}}.webp"
         },
         "defaultDarkLogoUrl": {
-          "type": "string",
-          "description": "Default URL template for dark logos. Use {{name}} as placeholder. Defaults to the dashboard-icons CDN."
+          "type": ["string", "null"],
+          "description": "URL template for auto-generated dark logos. Use {{name}} as placeholder. Unset generates no dark logo."
         }
       }
     },
