@@ -222,6 +222,12 @@ func TestGetSecretKeys_Defaults(t *testing.T) {
 	if keys.LogoutCallbackURLs != "logout_callback_urls" {
 		t.Errorf("expected LogoutCallbackURLs %q, got %q", "logout_callback_urls", keys.LogoutCallbackURLs)
 	}
+	if keys.Resource != "resource" {
+		t.Errorf("expected Resource %q, got %q", "resource", keys.Resource)
+	}
+	if keys.Scopes != "scopes" {
+		t.Errorf("expected Scopes %q, got %q", "scopes", keys.Scopes)
+	}
 }
 
 func TestGetSecretKeys_Custom(t *testing.T) {
@@ -238,6 +244,8 @@ func TestGetSecretKeys_Custom(t *testing.T) {
 					IssuerURL:          "custom_issuer",
 					CallbackURLs:       "custom_callbacks",
 					LogoutCallbackURLs: "custom_logout",
+					Resource:           "custom_resource",
+					Scopes:             "custom_scopes",
 				},
 			},
 		},
@@ -257,6 +265,12 @@ func TestGetSecretKeys_Custom(t *testing.T) {
 	}
 	if keys.LogoutCallbackURLs != "custom_logout" {
 		t.Errorf("expected LogoutCallbackURLs %q, got %q", "custom_logout", keys.LogoutCallbackURLs)
+	}
+	if keys.Resource != "custom_resource" {
+		t.Errorf("expected Resource %q, got %q", "custom_resource", keys.Resource)
+	}
+	if keys.Scopes != "custom_scopes" {
+		t.Errorf("expected Scopes %q, got %q", "custom_scopes", keys.Scopes)
 	}
 }
 
@@ -619,6 +633,12 @@ func TestGetSecretKeys_PartialCustom(t *testing.T) {
 	if keys.IssuerURL != "issuer_url" {
 		t.Errorf("expected IssuerURL %q, got %q", "issuer_url", keys.IssuerURL)
 	}
+	if keys.Resource != "resource" {
+		t.Errorf("expected Resource %q, got %q", "resource", keys.Resource)
+	}
+	if keys.Scopes != "scopes" {
+		t.Errorf("expected Scopes %q, got %q", "scopes", keys.Scopes)
+	}
 }
 
 func TestReconcileSecret_DeleteWhenDisabled(t *testing.T) {
@@ -733,6 +753,173 @@ func TestReconcileSecret_NoErrorWhenDisablingNonExistent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReconcileSecret returned error: %v", err)
 	}
+}
+
+// tokenParamSecret reconciles a client's credentials Secret and returns its data.
+func tokenParamSecret(t *testing.T, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apis ...client.Object) map[string][]byte {
+	t.Helper()
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	instance := &pocketidinternalv1alpha1.PocketIDInstance{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-instance", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+			AppURL:        "http://test.example.com",
+			EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{Value: "0123456789abcdef"},
+		},
+	}
+
+	objects := append([]client.Object{oidcClient, instance}, apis...)
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
+	reconciler := &Reconciler{Client: fakeClient, Scheme: scheme}
+
+	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, nil, nil); err != nil {
+		t.Fatalf("ReconcileSecret returned error: %v", err)
+	}
+
+	secret := &corev1.Secret{}
+	if err := fakeClient.Get(ctx, client.ObjectKey{
+		Name:      reconciler.GetSecretName(oidcClient),
+		Namespace: testNamespace,
+	}, secret); err != nil {
+		t.Fatalf("expected secret to exist: %v", err)
+	}
+	return secret.Data
+}
+
+// clientWithAPIAccess builds a confidential client, which clientPermissions require. Its
+// client secret is managed outside the cluster, so none has to be minted through Pocket-ID.
+func clientWithAPIAccess(name string, keys *pocketidinternalv1alpha1.OIDCClientSecretKeys, grants ...pocketidinternalv1alpha1.OIDCClientAPIAccess) *pocketidinternalv1alpha1.PocketIDOIDCClient {
+	storeClientSecret := false
+	return &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace, UID: types.UID(name)},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			APIAccess: grants,
+			Secret: &pocketidinternalv1alpha1.OIDCClientSecretSpec{
+				StoreClientSecret: &storeClientSecret,
+				Keys:              keys,
+			},
+		},
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{ClientID: "client-api"},
+	}
+}
+
+// assertKeys checks the given Secret keys. An empty value means the key must be absent.
+func assertKeys(t *testing.T, data map[string][]byte, want map[string]string) {
+	t.Helper()
+	for key, value := range want {
+		got, ok := data[key]
+		if value == "" {
+			if ok {
+				t.Errorf("expected key %q to be absent, got %q", key, got)
+			}
+			continue
+		}
+		if !ok {
+			t.Errorf("expected key %q to be present", key)
+			continue
+		}
+		if string(got) != value {
+			t.Errorf("%s = %q, want %q", key, got, value)
+		}
+	}
+}
+
+func TestReconcileSecret_EmitsResourceAndScopes(t *testing.T) {
+	api := readyAPI(nil)
+	api.Status.Resource = "https://orders.example.com"
+
+	data := tokenParamSecret(t, clientWithAPIAccess("test-api-access", nil,
+		pocketidinternalv1alpha1.OIDCClientAPIAccess{
+			APIRef:            pocketidinternalv1alpha1.NamespacedAPIReference{Name: "orders"},
+			ClientPermissions: []string{"sync:orders", "read:orders"},
+		}), api)
+
+	// One API, so the bare pair is written alongside the per-API pair.
+	assertKeys(t, data, map[string]string{
+		"resource":        "https://orders.example.com",
+		"scopes":          "read:orders sync:orders",
+		"resource_orders": "https://orders.example.com",
+		"scopes_orders":   "read:orders sync:orders",
+	})
+}
+
+func TestReconcileSecret_EmitsPerAPIKeysForMultipleResources(t *testing.T) {
+	orders := readyAPI(nil)
+	orders.Status.Resource = "https://orders.example.com"
+	billing := readyAPI(nil)
+	billing.Name = "billing"
+	billing.Status.Resource = "https://billing.example.com"
+
+	data := tokenParamSecret(t, clientWithAPIAccess("test-multi-api", nil,
+		pocketidinternalv1alpha1.OIDCClientAPIAccess{
+			APIRef:            pocketidinternalv1alpha1.NamespacedAPIReference{Name: "orders"},
+			ClientPermissions: []string{"sync:orders"},
+		},
+		pocketidinternalv1alpha1.OIDCClientAPIAccess{
+			APIRef:            pocketidinternalv1alpha1.NamespacedAPIReference{Name: "billing"},
+			ClientPermissions: []string{"read:invoices"},
+		}), orders, billing)
+
+	assertKeys(t, data, map[string]string{
+		"resource_orders":  "https://orders.example.com",
+		"scopes_orders":    "sync:orders",
+		"resource_billing": "https://billing.example.com",
+		"scopes_billing":   "read:invoices",
+		// Two audiences, so the bare pair is left out.
+		"resource": "",
+		"scopes":   "",
+	})
+}
+
+func TestReconcileSecret_EmitsResourceAndScopesUnderCustomKeys(t *testing.T) {
+	api := readyAPI(nil)
+	api.Status.Resource = "https://orders.example.com"
+
+	data := tokenParamSecret(t, clientWithAPIAccess("test-api-access-keys",
+		&pocketidinternalv1alpha1.OIDCClientSecretKeys{Resource: "audience", Scopes: "scope"},
+		pocketidinternalv1alpha1.OIDCClientAPIAccess{
+			APIRef:            pocketidinternalv1alpha1.NamespacedAPIReference{Name: "orders"},
+			ClientPermissions: []string{"read:orders"},
+		}), api)
+
+	// The custom names prefix the per-API keys too.
+	assertKeys(t, data, map[string]string{
+		"audience":        "https://orders.example.com",
+		"scope":           "read:orders",
+		"audience_orders": "https://orders.example.com",
+		"scope_orders":    "read:orders",
+		"resource":        "",
+		"scopes":          "",
+		"resource_orders": "",
+		"scopes_orders":   "",
+	})
+}
+
+func TestReconcileSecret_OmitsScopesWithoutClientPermissions(t *testing.T) {
+	api := readyAPI(nil)
+	api.Status.Resource = "https://orders.example.com"
+
+	data := tokenParamSecret(t, clientWithAPIAccess("test-api-access-delegated", nil,
+		pocketidinternalv1alpha1.OIDCClientAPIAccess{
+			APIRef:               pocketidinternalv1alpha1.NamespacedAPIReference{Name: "orders"},
+			DelegatedPermissions: []string{"read:orders"},
+		}), api)
+
+	assertKeys(t, data, map[string]string{
+		"resource":        "https://orders.example.com",
+		"resource_orders": "https://orders.example.com",
+		"scopes":          "",
+		"scopes_orders":   "",
+	})
+}
+
+func TestReconcileSecret_OmitsTokenParamsWithoutAPIAccess(t *testing.T) {
+	data := tokenParamSecret(t, clientWithAPIAccess("test-no-api-access", nil))
+
+	assertKeys(t, data, map[string]string{"resource": "", "scopes": ""})
 }
 
 func TestReconcileSecret_CreateForPublicClient(t *testing.T) {

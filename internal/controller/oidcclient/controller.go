@@ -1222,10 +1222,7 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 
 	rotatedAt := rotationTimestamp(minted)
 
-	appURL := instance.EffectiveAppURL()
-	if appURL != "" {
-		secretData[keys.IssuerURL] = []byte(appURL)
-	}
+	addInstanceURLData(instance.EffectiveAppURL(), keys, secretData)
 
 	if len(oidcClient.Spec.CallbackURLs) > 0 {
 		callbackURLsJSON, err := json.Marshal(oidcClient.Spec.CallbackURLs)
@@ -1243,14 +1240,8 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 		secretData[keys.LogoutCallbackURLs] = logoutCallbackURLsJSON
 	}
 
-	if appURL != "" {
-		baseURL := appURL
-		secretData[keys.DiscoveryURL] = []byte(baseURL + "/.well-known/openid-configuration")
-		secretData[keys.AuthorizationURL] = []byte(baseURL + "/authorize")
-		secretData[keys.TokenURL] = []byte(baseURL + "/api/oidc/token")
-		secretData[keys.UserinfoURL] = []byte(baseURL + "/api/oidc/userinfo")
-		secretData[keys.JwksURL] = []byte(baseURL + "/.well-known/jwks.json")
-		secretData[keys.EndSessionURL] = []byte(baseURL + "/api/oidc/end-session")
+	if err := r.addAPITokenParams(ctx, oidcClient, keys, secretData); err != nil {
+		return err
 	}
 
 	secretLabels := r.GetSecretLabels(oidcClient)
@@ -1817,6 +1808,21 @@ func reconcileSecretAnnotations(secret *corev1.Secret, desired map[string]string
 	secret.Annotations = annotations
 }
 
+// addInstanceURLData writes the issuer and the OIDC endpoints built from the instance's app
+// URL. Nothing is written when there is no app URL.
+func addInstanceURLData(appURL string, keys pocketidinternalv1alpha1.OIDCClientSecretKeys, secretData map[string][]byte) {
+	if appURL == "" {
+		return
+	}
+	secretData[keys.IssuerURL] = []byte(appURL)
+	secretData[keys.DiscoveryURL] = []byte(appURL + "/.well-known/openid-configuration")
+	secretData[keys.AuthorizationURL] = []byte(appURL + "/authorize")
+	secretData[keys.TokenURL] = []byte(appURL + "/api/oidc/token")
+	secretData[keys.UserinfoURL] = []byte(appURL + "/api/oidc/userinfo")
+	secretData[keys.JwksURL] = []byte(appURL + "/.well-known/jwks.json")
+	secretData[keys.EndSessionURL] = []byte(appURL + "/api/oidc/end-session")
+}
+
 func (r *Reconciler) GetSecretKeys(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) pocketidinternalv1alpha1.OIDCClientSecretKeys {
 	defaults := pocketidinternalv1alpha1.OIDCClientSecretKeys{
 		ClientID:           "client_id",
@@ -1830,6 +1836,8 @@ func (r *Reconciler) GetSecretKeys(oidcClient *pocketidinternalv1alpha1.PocketID
 		UserinfoURL:        "userinfo_url",
 		JwksURL:            "jwks_url",
 		EndSessionURL:      "end_session_url",
+		Resource:           "resource",
+		Scopes:             "scopes",
 	}
 
 	if oidcClient.Spec.Secret == nil || oidcClient.Spec.Secret.Keys == nil {
@@ -1870,6 +1878,12 @@ func (r *Reconciler) GetSecretKeys(oidcClient *pocketidinternalv1alpha1.PocketID
 	}
 	if keys.EndSessionURL == "" {
 		keys.EndSessionURL = defaults.EndSessionURL
+	}
+	if keys.Resource == "" {
+		keys.Resource = defaults.Resource
+	}
+	if keys.Scopes == "" {
+		keys.Scopes = defaults.Scopes
 	}
 
 	return keys

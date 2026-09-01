@@ -379,6 +379,119 @@ func TestReconcileAPIAccess_StandardClientNotFetchedWhenNothingManaged(t *testin
 	}
 }
 
+func TestResolveAPITokenParams_MergesEntriesForOneAPI(t *testing.T) {
+	s := apiAccessScheme(t)
+	api := readyAPI(nil)
+	api.Status.Resource = "https://orders.example.com"
+	// Two entries for the same API: their client permissions merge.
+	oidcClient := clientWithAccess([]pocketidinternalv1alpha1.OIDCClientAPIAccess{
+		{
+			APIRef:               pocketidinternalv1alpha1.NamespacedAPIReference{Name: "orders"},
+			DelegatedPermissions: []string{"list:orders"},
+			ClientPermissions:    []string{"sync:orders"},
+		},
+		{
+			APIRef:            pocketidinternalv1alpha1.NamespacedAPIReference{Name: "orders", Namespace: "default"},
+			ClientPermissions: []string{"read:orders", "sync:orders"},
+		},
+	})
+
+	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(api).Build()}
+
+	params, err := r.resolveAPITokenParams(context.Background(), oidcClient)
+	if err != nil {
+		t.Fatalf("resolveAPITokenParams: %v", err)
+	}
+	if len(params) != 1 {
+		t.Fatalf("expected one entry, got %+v", params)
+	}
+	if params[0].name != "orders" || params[0].resource != "https://orders.example.com" {
+		t.Fatalf("params = %+v", params[0])
+	}
+	// Delegated permissions are not client-credentials scopes.
+	if !reflect.DeepEqual(sortedKeys(params[0].scopes), []string{"read:orders", "sync:orders"}) {
+		t.Fatalf("scopes = %v", sortedKeys(params[0].scopes))
+	}
+}
+
+func TestResolveAPITokenParams_SortsByReferencedName(t *testing.T) {
+	s := apiAccessScheme(t)
+	orders := readyAPI(nil)
+	orders.Status.Resource = "https://orders.example.com"
+	billing := readyAPI(nil)
+	billing.Name = "billing"
+	billing.Status.Resource = "https://billing.example.com"
+	oidcClient := clientWithAccess([]pocketidinternalv1alpha1.OIDCClientAPIAccess{
+		{APIRef: pocketidinternalv1alpha1.NamespacedAPIReference{Name: "orders"}},
+		{APIRef: pocketidinternalv1alpha1.NamespacedAPIReference{Name: "billing"}},
+	})
+
+	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(orders, billing).Build()}
+
+	params, err := r.resolveAPITokenParams(context.Background(), oidcClient)
+	if err != nil {
+		t.Fatalf("resolveAPITokenParams: %v", err)
+	}
+	if len(params) != 2 || params[0].name != "billing" || params[1].name != "orders" {
+		t.Fatalf("expected entries sorted by name, got %+v", params)
+	}
+}
+
+func TestResolveAPITokenParams_FallsBackToSpecResource(t *testing.T) {
+	s := apiAccessScheme(t)
+	api := readyAPI(nil)
+	api.Spec.Resource = "https://orders.example.com"
+	yes := true
+	oidcClient := clientWithAccess([]pocketidinternalv1alpha1.OIDCClientAPIAccess{{
+		APIRef:       pocketidinternalv1alpha1.NamespacedAPIReference{Name: "orders"},
+		ClientAccess: &yes,
+	}})
+
+	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(api).Build()}
+
+	params, err := r.resolveAPITokenParams(context.Background(), oidcClient)
+	if err != nil {
+		t.Fatalf("resolveAPITokenParams: %v", err)
+	}
+	if len(params) != 1 || params[0].resource != "https://orders.example.com" {
+		t.Fatalf("params = %+v", params)
+	}
+	if len(params[0].scopes) != 0 {
+		t.Fatalf("expected no scopes for a grant with no client permissions, got %v", params[0].scopes)
+	}
+}
+
+func TestResolveAPITokenParams_ErrorsOnSameNameInTwoNamespaces(t *testing.T) {
+	s := apiAccessScheme(t)
+	local := readyAPI(nil)
+	local.Status.Resource = "https://orders.example.com"
+	shared := readyAPI(nil)
+	shared.Namespace = "shared"
+	shared.Status.Resource = "https://shared-orders.example.com"
+	oidcClient := clientWithAccess([]pocketidinternalv1alpha1.OIDCClientAPIAccess{
+		{APIRef: pocketidinternalv1alpha1.NamespacedAPIReference{Name: "orders"}},
+		{APIRef: pocketidinternalv1alpha1.NamespacedAPIReference{Name: "orders", Namespace: "shared"}},
+	})
+
+	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(local, shared).Build()}
+	// Both would claim resource_orders.
+	if _, err := r.resolveAPITokenParams(context.Background(), oidcClient); err == nil {
+		t.Fatal("expected error when two APIs collide on the same secret key")
+	}
+}
+
+func TestResolveAPITokenParams_ErrorsWhenAPIMissing(t *testing.T) {
+	s := apiAccessScheme(t)
+	oidcClient := clientWithAccess([]pocketidinternalv1alpha1.OIDCClientAPIAccess{{
+		APIRef: pocketidinternalv1alpha1.NamespacedAPIReference{Name: "orders"},
+	}})
+
+	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).Build()}
+	if _, err := r.resolveAPITokenParams(context.Background(), oidcClient); err == nil {
+		t.Fatal("expected error when the referenced API does not exist")
+	}
+}
+
 func TestMergeSorted(t *testing.T) {
 	got := mergeSorted([]string{"b", "a"}, []string{"a", "c"})
 	if !reflect.DeepEqual(got, []string{"a", "b", "c"}) {

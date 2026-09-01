@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -200,6 +201,111 @@ func (r *Reconciler) resolveAPIAccess(ctx context.Context, oidcClient *pocketidi
 		desired[apiID] = grant
 	}
 	return desired, nil
+}
+
+// addAPITokenParams writes what a token request needs: the audience to ask for and the scopes
+// the client-credentials flow may request. Each API gets its own pair, keyed by the name it is
+// referenced by, because a token is issued for one audience and scopes belong to one API.
+// The unsuffixed pair is written as well while all the grants share an audience. Once they do
+// not, it is dropped rather than made to pick one.
+func (r *Reconciler) addAPITokenParams(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, keys pocketidinternalv1alpha1.OIDCClientSecretKeys, secretData map[string][]byte) error {
+	params, err := r.resolveAPITokenParams(ctx, oidcClient)
+	if err != nil {
+		return err
+	}
+
+	resources := make(map[string]struct{}, len(params))
+	allScopes := make(map[string]struct{})
+	for _, p := range params {
+		setTokenParams(secretData, keys.Resource+"_"+p.name, keys.Scopes+"_"+p.name, p.resource, sortedKeys(p.scopes))
+		resources[p.resource] = struct{}{}
+		for scope := range p.scopes {
+			allScopes[scope] = struct{}{}
+		}
+	}
+	if len(resources) == 1 {
+		setTokenParams(secretData, keys.Resource, keys.Scopes, params[0].resource, sortedKeys(allScopes))
+	}
+	return nil
+}
+
+// setTokenParams writes one resource/scopes pair. A grant with no client permissions gets no
+// scopes key: it is a request for the audience alone.
+func setTokenParams(secretData map[string][]byte, resourceKey, scopesKey, resource string, scopes []string) {
+	if resource == "" {
+		return
+	}
+	secretData[resourceKey] = []byte(resource)
+	if len(scopes) > 0 {
+		secretData[scopesKey] = []byte(strings.Join(scopes, " "))
+	}
+}
+
+// apiTokenParams is what one API contributes to the credentials Secret.
+type apiTokenParams struct {
+	// name is the apiRef.name, used as the Secret key suffix. Resources are usually URIs,
+	// which are not legal Secret keys; a DNS-1123 name always is.
+	name      string
+	namespace string
+	resource  string
+	scopes    map[string]struct{}
+}
+
+// resolveAPITokenParams returns one entry per API in spec.apiAccess, sorted by name. Entries
+// naming the same API are merged.
+func (r *Reconciler) resolveAPITokenParams(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) ([]apiTokenParams, error) {
+	byName := make(map[string]*apiTokenParams)
+
+	for _, grant := range oidcClient.Spec.APIAccess {
+		namespace := grant.APIRef.Namespace
+		if namespace == "" {
+			namespace = oidcClient.Namespace
+		}
+
+		entry, seen := byName[grant.APIRef.Name]
+		if seen && entry.namespace != namespace {
+			// Both would claim the same Secret key, so fail instead of letting one win.
+			return nil, fmt.Errorf("apiAccess references two APIs named %q, in namespaces %s and %s, which collide on the same secret key",
+				grant.APIRef.Name, entry.namespace, namespace)
+		}
+		if !seen {
+			api := &pocketidinternalv1alpha1.PocketIDAPI{}
+			if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: grant.APIRef.Name}, api); err != nil {
+				return nil, fmt.Errorf("get API %s: %w", grant.APIRef.Name, err)
+			}
+			// Status is what Pocket-ID holds. Spec covers a status not written back yet.
+			resource := api.Status.Resource
+			if resource == "" {
+				resource = api.Spec.Resource
+			}
+			entry = &apiTokenParams{
+				name:      grant.APIRef.Name,
+				namespace: namespace,
+				resource:  resource,
+				scopes:    make(map[string]struct{}),
+			}
+			byName[grant.APIRef.Name] = entry
+		}
+		for _, key := range grant.ClientPermissions {
+			entry.scopes[key] = struct{}{}
+		}
+	}
+
+	params := make([]apiTokenParams, 0, len(byName))
+	for _, name := range sortedKeysOf(byName) {
+		params = append(params, *byName[name])
+	}
+	return params, nil
+}
+
+// sortedKeysOf returns the map's keys, sorted.
+func sortedKeysOf(entries map[string]*apiTokenParams) []string {
+	names := make([]string, 0, len(entries))
+	for name := range entries {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // accessRequested reports whether a flow is granted: the explicit flag when set, otherwise

@@ -706,6 +706,22 @@
                     "null"
                   ]
                 },
+                "resource": {
+                  "default": "resource",
+                  "description": "Resource is the key name for the audience to request tokens for, taken from the APIs\nin apiAccess. It also prefixes the per-API key \"\u003cresource\u003e_\u003capiRef.name\u003e\".\nDefaults to resource",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "scopes": {
+                  "default": "scopes",
+                  "description": "Scopes is the key name for the space-delimited scopes apiAccess grants the\nclient-credentials flow. It also prefixes the per-API key \"\u003cscopes\u003e_\u003capiRef.name\u003e\".\nDefaults to scopes",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "tokenUrl": {
                   "default": "token_url",
                   "description": "TokenURL is the key name for the OIDC token endpoint URL.\nDefaults to token_url",
