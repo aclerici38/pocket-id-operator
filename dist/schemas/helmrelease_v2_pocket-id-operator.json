@@ -11752,7 +11752,7 @@
                     "string",
                     "null"
                   ],
-                  "description": "URL template for auto-generated light logos. Use {{name}} as placeholder. Unset generates no light logo.",
+                  "description": "URL template for auto-generated light logos. Use {{name}} as placeholder. Set to \"\" to generate no light logo.",
                   "default": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/{{name}}.webp"
                 },
                 "defaultDarkLogoUrl": {

@@ -27,13 +27,15 @@ operator:
   # env var is left unset.
   timezone: ""
 
-  # URL template for auto-generated light logos, {{name}} is replaced with the client name.
-  # Unset it to generate no light logos.
+  # URL templates for auto-generated logos, {{name}} is replaced with the client name.
+  # The two sides are independent: set one to "" to stop generating it and the other keeps
+  # working, e.g. defaultDarkLogoUrl: "" for light logos only.
   defaultLogoUrl: "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/{{name}}.webp"
 
-  # URL template for auto-generated dark logos, unset by default. dashboard-icons only
-  # publishes a -light variant for some icons, and pocket-id falls back to the light logo.
-  # defaultDarkLogoUrl: "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/{{name}}-light.webp"
+  # Only about a sixth of dashboard-icons publish a -light variant. The rest 404, which costs
+  # one rejected request a day per client and leaves status.darkLogoReachable false, and
+  # pocket-id falls back to the light logo.
+  defaultDarkLogoUrl: "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/{{name}}-light.webp"
 
   podSecurityContext:
     runAsNonRoot: true

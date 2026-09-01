@@ -553,21 +553,27 @@ whatever `autoGenerate` says.
 
 ### Chart Configuration
 
-The chart sets the light template to the
-[dashboard-icons](https://github.com/homarr-labs/dashboard-icons) CDN and leaves the dark one
-unset:
+The chart sets both templates to the
+[dashboard-icons](https://github.com/homarr-labs/dashboard-icons) CDN:
 
 ```yaml
 operator:
   autoGenerateLogos: true
   defaultLogoUrl: "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/{{name}}.webp"
-  # defaultDarkLogoUrl: "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/{{name}}-light.webp"
+  defaultDarkLogoUrl: "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/{{name}}-light.webp"
 ```
 
-Removing a template's value stops that side being generated. The dark one starts out removed
-because dashboard-icons publishes a `-light` variant only for the icons whose base image is
-unreadable on a dark background, so most names have none, and Pocket-ID falls back to the
-light logo when a client has no dark one.
+The sides are independent, so setting one to `""` stops it being generated and leaves the
+other alone. For light logos only:
+
+```yaml
+operator:
+  defaultDarkLogoUrl: ""
+```
+
+Dashboard-icons publishes a `-light` variant for about a sixth of its icons, so most clients resolve a dark URL that 404s: Pocket-ID falls back
+to the light logo, but each one costs a rejected request a day and logs an error.
+`status.darkLogoReachable: false`.
 
 ### Configuration
 
@@ -598,9 +604,12 @@ Within the `spec.logo` struct, any entries in `spec.logo.logoUrl` or `spec.logo.
 | `DEFAULT_LOGO_URL`        | *(unset)* | Template for light logos. Unset generates none. |
 | `DEFAULT_DARK_LOGO_URL`   | *(unset)* | Template for dark logos. Unset generates none. |
 
+These are the defaults for the operator on its own. The chart sets both, from
+`operator.defaultLogoUrl` and `operator.defaultDarkLogoUrl`.
+
 ### Examples
 
-Use the chart's light logo template (no extra configuration needed):
+Use the chart's logo templates (no extra configuration needed):
 
 ```yaml
 apiVersion: pocketid.internal/v1alpha1
@@ -611,7 +620,7 @@ spec:
   logo: {}
 ```
 
-This resolves to `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/grafana.webp`.
+This resolves to `.../webp/grafana.webp` and `.../webp/grafana-light.webp`.
 
 Override the icon name when it doesn't match the client name:
 
