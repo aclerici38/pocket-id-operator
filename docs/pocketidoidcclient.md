@@ -444,6 +444,91 @@ just the permissions. `clientPermissions` and `clientAccess` require a confident
 (`isPublic: false`). The client is the sole owner of its API access in Pocket-ID; see
 [PocketIDAPI](pocketidapi.md#granting-client-access) for the full semantics.
 
+### Requesting a Token
+
+The credentials Secret carries what a token request needs, so nothing has to be copied out of
+the `PocketIDAPI` by hand. Each API in `spec.apiAccess` gets a pair of keys, suffixed with the
+name it is referenced by:
+
+| Key                   | Value                                                              |
+|-----------------------|--------------------------------------------------------------------|
+| `resource_<api>`      | That API's audience, from its `spec.resource`.                     |
+| `scopes_<api>`        | The `clientPermissions` it grants, space-delimited.                |
+| `resource` / `scopes` | The same pair unsuffixed, written only while all the grants share an audience. |
+
+`<api>` is the `apiRef.name`. The audience itself can't be used, since it is usually a URI and
+Secret keys allow only letters, digits, `-`, `_` and `.`.
+
+A `scopes` key is left out when the flow is granted no permissions — a request for the audience
+alone. Two entries with the same `apiRef.name` in different namespaces would collide on one key
+and are rejected.
+
+Renaming `spec.secret.keys.resource` or `.scopes` renames the suffixed keys too: the setting is
+the prefix.
+
+A machine-to-machine exchange can then build its whole request from the Secret. Here with
+[External Secrets Operator](https://external-secrets.io)'s `Webhook` generator, which reads a
+Secret whole through a keyless `secretRef`:
+
+```yaml
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDOIDCClient
+metadata:
+  name: inference-worker
+  namespace: pocket-id
+spec:
+  apiAccess:
+    - apiRef:
+        name: inference-api
+      clientPermissions:
+        - inference:local
+        - inference:cloud
+  secret:
+    additionalLabels:
+      # The generator only reads a Secret carrying this label.
+      external-secrets.io/type: webhook
+---
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: Webhook
+metadata:
+  name: inference-token
+  namespace: pocket-id
+spec:
+  url: "{{ .creds.token_url }}"
+  method: POST
+  headers:
+    Content-Type: application/x-www-form-urlencoded
+  body: >-
+    grant_type=client_credentials&client_id={{ .creds.client_id }}&client_secret={{ .creds.client_secret }}&resource={{ .creds.resource }}&scope={{ .creds.scopes }}
+  secrets:
+    - name: creds
+      secretRef:
+        name: inference-worker-oidc-credentials
+        namespace: pocket-id
+  result:
+    jsonPath: "$.access_token"
+```
+
+The scopes follow `clientPermissions` as it changes, and the audience is never a second copy of
+the one in the `PocketIDAPI`.
+
+### More Than One API
+
+A token is issued for one audience, so a client granted two APIs makes two token requests — a
+second `Webhook` generator, pointed at the same Secret, reading the other API's keys. No second
+Secret, label, or copy of the client secret.
+
+The unsuffixed `resource` and `scopes` are only written while every grant shares an audience.
+Granting a second one removes them instead of picking a winner, so anything reading them fails
+loudly rather than asking for the wrong audience; dropping back to one API brings them back.
+Read the suffixed keys to be unaffected either way. Go templates need `index` for a key holding
+a `-` or `.`:
+
+```yaml
+  body: >-
+    grant_type=client_credentials&client_id={{ .creds.client_id }}&client_secret={{ .creds.client_secret }}&resource={{ index .creds "resource_orders-api" }}&scope={{ index .creds "scopes_orders-api" }}
+```
+
 For clients that register themselves through a Client ID Metadata Document there is no CR
 to grant from, so access is granted at the API instead via
 [`spec.cimdAccess`](pocketidapi.md#granting-metadata-document-clients). That access is owned
@@ -592,7 +677,9 @@ A URL Pocket-ID rejects is remembered in memory and not attempted again for 24 h
 - `spec.secret.keys`: customize secret keys. Defaults are:
   `client_id`, `client_secret`, `issuer_url`, `callback_urls`,
   `logout_callback_urls`, `discovery_url`, `authorization_url`,
-  `token_url`, `userinfo_url`, `jwks_url`, `end_session_url`.
+  `token_url`, `userinfo_url`, `jwks_url`, `end_session_url`,
+  `resource`, `scopes`. The last two also prefix the per-API keys
+  (`resource_<api>`, `scopes_<api>`).
 - `spec.secret.additionalLabels`: extra labels to set on the Secret.
 - `spec.secret.additionalAnnotations`: extra annotations to set on the Secret. Operator-managed
   annotations take precedence and cannot be overridden. Useful for tools that copy the Secret to
@@ -607,6 +694,8 @@ When enabled, the operator writes a Secret containing:
   [`spec.clientSecretRef`](#declarative-client-secret), the declared value)
 - Issuer URL and discovery endpoints derived from the instance `spec.appUrl`
 - Callback and logout URLs
+- A `resource` and `scopes` pair per API, for clients with
+  [`spec.apiAccess`](#requesting-a-token)
 
 ## SCIM Provisioning
 

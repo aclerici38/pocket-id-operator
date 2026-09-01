@@ -238,6 +238,18 @@ var _ = Describe("PocketIDAPI Client Access", Ordered, func() {
 		}).Should(Succeed())
 	})
 
+	It("should publish the resource and client scopes in the credentials Secret", func() {
+		secret := clientName + "-oidc-credentials"
+		Eventually(func(g Gomega) {
+			// One API, so the bare pair is written alongside the per-API pair.
+			g.Expect(secretData(secret, userNS, "resource")).To(Equal(resource))
+			// Only sync:data is a client-credentials permission.
+			g.Expect(secretData(secret, userNS, "scopes")).To(Equal("sync:data"))
+			g.Expect(secretData(secret, userNS, "resource_"+apiName)).To(Equal(resource))
+			g.Expect(secretData(secret, userNS, "scopes_"+apiName)).To(Equal("sync:data"))
+		}).Should(Succeed())
+	})
+
 	It("should update access in Pocket-ID when the grant changes", func() {
 		By("moving sync:data into the delegated flow alongside read:data")
 		createOIDCClient(OIDCClientOptions{
@@ -274,6 +286,12 @@ var _ = Describe("PocketIDAPI Client Access", Ordered, func() {
 		Eventually(func(g Gomega) {
 			out := getField("pocketidoidcclient", clientName, userNS, ".status.managedAPIPermissionIDs[*]")
 			g.Expect(out).To(BeEmpty())
+		}).Should(Succeed())
+
+		By("confirming the credentials Secret dropped the resource and scopes keys")
+		Eventually(func(g Gomega) {
+			g.Expect(secretData(clientName+"-oidc-credentials", userNS, "resource")).To(BeEmpty())
+			g.Expect(secretData(clientName+"-oidc-credentials", userNS, "scopes")).To(BeEmpty())
 		}).Should(Succeed())
 
 		By("confirming Pocket-ID's database has no access for the client")
@@ -575,6 +593,20 @@ var _ = Describe("PocketIDAPI Multi-API Grants", Ordered, func() {
 		}).Should(Succeed())
 	})
 
+	It("should publish a resource and scopes pair per API in the credentials Secret", func() {
+		secret := clientName + "-oidc-credentials"
+		Eventually(func(g Gomega) {
+			g.Expect(secretData(secret, userNS, "resource_"+ordersName)).To(Equal(ordersRes))
+			g.Expect(secretData(secret, userNS, "resource_"+billingName)).To(Equal(billingRes))
+			// Only billing has a client-credentials permission.
+			g.Expect(secretData(secret, userNS, "scopes_"+ordersName)).To(BeEmpty())
+			g.Expect(secretData(secret, userNS, "scopes_"+billingName)).To(Equal("read:billing"))
+			// Two audiences, so the bare pair is left out.
+			g.Expect(secretData(secret, userNS, "resource")).To(BeEmpty())
+			g.Expect(secretData(secret, userNS, "scopes")).To(BeEmpty())
+		}).Should(Succeed())
+	})
+
 	It("should revoke only the dropped API and leave the other grant intact", func() {
 		By("dropping the billing entry and keeping orders")
 		createOIDCClient(OIDCClientOptions{
@@ -598,6 +630,16 @@ var _ = Describe("PocketIDAPI Multi-API Grants", Ordered, func() {
 		Eventually(func(g Gomega) {
 			out := getField("pocketidoidcclient", clientName, userNS, ".status.managedAPIs[*]")
 			g.Expect(out).To(Equal(ordersID))
+		}).Should(Succeed())
+
+		By("verifying the credentials Secret dropped the billing keys and regained the bare pair")
+		secret := clientName + "-oidc-credentials"
+		Eventually(func(g Gomega) {
+			g.Expect(secretData(secret, userNS, "resource_"+billingName)).To(BeEmpty())
+			g.Expect(secretData(secret, userNS, "scopes_"+billingName)).To(BeEmpty())
+			g.Expect(secretData(secret, userNS, "resource_"+ordersName)).To(Equal(ordersRes))
+			// One audience again, so the bare resource comes back.
+			g.Expect(secretData(secret, userNS, "resource")).To(Equal(ordersRes))
 		}).Should(Succeed())
 	})
 

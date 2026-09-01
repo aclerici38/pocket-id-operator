@@ -246,6 +246,20 @@ type OIDCClientSecretKeys struct {
 	// +kubebuilder:default="end_session_url"
 	// +optional
 	EndSessionURL string `json:"endSessionUrl,omitempty"`
+
+	// Resource is the key name for the audience to request tokens for, taken from the APIs
+	// in apiAccess. It also prefixes the per-API key "<resource>_<apiRef.name>".
+	// Defaults to resource
+	// +kubebuilder:default="resource"
+	// +optional
+	Resource string `json:"resource,omitempty"`
+
+	// Scopes is the key name for the space-delimited scopes apiAccess grants the
+	// client-credentials flow. It also prefixes the per-API key "<scopes>_<apiRef.name>".
+	// Defaults to scopes
+	// +kubebuilder:default="scopes"
+	// +optional
+	Scopes string `json:"scopes,omitempty"`
 }
 
 // OIDCClientLogoSpec configures logo URLs for the OIDC client.

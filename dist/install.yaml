@@ -3883,6 +3883,20 @@ spec:
                           LogoutCallbackURLs is the key name for the logout callback URLs.
                           Defaults to logout_callback_urls
                         type: string
+                      resource:
+                        default: resource
+                        description: |-
+                          Resource is the key name for the audience to request tokens for, resolved from the
+                          APIs referenced by apiAccess. It also prefixes the per-API key "<resource>_<apiRef.name>".
+                          Defaults to resource
+                        type: string
+                      scopes:
+                        default: scopes
+                        description: |-
+                          Scopes is the key name for the space-delimited scopes granted to the client-credentials
+                          flow by apiAccess. It also prefixes the per-API key "<scopes>_<apiRef.name>".
+                          Defaults to scopes
+                        type: string
                       tokenUrl:
                         default: token_url
                         description: |-
