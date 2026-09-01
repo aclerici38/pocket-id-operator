@@ -63,9 +63,6 @@ const (
 	// its metadata document ahead of the cache TTL.
 	refreshClientMetadataAnnotation = "pocketid.internal/refresh-client-metadata"
 
-	defaultLogoTemplate     = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/{{name}}.webp"
-	defaultDarkLogoTemplate = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/{{name}}-light.webp"
-
 	// failedLogoURLTTL is how long a URL Pocket-ID refused stays suppressed.
 	failedLogoURLTTL = 24 * time.Hour
 )
@@ -86,9 +83,10 @@ type Reconciler struct {
 
 	// DefaultAutoGenerateLogos is the default for logo.autoGenerate when not set per-client (from AUTOGENERATE_LOGOS env var).
 	DefaultAutoGenerateLogos bool
-	// DefaultLogoTemplate is the default URL template for light logos (from DEFAULT_LOGO_URL env var).
+	// DefaultLogoTemplate is the URL template for light logos (from DEFAULT_LOGO_URL env var).
+	// Empty means no light logo is generated.
 	DefaultLogoTemplate string
-	// DefaultDarkLogoTemplate is the default URL template for dark logos (from DEFAULT_DARK_LOGO_URL env var).
+	// DefaultDarkLogoTemplate is the same for dark logos (from DEFAULT_DARK_LOGO_URL env var).
 	DefaultDarkLogoTemplate string
 
 	// failedLogoURLs records logo URLs Pocket-ID refused, which are not retried until the whole set is dropped on the failedLogoURLTTL deadline below.
@@ -916,18 +914,10 @@ func (r *Reconciler) resolveLogoURLs(oidcClient *pocketidinternalv1alpha1.Pocket
 		darkLogoTemplate = logo.DarkLogoURL
 	}
 	if logoTemplate == "" && autoGenerate {
-		if r.DefaultLogoTemplate != "" {
-			logoTemplate = r.DefaultLogoTemplate
-		} else {
-			logoTemplate = defaultLogoTemplate
-		}
+		logoTemplate = r.DefaultLogoTemplate
 	}
 	if darkLogoTemplate == "" && autoGenerate {
-		if r.DefaultDarkLogoTemplate != "" {
-			darkLogoTemplate = r.DefaultDarkLogoTemplate
-		} else {
-			darkLogoTemplate = defaultDarkLogoTemplate
-		}
+		darkLogoTemplate = r.DefaultDarkLogoTemplate
 	}
 
 	if logoTemplate != "" {

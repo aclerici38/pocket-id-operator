@@ -23,8 +23,8 @@ import (
 )
 
 const (
-	grafanaLogoURL     = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/grafana.webp"
-	grafanaDarkLogoURL = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/grafana-light.webp"
+	grafanaLogoTemplate = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/{{name}}.webp"
+	grafanaLogoURL      = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/grafana.webp"
 )
 
 // pocketIDOIDCClientAPIResponse is the JSON shape returned by Pocket-ID OIDC client
@@ -211,7 +211,7 @@ func TestResolveLogoURLs_EnvVarFallback(t *testing.T) {
 	}
 }
 
-func TestResolveLogoURLs_HardcodedDefaults(t *testing.T) {
+func TestResolveLogoURLs_NoTemplatesConfigured(t *testing.T) {
 	r := &Reconciler{}
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
 		ObjectMeta: metav1.ObjectMeta{Name: "grafana", Namespace: testNamespace},
@@ -222,11 +222,19 @@ func TestResolveLogoURLs_HardcodedDefaults(t *testing.T) {
 		},
 	}
 	logoURL, darkLogoURL := r.resolveLogoURLs(oidcClient)
-	if logoURL != grafanaLogoURL {
-		t.Errorf("expected hardcoded default logo template, got %q", logoURL)
+	if logoURL != "" || darkLogoURL != "" {
+		t.Errorf("expected no URLs when no templates are configured, got %q %q", logoURL, darkLogoURL)
 	}
-	if darkLogoURL != grafanaDarkLogoURL {
-		t.Errorf("expected hardcoded default dark logo template, got %q", darkLogoURL)
+}
+
+func TestResolveLogoURLs_LightTemplateOnly(t *testing.T) {
+	r := &Reconciler{DefaultAutoGenerateLogos: true, DefaultLogoTemplate: grafanaLogoTemplate}
+	logoURL, darkLogoURL := r.resolveLogoURLs(namedClient("grafana"))
+	if logoURL != grafanaLogoURL {
+		t.Errorf("expected the light template to be used, got %q", logoURL)
+	}
+	if darkLogoURL != "" {
+		t.Errorf("expected no dark logo with no dark template, got %q", darkLogoURL)
 	}
 }
 
@@ -275,26 +283,37 @@ func TestResolveLogoURLs_NilLogoSpecEnvFalse(t *testing.T) {
 }
 
 func TestResolveLogoURLs_NilLogoSpecEnvTrue(t *testing.T) {
-	r := &Reconciler{DefaultAutoGenerateLogos: true}
-	logoURL, darkLogoURL := r.resolveLogoURLs(namedClient("my-app"))
-	if logoURL != "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/my-app.webp" {
-		t.Errorf("expected hardcoded default when logo spec is nil and env is true, got %q", logoURL)
+	r := &Reconciler{DefaultAutoGenerateLogos: true, DefaultLogoTemplate: grafanaLogoTemplate}
+	logoURL, _ := r.resolveLogoURLs(namedClient("grafana"))
+	if logoURL != grafanaLogoURL {
+		t.Errorf("expected the light template when logo spec is nil and env is true, got %q", logoURL)
 	}
-	if darkLogoURL != "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/my-app-light.webp" {
-		t.Errorf("expected hardcoded dark default when logo spec is nil and env is true, got %q", darkLogoURL)
+}
+
+func TestResolveLogoURLs_PerClientTemplateWithNoDefaults(t *testing.T) {
+	r := &Reconciler{DefaultAutoGenerateLogos: true}
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-app", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{LogoURL: "https://cdn.example.com/{{name}}.png"},
+		},
+	}
+	logoURL, _ := r.resolveLogoURLs(oidcClient)
+	if logoURL != "https://cdn.example.com/my-app.png" {
+		t.Errorf("expected the per-client template to be used, got %q", logoURL)
 	}
 }
 
 func TestResolveLogoURLs_AutoGenerateNilDefaultsToEnvTrue(t *testing.T) {
-	r := &Reconciler{DefaultAutoGenerateLogos: true}
+	r := &Reconciler{DefaultAutoGenerateLogos: true, DefaultLogoTemplate: grafanaLogoTemplate}
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
-		ObjectMeta: metav1.ObjectMeta{Name: "my-app", Namespace: testNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: "grafana", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{},
 		},
 	}
 	logoURL, _ := r.resolveLogoURLs(oidcClient)
-	if logoURL != "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/my-app.webp" {
+	if logoURL != grafanaLogoURL {
 		t.Errorf("expected nil autoGenerate to follow env default true, got %q", logoURL)
 	}
 }
@@ -314,7 +333,7 @@ func TestResolveLogoURLs_AutoGenerateNilDefaultsToEnvFalse(t *testing.T) {
 }
 
 func TestResolveLogoURLs_ExplicitTrueOverridesEnvFalse(t *testing.T) {
-	r := &Reconciler{DefaultAutoGenerateLogos: false}
+	r := &Reconciler{DefaultAutoGenerateLogos: false, DefaultLogoTemplate: grafanaLogoTemplate}
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
 		ObjectMeta: metav1.ObjectMeta{Name: "my-app", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{

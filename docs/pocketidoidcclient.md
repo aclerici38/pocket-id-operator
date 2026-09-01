@@ -537,39 +537,43 @@ this way, and removing an `apiAccess` entry does not revoke it.
 
 ## Logo Auto-Generation
 
-The operator can automatically set logo URLs for OIDC clients using a configurable URL template.
-By default it uses the [dashboard-icons](https://github.com/homarr-labs/dashboard-icons) CDN:
+The operator can set logo URLs for OIDC clients from a URL template. `{{name}}` in a template
+is replaced with the resource's `metadata.name`, or `spec.logo.nameOverride`.
 
-```
-https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/{{name}}.webp
-https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/{{name}}-light.webp
-```
+The templates come from two env vars on the operator, `DEFAULT_LOGO_URL` and
+`DEFAULT_DARK_LOGO_URL`. An unset one means no logo is generated for that variant.
 
-The `{{name}}` placeholder in templates is replaced with the resource's `metadata.name` or `spec.logo.nameOverride`.
+`spec.logo.autoGenerate` decides whether a client uses the default templates. `AUTOGENERATE_LOGOS`
+is the same switch set globally, so it does not have to be repeated on every client, and
+defaults to `true`. Setting `autoGenerate: false` on a client means the env vars are not used
+for it.
 
-### Enabling / Disabling
+`spec.logo.logoUrl` and `spec.logo.darkLogoUrl` give a client its own template, which is used
+whatever `autoGenerate` says.
 
-Logo auto-generation is controlled at two levels:
+### Chart Configuration
 
-1. **Global default** via the `AUTOGENERATE_LOGOS` env var on the operator. Defaults to `true`.
-   Set to `false` to make logo auto-generation opt-in per client.
-2. **Per-client override** via `spec.logo.autoGenerate`. When set, this takes precedence over
-   the global default.
-
-To disable auto-generation globally:
-
-```yaml
-env:
-  - name: AUTOGENERATE_LOGOS
-    value: "false"
-```
-
-Or through the chart
+The chart sets both templates to the
+[dashboard-icons](https://github.com/homarr-labs/dashboard-icons) CDN:
 
 ```yaml
 operator:
-  autoGenerateLogos: false
+  autoGenerateLogos: true
+  defaultLogoUrl: "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/{{name}}.webp"
+  defaultDarkLogoUrl: "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/{{name}}-light.webp"
 ```
+
+The sides are independent, so setting one to `""` stops it being generated and leaves the
+other alone. For light logos only:
+
+```yaml
+operator:
+  defaultDarkLogoUrl: ""
+```
+
+Dashboard-icons publishes a `-light` variant for about a sixth of its icons, so most clients resolve a dark URL that 404s: Pocket-ID falls back
+to the light logo, but each one costs a rejected request a day and logs an error.
+`status.darkLogoReachable: false`.
 
 ### Configuration
 
@@ -579,8 +583,8 @@ The `spec.logo` struct supports the following fields:
 |------------------|-----------------------------------------------------------------------------|
 | `autoGenerate`   | Override the global `AUTOGENERATE_LOGOS` default for this client.            |
 | `nameOverride`   | Override the name used in `{{name}}` substitution. Defaults to `metadata.name`. |
-| `logoUrl`        | URL for the light logo. Defaults to `DEFAULT_LOGO_URL` env var. |
-| `darkLogoUrl`    | URL for the dark logo. Defaults to `DEFAULT_DARK_LOGO_URL` env var. |
+| `logoUrl`        | Template for the light logo, used whatever `autoGenerate` says. |
+| `darkLogoUrl`    | Template for the dark logo, used whatever `autoGenerate` says. |
 
 ### Precedence
 
@@ -588,7 +592,7 @@ Logo URLs are resolved in the following order:
 
 1. **Deprecated `spec.logoUrl` / `spec.darkLogoUrl`**: if set, these are used as-is. If using these, please migrate to `spec.logo.logoUrl` and `spec.logo.darkLogoUrl`. You can still set a full URL without templating in these fields. 
 2. **`spec.logo` struct**
-3. **No logo**: if `autoGenerate` is disabled and `spec.logo.logoUrl`/`spec.logo.darkLogoUrl` are empty
+3. **No logo**: if `spec.logo.logoUrl`/`spec.logo.darkLogoUrl` are empty and either `autoGenerate` is disabled or the operator has no template for that side
 
 Within the `spec.logo` struct, any entries in `spec.logo.logoUrl` or `spec.logo.darkLogoUrl` take precedence over the defaults set by env variables
 
@@ -597,12 +601,15 @@ Within the `spec.logo` struct, any entries in `spec.logo.logoUrl` or `spec.logo.
 | Variable                  | Default | Description                                        |
 |---------------------------|---------|----------------------------------------------------|
 | `AUTOGENERATE_LOGOS`      | `true`  | Global default for `spec.logo.autoGenerate`.       |
-| `DEFAULT_LOGO_URL`        | *(dashboard-icons WebP)* | Default URL template for light logos. |
-| `DEFAULT_DARK_LOGO_URL`   | *(dashboard-icons WebP)* | Default URL template for dark logos.  |
+| `DEFAULT_LOGO_URL`        | *(unset)* | Template for light logos. Unset generates none. |
+| `DEFAULT_DARK_LOGO_URL`   | *(unset)* | Template for dark logos. Unset generates none. |
+
+These are the defaults for the operator on its own. The chart sets both, from
+`operator.defaultLogoUrl` and `operator.defaultDarkLogoUrl`.
 
 ### Examples
 
-Use the default dashboard-icons logos (no extra configuration needed):
+Use the chart's logo templates (no extra configuration needed):
 
 ```yaml
 apiVersion: pocketid.internal/v1alpha1
@@ -613,7 +620,7 @@ spec:
   logo: {}
 ```
 
-This resolves to `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/grafana.webp`.
+This resolves to `.../webp/grafana.webp` and `.../webp/grafana-light.webp`.
 
 Override the icon name when it doesn't match the client name:
 

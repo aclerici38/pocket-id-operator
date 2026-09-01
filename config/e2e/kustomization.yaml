@@ -17,6 +17,9 @@ patches:
           value: "2s"
         - name: AUTOGENERATE_LOGOS
           value: "false"
+        # The logo tests opt in per client, so they need a template to generate from.
+        - name: DEFAULT_LOGO_URL
+          value: "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/{{name}}.webp"
     - op: replace
       path: /spec/template/spec/containers/0/args/2
       value: --zap-log-level=debug
