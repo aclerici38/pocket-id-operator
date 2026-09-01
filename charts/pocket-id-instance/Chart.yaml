@@ -2,8 +2,8 @@ apiVersion: v2
 name: pocket-id-instance
 description: A Helm chart that packages the Pocket ID custom resources (instance, users, groups, and OIDC clients) managed by pocket-id-operator
 type: application
-version: 0.14.2
-appVersion: v0.14.2
+version: 0.14.3
+appVersion: v0.14.3
 home: https://github.com/aclerici38/pocket-id-operator
 sources:
   - https://github.com/aclerici38/pocket-id-operator

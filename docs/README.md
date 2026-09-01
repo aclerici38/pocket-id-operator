@@ -56,7 +56,7 @@ https://k8s-versioned-schemas.pages.dev/pocket-id-operator/latest/pocketidinstan
 
 **From my k8s-versioned-schemas project (tagged):**
 ```
-https://k8s-versioned-schemas.pages.dev/pocket-id-operator/0.14.2/pocketidinstance_v1alpha1.json
+https://k8s-versioned-schemas.pages.dev/pocket-id-operator/0.14.3/pocketidinstance_v1alpha1.json
 ```
 
 # Migrating from an existing setup
