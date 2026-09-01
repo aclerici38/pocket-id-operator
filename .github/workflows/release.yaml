@@ -196,7 +196,7 @@ jobs:
       # is no longer "unreleased" and --current is what selects it.
       - name: Generate changelog
         id: changelog
-        uses: orhun/git-cliff-action@f50e11560dce63f7c33227798f90b924471a88b5 # v4.8.0
+        uses: orhun/git-cliff-action@3d96a18cc4ec17e9dc69ddcc424ccafaf1f78ce2 # v4.9.0
         with:
           config: cliff-artifacthub.toml
           args: ${{ needs.prepare.outputs.promote == 'true' && '--current' || '--unreleased' }} --strip header
@@ -292,7 +292,7 @@ jobs:
       #     so the assets are taken from the tree as-is. ---
       - name: Generate changelog
         if: ${{ needs.prepare.outputs.promote != 'true' }}
-        uses: orhun/git-cliff-action@f50e11560dce63f7c33227798f90b924471a88b5 # v4.8.0
+        uses: orhun/git-cliff-action@3d96a18cc4ec17e9dc69ddcc424ccafaf1f78ce2 # v4.9.0
         with:
           config: cliff.toml
           args: --unreleased --strip header
