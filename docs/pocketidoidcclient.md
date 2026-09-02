@@ -498,19 +498,37 @@ spec:
   method: POST
   headers:
     Content-Type: application/x-www-form-urlencoded
-  body: >-
-    grant_type=client_credentials&client_id={{ .creds.client_id }}&client_secret={{ .creds.client_secret }}&resource={{ .creds.resource }}&scope={{ .creds.scopes }}
+    Authorization: Basic {{ print .creds.client_id ":" .creds.client_secret | b64enc }}
+  body: grant_type=client_credentials&resource={{ urlquery .creds.resource }}&scope={{ urlquery .creds.scopes }}
   secrets:
     - name: creds
       secretRef:
         name: inference-worker-oidc-credentials
-        namespace: pocket-id
   result:
-    jsonPath: "$.access_token"
+    jsonPath: "$"
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: inference-token
+  namespace: pocket-id
+spec:
+  # Well inside the token lifetime; each refresh mints a new one.
+  refreshInterval: 168h
+  target:
+    template:
+      data:
+        INFERENCE_TOKEN: "{{ .access_token }}"
+  dataFrom:
+    - sourceRef:
+        generatorRef:
+          apiVersion: generators.external-secrets.io/v1alpha1
+          kind: Webhook
+          name: inference-token
 ```
 
 The scopes follow `clientPermissions` as it changes, and the audience is never a second copy of
-the one in the `PocketIDAPI`.
+the one in the `PocketIDAPI`. `urlquery` form-encodes the values in case `scopes` holds more than one permission.
 
 ### More Than One API
 
@@ -526,7 +544,7 @@ a `-` or `.`:
 
 ```yaml
   body: >-
-    grant_type=client_credentials&client_id={{ .creds.client_id }}&client_secret={{ .creds.client_secret }}&resource={{ index .creds "resource_orders-api" }}&scope={{ index .creds "scopes_orders-api" }}
+    grant_type=client_credentials&resource={{ urlquery (index .creds "resource_orders-api") }}&scope={{ urlquery (index .creds "scopes_orders-api") }}
 ```
 
 For clients that register themselves through a Client ID Metadata Document there is no CR
