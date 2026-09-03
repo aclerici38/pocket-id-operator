@@ -18,7 +18,7 @@ yq = "4.53.6"
 sd = "1.1.0"
 
 # Test tooling
-setup-envtest = "0.24.1"
+setup-envtest = "0.25.0"
 # ginkgo stays a go: build so the CLI matches the ginkgo library version
 "go:github.com/onsi/ginkgo/v2/ginkgo" = "v2.32.1"
 
