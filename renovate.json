@@ -65,7 +65,8 @@
       ]
     },
     {
-      "matchPackageNames": ["github.com/onsi/ginkgo/v2", "github.com/onsi/gomega"],
+      "description": "Ginkgo/Gomega modules across go and mise.",
+      "matchPackageNames": ["/^github\\.com/onsi//"],
       "groupName": "onsi"
     },
     {
