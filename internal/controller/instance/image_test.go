@@ -34,7 +34,7 @@ func TestResolveImage_DefaultsWhenUnset(t *testing.T) {
 
 // An explicit pin is still honoured verbatim; the fallback must never override it.
 func TestResolveImage_ExplicitPinWins(t *testing.T) {
-	const pinned = "ghcr.io/pocket-id/pocket-id:v2.14.0-distroless"
+	const pinned = "ghcr.io/pocket-id/pocket-id:v2.15.0-distroless"
 
 	inst := minimalInstance()
 	inst.Spec.Image = pinned
