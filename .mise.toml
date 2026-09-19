@@ -38,7 +38,7 @@ helm = "4.3.0"
 lefthook = "2.1.14"
 
 # Changelog generation
-"aqua:orhun/git-cliff" = "2.14.1"
+"aqua:orhun/git-cliff" = "2.14.2"
 
 # Register lefthook's git hooks after `mise install`.
 # No-op in CI jobs
