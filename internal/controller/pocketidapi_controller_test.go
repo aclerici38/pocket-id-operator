@@ -88,10 +88,19 @@ var _ = Describe("PocketIDAPI Controller", func() {
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, resource) })
 
-			resource.Spec.Resource = "https://changed.example.com"
-			err := k8sClient.Update(ctx, resource)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("resource is immutable"))
+			// The controller adds its finalizer shortly after creation.
+			Eventually(func(g Gomega) string {
+				current := &pocketidinternalv1alpha1.PocketIDAPI{}
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      "test-api-immutable",
+					Namespace: namespace,
+				}, current)).To(Succeed())
+
+				current.Spec.Resource = "https://changed.example.com"
+				err := k8sClient.Update(ctx, current)
+				g.Expect(err).To(HaveOccurred())
+				return err.Error()
+			}, timeout, interval).Should(ContainSubstring("resource is immutable"))
 		})
 
 		It("should reject a permission key that reuses a reserved OIDC scope", func() {
