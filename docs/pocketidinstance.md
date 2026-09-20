@@ -95,7 +95,7 @@ Set it to pin a specific version:
 
 ```yaml
 spec:
-  image: ghcr.io/pocket-id/pocket-id:v2.14.0-distroless
+  image: ghcr.io/pocket-id/pocket-id:v2.16.0-distroless
 ```
 
 > [!IMPORTANT]
