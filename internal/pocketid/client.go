@@ -1493,7 +1493,18 @@ func parseAPITime(value string) time.Time {
 	return parsed
 }
 
-func oidcClientFromListDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientWithAllowedGroupsCountDto) *OIDCClient {
+func groupIDsFromMinimalDTOs(groups []*models.GithubComPocketIDPocketIDBackendInternalDtoUserGroupMinimalDto) []string {
+	groupIDs := make([]string, 0, len(groups))
+	for _, group := range groups {
+		if group == nil || group.ID == "" {
+			continue
+		}
+		groupIDs = append(groupIDs, group.ID)
+	}
+	return groupIDs
+}
+
+func oidcClientFromListDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientWithAllowedGroupsDto) *OIDCClient {
 	if dto == nil {
 		return nil
 	}
@@ -1515,7 +1526,7 @@ func oidcClientFromListDTO(dto *models.GithubComPocketIDPocketIDBackendInternalD
 		SkipConsent:                         dto.SkipConsent,
 		AccessTokenDurationMinutes:          dto.AccessTokenDurationMinutes,
 		RefreshTokenDurationMinutes:         dto.RefreshTokenDurationMinutes,
-		AllowedUserGroupIDs:                 []string{},
+		AllowedUserGroupIDs:                 groupIDsFromMinimalDTOs(dto.AllowedUserGroups),
 		ClientType:                          dto.ClientType,
 		Secrets:                             oidcClientSecretsFromCredentialsDTO(dto.Credentials),
 	}
@@ -1525,13 +1536,6 @@ func oidcClientFromAllowedGroupsDTO(dto *models.GithubComPocketIDPocketIDBackend
 	if dto == nil {
 		return nil
 	}
-	groupIDs := make([]string, 0, len(dto.AllowedUserGroups))
-	for _, group := range dto.AllowedUserGroups {
-		if group == nil || group.ID == "" {
-			continue
-		}
-		groupIDs = append(groupIDs, group.ID)
-	}
 	return &OIDCClient{
 		ID:                                  dto.ID,
 		Name:                                dto.Name,
@@ -1550,7 +1554,7 @@ func oidcClientFromAllowedGroupsDTO(dto *models.GithubComPocketIDPocketIDBackend
 		SkipConsent:                         dto.SkipConsent,
 		AccessTokenDurationMinutes:          dto.AccessTokenDurationMinutes,
 		RefreshTokenDurationMinutes:         dto.RefreshTokenDurationMinutes,
-		AllowedUserGroupIDs:                 groupIDs,
+		AllowedUserGroupIDs:                 groupIDsFromMinimalDTOs(dto.AllowedUserGroups),
 		ClientType:                          dto.ClientType,
 		Secrets:                             oidcClientSecretsFromCredentialsDTO(dto.Credentials),
 	}
