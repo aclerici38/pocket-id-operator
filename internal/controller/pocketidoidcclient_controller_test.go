@@ -24,6 +24,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -561,6 +562,52 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, resource) })
 		})
+	})
+
+	Context("Federated identity public key validation", func() {
+		newClient := func(key pocketidinternalv1alpha1.OIDCClientPublicKey) *pocketidinternalv1alpha1.PocketIDOIDCClient {
+			return &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-oidc-public-key", Namespace: namespace},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+					FederatedIdentities: []pocketidinternalv1alpha1.OIDCClientFederatedIdentity{{
+						Issuer:     "https://issuer.example.com",
+						PublicKeys: []pocketidinternalv1alpha1.OIDCClientPublicKey{key},
+					}},
+				},
+			}
+		}
+		inline := &apiextensionsv1.JSON{Raw: []byte(`{"kty":"OKP","kid":"a"}`)}
+		configMapRef := &corev1.ConfigMapKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "keys"}, Key: "jwks"}
+		secretRef := &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "keys"}, Key: "jwks"}
+
+		It("should accept an inline key and preserve its members", func() {
+			resource := newClient(pocketidinternalv1alpha1.OIDCClientPublicKey{Value: inline})
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, resource) })
+
+			stored := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(resource), stored)).To(Succeed())
+			Expect(stored.Spec.FederatedIdentities[0].PublicKeys[0].Value.Raw).To(MatchJSON(inline.Raw))
+		})
+
+		DescribeTable("should reject",
+			func(key pocketidinternalv1alpha1.OIDCClientPublicKey, substring string) {
+				err := k8sClient.Create(ctx, newClient(key))
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring(substring))
+			},
+			Entry("neither value nor valueFrom", pocketidinternalv1alpha1.OIDCClientPublicKey{},
+				"exactly one of value or valueFrom must be set"),
+			Entry("both value and valueFrom", pocketidinternalv1alpha1.OIDCClientPublicKey{
+				Value: inline, ValueFrom: &pocketidinternalv1alpha1.OIDCClientPublicKeySource{ConfigMapKeyRef: configMapRef},
+			}, "exactly one of value or valueFrom must be set"),
+			Entry("valueFrom without a reference", pocketidinternalv1alpha1.OIDCClientPublicKey{
+				ValueFrom: &pocketidinternalv1alpha1.OIDCClientPublicKeySource{},
+			}, "exactly one of configMapKeyRef or secretKeyRef must be set"),
+			Entry("valueFrom with both references", pocketidinternalv1alpha1.OIDCClientPublicKey{
+				ValueFrom: &pocketidinternalv1alpha1.OIDCClientPublicKeySource{ConfigMapKeyRef: configMapRef, SecretKeyRef: secretRef},
+			}, "exactly one of configMapKeyRef or secretKeyRef must be set"),
+		)
 	})
 
 	Context("ClientSecretOverlap validation", func() {
