@@ -526,6 +526,7 @@ func TestOIDCClientToInput_MapsAllFields(t *testing.T) {
 		Name:                                "test-client",
 		CallbackURLs:                        []string{"https://a.example.com/cb"},
 		LogoutCallbackURLs:                  []string{"https://a.example.com/logout"},
+		BackchannelLogoutURL:                "https://a.example.com/backchannel",
 		LaunchURL:                           "https://app.example.com",
 		HasLogo:                             true,
 		HasDarkLogo:                         true,
@@ -547,6 +548,9 @@ func TestOIDCClientToInput_MapsAllFields(t *testing.T) {
 	}
 	if len(input.LogoutCallbackURLs) != 1 || input.LogoutCallbackURLs[0] != "https://a.example.com/logout" {
 		t.Errorf("LogoutCallbackURLs: got %v", input.LogoutCallbackURLs)
+	}
+	if input.BackchannelLogoutURL != "https://a.example.com/backchannel" {
+		t.Errorf("BackchannelLogoutURL: got %q", input.BackchannelLogoutURL)
 	}
 	if input.LaunchURL != "https://app.example.com" {
 		t.Errorf("LaunchURL: got %q", input.LaunchURL)
@@ -948,6 +952,14 @@ func TestOIDCClientInputEqual_DifferentTokenDurationsNotEqual(t *testing.T) {
 	}
 	if a.Equal(OIDCClientInput{Name: "test", AccessTokenDurationMinutes: 15, RefreshTokenDurationMinutes: 43200}) {
 		t.Error("expected different RefreshTokenDurationMinutes to not be equal")
+	}
+}
+
+func TestOIDCClientInputEqual_DifferentBackchannelLogoutURLNotEqual(t *testing.T) {
+	a := OIDCClientInput{Name: "test", BackchannelLogoutURL: "https://a.example.com/backchannel"}
+	b := OIDCClientInput{Name: "test"}
+	if a.Equal(b) {
+		t.Error("expected different BackchannelLogoutURL to not be equal")
 	}
 }
 

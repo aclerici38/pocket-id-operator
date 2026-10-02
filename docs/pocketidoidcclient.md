@@ -270,7 +270,7 @@ Note that an auto-generated logo is resolved from `metadata.name`, not from the 
 `client_name`. Set `logo.nameOverride` or disable `logo.autoGenerate` if that is wrong for
 the app.
 
-`name`, `callbackUrls`, `logoutCallbackUrls`, `isPublic`, `pkceEnabled`,
+`name`, `callbackUrls`, `logoutCallbackUrls`, `backchannelLogoutUrl`, `isPublic`, `pkceEnabled`,
 `federatedIdentities`, `clientSecretRef`, `clientSecretRotation`, and the `apiAccess`
 client permissions are owned by the metadata document or unsupported for a public client,
 and are rejected at admission. The document-owned ones still appear in `status` as observed
@@ -366,6 +366,7 @@ spec:
     - "https://internal.example.com/oidc/callback"
   logoutCallbackUrls:
     - "https://internal.example.com/logout"
+  backchannelLogoutUrl: "https://internal.example.com/oidc/backchannel-logout"
   pkceEnabled: true
   requiresReauthentication: true
   skipConsent: true

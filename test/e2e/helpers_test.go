@@ -372,17 +372,18 @@ spec:
 
 // OIDCClientOptions configures a PocketIDOIDCClient YAML.
 type OIDCClientOptions struct {
-	InstanceSelector   map[string]string
-	Name               string
-	Namespace          string
-	SpecName           string // spec.name: Pocket-ID display name (defaults to metadata.name when empty)
-	Description        string
-	ClientID           string // Custom client ID (defaults to Name if empty)
-	CallbackURLs       []string
-	LogoutCallbackURLs []string
-	IsPublic           bool
-	SkipConsent        bool
-	RequiresPAR        bool // spec.requiresPushedAuthorizationRequests
+	InstanceSelector     map[string]string
+	Name                 string
+	Namespace            string
+	SpecName             string // spec.name: Pocket-ID display name (defaults to metadata.name when empty)
+	Description          string
+	ClientID             string // Custom client ID (defaults to Name if empty)
+	CallbackURLs         []string
+	LogoutCallbackURLs   []string
+	BackchannelLogoutURL string // spec.backchannelLogoutUrl
+	IsPublic             bool
+	SkipConsent          bool
+	RequiresPAR          bool // spec.requiresPushedAuthorizationRequests
 
 	AccessTokenDurationMinutes  int64
 	RefreshTokenDurationMinutes int64
@@ -486,6 +487,10 @@ func buildOIDCClientYAML(opts OIDCClientOptions) string {
 
 	if opts.Description != "" {
 		spec.WriteString(fmt.Sprintf("  description: %s\n", opts.Description))
+	}
+
+	if opts.BackchannelLogoutURL != "" {
+		spec.WriteString(fmt.Sprintf("  backchannelLogoutUrl: %q\n", opts.BackchannelLogoutURL))
 	}
 
 	if opts.IsPublic {

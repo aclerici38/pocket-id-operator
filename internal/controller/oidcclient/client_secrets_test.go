@@ -17,6 +17,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -394,6 +395,43 @@ func TestMintClientSecret(t *testing.T) {
 		}
 		if len(api.calls) != 1 {
 			t.Fatalf("expected no retry against an expired secret, got %d creates", len(api.calls))
+		}
+	})
+
+	t.Run("adopts the secret Pocket-ID generated with a new client", func(t *testing.T) {
+		oidcClient := retentionClient(nil)
+		r := retentionReconciler(t, oidcClient)
+		generated := secretWithPrefix("generated", prefix, time.Hour)
+		r.pendingInitialMint = map[types.NamespacedName]*pocketid.CreatedOIDCClientSecret{
+			client.ObjectKeyFromObject(oidcClient): {OIDCClientSecret: generated, Value: storedSecretValue},
+		}
+		api := &fakeClientSecretAPI{secrets: []pocketid.OIDCClientSecret{generated}}
+
+		created, value, err := r.mintClientSecret(context.Background(), oidcClient, api, api.secrets)
+		if err != nil {
+			t.Fatalf("mintClientSecret: %v", err)
+		}
+		if len(api.calls) != 0 {
+			t.Fatalf("expected no create, got %d", len(api.calls))
+		}
+		if created.ID != "generated" || value != storedSecretValue {
+			t.Fatalf("expected the generated secret, got %+v / %q", created, value)
+		}
+	})
+
+	t.Run("mints when the generated secret is gone", func(t *testing.T) {
+		oidcClient := retentionClient(nil)
+		r := retentionReconciler(t, oidcClient)
+		r.pendingInitialMint = map[types.NamespacedName]*pocketid.CreatedOIDCClientSecret{
+			client.ObjectKeyFromObject(oidcClient): {OIDCClientSecret: secretWithPrefix("generated", prefix, time.Hour), Value: storedSecretValue},
+		}
+		api := &fakeClientSecretAPI{}
+
+		if _, _, err := r.mintClientSecret(context.Background(), oidcClient, api, nil); err != nil {
+			t.Fatalf("mintClientSecret: %v", err)
+		}
+		if len(api.calls) != 1 {
+			t.Fatalf("expected a single create, got %d", len(api.calls))
 		}
 	})
 

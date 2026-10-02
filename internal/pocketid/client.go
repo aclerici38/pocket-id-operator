@@ -93,6 +93,7 @@ type OIDCClient struct {
 	Description                         string
 	CallbackURLs                        []string
 	LogoutCallbackURLs                  []string
+	BackchannelLogoutURL                string
 	LaunchURL                           string
 	HasLogo                             bool
 	HasDarkLogo                         bool
@@ -110,6 +111,15 @@ type OIDCClient struct {
 	ClientType string
 	// Secrets is read-only; secrets are managed through the dedicated endpoints.
 	Secrets []OIDCClientSecret
+	// CreatedSecret is the secret Pocket-ID generated alongside a new client, carrying the only
+	// copy of its value. Only CreateOIDCClient sets it, and only when Pocket-ID made one.
+	CreatedSecret *CreatedOIDCClientSecret
+}
+
+// CreatedOIDCClientSecret is a newly created secret together with its value.
+type CreatedOIDCClientSecret struct {
+	OIDCClientSecret
+	Value string
 }
 
 // OIDCClientSecret is one of a client's secrets. Its value is only ever returned by the call
@@ -187,6 +197,7 @@ func (c *OIDCClient) ToInput() OIDCClientInput {
 		Description:                         c.Description,
 		CallbackURLs:                        c.CallbackURLs,
 		LogoutCallbackURLs:                  c.LogoutCallbackURLs,
+		BackchannelLogoutURL:                c.BackchannelLogoutURL,
 		LaunchURL:                           c.LaunchURL,
 		IsPublic:                            c.IsPublic,
 		IsGroupRestricted:                   c.IsGroupRestricted,
@@ -220,6 +231,7 @@ type OIDCClientInput struct {
 	Description                         string
 	CallbackURLs                        []string
 	LogoutCallbackURLs                  []string
+	BackchannelLogoutURL                string
 	LaunchURL                           string
 	LogoURL                             string
 	DarkLogoURL                         string
@@ -241,6 +253,7 @@ type OIDCClientInput struct {
 func (i OIDCClientInput) Equal(other OIDCClientInput) bool {
 	if i.Name != other.Name ||
 		i.Description != other.Description ||
+		i.BackchannelLogoutURL != other.BackchannelLogoutURL ||
 		i.LaunchURL != other.LaunchURL ||
 		i.IsPublic != other.IsPublic ||
 		i.IsGroupRestricted != other.IsGroupRestricted ||
@@ -697,6 +710,7 @@ func (c *Client) CreateOIDCClient(ctx context.Context, input OIDCClientInput) (*
 		Description:                         input.Description,
 		CallbackURLs:                        input.CallbackURLs,
 		LogoutCallbackURLs:                  input.LogoutCallbackURLs,
+		BackchannelLogoutURL:                input.BackchannelLogoutURL,
 		LaunchURL:                           input.LaunchURL,
 		LogoURL:                             input.LogoURL,
 		DarkLogoURL:                         input.DarkLogoURL,
@@ -726,7 +740,11 @@ func (c *Client) CreateOIDCClient(ctx context.Context, input OIDCClientInput) (*
 		return nil, fmt.Errorf("create OIDC client failed: %w", err)
 	}
 
-	return oidcClientFromAllowedGroupsDTO(resp.Payload), nil
+	created := oidcClientFromCreatedDTO(resp.Payload)
+	if secret := resp.Payload.CreatedSecret; secret != nil && secret.Secret != "" {
+		created.CreatedSecret = &CreatedOIDCClientSecret{oidcClientSecretFromCreatedDTO(secret), secret.Secret}
+	}
+	return created, nil
 }
 
 func (c *Client) UpdateOIDCClient(ctx context.Context, id string, input OIDCClientInput) (*OIDCClient, error) {
@@ -737,6 +755,7 @@ func (c *Client) UpdateOIDCClient(ctx context.Context, id string, input OIDCClie
 			Description:                         input.Description,
 			CallbackURLs:                        input.CallbackURLs,
 			LogoutCallbackURLs:                  input.LogoutCallbackURLs,
+			BackchannelLogoutURL:                input.BackchannelLogoutURL,
 			LaunchURL:                           input.LaunchURL,
 			LogoURL:                             input.LogoURL,
 			DarkLogoURL:                         input.DarkLogoURL,
@@ -1514,6 +1533,7 @@ func oidcClientFromListDTO(dto *models.GithubComPocketIDPocketIDBackendInternalD
 		Description:                         dto.Description,
 		CallbackURLs:                        dto.CallbackURLs,
 		LogoutCallbackURLs:                  dto.LogoutCallbackURLs,
+		BackchannelLogoutURL:                dto.BackchannelLogoutURL,
 		LaunchURL:                           dto.LaunchURL,
 		HasLogo:                             dto.HasLogo,
 		HasDarkLogo:                         dto.HasDarkLogo,
@@ -1542,6 +1562,36 @@ func oidcClientFromAllowedGroupsDTO(dto *models.GithubComPocketIDPocketIDBackend
 		Description:                         dto.Description,
 		CallbackURLs:                        dto.CallbackURLs,
 		LogoutCallbackURLs:                  dto.LogoutCallbackURLs,
+		BackchannelLogoutURL:                dto.BackchannelLogoutURL,
+		LaunchURL:                           dto.LaunchURL,
+		HasLogo:                             dto.HasLogo,
+		HasDarkLogo:                         dto.HasDarkLogo,
+		IsPublic:                            dto.IsPublic,
+		IsGroupRestricted:                   dto.IsGroupRestricted,
+		PKCEEnabled:                         dto.PkceEnabled,
+		PKCESupported:                       dto.PkceSupported,
+		RequiresReauthentication:            dto.RequiresReauthentication,
+		RequiresPushedAuthorizationRequests: dto.RequiresPushedAuthorizationRequests,
+		SkipConsent:                         dto.SkipConsent,
+		AccessTokenDurationMinutes:          dto.AccessTokenDurationMinutes,
+		RefreshTokenDurationMinutes:         dto.RefreshTokenDurationMinutes,
+		AllowedUserGroupIDs:                 groupIDsFromMinimalDTOs(dto.AllowedUserGroups),
+		ClientType:                          dto.ClientType,
+		Secrets:                             oidcClientSecretsFromCredentialsDTO(dto.Credentials),
+	}
+}
+
+func oidcClientFromCreatedDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientCreatedDto) *OIDCClient {
+	if dto == nil {
+		return nil
+	}
+	return &OIDCClient{
+		ID:                                  dto.ID,
+		Name:                                dto.Name,
+		Description:                         dto.Description,
+		CallbackURLs:                        dto.CallbackURLs,
+		LogoutCallbackURLs:                  dto.LogoutCallbackURLs,
+		BackchannelLogoutURL:                dto.BackchannelLogoutURL,
 		LaunchURL:                           dto.LaunchURL,
 		HasLogo:                             dto.HasLogo,
 		HasDarkLogo:                         dto.HasDarkLogo,
