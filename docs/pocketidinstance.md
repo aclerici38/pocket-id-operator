@@ -195,6 +195,7 @@ spec:
       userEmail: "mail"
       userFirstName: "givenName"
       userLastName: "sn"
+      userDisplayName: "cn"
       groupMember: "member"
       groupName: "cn"
 ```
@@ -238,6 +239,7 @@ spec:
   userManagement:
     emailsVerified: false                    # auto-verify emails
     allowOwnAccountEdit: true                # let users edit own details
+    requireUserEmail: true                   # require users to have an email
     allowUserSignups: "disabled"             # disabled, withToken, or open
     signupDefaultCustomClaims: '[]'          # JSON array of default claims
     signupDefaultUserGroupIds:               # UUIDs of default groups
@@ -710,7 +712,7 @@ spec:
   - `OTEL_TRACES_EXPORTER=otlp` (from `spec.tracing`)
   - `OTEL_METRICS_EXPORTER=prometheus` + `OTEL_*` (from `spec.metrics`)
   - `APP_NAME`, `SESSION_DURATION`, `HOME_PAGE_URL`, `DISABLE_ANIMATIONS`, `ACCENT_COLOR` (from `spec.ui`)
-  - `EMAILS_VERIFIED`, `ALLOW_OWN_ACCOUNT_EDIT`, `ALLOW_USER_SIGNUPS`, `SIGNUP_DEFAULT_*` (from `spec.userManagement`)
+  - `EMAILS_VERIFIED`, `ALLOW_OWN_ACCOUNT_EDIT`, `REQUIRE_USER_EMAIL`, `ALLOW_USER_SIGNUPS`, `SIGNUP_DEFAULT_*` (from `spec.userManagement`)
   - `WEBAUTHN_USER_VERIFICATION`, `WEBAUTHN_ALLOW_SYNCED_PASSKEYS`, `WEBAUTHN_AUTHENTICATOR_ATTACHMENT` (from `spec.webauthn`)
   - `CIMD_URL_ALLOWLIST` (JSON-encoded from `spec.cimdUrlAllowlist`)
   - `MAXMIND_LICENSE_KEY`, `GEOLITE_DB_PATH`, `GEOLITE_DB_URL` (from `spec.geoip`)

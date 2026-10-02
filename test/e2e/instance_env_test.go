@@ -125,6 +125,7 @@ spec:
   userManagement:
     emailsVerified: true
     allowOwnAccountEdit: false
+    requireUserEmail: false
     allowUserSignups: "withToken"
     signupDefaultCustomClaims: '[{"key":"department","value":"platform"}]'
     signupDefaultUserGroupIds:
@@ -166,6 +167,7 @@ spec:
       userEmail: "mail"
       userFirstName: "givenName"
       userLastName: "sn"
+      userDisplayName: "displayName"
       userProfilePicture: "jpegPhoto"
       groupMember: "member"
       groupUniqueIdentifier: "uuid"

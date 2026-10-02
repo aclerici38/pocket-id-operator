@@ -1559,6 +1559,13 @@
                           "null"
                         ]
                       },
+                      "userDisplayName": {
+                        "description": "LDAP attribute for display name",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
                       "userEmail": {
                         "description": "LDAP attribute for email",
                         "type": [
@@ -3822,6 +3829,13 @@
                   "emailsVerified": {
                     "default": false,
                     "description": "Auto-verify emails on signup or change",
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "requireUserEmail": {
+                    "description": "Require users to have an email address",
                     "type": [
                       "boolean",
                       "null"

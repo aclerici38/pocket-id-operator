@@ -451,6 +451,7 @@ func TestBuildEnvVars_LDAP(t *testing.T) {
 			UserEmail:            "mail",
 			UserFirstName:        "givenName",
 			UserLastName:         "sn",
+			UserDisplayName:      "displayName",
 			GroupMember:          "member",
 			GroupName:            "cn",
 		},
@@ -472,6 +473,7 @@ func TestBuildEnvVars_LDAP(t *testing.T) {
 	requireEnv(t, env, "LDAP_ATTRIBUTE_USER_EMAIL", "mail")
 	requireEnv(t, env, "LDAP_ATTRIBUTE_USER_FIRST_NAME", "givenName")
 	requireEnv(t, env, "LDAP_ATTRIBUTE_USER_LAST_NAME", "sn")
+	requireEnv(t, env, "LDAP_ATTRIBUTE_USER_DISPLAY_NAME", "displayName")
 	requireEnv(t, env, "LDAP_ATTRIBUTE_GROUP_MEMBER", "member")
 	requireEnv(t, env, "LDAP_ATTRIBUTE_GROUP_NAME", "cn")
 }
@@ -588,9 +590,11 @@ func TestBuildEnvVars_UI(t *testing.T) {
 func TestBuildEnvVars_UserManagement(t *testing.T) {
 	inst := minimalInstance()
 	allowEdit := false
+	requireEmail := false
 	inst.Spec.UserManagement = &pocketidinternalv1alpha1.UserManagementConfig{
 		EmailsVerified:            true,
 		AllowOwnAccountEdit:       &allowEdit,
+		RequireUserEmail:          &requireEmail,
 		AllowUserSignups:          "withToken",
 		SignupDefaultCustomClaims: `[{"key":"role","value":"user"}]`,
 		SignupDefaultUserGroupIDs: []string{"uuid-1", "uuid-2"},
@@ -599,6 +603,7 @@ func TestBuildEnvVars_UserManagement(t *testing.T) {
 	env := buildEnvVars(inst)
 	requireEnv(t, env, "EMAILS_VERIFIED", "true")
 	requireEnv(t, env, "ALLOW_OWN_ACCOUNT_EDIT", "false")
+	requireEnv(t, env, "REQUIRE_USER_EMAIL", "false")
 	requireEnv(t, env, "ALLOW_USER_SIGNUPS", "withToken")
 	requireEnv(t, env, "SIGNUP_DEFAULT_CUSTOM_CLAIMS", `[{"key":"role","value":"user"}]`)
 	requireEnv(t, env, "SIGNUP_DEFAULT_USER_GROUP_IDS", `["uuid-1","uuid-2"]`)
