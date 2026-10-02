@@ -623,8 +623,8 @@ func TestReconcileClientSecretData_DeclaredSecretSuppressesInitialMint(t *testin
 	oidcClient := declaredClient("app-creds", "secret")
 	src := sourceSecret("app-creds", map[string][]byte{"secret": []byte(declaredSecretValue)})
 	r := declaredSecretReconciler(t, oidcClient, src)
-	r.pendingInitialMint = map[types.NamespacedName]bool{
-		client.ObjectKeyFromObject(oidcClient): true,
+	r.pendingInitialMint = map[types.NamespacedName]*pocketid.CreatedOIDCClientSecret{
+		client.ObjectKeyFromObject(oidcClient): nil,
 	}
 	keys := r.GetSecretKeys(oidcClient)
 	secretData := map[string][]byte{}

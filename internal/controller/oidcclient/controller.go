@@ -98,7 +98,9 @@ type Reconciler struct {
 	// pendingInitialMint marks clients created (not adopted) by the operator whose client
 	// secret has not yet been stored. It lets storeClientSecret=false permit the one-time
 	// initial mint for brand-new clients while never regenerating pre-existing credentials.
-	pendingInitialMint map[types.NamespacedName]bool
+	// The value is the secret Pocket-ID generated with the client, if any, which the initial
+	// mint adopts rather than minting another.
+	pendingInitialMint map[types.NamespacedName]*pocketid.CreatedOIDCClientSecret
 }
 
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidoidcclients,verbs=get;list;watch;create;update;patch;delete
@@ -468,9 +470,9 @@ func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *po
 		// by SyncDeclaredClientSecret instead, so one must never be minted for it.
 		if !hasDeclaredClientSecret(oidcClient) {
 			if r.pendingInitialMint == nil {
-				r.pendingInitialMint = make(map[types.NamespacedName]bool)
+				r.pendingInitialMint = make(map[types.NamespacedName]*pocketid.CreatedOIDCClientSecret)
 			}
-			r.pendingInitialMint[client.ObjectKeyFromObject(oidcClient)] = true
+			r.pendingInitialMint[client.ObjectKeyFromObject(oidcClient)] = result.Resource.CreatedSecret
 		}
 	}
 	metrics.ResourceOperations.WithLabelValues("PocketIDOIDCClient", operation).Inc()
@@ -734,6 +736,7 @@ func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.Pocket
 		Description:                         oidcClient.Spec.Description,
 		CallbackURLs:                        callbackURLs,
 		LogoutCallbackURLs:                  logoutCallbackURLs,
+		BackchannelLogoutURL:                oidcClient.Spec.BackchannelLogoutURL,
 		LaunchURL:                           oidcClient.Spec.LaunchURL,
 		LogoURL:                             logoURL,
 		DarkLogoURL:                         darkLogoURL,
@@ -1456,7 +1459,7 @@ func (r *Reconciler) reconcileClientSecretData(
 		return nil, false, nil
 	}
 
-	if !storeClientSecret(oidcClient) && !r.pendingInitialMint[client.ObjectKeyFromObject(oidcClient)] {
+	if _, pending := r.pendingInitialMint[client.ObjectKeyFromObject(oidcClient)]; !storeClientSecret(oidcClient) && !pending {
 		// Record the rotation schedule as disabled so gauges from a previously enabled
 		// schedule cannot linger when rotation and storeClientSecret are turned off in
 		// the same update.

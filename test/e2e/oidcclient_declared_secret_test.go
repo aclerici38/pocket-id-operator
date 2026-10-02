@@ -107,6 +107,11 @@ spec:
 			By("verifying Pocket-ID accepts the declared value as the client secret")
 			clientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
 			Expect(clientSecretAuthResult(clientID, declaredValue)).To(Equal("ok"))
+
+			By("verifying the secret Pocket-ID generated with the client was retired")
+			Eventually(func() []string {
+				return clientSecretIDsFromPocketID(clientID)
+			}).Should(HaveLen(1))
 		})
 
 		It("should re-push after the source Secret changes", func() {

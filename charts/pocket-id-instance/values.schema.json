@@ -4847,6 +4847,13 @@
                   "null"
                 ]
               },
+              "backchannelLogoutUrl": {
+                "description": "Back-channel logout URL Pocket-ID notifies when a user's session for the client ends",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "callbackUrls": {
                 "description": "Callback URLs for the client",
                 "items": {
@@ -5473,8 +5480,8 @@
                 "rule": "!has(self.clientID) || self.clientID.startsWith('https://') || self.clientID.size() <= 128"
               },
               {
-                "message": "name, callbackUrls, logoutCallbackUrls, federatedIdentities, isPublic, and pkceEnabled are owned by the client ID metadata document and must not be set on a CIMD client",
-                "rule": "!(has(self.clientID) && self.clientID.startsWith('https://')) || (!has(self.name) && !has(self.callbackUrls) && !has(self.logoutCallbackUrls) && !has(self.federatedIdentities) && !self.isPublic && !self.pkceEnabled)"
+                "message": "name, callbackUrls, logoutCallbackUrls, backchannelLogoutUrl, federatedIdentities, isPublic, and pkceEnabled are owned by the client ID metadata document and must not be set on a CIMD client",
+                "rule": "!(has(self.clientID) && self.clientID.startsWith('https://')) || (!has(self.name) && !has(self.callbackUrls) && !has(self.logoutCallbackUrls) && !has(self.backchannelLogoutUrl) && !has(self.federatedIdentities) && !self.isPublic && !self.pkceEnabled)"
               },
               {
                 "message": "a CIMD client is always public and has no client secret, so clientSecretRef and clientSecretRotation are not supported",

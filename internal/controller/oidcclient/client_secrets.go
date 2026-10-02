@@ -6,6 +6,7 @@ import (
 	"slices"
 	"time"
 
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
@@ -104,6 +105,12 @@ func (r *Reconciler) mintClientSecret(
 	apiClient clientSecretMintAPI,
 	observed []pocketid.OIDCClientSecret,
 ) (pocketid.OIDCClientSecret, string, error) {
+	// A new client's first secret is the one Pocket-ID generated with it, while the client holds it.
+	if initial := r.pendingInitialMint[client.ObjectKeyFromObject(oidcClient)]; initial != nil &&
+		slices.ContainsFunc(observed, func(secret pocketid.OIDCClientSecret) bool { return secret.ID == initial.ID }) {
+		return initial.OIDCClientSecret, initial.Value, nil
+	}
+
 	for attempt := 1; attempt <= maxClientSecretMintAttempts; attempt++ {
 		created, value, err := apiClient.CreateOIDCClientSecret(ctx, oidcClient.Status.ClientID, "")
 		if err != nil {

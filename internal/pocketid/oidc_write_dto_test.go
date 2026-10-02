@@ -77,6 +77,7 @@ func captureOIDCClientWrite(t *testing.T, method, path string, write func(*Clien
 		Description:                         "a test client",
 		CallbackURLs:                        []string{"https://example.com/callback"},
 		LogoutCallbackURLs:                  []string{"https://example.com/logout"},
+		BackchannelLogoutURL:                "https://example.com/backchannel-logout",
 		LaunchURL:                           "https://example.com",
 		LogoURL:                             "https://example.com/logo.png",
 		DarkLogoURL:                         "https://example.com/logo-dark.png",
@@ -117,8 +118,9 @@ func assertFederatedIdentityFieldsSet(t *testing.T, body map[string]any) {
 	}
 	// Secrets have their own endpoints; Pocket-ID ignores what a client write sends for them.
 	assertDTOFieldsSet(t, models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientCredentialsDto{}, credentials, "credentials.", "secrets")
+	// TODO: publicKeys is not supported yet; identities use jwks.
 	assertDTOFieldsSet(t, models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientFederatedIdentityDto{},
-		firstFederatedIdentity(t, body), "credentials.federatedIdentities[0].")
+		firstFederatedIdentity(t, body), "credentials.federatedIdentities[0].", "publicKeys")
 }
 
 // assertDTOFieldsSet reports every JSON key of dto's type that the payload

@@ -311,7 +311,7 @@ type SCIMSpec struct {
 // +kubebuilder:validation:XValidation:rule="!has(self.clientSecretRef) || !self.isPublic",message="clientSecretRef requires a confidential client (isPublic must be false)"
 // +kubebuilder:validation:XValidation:rule="!has(self.clientSecretRef) || !has(self.clientSecretRotation) || !self.clientSecretRotation.enabled",message="clientSecretRotation cannot be enabled when clientSecretRef is set"
 // +kubebuilder:validation:XValidation:rule="!has(self.clientID) || self.clientID.startsWith('https://') || self.clientID.size() <= 128",message="clientID must be at most 128 characters unless it is a client ID metadata document URL"
-// +kubebuilder:validation:XValidation:rule="!(has(self.clientID) && self.clientID.startsWith('https://')) || (!has(self.name) && !has(self.callbackUrls) && !has(self.logoutCallbackUrls) && !has(self.federatedIdentities) && !self.isPublic && !self.pkceEnabled)",message="name, callbackUrls, logoutCallbackUrls, federatedIdentities, isPublic, and pkceEnabled are owned by the client ID metadata document and must not be set on a CIMD client"
+// +kubebuilder:validation:XValidation:rule="!(has(self.clientID) && self.clientID.startsWith('https://')) || (!has(self.name) && !has(self.callbackUrls) && !has(self.logoutCallbackUrls) && !has(self.backchannelLogoutUrl) && !has(self.federatedIdentities) && !self.isPublic && !self.pkceEnabled)",message="name, callbackUrls, logoutCallbackUrls, backchannelLogoutUrl, federatedIdentities, isPublic, and pkceEnabled are owned by the client ID metadata document and must not be set on a CIMD client"
 // +kubebuilder:validation:XValidation:rule="!(has(self.clientID) && self.clientID.startsWith('https://')) || (!has(self.clientSecretRef) && (!has(self.clientSecretRotation) || !self.clientSecretRotation.enabled))",message="a CIMD client is always public and has no client secret, so clientSecretRef and clientSecretRotation are not supported"
 // +kubebuilder:validation:XValidation:rule="!(has(self.clientID) && self.clientID.startsWith('https://')) || !has(self.apiAccess) || self.apiAccess.all(a, (!has(a.clientPermissions) || size(a.clientPermissions) == 0) && (!has(a.clientAccess) || !a.clientAccess))",message="clientPermissions and clientAccess require a confidential client, and a CIMD client is always public"
 // +kubebuilder:validation:XValidation:rule="!has(self.clientSecretOverlap) || !has(self.clientSecretRotation) || !has(self.clientSecretRotation.interval) || duration(self.clientSecretOverlap) <= duration(self.clientSecretRotation.interval)",message="clientSecretOverlap must not exceed clientSecretRotation.interval"
@@ -347,6 +347,10 @@ type PocketIDOIDCClientSpec struct {
 	// Logout callback URLs for the client
 	// +optional
 	LogoutCallbackURLs []string `json:"logoutCallbackUrls,omitempty"`
+
+	// Back-channel logout URL Pocket-ID notifies when a user's session for the client ends
+	// +optional
+	BackchannelLogoutURL string `json:"backchannelLogoutUrl,omitempty"`
 
 	// Launch URL for the client
 	// +optional

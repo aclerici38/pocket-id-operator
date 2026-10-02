@@ -44,6 +44,7 @@ func TestOidcClientInput(t *testing.T) {
 			Description:                         "a test client",
 			CallbackURLs:                        []string{"https://example.com/callback"},
 			LogoutCallbackURLs:                  []string{"https://example.com/logout"},
+			BackchannelLogoutURL:                "https://example.com/backchannel",
 			LaunchURL:                           "https://example.com",
 			LogoURL:                             "https://example.com/logo.png",
 			DarkLogoURL:                         "https://example.com/logo-dark.png",
@@ -75,6 +76,9 @@ func TestOidcClientInput(t *testing.T) {
 	}
 	if input.Description != "a test client" {
 		t.Errorf("expected Description %q, got %q", "a test client", input.Description)
+	}
+	if input.BackchannelLogoutURL != "https://example.com/backchannel" {
+		t.Errorf("expected BackchannelLogoutURL %q, got %q", "https://example.com/backchannel", input.BackchannelLogoutURL)
 	}
 	if input.LogoURL != "https://example.com/logo.png" {
 		t.Errorf("expected LogoURL to pass through, got %q", input.LogoURL)
@@ -1015,13 +1019,23 @@ func TestReconcileSecret_StoreClientSecretDisabled(t *testing.T) {
 		existingSecret  *corev1.Secret
 		regenAnnotation bool
 		pendingMint     bool
-		wantKey         string // expected client_secret value; empty means the key must be absent
+		generated       *pocketid.CreatedOIDCClientSecret // secret Pocket-ID generated with the client
+		wantKey         string                            // expected client_secret value; empty means the key must be absent
 		wantRegenCalls  int
 	}{
 		{name: "adopted client never mints"},
 		{name: "previously stored key is carried forward", existingSecret: existingSecretWithKey, wantKey: "minted-earlier"},
 		{name: "manual regenerate annotation is ignored", existingSecret: existingSecretWithKey.DeepCopy(), regenAnnotation: true, wantKey: "minted-earlier"},
 		{name: "newly created client mints and stores", pendingMint: true, wantKey: "rotated-secret", wantRegenCalls: 1},
+		{
+			name:        "newly created client stores the secret Pocket-ID generated",
+			pendingMint: true,
+			generated: &pocketid.CreatedOIDCClientSecret{
+				OIDCClientSecret: pocketid.OIDCClientSecret{ID: "generated", Prefix: pocketid.SecretPrefix("generated-secret"), IsActive: true},
+				Value:            "generated-secret",
+			},
+			wantKey: "generated-secret",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
@@ -1072,7 +1086,7 @@ func TestReconcileSecret_StoreClientSecretDisabled(t *testing.T) {
 
 			key := client.ObjectKeyFromObject(oidcClient)
 			if tc.pendingMint {
-				reconciler.pendingInitialMint = map[types.NamespacedName]bool{key: true}
+				reconciler.pendingInitialMint = map[types.NamespacedName]*pocketid.CreatedOIDCClientSecret{key: tc.generated}
 			}
 
 			// Only the pending-mint case gets a working API client; the others use nil,
@@ -1085,14 +1099,18 @@ func TestReconcileSecret_StoreClientSecretDisabled(t *testing.T) {
 				apiClient, _ = pocketid.NewClient(ts.URL, "")
 			}
 
-			if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient, nil); err != nil {
+			var observed []pocketid.OIDCClientSecret
+			if tc.generated != nil {
+				observed = []pocketid.OIDCClientSecret{tc.generated.OIDCClientSecret}
+			}
+			if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient, observed); err != nil {
 				t.Fatalf("ReconcileSecret returned error: %v", err)
 			}
 
 			if regenCalls != tc.wantRegenCalls {
 				t.Errorf("expected %d regenerate calls, got %d", tc.wantRegenCalls, regenCalls)
 			}
-			if reconciler.pendingInitialMint[key] {
+			if _, pending := reconciler.pendingInitialMint[key]; pending {
 				t.Error("expected pendingInitialMint to be cleared after the secret write")
 			}
 
@@ -1175,7 +1193,8 @@ func TestReconcileSecret_StoreClientSecretDisabledClearsRotationGauges(t *testin
 
 // TestCreateOrAdoptOIDCClient_PendingInitialMint verifies the provenance marker that lets
 // storeClientSecret=false mint the initial secret for brand-new clients only: creating a
-// client sets pendingInitialMint, adopting an existing one does not.
+// client sets pendingInitialMint, carrying the secret Pocket-ID generated with it, and adopting
+// an existing one does not.
 func TestCreateOrAdoptOIDCClient_PendingInitialMint(t *testing.T) {
 	ctx := context.Background()
 	scheme := runtime.NewScheme()
@@ -1185,6 +1204,7 @@ func TestCreateOrAdoptOIDCClient_PendingInitialMint(t *testing.T) {
 		name        string
 		handler     http.HandlerFunc
 		wantPending bool
+		wantValue   string
 	}{
 		{
 			name: "created client is marked for initial mint",
@@ -1196,7 +1216,24 @@ func TestCreateOrAdoptOIDCClient_PendingInitialMint(t *testing.T) {
 				case req.Method == http.MethodPost && req.URL.Path == "/api/oidc/clients":
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusCreated)
-					_, _ = w.Write([]byte(`{"id":"new-id","name":"mint-client","callbackURLs":[],"logoutCallbackURLs":[]}`))
+					_, _ = w.Write([]byte(`{"id":"new-id","name":"mint-client","callbackURLs":[],"logoutCallbackURLs":[],"createdSecret":{"id":"generated","secret":"generated-value"}}`))
+				default:
+					http.NotFound(w, req)
+				}
+			},
+			wantPending: true,
+			wantValue:   "generated-value",
+		},
+		{
+			name: "created client without a generated secret is still marked for initial mint",
+			handler: func(w http.ResponseWriter, req *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch {
+				case req.Method == http.MethodGet && req.URL.Path == "/api/oidc/clients":
+					_, _ = w.Write([]byte(`{"data":[]}`))
+				case req.Method == http.MethodPost && req.URL.Path == "/api/oidc/clients":
+					w.WriteHeader(http.StatusCreated)
+					_, _ = w.Write([]byte(`{"id":"new-id","name":"mint-client","createdSecret":{"id":"generated","secret":""}}`))
 				default:
 					http.NotFound(w, req)
 				}
@@ -1239,8 +1276,12 @@ func TestCreateOrAdoptOIDCClient_PendingInitialMint(t *testing.T) {
 			}
 
 			key := client.ObjectKeyFromObject(oidcClient)
-			if got := r.pendingInitialMint[key]; got != tc.wantPending {
+			initial, got := r.pendingInitialMint[key]
+			if got != tc.wantPending {
 				t.Errorf("pendingInitialMint = %v, want %v", got, tc.wantPending)
+			}
+			if (initial == nil) != (tc.wantValue == "") || (initial != nil && initial.Value != tc.wantValue) {
+				t.Errorf("pending secret = %+v, want value %q", initial, tc.wantValue)
 			}
 		})
 	}

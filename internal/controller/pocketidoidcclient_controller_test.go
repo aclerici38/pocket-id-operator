@@ -894,6 +894,9 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 			Entry("logoutCallbackUrls", func(s *pocketidinternalv1alpha1.PocketIDOIDCClientSpec) {
 				s.LogoutCallbackURLs = []string{"https://apps.example.com/logout"}
 			}),
+			Entry("backchannelLogoutUrl", func(s *pocketidinternalv1alpha1.PocketIDOIDCClientSpec) {
+				s.BackchannelLogoutURL = "https://apps.example.com/backchannel"
+			}),
 			Entry("isPublic", func(s *pocketidinternalv1alpha1.PocketIDOIDCClientSpec) { s.IsPublic = true }),
 			Entry("pkceEnabled", func(s *pocketidinternalv1alpha1.PocketIDOIDCClientSpec) { s.PKCEEnabled = true }),
 			Entry("federatedIdentities", func(s *pocketidinternalv1alpha1.PocketIDOIDCClientSpec) {
