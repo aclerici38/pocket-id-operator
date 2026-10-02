@@ -5277,7 +5277,7 @@ spec:
         - --zap-log-level=info
         command:
         - /manager
-        image: ghcr.io/aclerici38/pocket-id-operator:v0.14.3@sha256:eed206dbc5f85fe795dff84ca5be83bffc1d9d6408f470bf157e82e64d6025b9
+        image: ghcr.io/aclerici38/pocket-id-operator:v0.15.0@sha256:e1f94e349df106bdd95b81f96d74756c89b1bcba10c942a5409f8df5f97fb7e0
         livenessProbe:
           httpGet:
             path: /healthz
