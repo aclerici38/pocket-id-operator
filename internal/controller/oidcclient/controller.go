@@ -494,7 +494,7 @@ func preserveMetadataOwnedFields(desired *pocketid.OIDCClientInput, current *poc
 	desired.BackchannelLogoutURL = current.BackchannelLogoutURL
 	desired.IsPublic = current.IsPublic
 	desired.PKCEEnabled = current.PKCEEnabled
-	desired.Credentials = nil
+	desired.Credentials = &pocketid.OIDCClientCredentials{FederatedIdentities: current.FederatedIdentities}
 }
 
 // pushOIDCClientState compares the desired state from the CR spec against the current
@@ -520,21 +520,10 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 		preserveMetadataOwnedFields(&desired, current)
 	}
 
-	currentInput := current.ToInput()
-	clientChanged := !desired.Equal(currentInput)
-	hasCredentials := desired.Credentials != nil
+	clientChanged := !desired.Equal(current.ToInput())
 	groupsChanged := !pocketid.SortedEqual(groupIDs, current.AllowedUserGroupIDs)
 
-	// Clear any existing credentials if the CR doesn't specify any when adopting.
-	// A CIMD client's credentials are metadata-owned and discarded on write, so clearing
-	// them would only cost a pointless PUT on every adoption.
-	firstReconcile := !helpers.IsResourceReady(oidcClient.Status.Conditions) && !current.IsCIMD()
-	if firstReconcile && !hasCredentials {
-		desired.Credentials = &pocketid.OIDCClientCredentials{FederatedIdentities: []pocketid.OIDCClientFederatedIdentity{}}
-	}
-	shouldPushCredentials := hasCredentials || firstReconcile
-
-	if !clientChanged && !shouldPushCredentials && !groupsChanged && !logos.hasPush() {
+	if !clientChanged && !groupsChanged && !logos.hasPush() {
 		log.V(1).Info("OIDC client state is in sync, skipping update")
 		return false, nil
 	}
@@ -546,9 +535,7 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 	// which side failed. A dark URL that 404s would disown a light logo that landed.
 	desired.DarkLogoURL = ""
 
-	// Always push when credentials are present since they
-	// are write-only and cannot be compared against the fetched state.
-	if clientChanged || shouldPushCredentials || logos.pushLight != "" {
+	if clientChanged || logos.pushLight != "" {
 		ok, err := r.pushClientUpdate(ctx, apiClient, oidcClient.Status.ClientID, desired)
 		if err != nil {
 			return false, err
@@ -705,19 +692,15 @@ func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.Pocket
 		clientID = &oidcClient.Spec.ClientID
 	}
 
-	var credentials *pocketid.OIDCClientCredentials
-	if len(oidcClient.Spec.FederatedIdentities) > 0 {
-		identities := make([]pocketid.OIDCClientFederatedIdentity, 0, len(oidcClient.Spec.FederatedIdentities))
-		for _, identity := range oidcClient.Spec.FederatedIdentities {
-			identities = append(identities, pocketid.OIDCClientFederatedIdentity{
-				Issuer:           identity.Issuer,
-				Subject:          identity.Subject,
-				Audience:         identity.Audience,
-				JWKS:             identity.JWKS,
-				ReplayProtection: identity.ReplayProtection,
-			})
-		}
-		credentials = &pocketid.OIDCClientCredentials{FederatedIdentities: identities}
+	identities := make([]pocketid.OIDCClientFederatedIdentity, 0, len(oidcClient.Spec.FederatedIdentities))
+	for _, identity := range oidcClient.Spec.FederatedIdentities {
+		identities = append(identities, pocketid.OIDCClientFederatedIdentity{
+			Issuer:           identity.Issuer,
+			Subject:          identity.Subject,
+			Audience:         identity.Audience,
+			JWKS:             identity.JWKS,
+			ReplayProtection: identity.ReplayProtection,
+		})
 	}
 
 	// When callback URLs are not in the spec, preserve the server-side values
@@ -749,7 +732,7 @@ func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.Pocket
 		SkipConsent:                         oidcClient.Spec.SkipConsent,
 		AccessTokenDurationMinutes:          oidcClient.Spec.AccessTokenDurationMinutes,
 		RefreshTokenDurationMinutes:         oidcClient.Spec.RefreshTokenDurationMinutes,
-		Credentials:                         credentials,
+		Credentials:                         &pocketid.OIDCClientCredentials{FederatedIdentities: identities},
 	}
 }
 

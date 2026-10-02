@@ -114,7 +114,7 @@ func TestOidcClientInput(t *testing.T) {
 		JWKS:             "https://issuer.example.com/jwks",
 		ReplayProtection: true,
 	}
-	if input.Credentials.FederatedIdentities[0] != expected {
+	if !reflect.DeepEqual(input.Credentials.FederatedIdentities[0], expected) {
 		t.Errorf("expected federated identity %+v, got %+v", expected, input.Credentials.FederatedIdentities[0])
 	}
 }

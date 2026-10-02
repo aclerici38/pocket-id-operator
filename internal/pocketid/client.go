@@ -5,10 +5,13 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -108,7 +111,8 @@ type OIDCClient struct {
 	RefreshTokenDurationMinutes         int64
 	AllowedUserGroupIDs                 []string
 	// ClientType is "standard" or "cimd". Read-only; Pocket-ID sets it at registration.
-	ClientType string
+	ClientType          string
+	FederatedIdentities []OIDCClientFederatedIdentity
 	// Secrets is read-only; secrets are managed through the dedicated endpoints.
 	Secrets []OIDCClientSecret
 	// CreatedSecret is the secret Pocket-ID generated alongside a new client, carrying the only
@@ -185,8 +189,8 @@ func clientIDPathParam(id string) string {
 }
 
 // ToInput converts an OIDCClient into an OIDCClientInput for comparison with desired state.
-// ID and Credentials are not included: federated identities aren't returned by the GET API, and
-// the secrets it carries have their own endpoints.
+// ID is not included, and Credentials carries only the federated identities: secrets have their
+// own endpoints.
 // LogoURL and DarkLogoURL are write-only (not returned by the API) and are reconciled
 // separately, so they are left zero here.
 // AllowedUserGroupIDs is managed separately and excluded from the input.
@@ -207,6 +211,7 @@ func (c *OIDCClient) ToInput() OIDCClientInput {
 		SkipConsent:                         c.SkipConsent,
 		AccessTokenDurationMinutes:          c.AccessTokenDurationMinutes,
 		RefreshTokenDurationMinutes:         c.RefreshTokenDurationMinutes,
+		Credentials:                         &OIDCClientCredentials{FederatedIdentities: c.FederatedIdentities},
 	}
 }
 
@@ -216,12 +221,36 @@ type OIDCClientFederatedIdentity struct {
 	Subject          string
 	Audience         string
 	JWKS             string
+	PublicKeys       []json.RawMessage
 	ReplayProtection bool
+}
+
+func (i OIDCClientFederatedIdentity) equal(other OIDCClientFederatedIdentity) bool {
+	return i.Issuer == other.Issuer &&
+		i.Subject == other.Subject &&
+		i.Audience == other.Audience &&
+		i.JWKS == other.JWKS &&
+		i.ReplayProtection == other.ReplayProtection &&
+		slices.EqualFunc(i.PublicKeys, other.PublicKeys, jsonEqual)
+}
+
+// jsonEqual reports whether two JSON documents decode to the same value, ignoring formatting
+// and member order.
+func jsonEqual(a, b json.RawMessage) bool {
+	var av, bv any
+	return json.Unmarshal(a, &av) == nil && json.Unmarshal(b, &bv) == nil && reflect.DeepEqual(av, bv)
 }
 
 // OIDCClientCredentials holds optional federated identity configuration.
 type OIDCClientCredentials struct {
 	FederatedIdentities []OIDCClientFederatedIdentity
+}
+
+func (c *OIDCClientCredentials) federatedIdentities() []OIDCClientFederatedIdentity {
+	if c == nil {
+		return nil
+	}
+	return c.FederatedIdentities
 }
 
 // OIDCClientInput contains fields for creating or updating an OIDC client.
@@ -247,9 +276,10 @@ type OIDCClientInput struct {
 }
 
 // Equal compares two OIDCClientInputs for equality on the fields that can be
-// compared (excludes ID and Credentials which are create-time or write-only, and
-// LogoURL/DarkLogoURL, which are attach-only instructions the GET API never echoes —
-// logos are reconciled separately against OIDCClient.HasLogo/HasDarkLogo).
+// compared (excludes ID, which is create-time, and LogoURL/DarkLogoURL, which are
+// attach-only instructions the GET API never echoes — logos are reconciled
+// separately against OIDCClient.HasLogo/HasDarkLogo). Federated identities are
+// compared in order, with nil and empty credentials treated alike.
 func (i OIDCClientInput) Equal(other OIDCClientInput) bool {
 	if i.Name != other.Name ||
 		i.Description != other.Description ||
@@ -271,7 +301,8 @@ func (i OIDCClientInput) Equal(other OIDCClientInput) bool {
 	if !orderedEqual(i.LogoutCallbackURLs, other.LogoutCallbackURLs) {
 		return false
 	}
-	return true
+	return slices.EqualFunc(i.Credentials.federatedIdentities(), other.Credentials.federatedIdentities(),
+		OIDCClientFederatedIdentity.equal)
 }
 
 // CustomClaim represents a custom claim key/value pair.
@@ -1459,12 +1490,59 @@ func oidcCredentialsToDTO(credentials *OIDCClientCredentials) *models.GithubComP
 			Subject:          identity.Subject,
 			Audience:         identity.Audience,
 			Jwks:             identity.JWKS,
+			PublicKeys:       publicKeysToDTO(identity.PublicKeys),
 			ReplayProtection: identity.ReplayProtection,
 		})
 	}
 	return &models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientCredentialsDto{
 		FederatedIdentities: identities,
 	}
+}
+
+func publicKeysToDTO(keys []json.RawMessage) []any {
+	if len(keys) == 0 {
+		return nil
+	}
+	out := make([]any, len(keys))
+	for i, key := range keys {
+		out[i] = key
+	}
+	return out
+}
+
+func federatedIdentitiesFromCredentialsDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientCredentialsDto) []OIDCClientFederatedIdentity {
+	if dto == nil {
+		return nil
+	}
+	identities := make([]OIDCClientFederatedIdentity, 0, len(dto.FederatedIdentities))
+	for _, identity := range dto.FederatedIdentities {
+		if identity == nil {
+			continue
+		}
+		identities = append(identities, OIDCClientFederatedIdentity{
+			Issuer:           identity.Issuer,
+			Subject:          identity.Subject,
+			Audience:         identity.Audience,
+			JWKS:             identity.Jwks,
+			PublicKeys:       publicKeysFromDTO(identity.PublicKeys),
+			ReplayProtection: identity.ReplayProtection,
+		})
+	}
+	return identities
+}
+
+// publicKeysFromDTO re-encodes the decoded JWK objects the generated client hands back.
+func publicKeysFromDTO(keys []any) []json.RawMessage {
+	if len(keys) == 0 {
+		return nil
+	}
+	out := make([]json.RawMessage, 0, len(keys))
+	for _, key := range keys {
+		if encoded, err := json.Marshal(key); err == nil {
+			out = append(out, encoded)
+		}
+	}
+	return out
 }
 
 func oidcClientSecretsFromCredentialsDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoOidcClientCredentialsDto) []OIDCClientSecret {
@@ -1548,6 +1626,7 @@ func oidcClientFromListDTO(dto *models.GithubComPocketIDPocketIDBackendInternalD
 		RefreshTokenDurationMinutes:         dto.RefreshTokenDurationMinutes,
 		AllowedUserGroupIDs:                 groupIDsFromMinimalDTOs(dto.AllowedUserGroups),
 		ClientType:                          dto.ClientType,
+		FederatedIdentities:                 federatedIdentitiesFromCredentialsDTO(dto.Credentials),
 		Secrets:                             oidcClientSecretsFromCredentialsDTO(dto.Credentials),
 	}
 }
@@ -1577,6 +1656,7 @@ func oidcClientFromAllowedGroupsDTO(dto *models.GithubComPocketIDPocketIDBackend
 		RefreshTokenDurationMinutes:         dto.RefreshTokenDurationMinutes,
 		AllowedUserGroupIDs:                 groupIDsFromMinimalDTOs(dto.AllowedUserGroups),
 		ClientType:                          dto.ClientType,
+		FederatedIdentities:                 federatedIdentitiesFromCredentialsDTO(dto.Credentials),
 		Secrets:                             oidcClientSecretsFromCredentialsDTO(dto.Credentials),
 	}
 }
@@ -1606,6 +1686,7 @@ func oidcClientFromCreatedDTO(dto *models.GithubComPocketIDPocketIDBackendIntern
 		RefreshTokenDurationMinutes:         dto.RefreshTokenDurationMinutes,
 		AllowedUserGroupIDs:                 groupIDsFromMinimalDTOs(dto.AllowedUserGroups),
 		ClientType:                          dto.ClientType,
+		FederatedIdentities:                 federatedIdentitiesFromCredentialsDTO(dto.Credentials),
 		Secrets:                             oidcClientSecretsFromCredentialsDTO(dto.Credentials),
 	}
 }
