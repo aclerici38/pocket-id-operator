@@ -12,7 +12,7 @@ go = "1.27.1"
 # Kubernetes manifest tooling
 kustomize = "5.8.2"
 "go:sigs.k8s.io/controller-tools/cmd/controller-gen" = "v0.22.0"
-yq = "4.53.6"
+yq = "4.54.1"
 
 # Release version rewriting
 sd = "1.1.0"
