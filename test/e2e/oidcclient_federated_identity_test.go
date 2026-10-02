@@ -4,6 +4,8 @@
 package e2e
 
 import (
+	"encoding/json"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -32,7 +34,10 @@ var _ = Describe("OIDC Client Federated Identity", Ordered, func() {
 		waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 	})
 
-	It("should store the federated identity exactly as specified", func() {
+	// An identity with only an issuer must come back without the default jwks Pocket-ID derives
+	// from it, and the identities must come back in the order they were sent: both are compared
+	// as they are.
+	It("should store the federated identities exactly as specified", func() {
 		createOIDCClientAndWaitReady(OIDCClientOptions{
 			Name:         clientName,
 			CallbackURLs: []string{"https://federated-identity.example.com/callback"},
@@ -42,6 +47,8 @@ var _ = Describe("OIDC Client Federated Identity", Ordered, func() {
 				Audience:         "test-audience",
 				JWKS:             "https://issuer.example.com/.well-known/jwks.json",
 				ReplayProtection: true,
+			}, {
+				Issuer: "https://another-issuer.example.com",
 			}},
 		})
 		clientID = waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
@@ -52,10 +59,12 @@ var _ = Describe("OIDC Client Federated Identity", Ordered, func() {
 			Audience:         "test-audience",
 			JWKS:             "https://issuer.example.com/.well-known/jwks.json",
 			ReplayProtection: true,
+		}, {
+			Issuer: "https://another-issuer.example.com",
 		}}))
 	})
 
-	It("should remove the federated identity when it is dropped from the spec", func() {
+	It("should remove the federated identities when they are dropped from the spec", func() {
 		Expect(patchObject("pocketidoidcclient", clientName, userNS,
 			`{"spec":{"federatedIdentities":null}}`)).To(Succeed())
 
@@ -75,6 +84,8 @@ var _ = Describe("OIDC Client Federated Identity", Ordered, func() {
 			waitForResourceDeleted("pocketidoidcclient", adoptName, userNS)
 		})
 
+		// The identity carries public keys, as one added in the UI may, so clearing it also
+		// shows the operator reads keys back from Pocket-ID.
 		It("should clear federated identities the spec does not declare", func() {
 			By("creating a client with a federated identity directly in Pocket-ID")
 			ctx, cancel := testCtx()
@@ -84,12 +95,15 @@ var _ = Describe("OIDC Client Federated Identity", Ordered, func() {
 				ID:           &id,
 				Name:         "Federated Identity Adopt",
 				CallbackURLs: []string{"https://federated-identity-adopt.example.com/callback"},
-				Credentials: &pocketid.OIDCClientCredentials{FederatedIdentities: []pocketid.OIDCClientFederatedIdentity{
-					{Issuer: "https://issuer.example.com"},
-				}},
+				Credentials: &pocketid.OIDCClientCredentials{FederatedIdentities: []pocketid.OIDCClientFederatedIdentity{{
+					Issuer: "https://issuer.example.com",
+					PublicKeys: []json.RawMessage{json.RawMessage(
+						`{"kty":"OKP","crv":"Ed25519","kid":"e2e-key","use":"sig","x":"fxAuz6i2oJCZM8blM5bge1smljJn8qL-yysBgwHBnDA"}`)},
+				}}},
 			})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(federatedIdentities(adoptClientID)).To(HaveLen(1))
+			Expect(federatedIdentities(adoptClientID)).To(ConsistOf(
+				HaveField("PublicKeys", HaveLen(1))))
 
 			By("adopting it with a CR that declares none")
 			createOIDCClientAndWaitReady(OIDCClientOptions{

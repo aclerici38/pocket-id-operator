@@ -1046,6 +1046,11 @@ func TestOIDCClientInputEqual_FederatedIdentities(t *testing.T) {
 	reformatted.PublicKeys = []json.RawMessage{json.RawMessage(`{ "e": "AQAB", "kid": "k1", "kty": "RSA" }`)}
 	rotated := identity
 	rotated.PublicKeys = []json.RawMessage{json.RawMessage(`{"kty":"RSA","kid":"k2","e":"AQAB"}`)}
+	changed := func(mutate func(*OIDCClientFederatedIdentity)) OIDCClientInput {
+		c := identity
+		mutate(&c)
+		return withIdentities(c)
+	}
 
 	for _, tc := range []struct {
 		name string
@@ -1058,6 +1063,11 @@ func TestOIDCClientInputEqual_FederatedIdentities(t *testing.T) {
 		{"identity removed", withIdentities(identity), OIDCClientInput{Name: "test"}, false},
 		{"identity order", withIdentities(identity, other), withIdentities(other, identity), false},
 		{"different key", withIdentities(identity), withIdentities(rotated), false},
+		{"different issuer", withIdentities(identity), changed(func(c *OIDCClientFederatedIdentity) { c.Issuer = "https://x.example.com" }), false},
+		{"different subject", withIdentities(identity), changed(func(c *OIDCClientFederatedIdentity) { c.Subject = "sub" }), false},
+		{"different audience", withIdentities(identity), changed(func(c *OIDCClientFederatedIdentity) { c.Audience = "aud" }), false},
+		{"different jwks", withIdentities(identity), changed(func(c *OIDCClientFederatedIdentity) { c.JWKS = "https://x.example.com/jwks" }), false},
+		{"different replayProtection", withIdentities(identity), changed(func(c *OIDCClientFederatedIdentity) { c.ReplayProtection = true }), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := tc.a.Equal(tc.b); got != tc.want {
