@@ -974,7 +974,6 @@ func TestOIDCClientWrites_StopOnUnresolvablePublicKeys(t *testing.T) {
 }
 
 func TestPushOIDCClientState_UpdatesGroupsWhenChanged(t *testing.T) {
-	ctx := context.Background()
 	scheme := runtime.NewScheme()
 	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
 
@@ -1001,13 +1000,50 @@ func TestPushOIDCClientState_UpdatesGroupsWhenChanged(t *testing.T) {
 
 	r := newPushStateOIDCReconciler(scheme, oidcClientCR, groupA)
 
-	groupsUpdateCalled := false
+	// Restriction is being turned on, so the groups must land first or Pocket-ID would
+	// back-channel log out every authorized user.
+	if calls := recordGroupPushOrder(t, r, oidcClientCR, current); !slices.Equal(calls, []string{"groups", "client"}) {
+		t.Errorf("expected groups pushed before the client update, got %v", calls)
+	}
+}
+
+func TestPushOIDCClientState_UnrestrictsBeforeClearingGroups(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	oidcClientCR := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "groups-client", Namespace: testNamespace},
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
+			ClientID:   "groups-id",
+			Conditions: readyCondition(),
+		},
+	}
+	current := &pocketid.OIDCClient{
+		ID:                  "groups-id",
+		Name:                "groups-client",
+		IsGroupRestricted:   true,
+		AllowedUserGroupIDs: []string{"gid-a"},
+	}
+
+	r := newPushStateOIDCReconciler(scheme, oidcClientCR)
+
+	if calls := recordGroupPushOrder(t, r, oidcClientCR, current); !slices.Equal(calls, []string{"client", "groups"}) {
+		t.Errorf("expected the client unrestricted before its groups are cleared, got %v", calls)
+	}
+}
+
+// recordGroupPushOrder runs pushOIDCClientState and returns the order of the client and
+// allowed-groups updates it sent.
+func recordGroupPushOrder(t *testing.T, r *Reconciler, oidcClientCR *pocketidinternalv1alpha1.PocketIDOIDCClient, current *pocketid.OIDCClient) []string {
+	t.Helper()
+	var calls []string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		switch {
 		case req.Method == http.MethodPut && req.URL.Path == "/api/oidc/clients/groups-id":
+			calls = append(calls, "client")
 			okOIDCClientResponse(w, "groups-id", "groups-client")
 		case req.Method == http.MethodPut && req.URL.Path == "/api/oidc/clients/groups-id/allowed-user-groups":
-			groupsUpdateCalled = true
+			calls = append(calls, "groups")
 			w.WriteHeader(http.StatusOK)
 		default:
 			http.NotFound(w, req)
@@ -1016,12 +1052,10 @@ func TestPushOIDCClientState_UpdatesGroupsWhenChanged(t *testing.T) {
 	defer ts.Close()
 	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
-	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
+	if _, err := r.pushOIDCClientState(context.Background(), oidcClientCR, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !groupsUpdateCalled {
-		t.Error("expected UpdateOIDCClientAllowedGroups to be called when groups differ")
-	}
+	return calls
 }
 
 func TestPushOIDCClientState_IsGroupRestrictedReflectsAggregation(t *testing.T) {
