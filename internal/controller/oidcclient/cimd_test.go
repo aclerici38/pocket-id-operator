@@ -142,13 +142,14 @@ func TestRefreshClientMetadata_FailureStillClearsAnnotation(t *testing.T) {
 // read back the discarded values, and push again on every reconcile.
 func TestPreserveMetadataOwnedFields_NoDiffAgainstMetadataOwnedValues(t *testing.T) {
 	current := &pocketid.OIDCClient{
-		ID:                 "https://apps.example.com/meta.json",
-		Name:               "My App",
-		CallbackURLs:       []string{"https://apps.example.com/cb"},
-		LogoutCallbackURLs: []string{"https://apps.example.com/logout"},
-		IsPublic:           true,
-		PKCEEnabled:        true,
-		ClientType:         pocketid.ClientTypeCIMD,
+		ID:                   "https://apps.example.com/meta.json",
+		Name:                 "My App",
+		CallbackURLs:         []string{"https://apps.example.com/cb"},
+		LogoutCallbackURLs:   []string{"https://apps.example.com/logout"},
+		BackchannelLogoutURL: "https://apps.example.com/backchannel",
+		IsPublic:             true,
+		PKCEEnabled:          true,
+		ClientType:           pocketid.ClientTypeCIMD,
 	}
 
 	// What the operator would build from a CR that leaves every metadata-owned field at

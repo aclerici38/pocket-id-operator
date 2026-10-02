@@ -491,6 +491,7 @@ func preserveMetadataOwnedFields(desired *pocketid.OIDCClientInput, current *poc
 	desired.Name = current.Name
 	desired.CallbackURLs = current.CallbackURLs
 	desired.LogoutCallbackURLs = current.LogoutCallbackURLs
+	desired.BackchannelLogoutURL = current.BackchannelLogoutURL
 	desired.IsPublic = current.IsPublic
 	desired.PKCEEnabled = current.PKCEEnabled
 	desired.Credentials = nil
