@@ -183,6 +183,10 @@ type LDAPAttributeMappingConfig struct {
 	// +optional
 	UserLastName string `json:"userLastName,omitempty"`
 
+	// LDAP attribute for display name
+	// +optional
+	UserDisplayName string `json:"userDisplayName,omitempty"`
+
 	// LDAP attribute for profile picture
 	// +optional
 	UserProfilePicture string `json:"userProfilePicture,omitempty"`
@@ -310,6 +314,10 @@ type UserManagementConfig struct {
 	// Allow users to edit their own account details
 	// +optional
 	AllowOwnAccountEdit *bool `json:"allowOwnAccountEdit,omitempty"`
+
+	// Require users to have an email address
+	// +optional
+	RequireUserEmail *bool `json:"requireUserEmail,omitempty"`
 
 	// User signup mode
 	// +kubebuilder:validation:Enum=disabled;withToken;open

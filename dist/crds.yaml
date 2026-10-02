@@ -1409,6 +1409,9 @@ spec:
                       groupUniqueIdentifier:
                         description: LDAP attribute for immutable group identifier
                         type: string
+                      userDisplayName:
+                        description: LDAP attribute for display name
+                        type: string
                       userEmail:
                         description: LDAP attribute for email
                         type: string
@@ -3181,6 +3184,9 @@ spec:
                   emailsVerified:
                     default: false
                     description: Auto-verify emails on signup or change
+                    type: boolean
+                  requireUserEmail:
+                    description: Require users to have an email address
                     type: boolean
                   signupDefaultCustomClaims:
                     description: Default custom claims to assign to new users (JSON

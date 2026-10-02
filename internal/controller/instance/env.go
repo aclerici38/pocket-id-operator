@@ -290,6 +290,9 @@ func buildLDAPAttributeMappingEnv(am *pocketidinternalv1alpha1.LDAPAttributeMapp
 	if am.UserLastName != "" {
 		env = append(env, corev1.EnvVar{Name: "LDAP_ATTRIBUTE_USER_LAST_NAME", Value: am.UserLastName})
 	}
+	if am.UserDisplayName != "" {
+		env = append(env, corev1.EnvVar{Name: "LDAP_ATTRIBUTE_USER_DISPLAY_NAME", Value: am.UserDisplayName})
+	}
 	if am.UserProfilePicture != "" {
 		env = append(env, corev1.EnvVar{Name: "LDAP_ATTRIBUTE_USER_PROFILE_PICTURE", Value: am.UserProfilePicture})
 	}
@@ -370,6 +373,9 @@ func buildUserManagementEnv(instance *pocketidinternalv1alpha1.PocketIDInstance)
 	}
 	if um.AllowOwnAccountEdit != nil {
 		env = append(env, corev1.EnvVar{Name: "ALLOW_OWN_ACCOUNT_EDIT", Value: fmt.Sprintf("%t", *um.AllowOwnAccountEdit)})
+	}
+	if um.RequireUserEmail != nil {
+		env = append(env, corev1.EnvVar{Name: "REQUIRE_USER_EMAIL", Value: fmt.Sprintf("%t", *um.RequireUserEmail)})
 	}
 	if um.AllowUserSignups != "" {
 		env = append(env, corev1.EnvVar{Name: "ALLOW_USER_SIGNUPS", Value: um.AllowUserSignups})

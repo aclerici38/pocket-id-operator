@@ -1661,6 +1661,11 @@ func (in *UserManagementConfig) DeepCopyInto(out *UserManagementConfig) {
 		*out = new(bool)
 		**out = **in
 	}
+	if in.RequireUserEmail != nil {
+		in, out := &in.RequireUserEmail, &out.RequireUserEmail
+		*out = new(bool)
+		**out = **in
+	}
 	if in.SignupDefaultUserGroupIDs != nil {
 		in, out := &in.SignupDefaultUserGroupIDs, &out.SignupDefaultUserGroupIDs
 		*out = make([]string, len(*in))
