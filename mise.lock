@@ -213,24 +213,24 @@ url = "https://github.com/chmln/sd/releases/download/v1.1.0/sd-v1.1.0-aarch64-ap
 url_api = "https://api.github.com/repos/chmln/sd/releases/assets/362325451"
 
 [[tools.setup-envtest]]
-version = "0.25.1"
+version = "0.25.2"
 backend = "aqua:kubernetes-sigs/controller-runtime/setup-envtest"
-specifiers = ["0.25.1"]
+specifiers = ["0.25.2"]
 
 [tools.setup-envtest."platforms.linux-arm64"]
-checksum = "sha256:91df5abb84e60b8e20fe9d40e86beaabb49b176a1ed77a13e6caa06d7b0acf6c"
-url = "https://github.com/kubernetes-sigs/controller-runtime/releases/download/v0.25.1/setup-envtest-linux-arm64"
-url_api = "https://api.github.com/repos/kubernetes-sigs/controller-runtime/releases/assets/562315193"
+checksum = "sha256:694c6f9d830b8efa1a211cdc98859121edbb5ea523300d18c21ce89ce7feeb8e"
+url = "https://github.com/kubernetes-sigs/controller-runtime/releases/download/v0.25.2/setup-envtest-linux-arm64"
+url_api = "https://api.github.com/repos/kubernetes-sigs/controller-runtime/releases/assets/603348941"
 
 [tools.setup-envtest."platforms.linux-x64"]
-checksum = "sha256:531726d9a1d9e4c5661e22ab90186e186f5dbebbc109b13333fa7e237068f06d"
-url = "https://github.com/kubernetes-sigs/controller-runtime/releases/download/v0.25.1/setup-envtest-linux-amd64"
-url_api = "https://api.github.com/repos/kubernetes-sigs/controller-runtime/releases/assets/562315190"
+checksum = "sha256:94534f83896f3b09934d9570b213fbda04aa5c17457942270928cdca0317bf9b"
+url = "https://github.com/kubernetes-sigs/controller-runtime/releases/download/v0.25.2/setup-envtest-linux-amd64"
+url_api = "https://api.github.com/repos/kubernetes-sigs/controller-runtime/releases/assets/603348940"
 
 [tools.setup-envtest."platforms.macos-arm64"]
-checksum = "sha256:6110a436b854b205eb3771c72622fcbec17ffffea6c3fca64f8c2ebb2e780053"
-url = "https://github.com/kubernetes-sigs/controller-runtime/releases/download/v0.25.1/setup-envtest-darwin-arm64"
-url_api = "https://api.github.com/repos/kubernetes-sigs/controller-runtime/releases/assets/562315192"
+checksum = "sha256:7c95d67911e157d2caa02f599bcf9321b4e759d2f008749b4d03ed9d3e6a8c69"
+url = "https://github.com/kubernetes-sigs/controller-runtime/releases/download/v0.25.2/setup-envtest-darwin-arm64"
+url_api = "https://api.github.com/repos/kubernetes-sigs/controller-runtime/releases/assets/603348936"
 
 [[tools.yq]]
 version = "4.53.6"
