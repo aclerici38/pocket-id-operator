@@ -131,7 +131,7 @@ type OIDCClientFederatedIdentity struct {
 	// +optional
 	Audience string `json:"audience,omitempty"`
 
-	// JWKS is the URL or JSON for the identity's JWKS
+	// JWKS is the URL of the identity's JWKS. Defaults to the issuer's /.well-known/jwks.json
 	// +optional
 	JWKS string `json:"jwks,omitempty"`
 

@@ -403,6 +403,10 @@ spec:
       jwks: "https://www.googleapis.com/oauth2/v3/certs"
 ```
 
+`jwks` is a URL and defaults to `<issuer>/.well-known/jwks.json`. The operator owns the
+client's federated identities: ones added in Pocket-ID are removed, and removing an entry
+from the spec removes it from the client.
+
 ## API Access
 
 A client can be granted scoped access to one or more [`PocketIDAPI`](pocketidapi.md)

@@ -3634,7 +3634,8 @@ spec:
                       description: Issuer is the OIDC issuer for the identity
                       type: string
                     jwks:
-                      description: JWKS is the URL or JSON for the identity's JWKS
+                      description: JWKS is the URL of the identity's JWKS. Defaults
+                        to the issuer's /.well-known/jwks.json
                       type: string
                     replayProtection:
                       default: false

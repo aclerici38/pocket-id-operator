@@ -149,6 +149,7 @@ func TestPreserveMetadataOwnedFields_NoDiffAgainstMetadataOwnedValues(t *testing
 		BackchannelLogoutURL: "https://apps.example.com/backchannel",
 		IsPublic:             true,
 		PKCEEnabled:          true,
+		FederatedIdentities:  []pocketid.OIDCClientFederatedIdentity{{Issuer: "https://issuer.example.com"}},
 		ClientType:           pocketid.ClientTypeCIMD,
 	}
 
@@ -167,9 +168,6 @@ func TestPreserveMetadataOwnedFields_NoDiffAgainstMetadataOwnedValues(t *testing
 
 	if !desired.Equal(current.ToInput()) {
 		t.Errorf("expected no diff after preserving metadata-owned fields\n desired=%+v\n current=%+v", desired, current.ToInput())
-	}
-	if desired.Credentials != nil {
-		t.Error("expected federated credentials to be dropped for a CIMD client")
 	}
 }
 

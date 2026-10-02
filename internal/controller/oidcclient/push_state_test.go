@@ -838,95 +838,73 @@ func TestPushOIDCClientState_UpdatesWhenFieldsChange(t *testing.T) {
 	}
 }
 
-func TestPushOIDCClientState_AlwaysPushesWhenCredentialsPresent(t *testing.T) {
-	// Even when the visible state is in sync, the presence of credentials forces
-	// an UpdateOIDCClient call because they are write-only and can't be compared.
+// Federated identities are read back from Pocket-ID, so they drive an update only when they
+// differ: in sync they cost nothing, and ones the spec no longer lists are cleared.
+func TestPushOIDCClientState_FederatedIdentities(t *testing.T) {
 	ctx := context.Background()
 	scheme := runtime.NewScheme()
 	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
 
-	oidcClientCR := &pocketidinternalv1alpha1.PocketIDOIDCClient{
-		ObjectMeta: metav1.ObjectMeta{Name: "cred-client", Namespace: testNamespace},
-		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-			FederatedIdentities: []pocketidinternalv1alpha1.OIDCClientFederatedIdentity{
-				{Issuer: "https://issuer.example.com", Subject: "sa:myapp"},
-			},
+	identity := pocketid.OIDCClientFederatedIdentity{Issuer: "https://issuer.example.com", Subject: "sa:myapp"}
+	for _, tc := range []struct {
+		name       string
+		spec       []pocketidinternalv1alpha1.OIDCClientFederatedIdentity
+		server     []pocketid.OIDCClientFederatedIdentity
+		wantUpdate bool
+	}{
+		{
+			name:   "in sync",
+			spec:   []pocketidinternalv1alpha1.OIDCClientFederatedIdentity{{Issuer: identity.Issuer, Subject: identity.Subject}},
+			server: []pocketid.OIDCClientFederatedIdentity{identity},
 		},
-		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
-			ClientID:   "cred-id",
-			Conditions: readyCondition(),
+		{
+			name:       "removed from spec",
+			server:     []pocketid.OIDCClientFederatedIdentity{identity},
+			wantUpdate: true,
 		},
-	}
-	// current matches desired in all visible fields
-	current := &pocketid.OIDCClient{
-		ID:   "cred-id",
-		Name: "cred-client",
-	}
-
-	r := newPushStateOIDCReconciler(scheme, oidcClientCR)
-
-	updateCalled := false
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if req.Method == http.MethodPut && req.URL.Path == "/api/oidc/clients/cred-id" {
-			updateCalled = true
-			okOIDCClientResponse(w, "cred-id", "cred-client")
-			return
-		}
-		http.NotFound(w, req)
-	}))
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
-
-	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !updateCalled {
-		t.Error("expected UpdateOIDCClient when credentials are present (write-only fields can't be skipped)")
-	}
-}
-
-func TestPushOIDCClientState_FirstReconcileClearsCredentials(t *testing.T) {
-	// On the first reconcile (no Ready condition) with no credentials in spec,
-	// pushOIDCClientState sends an empty FederatedIdentities list to clear any
-	// credentials the adopted client may have had.
-	ctx := context.Background()
-	scheme := runtime.NewScheme()
-	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
-
-	oidcClientCR := &pocketidinternalv1alpha1.PocketIDOIDCClient{
-		ObjectMeta: metav1.ObjectMeta{Name: "adopt-client", Namespace: testNamespace},
-		Spec:       pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-			// No FederatedIdentities
+		{
+			name:       "added to spec",
+			spec:       []pocketidinternalv1alpha1.OIDCClientFederatedIdentity{{Issuer: identity.Issuer, Subject: identity.Subject}},
+			wantUpdate: true,
 		},
-		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
-			ClientID: "adopt-id",
-			// No conditions → not ready → firstReconcile = true
-		},
-	}
-	current := &pocketid.OIDCClient{
-		ID:   "adopt-id",
-		Name: "adopt-client",
-	}
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			oidcClientCR := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{Name: "cred-client", Namespace: testNamespace},
+				Spec:       pocketidinternalv1alpha1.PocketIDOIDCClientSpec{FederatedIdentities: tc.spec},
+				Status:     pocketidinternalv1alpha1.PocketIDOIDCClientStatus{ClientID: "cred-id"},
+			}
+			current := &pocketid.OIDCClient{ID: "cred-id", Name: "cred-client", FederatedIdentities: tc.server}
 
-	r := newPushStateOIDCReconciler(scheme, oidcClientCR)
+			r := newPushStateOIDCReconciler(scheme, oidcClientCR)
 
-	updateCalled := false
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if req.Method == http.MethodPut && req.URL.Path == "/api/oidc/clients/adopt-id" {
-			updateCalled = true
-			okOIDCClientResponse(w, "adopt-id", "adopt-client")
-			return
-		}
-		http.NotFound(w, req)
-	}))
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
+			var sent map[string]any
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				if req.Method == http.MethodPut && req.URL.Path == "/api/oidc/clients/cred-id" {
+					_ = json.NewDecoder(req.Body).Decode(&sent)
+					okOIDCClientResponse(w, "cred-id", "cred-client")
+					return
+				}
+				http.NotFound(w, req)
+			}))
+			defer ts.Close()
+			apiClient, _ := pocketid.NewClient(ts.URL, "")
 
-	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !updateCalled {
-		t.Error("expected UpdateOIDCClient on first reconcile to clear any existing credentials")
+			if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if (sent != nil) != tc.wantUpdate {
+				t.Fatalf("update sent = %v, want %v", sent != nil, tc.wantUpdate)
+			}
+			if sent == nil {
+				return
+			}
+			credentials, _ := sent["credentials"].(map[string]any)
+			identities, _ := credentials["federatedIdentities"].([]any)
+			if len(identities) != len(tc.spec) {
+				t.Errorf("sent %d federated identities, want %d: %v", len(identities), len(tc.spec), sent["credentials"])
+			}
+		})
 	}
 }
 

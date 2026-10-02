@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -437,6 +438,32 @@ func TestUpdateOIDCClient_SendsFederatedIdentityReplayProtection(t *testing.T) {
 	}
 }
 
+// Pocket-ID returns a client's federated identities, which is what lets reconcile diff them.
+func TestGetOIDCClient_CarriesFederatedIdentities(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"client-123","name":"Test","credentials":{"federatedIdentities":[
+			{"issuer":"https://issuer.example.com","subject":"sub","audience":"aud","jwks":"https://issuer.example.com/jwks","replayProtection":true},
+			{"issuer":"https://keys.example.com","publicKeys":[{"kty":"OKP","kid":"k1","crv":"Ed25519","x":"abc"}]}
+		]}}`))
+	}))
+	defer ts.Close()
+
+	client, _ := NewClient(ts.URL, "")
+	got, err := client.GetOIDCClient(context.Background(), "client-123")
+	if err != nil {
+		t.Fatalf("GetOIDCClient: %v", err)
+	}
+
+	want := []OIDCClientFederatedIdentity{
+		{Issuer: "https://issuer.example.com", Subject: "sub", Audience: "aud", JWKS: "https://issuer.example.com/jwks", ReplayProtection: true},
+		{Issuer: "https://keys.example.com", PublicKeys: []json.RawMessage{json.RawMessage(`{"crv":"Ed25519","kid":"k1","kty":"OKP","x":"abc"}`)}},
+	}
+	if !reflect.DeepEqual(got.FederatedIdentities, want) {
+		t.Errorf("FederatedIdentities = %+v, want %+v", got.FederatedIdentities, want)
+	}
+}
+
 func TestUpdateOIDCClientAllowedGroups_RetriesOn500(t *testing.T) {
 	attempts := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -538,6 +565,7 @@ func TestOIDCClientToInput_MapsAllFields(t *testing.T) {
 		AccessTokenDurationMinutes:          15,
 		RefreshTokenDurationMinutes:         1440,
 		AllowedUserGroupIDs:                 []string{"group-1"},
+		FederatedIdentities:                 []OIDCClientFederatedIdentity{{Issuer: "https://issuer.example.com"}},
 	}
 	input := c.ToInput()
 	if input.Name != "test-client" {
@@ -576,7 +604,10 @@ func TestOIDCClientToInput_MapsAllFields(t *testing.T) {
 	if input.RefreshTokenDurationMinutes != 1440 {
 		t.Errorf("RefreshTokenDurationMinutes: got %d, want 1440", input.RefreshTokenDurationMinutes)
 	}
-	// Fields excluded from ToInput: ID, LogoURL, DarkLogoURL, Credentials
+	if input.Credentials == nil || !reflect.DeepEqual(input.Credentials.FederatedIdentities, c.FederatedIdentities) {
+		t.Errorf("Credentials: got %+v", input.Credentials)
+	}
+	// Fields excluded from ToInput: ID, LogoURL, DarkLogoURL
 	if input.ID != nil {
 		t.Error("ID: expected nil")
 	}
@@ -585,9 +616,6 @@ func TestOIDCClientToInput_MapsAllFields(t *testing.T) {
 	}
 	if input.DarkLogoURL != "" {
 		t.Errorf("DarkLogoURL: expected empty, got %q", input.DarkLogoURL)
-	}
-	if input.Credentials != nil {
-		t.Error("Credentials: expected nil")
 	}
 }
 
@@ -1005,17 +1033,37 @@ func TestOIDCClientInputEqual_LogoURLIgnoredInComparison(t *testing.T) {
 	}
 }
 
-func TestOIDCClientInputEqual_CredentialsIgnoredInComparison(t *testing.T) {
-	// Credentials are write-only; excluded from Equal.
-	a := OIDCClientInput{
-		Name: "test",
-		Credentials: &OIDCClientCredentials{
-			FederatedIdentities: []OIDCClientFederatedIdentity{{Issuer: "https://issuer.example.com"}},
-		},
+func TestOIDCClientInputEqual_FederatedIdentities(t *testing.T) {
+	identity := OIDCClientFederatedIdentity{
+		Issuer:     "https://issuer.example.com",
+		PublicKeys: []json.RawMessage{json.RawMessage(`{"kty":"RSA","kid":"k1","e":"AQAB"}`)},
 	}
-	b := OIDCClientInput{Name: "test"}
-	if !a.Equal(b) {
-		t.Error("expected Credentials to be ignored in Equal")
+	other := OIDCClientFederatedIdentity{Issuer: "https://other.example.com"}
+	withIdentities := func(identities ...OIDCClientFederatedIdentity) OIDCClientInput {
+		return OIDCClientInput{Name: "test", Credentials: &OIDCClientCredentials{FederatedIdentities: identities}}
+	}
+	reformatted := identity
+	reformatted.PublicKeys = []json.RawMessage{json.RawMessage(`{ "e": "AQAB", "kid": "k1", "kty": "RSA" }`)}
+	rotated := identity
+	rotated.PublicKeys = []json.RawMessage{json.RawMessage(`{"kty":"RSA","kid":"k2","e":"AQAB"}`)}
+
+	for _, tc := range []struct {
+		name string
+		a, b OIDCClientInput
+		want bool
+	}{
+		{"nil and empty credentials", OIDCClientInput{Name: "test"}, withIdentities(), true},
+		{"same identities", withIdentities(identity, other), withIdentities(identity, other), true},
+		{"key formatting and member order", withIdentities(identity), withIdentities(reformatted), true},
+		{"identity removed", withIdentities(identity), OIDCClientInput{Name: "test"}, false},
+		{"identity order", withIdentities(identity, other), withIdentities(other, identity), false},
+		{"different key", withIdentities(identity), withIdentities(rotated), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.a.Equal(tc.b); got != tc.want {
+				t.Errorf("Equal = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 
