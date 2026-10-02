@@ -235,8 +235,9 @@ func authorizeOIDCClient(session *http.Cookie, clientID, callbackURL string) {
 	Expect(err).NotTo(HaveOccurred(), "calling /authorize")
 	defer func() { _ = resp.Body.Close() }()
 
+	// Fosite answers a grant and an error alike with a 303 back to the callback, and an
+	// interaction step with a redirect into Pocket-ID, so only the code tells a grant apart.
 	location := resp.Header.Get("Location")
-	Expect(resp.StatusCode).To(Equal(http.StatusFound), "/authorize returned %d", resp.StatusCode)
-	Expect(location).To(HavePrefix(callbackURL), "/authorize should grant straight away")
-	Expect(location).To(ContainSubstring("code="), "/authorize should grant straight away")
+	Expect(location).To(And(HavePrefix(callbackURL), ContainSubstring("code=")),
+		"/authorize should grant straight away, got %d to %q", resp.StatusCode, location)
 }
