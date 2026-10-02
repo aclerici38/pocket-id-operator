@@ -542,6 +542,24 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 	// which side failed. A dark URL that 404s would disown a light logo that landed.
 	desired.DarkLogoURL = ""
 
+	// Pocket-ID sends back-channel logouts to users outside the allowed groups whenever a
+	// restricted client's groups or restriction change, so the groups must be in place before
+	// restriction is turned on, and restriction off before the groups are cleared.
+	pushGroups := func() error {
+		if !groupsChanged {
+			return nil
+		}
+		if groupIDs == nil {
+			groupIDs = []string{}
+		}
+		return apiClient.UpdateOIDCClientAllowedGroups(ctx, oidcClient.Status.ClientID, groupIDs)
+	}
+	if desired.IsGroupRestricted {
+		if err := pushGroups(); err != nil {
+			return false, err
+		}
+	}
+
 	if clientChanged || logos.pushLight != "" {
 		ok, err := r.pushClientUpdate(ctx, apiClient, oidcClient.Status.ClientID, desired)
 		if err != nil {
@@ -564,11 +582,8 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 	}
 	logos.commit()
 
-	if groupsChanged {
-		if groupIDs == nil {
-			groupIDs = []string{}
-		}
-		if err := apiClient.UpdateOIDCClientAllowedGroups(ctx, oidcClient.Status.ClientID, groupIDs); err != nil {
+	if !desired.IsGroupRestricted {
+		if err := pushGroups(); err != nil {
 			return false, err
 		}
 	}
@@ -635,9 +650,9 @@ func (r *Reconciler) aggregateAllowedUserGroupIDs(ctx context.Context, oidcClien
 		}
 	}
 
-	// Extract status.GroupID from ready UserGroups that reference this client
+	// Extract status.GroupID from UserGroups that reference this client
 	for _, group := range userGroups.Items {
-		if helpers.IsResourceReady(group.Status.Conditions) && group.Status.GroupID != "" {
+		if group.Status.GroupID != "" {
 			groupIDSet[group.Status.GroupID] = struct{}{}
 		}
 	}

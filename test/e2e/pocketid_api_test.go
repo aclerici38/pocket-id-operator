@@ -153,9 +153,25 @@ func pocketIDUsernameForAPIKey(apiKey string) string {
 }
 
 // pocketIDUsernameForOneTimeToken redeems a one-time access token and reports who the
-// resulting session belongs to. Pocket-ID answers the exchange with an access_token
-// cookie, which is then presented as the session.
+// resulting session belongs to.
 func pocketIDUsernameForOneTimeToken(token string) string {
+	GinkgoHelper()
+
+	session := pocketIDSessionForOneTimeToken(token)
+
+	ctx, cancel := testCtx()
+	defer cancel()
+
+	me, err := http.NewRequestWithContext(ctx, http.MethodGet, pocketIDBaseURL()+"/api/users/me", nil)
+	Expect(err).NotTo(HaveOccurred())
+	me.AddCookie(session)
+
+	return usernameFrom(http.DefaultClient.Do(me))
+}
+
+// pocketIDSessionForOneTimeToken redeems a one-time access token for a browser session.
+// Pocket-ID answers the exchange with an access_token cookie, which is the session.
+func pocketIDSessionForOneTimeToken(token string) *http.Cookie {
 	GinkgoHelper()
 
 	ctx, cancel := testCtx()
@@ -178,12 +194,7 @@ func pocketIDUsernameForOneTimeToken(token string) string {
 		}
 	}
 	Expect(session).NotTo(BeNil(), "the exchange should set an access_token cookie")
-
-	me, err := http.NewRequestWithContext(ctx, http.MethodGet, pocketIDBaseURL()+"/api/users/me", nil)
-	Expect(err).NotTo(HaveOccurred())
-	me.AddCookie(session)
-
-	return usernameFrom(http.DefaultClient.Do(me))
+	return session
 }
 
 // usernameFrom reads the username out of a /api/users/me response.

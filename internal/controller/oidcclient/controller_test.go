@@ -2465,7 +2465,7 @@ func TestAggregateAllowedUserGroupIDs_Union(t *testing.T) {
 	}
 }
 
-func TestAggregateAllowedUserGroupIDs_SkipsNotReady(t *testing.T) {
+func TestAggregateAllowedUserGroupIDs_KeepsNotReadyGroupID(t *testing.T) {
 	ctx := context.Background()
 	scheme := runtime.NewScheme()
 	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
@@ -2488,8 +2488,8 @@ func TestAggregateAllowedUserGroupIDs_SkipsNotReady(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(ids) != 0 {
-		t.Errorf("expected empty (not-ready group skipped), got %v", ids)
+	if len(ids) != 1 || ids[0] != "gid-nr" {
+		t.Errorf("expected [gid-nr] (not-ready group keeps its access), got %v", ids)
 	}
 }
 
