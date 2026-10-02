@@ -3637,6 +3637,82 @@ spec:
                       description: JWKS is the URL of the identity's JWKS. Defaults
                         to the issuer's /.well-known/jwks.json
                       type: string
+                    publicKeys:
+                      description: PublicKeys are the keys that verify the identity's
+                        assertions, used instead of a JWKS URL
+                      items:
+                        description: OIDCClientPublicKey is a public key given inline
+                          or read from a ConfigMap or Secret.
+                        properties:
+                          value:
+                            description: Value is a JWK
+                            type: object
+                            x-kubernetes-preserve-unknown-fields: true
+                          valueFrom:
+                            description: |-
+                              ValueFrom reads a JWK, or a JWKS whose keys are all used, from a ConfigMap or Secret.
+                              It is re-read on every reconcile, so key rotation is picked up on the next resync.
+                            properties:
+                              configMapKeyRef:
+                                description: Selects a key from a ConfigMap.
+                                properties:
+                                  key:
+                                    description: |-
+                                      The key to select from the ConfigMap's Data field.
+                                      Keys in the BinaryData field are not currently propagated to container env vars.
+                                    type: string
+                                  name:
+                                    default: ""
+                                    description: |-
+                                      Name of the referent.
+                                      This field is effectively required, but due to backwards compatibility is
+                                      allowed to be empty. Instances of this type with an empty value here are
+                                      almost certainly wrong.
+                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    type: string
+                                  optional:
+                                    description: Specify whether the ConfigMap or
+                                      its key must be defined
+                                    type: boolean
+                                required:
+                                - key
+                                type: object
+                                x-kubernetes-map-type: atomic
+                              secretKeyRef:
+                                description: SecretKeySelector selects a key of a
+                                  Secret.
+                                properties:
+                                  key:
+                                    description: The key of the secret to select from.  Must
+                                      be a valid secret key.
+                                    type: string
+                                  name:
+                                    default: ""
+                                    description: |-
+                                      Name of the referent.
+                                      This field is effectively required, but due to backwards compatibility is
+                                      allowed to be empty. Instances of this type with an empty value here are
+                                      almost certainly wrong.
+                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    type: string
+                                  optional:
+                                    description: Specify whether the Secret or its
+                                      key must be defined
+                                    type: boolean
+                                required:
+                                - key
+                                type: object
+                                x-kubernetes-map-type: atomic
+                            type: object
+                            x-kubernetes-validations:
+                            - message: exactly one of configMapKeyRef or secretKeyRef
+                                must be set
+                              rule: has(self.configMapKeyRef) != has(self.secretKeyRef)
+                        type: object
+                        x-kubernetes-validations:
+                        - message: exactly one of value or valueFrom must be set
+                          rule: has(self.value) != has(self.valueFrom)
+                      type: array
                     replayProtection:
                       default: false
                       description: ReplayProtection requires client assertions to
@@ -5014,6 +5090,12 @@ kind: ClusterRole
 metadata:
   name: pocket-id-operator-manager-role
 rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
 - apiGroups:
   - ""
   resources:

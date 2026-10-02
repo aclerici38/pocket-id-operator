@@ -404,7 +404,18 @@ type FederatedIdentity struct {
 	Subject          string
 	Audience         string
 	JWKS             string
+	PublicKeys       []string // spec publicKeys entries, each a JSON object
 	ReplayProtection bool
+}
+
+// federatedIdentitiesFromPocketID returns a client's federated identities as the operator reads them.
+func federatedIdentitiesFromPocketID(clientID string) []pocketid.OIDCClientFederatedIdentity {
+	GinkgoHelper()
+	ctx, cancel := testCtx()
+	defer cancel()
+	client, err := pid.GetOIDCClient(ctx, clientID)
+	Expect(err).NotTo(HaveOccurred())
+	return client.FederatedIdentities
 }
 
 // APIAccessGrant configures a spec.apiAccess entry granting permissions on a PocketIDAPI.
@@ -524,6 +535,12 @@ func buildOIDCClientYAML(opts OIDCClientOptions) string {
 			}
 			if identity.JWKS != "" {
 				spec.WriteString(fmt.Sprintf("    jwks: %s\n", identity.JWKS))
+			}
+			if len(identity.PublicKeys) > 0 {
+				spec.WriteString("    publicKeys:\n")
+				for _, key := range identity.PublicKeys {
+					spec.WriteString(fmt.Sprintf("    - %s\n", key))
+				}
 			}
 			if identity.ReplayProtection {
 				spec.WriteString("    replayProtection: true\n")

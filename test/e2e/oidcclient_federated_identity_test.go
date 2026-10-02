@@ -21,13 +21,7 @@ var _ = Describe("OIDC Client Federated Identity", Ordered, func() {
 
 	var clientID string
 
-	federatedIdentities := func(id string) []pocketid.OIDCClientFederatedIdentity {
-		ctx, cancel := testCtx()
-		defer cancel()
-		client, err := pid.GetOIDCClient(ctx, id)
-		Expect(err).NotTo(HaveOccurred())
-		return client.FederatedIdentities
-	}
+	federatedIdentities := federatedIdentitiesFromPocketID
 
 	AfterAll(func() {
 		deleteObject("pocketidoidcclient", clientName, userNS)

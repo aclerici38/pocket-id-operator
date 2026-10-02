@@ -112,6 +112,7 @@ type Reconciler struct {
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidusers,verbs=get;list;watch
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidapis,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=configmaps,verbs=get
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -389,6 +390,9 @@ func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *po
 	// No logo is sent at creation: Pocket-ID downloads it only after the client row is
 	// committed, so a rejected URL would fail the response that carries the new client's ID.
 	input := r.OidcClientInput(oidcClient, nil, "", "")
+	if err := r.resolvePublicKeys(ctx, oidcClient, input.Credentials.FederatedIdentities); err != nil {
+		return false, err
+	}
 
 	// Aggregate all allowed groups
 	groupIDs, err := r.aggregateAllowedUserGroupIDs(ctx, oidcClient, apiClient)
@@ -515,6 +519,9 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 	}
 
 	desired := r.OidcClientInput(oidcClient, current, logos.pushLight, logos.pushDark)
+	if err := r.resolvePublicKeys(ctx, oidcClient, desired.Credentials.FederatedIdentities); err != nil {
+		return false, err
+	}
 	desired.IsGroupRestricted = len(groupIDs) > 0
 	if current.IsCIMD() {
 		preserveMetadataOwnedFields(&desired, current)
@@ -652,6 +659,9 @@ func reconcileErrorReason(err error) string {
 	}
 	if stderrors.Is(err, errAwaitingCIMD) {
 		return "AwaitingFirstAuthorization"
+	}
+	if stderrors.Is(err, errPublicKeys) {
+		return "PublicKeyError"
 	}
 	return "ReconcileError"
 }

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
@@ -851,6 +852,7 @@ func TestPushOIDCClientState_FederatedIdentities(t *testing.T) {
 		spec       []pocketidinternalv1alpha1.OIDCClientFederatedIdentity
 		server     []pocketid.OIDCClientFederatedIdentity
 		wantUpdate bool
+		wantKID    string // kid of the first key sent, when keys are expected
 	}{
 		{
 			name:   "in sync",
@@ -866,6 +868,19 @@ func TestPushOIDCClientState_FederatedIdentities(t *testing.T) {
 			name:       "added to spec",
 			spec:       []pocketidinternalv1alpha1.OIDCClientFederatedIdentity{{Issuer: identity.Issuer, Subject: identity.Subject}},
 			wantUpdate: true,
+		},
+		{
+			// Pocket-ID re-encodes keys, which reorders their members.
+			name:   "keys in sync",
+			spec:   []pocketidinternalv1alpha1.OIDCClientFederatedIdentity{{Issuer: identity.Issuer, PublicKeys: []pocketidinternalv1alpha1.OIDCClientPublicKey{inlineKey(keyA)}}},
+			server: []pocketid.OIDCClientFederatedIdentity{{Issuer: identity.Issuer, PublicKeys: rawKeys(`{"crv":"Ed25519","kid":"a","kty":"OKP","x":"AA"}`)}},
+		},
+		{
+			name:       "key rotated",
+			spec:       []pocketidinternalv1alpha1.OIDCClientFederatedIdentity{{Issuer: identity.Issuer, PublicKeys: []pocketidinternalv1alpha1.OIDCClientPublicKey{inlineKey(keyB)}}},
+			server:     []pocketid.OIDCClientFederatedIdentity{{Issuer: identity.Issuer, PublicKeys: rawKeys(keyA)}},
+			wantUpdate: true,
+			wantKID:    "b",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -904,7 +919,57 @@ func TestPushOIDCClientState_FederatedIdentities(t *testing.T) {
 			if len(identities) != len(tc.spec) {
 				t.Errorf("sent %d federated identities, want %d: %v", len(identities), len(tc.spec), sent["credentials"])
 			}
+			if tc.wantKID != "" {
+				first, _ := identities[0].(map[string]any)
+				keys, _ := first["publicKeys"].([]any)
+				if len(keys) != 1 || keys[0].(map[string]any)["kid"] != tc.wantKID {
+					t.Errorf("sent public keys %v, want kid %q", first["publicKeys"], tc.wantKID)
+				}
+			}
 		})
+	}
+}
+
+// A reference that cannot be resolved must stop the write rather than push the identity without
+// its keys, which would make Pocket-ID fall back to the issuer's JWKS URL.
+func TestOIDCClientWrites_StopOnUnresolvablePublicKeys(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	oidcClientCR := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "keys-client", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
+			ClientID: "keys-id",
+			FederatedIdentities: []pocketidinternalv1alpha1.OIDCClientFederatedIdentity{{
+				Issuer:     "https://issuer.example.com",
+				PublicKeys: []pocketidinternalv1alpha1.OIDCClientPublicKey{configMapKey("absent", "jwks", false)},
+			}},
+		},
+	}
+	r := newPushStateOIDCReconciler(scheme, oidcClientCR)
+	r.APIReader = r.Client
+
+	var writes int
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodGet {
+			writes++
+		}
+		http.NotFound(w, req)
+	}))
+	defer ts.Close()
+	apiClient, _ := pocketid.NewClient(ts.URL, "")
+
+	if _, err := r.createOrAdoptOIDCClient(ctx, oidcClientCR, apiClient); !errors.Is(err, errPublicKeys) {
+		t.Errorf("create: expected a public key error, got %v", err)
+	}
+	current := &pocketid.OIDCClient{ID: "keys-id", Name: "keys-client"}
+	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); !errors.Is(err, errPublicKeys) {
+		t.Errorf("update: expected a public key error, got %v", err)
+	}
+	if writes != 0 {
+		t.Errorf("expected no writes, got %d", writes)
 	}
 }
 

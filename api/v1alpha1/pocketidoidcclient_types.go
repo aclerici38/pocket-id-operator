@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -135,10 +136,38 @@ type OIDCClientFederatedIdentity struct {
 	// +optional
 	JWKS string `json:"jwks,omitempty"`
 
+	// PublicKeys are the keys that verify the identity's assertions, used instead of a JWKS URL
+	// +optional
+	PublicKeys []OIDCClientPublicKey `json:"publicKeys,omitempty"`
+
 	// ReplayProtection requires client assertions to carry a jti and rejects replays
 	// +kubebuilder:default=false
 	// +optional
 	ReplayProtection bool `json:"replayProtection,omitempty"`
+}
+
+// OIDCClientPublicKey is a public key given inline or read from a ConfigMap or Secret.
+// +kubebuilder:validation:XValidation:rule="has(self.value) != has(self.valueFrom)",message="exactly one of value or valueFrom must be set"
+type OIDCClientPublicKey struct {
+	// Value is a JWK
+	// +kubebuilder:validation:Type=object
+	// +optional
+	Value *apiextensionsv1.JSON `json:"value,omitempty"`
+
+	// ValueFrom reads a JWK, or a JWKS whose keys are all used, from a ConfigMap or Secret.
+	// It is re-read on every reconcile, so key rotation is picked up on the next resync.
+	// +optional
+	ValueFrom *OIDCClientPublicKeySource `json:"valueFrom,omitempty"`
+}
+
+// OIDCClientPublicKeySource selects the ConfigMap or Secret key holding a JWK or JWKS.
+// +kubebuilder:validation:XValidation:rule="has(self.configMapKeyRef) != has(self.secretKeyRef)",message="exactly one of configMapKeyRef or secretKeyRef must be set"
+type OIDCClientPublicKeySource struct {
+	// +optional
+	ConfigMapKeyRef *corev1.ConfigMapKeySelector `json:"configMapKeyRef,omitempty"`
+
+	// +optional
+	SecretKeyRef *corev1.SecretKeySelector `json:"secretKeyRef,omitempty"`
 }
 
 // OIDCClientSecretSpec defines how credentials should be stored in a Secret.
