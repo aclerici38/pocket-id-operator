@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -21,6 +22,10 @@ import (
 const (
 	keyA = `{"kty":"OKP","crv":"Ed25519","kid":"a","x":"AA"}`
 	keyB = `{"kty":"OKP","crv":"Ed25519","kid":"b","x":"BB"}`
+
+	// secretValue stands in for key material that must never appear in an error.
+	secretValue = "SECRET-MATERIAL"
+	privateKey  = `{"kty":"OKP","crv":"Ed25519","kid":"p","x":"AA","d":"` + secretValue + `"}`
 )
 
 func inlineKey(key string) pocketidinternalv1alpha1.OIDCClientPublicKey {
@@ -59,12 +64,13 @@ func TestResolvePublicKeys(t *testing.T) {
 				"jwk":   keyA,
 				"jwks":  `{"keys":[` + keyA + `,` + keyB + `]}`,
 				"empty": `{"keys":[]}`,
+				"mixed": `{"keys":[` + keyA + `,` + privateKey + `]}`,
 				"bad":   `not json`,
 			},
 		},
 		&corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: "secret-keys", Namespace: testNamespace},
-			Data:       map[string][]byte{"jwk": []byte(keyB)},
+			Data:       map[string][]byte{"jwk": []byte(keyB), "private": []byte(privateKey)},
 		},
 	).Build()
 	r := &Reconciler{APIReader: reader}
@@ -100,6 +106,10 @@ func TestResolvePublicKeys(t *testing.T) {
 		// Pocket-ID would fall back to the issuer's JWKS URL for an identity left with no keys.
 		{name: "empty JWKS", keys: [][]pocketidinternalv1alpha1.OIDCClientPublicKey{{configMapKey("keys", "empty", false)}}, wantErr: true},
 		{name: "only missing optional references", keys: [][]pocketidinternalv1alpha1.OIDCClientPublicKey{{configMapKey("absent", "jwk", true)}}, wantErr: true},
+		// Secret material must not leave the cluster, even though Pocket-ID would reject it.
+		{name: "private key in Secret", keys: [][]pocketidinternalv1alpha1.OIDCClientPublicKey{{secretKey("secret-keys", "private")}}, wantErr: true},
+		{name: "private key in JWKS", keys: [][]pocketidinternalv1alpha1.OIDCClientPublicKey{{configMapKey("keys", "mixed", false)}}, wantErr: true},
+		{name: "inline symmetric key", keys: [][]pocketidinternalv1alpha1.OIDCClientPublicKey{{inlineKey(`{"kty":"oct","kid":"s","k":"` + secretValue + `"}`)}}, wantErr: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{ObjectMeta: metav1.ObjectMeta{Name: "c", Namespace: testNamespace}}
@@ -116,6 +126,9 @@ func TestResolvePublicKeys(t *testing.T) {
 				}
 				if got := reconcileErrorReason(err); got != "PublicKeyError" {
 					t.Errorf("reason = %q, want PublicKeyError", got)
+				}
+				if strings.Contains(err.Error(), secretValue) {
+					t.Errorf("error leaks key material: %v", err)
 				}
 				return
 			}

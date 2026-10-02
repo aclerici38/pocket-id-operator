@@ -434,6 +434,9 @@ spec:
 - `jwks` and `publicKeys` are mutually exclusive. Pocket-ID validates the keys — each needs a
   `kid`, must be an asymmetric public key, and may only have `use: sig` — and its error is
   reported in the Ready condition.
+- A key holding private or symmetric key material (`d`, `p`, `q`, `dp`, `dq`, `qi`, `oth`, or
+  `k`) is refused before anything is sent, so a reference pointed at a signing key's Secret by
+  mistake never takes that key out of the cluster.
 - Referenced ConfigMaps and Secrets are not watched. They are re-read on every reconcile, so a
   key added to a JWKS during rotation reaches Pocket-ID on the next resync with no change to
   the resource.

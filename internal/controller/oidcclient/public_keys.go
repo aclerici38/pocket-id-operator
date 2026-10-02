@@ -18,13 +18,19 @@ import (
 // errPublicKeys marks a federated identity whose public keys could not be resolved.
 var errPublicKeys = errors.New("federated identity public keys")
 
+// secretKeyMembers are the JWK members that carry private or symmetric key material (RFC 7518 §6).
+var secretKeyMembers = []string{"d", "p", "q", "dp", "dq", "qi", "oth", "k"}
+
 // resolvePublicKeys fills each federated identity's public keys from the spec. identities must be
-// the ones OidcClientInput built from the same spec, in the same order. Keys are passed through
-// unvalidated: Pocket-ID validates them and names the offending key in its error.
+// the ones OidcClientInput built from the same spec, in the same order. Pocket-ID validates the
+// keys and names the offending one in its error, but a key carrying secret material is refused.
 func (r *Reconciler) resolvePublicKeys(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, identities []pocketid.OIDCClientFederatedIdentity) error {
 	for i, identity := range oidcClient.Spec.FederatedIdentities {
 		for j, source := range identity.PublicKeys {
 			keys, err := r.publicKeys(ctx, oidcClient.Namespace, source)
+			if err == nil {
+				err = checkNoSecretMaterial(keys)
+			}
 			if err != nil {
 				return fmt.Errorf("%w: federatedIdentities[%d].publicKeys[%d]: %w", errPublicKeys, i, j, err)
 			}
@@ -84,4 +90,20 @@ func parsePublicKeys(name, key string, optional bool, getErr error, document str
 		return jwks.Keys, nil
 	}
 	return []json.RawMessage{json.RawMessage(document)}, nil
+}
+
+// checkNoSecretMaterial reports a key holding private or symmetric key material.
+func checkNoSecretMaterial(keys []json.RawMessage) error {
+	for i, key := range keys {
+		var members map[string]json.RawMessage
+		if err := json.Unmarshal(key, &members); err != nil {
+			return fmt.Errorf("key %d is not a JWK: %w", i+1, err)
+		}
+		for _, member := range secretKeyMembers {
+			if _, ok := members[member]; ok {
+				return fmt.Errorf("key %d holds secret key material (%q); only public keys may be used", i+1, member)
+			}
+		}
+	}
+	return nil
 }
