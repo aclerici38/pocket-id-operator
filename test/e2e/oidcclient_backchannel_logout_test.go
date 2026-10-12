@@ -150,7 +150,7 @@ spec:
   containers:
   - name: receiver
     # renovate: datasource=docker depName=docker.io/library/python versioning=docker
-    image: docker.io/library/python:3.14.8-alpine
+    image: docker.io/library/python:3.15.0-alpine
     command: ["python", "-u", "-c"]
     args:
     - |
