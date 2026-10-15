@@ -68,9 +68,9 @@ backend = "go:github.com/onsi/ginkgo/v2/ginkgo"
 specifiers = ["v2.33.1"]
 
 [[tools."go:sigs.k8s.io/controller-tools/cmd/controller-gen"]]
-version = "0.22.0"
+version = "0.23.0"
 backend = "go:sigs.k8s.io/controller-tools/cmd/controller-gen"
-specifiers = ["v0.22.0"]
+specifiers = ["v0.23.0"]
 
 [[tools.golangci-lint]]
 version = "2.14.0"
