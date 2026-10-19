@@ -9,13 +9,13 @@ extra_css = ["stylesheets/extra.css"]
 nav = [
   { "Home" = "README.md" },
   { "Guides" = [
-    "pocketidinstance.md",
-    "pocketiduser.md",
-    "pocketidusergroup.md",
-    "pocketidoidcclient.md",
-    "pocketidapi.md",
-    "annotations.md",
-    "metrics.md",
+    "guides/pocketidinstance.md",
+    "guides/pocketiduser.md",
+    "guides/pocketidusergroup.md",
+    "guides/pocketidoidcclient.md",
+    "guides/pocketidapi.md",
+    "guides/annotations.md",
+    "guides/metrics.md",
   ] },
   { "API Reference" = [
     "reference/pocketidinstance.md",

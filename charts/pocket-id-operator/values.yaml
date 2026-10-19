@@ -58,7 +58,7 @@ operator:
       memory: 64Mi
 
 # Operator metrics configuration
-# See https://github.com/aclerici38/pocket-id-operator/blob/main/docs/metrics.md
+# See https://pocket-id-operator.pages.dev/guides/metrics/
 metrics:
   enabled: false
   port: 8080
@@ -138,7 +138,7 @@ pocket-id-instance:
     serviceMonitor:
       enabled: true
 
-    # PocketIDInstance spec. See docs/pocketidinstance.md for the full field list.
+    # PocketIDInstance spec. See https://pocket-id-operator.pages.dev/reference/pocketidinstance/ for the full field list.
     spec:
       # REQUIRED for a deployed instance; omit for external instances.
       # encryptionKey:

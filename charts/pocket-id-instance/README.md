@@ -39,11 +39,11 @@ This deploys a Pocket ID instance with persistence enabled. You must supply an
 Every `spec` maps 1:1 to the corresponding CRD, so any operator field is
 settable even if not listed above. See the per-resource docs:
 
-- [PocketIDInstance](https://github.com/aclerici38/pocket-id-operator/blob/main/docs/pocketidinstance.md)
-- [PocketIDUser](https://github.com/aclerici38/pocket-id-operator/blob/main/docs/pocketiduser.md)
-- [PocketIDUserGroup](https://github.com/aclerici38/pocket-id-operator/blob/main/docs/pocketidusergroup.md)
-- [PocketIDOIDCClient](https://github.com/aclerici38/pocket-id-operator/blob/main/docs/pocketidoidcclient.md)
-- [PocketIDAPI](https://github.com/aclerici38/pocket-id-operator/blob/main/docs/pocketidapi.md)
+- [PocketIDInstance](https://pocket-id-operator.pages.dev/guides/pocketidinstance/)
+- [PocketIDUser](https://pocket-id-operator.pages.dev/guides/pocketiduser/)
+- [PocketIDUserGroup](https://pocket-id-operator.pages.dev/guides/pocketidusergroup/)
+- [PocketIDOIDCClient](https://pocket-id-operator.pages.dev/guides/pocketidoidcclient/)
+- [PocketIDAPI](https://pocket-id-operator.pages.dev/guides/pocketidapi/)
 
 ## Values Schema
 

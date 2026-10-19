@@ -36,7 +36,7 @@ instance:
     labels: {}
     interval: ""
 
-  # PocketIDInstance spec. See docs/pocketidinstance.md for the full field list.
+  # PocketIDInstance spec. See https://pocket-id-operator.pages.dev/reference/pocketidinstance/ for the full field list.
   spec:
     # REQUIRED for a deployed instance; omit for external instances.
     # encryptionKey:
