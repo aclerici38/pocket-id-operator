@@ -2,11 +2,11 @@
 
 # PocketIDInstance
 
-PocketIDInstance is the Schema for the pocketidinstances API
+PocketIDInstance is the Schema for the pocketidinstances API.
 
 ## `PocketIDInstance.spec`
 
-PocketIDInstanceSpec defines the desired state of PocketIDInstance
+PocketIDInstanceSpec defines the desired state of PocketIDInstance.
 
 **Validation rules:**
 
@@ -18,47 +18,47 @@ PocketIDInstanceSpec defines the desired state of PocketIDInstance
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `deploymentType` | string |  | `Deployment` | Kind of workload to create, Deployment or StatefulSet<br />Defaults to Deployment (immutable after creation)<br />_Enum: [Deployment StatefulSet]_ |
-| `image` | string |  |  | Container image to run. When empty the operator supplies the latest distroless<br />version tested against this release. |
-| [`encryptionKey`](#pocketidinstancespecencryptionkey) | object |  |  | Encryption Key<br />Required when deploying an instance; omit for external instances.<br />See the official documentation for ENCRYPTION_KEY environment variable |
-| [`external`](#pocketidinstancespecexternal) | object |  |  | External adopts an existing Pocket-ID instead of deploying one. When set, no<br />workload/service/PVC is created and the operator manages OIDC clients, users,<br />and groups on that instance via its API. Mutually exclusive with encryptionKey<br />and the other deployment fields. |
-| [`databaseUrl`](#pocketidinstancespecdatabaseurl) | object |  |  | URL to access database at<br />See the official documentation for DB_CONNECTION_STRING<br />For sqlite only add the filepath e.g. "/app/data/pocket-id.db"<br />Uses application default (/app/data/pocket-id.db) if empty |
-| `appUrl` | string |  |  | External URL Pocket-id can be reached at<br />See the official documentation for APP_URL |
-| `env` | [EnvVar](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#envvar-v1-core) array |  |  | Additional environment variables to set<br />Uses k8s env var syntax (includes secretKeyRef, configMapKeyRef, etc.) |
-| [`persistence`](#pocketidinstancespecpersistence) | object |  |  | Configures persistence for Pocket-ID<br />Note: Pocket-ID can be run statelessly if using Postgres as a file and db backend<br />If not enabled mounts an emptydir instead |
-| `podSecurityContext` | [PodSecurityContext](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#podsecuritycontext-v1-core) |  |  | Pod security context |
-| `containerSecurityContext` | [SecurityContext](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#securitycontext-v1-core) |  |  | Container security context |
-| `hostUsers` | boolean |  | `true` | HostUsers controls whether the container's user namespace is separate from the host<br />Defaults to true |
-| `labels` | object (keys:string, values:string) |  |  | Additional labels to add to the workload and pod |
-| `annotations` | object (keys:string, values:string) |  |  | Additional annotations to add to the workload and pod |
-| `podTemplate` | [PodTemplateSpec](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#podtemplatespec-v1-core) |  |  | Pod template to merge with the operator-built pod spec.<br />Operator-managed fields including the pocket-id container always take precedence.<br />_Schemaless: \{\}_ |
-| `readinessProbe` | [Probe](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#probe-v1-core) |  |  | Readiness probe configuration |
-| `livenessProbe` | [Probe](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#probe-v1-core) |  |  | Liveness probe configuration |
-| `resources` | [ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#resourcerequirements-v1-core) |  |  | Resource requests and limits for the container |
-| [`metrics`](#pocketidinstancespecmetrics) | object |  |  | Prometheus metrics configuration<br />When enabled the operator injects the required OTEL environment variables<br />and exposes a metrics port on the Service |
-| [`route`](#pocketidinstancespecroute) | object |  |  | HTTPRoute configuration<br />Creates an HTTPRoute when enabled. Requires Gateway API CRDs to be installed. |
+| `deploymentType` | string |  | `Deployment` | Kind of workload to create: Deployment or StatefulSet. Defaults to Deployment and is immutable after creation.<br />_Enum: [Deployment StatefulSet]_ |
+| `image` | string |  |  | Container image to run. When unset, the operator uses the latest version tested against this release. |
+| [`encryptionKey`](#pocketidinstancespecencryptionkey) | object |  |  | Encryption key.<br />Required when deploying an instance; omit for external instances.<br />See the official documentation for the ENCRYPTION_KEY environment variable. |
+| [`external`](#pocketidinstancespecexternal) | object |  |  | External adopts an existing Pocket-ID instead of deploying one. When set, no workload/service/PVC is created and the operator manages OIDC clients, users, and groups on that instance via its API.<br />Mutually exclusive with encryptionKey and the other deployment fields. |
+| [`databaseUrl`](#pocketidinstancespecdatabaseurl) | object |  |  | URL to access the database at. For SQLite, only add the file path e.g. "/app/data/pocket-id.db".<br />See the official documentation for DB_CONNECTION_STRING. |
+| `appUrl` | string |  |  | External URL Pocket-ID can be reached at.<br />See the official documentation for APP_URL. |
+| `env` | [EnvVar](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#envvar-v1-core) array |  |  | Additional environment variables to set. Uses Kubernetes env var syntax (secretKeyRef, configMapKeyRef, etc.). |
+| [`persistence`](#pocketidinstancespecpersistence) | object |  |  | Configures persistence for Pocket-ID. Pocket-ID can be run statelessly; see pocket-id-operator.pages.dev/pocketidinstance#stateless-deployment.<br />If not enabled, an emptyDir is mounted instead. |
+| `podSecurityContext` | [PodSecurityContext](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#podsecuritycontext-v1-core) |  |  | Pod security context. |
+| `containerSecurityContext` | [SecurityContext](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#securitycontext-v1-core) |  |  | Container security context. |
+| `hostUsers` | boolean |  | `true` | Deprecated: use spec.podTemplate.hostUsers instead. |
+| `labels` | object (keys:string, values:string) |  |  | Additional labels to add to the workload and pod. |
+| `annotations` | object (keys:string, values:string) |  |  | Additional annotations to add to the workload and pod. |
+| `podTemplate` | [PodTemplateSpec](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#podtemplatespec-v1-core) |  |  | Pod template to merge with the operator-built pod spec. Operator-managed fields including the pocket-id container always take precedence.<br />_Schemaless: \{\}_ |
+| `readinessProbe` | [Probe](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#probe-v1-core) |  |  | Readiness probe configuration. |
+| `livenessProbe` | [Probe](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#probe-v1-core) |  |  | Liveness probe configuration. |
+| `resources` | [ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#resourcerequirements-v1-core) |  |  | Resource requests and limits for the container. |
+| [`metrics`](#pocketidinstancespecmetrics) | object |  |  | Prometheus metrics configuration. When enabled, the operator injects the required OTEL environment variables and exposes a metrics port on the Service. |
+| [`route`](#pocketidinstancespecroute) | object |  |  | Configures an HTTPRoute when enabled. Requires Gateway API CRDs to be installed. |
 | [`tls`](#pocketidinstancespectls) | object |  |  | TLS terminates HTTPS in the Pocket-ID pod from a mounted certificate Secret. |
-| `serviceTemplate` | [ServiceSpec](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#servicespec-v1-core) |  |  | ServiceTemplate is merged with the operator-built Service spec.<br />Operator-managed fields (the selector and the number, protocol and appProtocol of<br />the http/metrics ports) always take precedence. A nodePort set on those ports is<br />honoured, as are extra ports and every other field.<br />_Schemaless: \{\}_ |
-| `fileBackend` | string |  |  | File storage backend<br />Automatically set to "s3" when s3 config is present<br />_Enum: [filesystem s3 database]_ |
-| [`s3`](#pocketidinstancespecs3) | object |  |  | S3 file backend configuration<br />When present, FILE_BACKEND is automatically set to "s3" |
-| [`smtp`](#pocketidinstancespecsmtp) | object |  |  | SMTP email transport configuration<br />When present, SMTP is automatically enabled |
-| [`emailNotifications`](#pocketidinstancespecemailnotifications) | object |  |  | Email notification settings<br />Only relevant when SMTP is configured |
-| [`ldap`](#pocketidinstancespecldap) | object |  |  | LDAP authentication configuration<br />When present, LDAP is automatically enabled |
-| [`logging`](#pocketidinstancespeclogging) | object |  |  | Logging configuration |
-| [`tracing`](#pocketidinstancespectracing) | object |  |  | OpenTelemetry tracing configuration<br />When present, tracing is automatically enabled<br />Configure additional exporter-specific OTEL_* variables via the env escape hatch |
-| [`ui`](#pocketidinstancespecui) | object |  |  | UI configuration<br />The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured |
-| [`userManagement`](#pocketidinstancespecusermanagement) | object |  |  | User registration and account management settings |
-| [`webauthn`](#pocketidinstancespecwebauthn) | object |  |  | Passkey restrictions<br />The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured |
-| [`geoip`](#pocketidinstancespecgeoip) | object |  |  | GeoIP/MaxMind integration for audit log geolocation |
-| `auditLogRetentionDays` | integer |  |  | Audit log retention in days |
-| `analyticsDisabled` | boolean |  | `false` | Disable anonymous 24-hour usage analytics heartbeat |
-| `versionCheckDisabled` | boolean |  | `false` | Disable GitHub version checks |
-| `rateLimitingDisabled` | boolean |  | `false` | Disable Pocket-ID's built-in rate limiting. Enabled by default. |
-| `internalAppUrl` | string |  |  | Internal base URL for OIDC .well-known endpoints (for split-horizon DNS) |
-| `localIPv6Ranges` | string |  |  | Custom local IPv6 ranges for audit log IP classification (comma-separated CIDRs) |
-| [`trustedProxies`](#pocketidinstancespectrustedproxies) | object |  |  | TrustedProxies configures which proxies Pocket-ID trusts for X-Forwarded-* headers<br />(sets TRUST_PROXY). When unset, the operator trusts the private/loopback ranges if<br />spec.route.enabled is set. |
-| `timezone` | string |  |  | Timezone for the Pocket-ID instance (e.g. "America/New_York")<br />Sets the TZ environment variable |
-| `cimdUrlAllowlist` | string array |  |  | CIMDURLAllowlist restricts which https URLs may be used as OAuth Client ID Metadata<br />Documents. Entries are callback-URL patterns (wildcards allowed). A non-empty list<br />enables CIMD; leaving it empty keeps the feature off.<br />The operator automatically sets UI_CONFIG_DISABLED=true when this field is set. |
+| `serviceTemplate` | [ServiceSpec](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#servicespec-v1-core) |  |  | ServiceTemplate is merged with the operator-built Service spec.<br />Operator-managed fields (the selector and the number, protocol, and appProtocol of the http/metrics ports) always take precedence.<br />_Schemaless: \{\}_ |
+| `fileBackend` | string |  |  | File storage backend. Automatically set to "s3" when s3 config is present.<br />_Enum: [filesystem s3 database]_ |
+| [`s3`](#pocketidinstancespecs3) | object |  |  | S3 file backend configuration. When present, FILE_BACKEND is automatically set to "s3". |
+| [`smtp`](#pocketidinstancespecsmtp) | object |  |  | SMTP email transport configuration. When present, SMTP is automatically enabled. |
+| [`emailNotifications`](#pocketidinstancespecemailnotifications) | object |  |  | Email notification settings. |
+| [`ldap`](#pocketidinstancespecldap) | object |  |  | LDAP authentication configuration. When present, LDAP is automatically enabled. |
+| [`logging`](#pocketidinstancespeclogging) | object |  |  | Logging configuration. |
+| [`tracing`](#pocketidinstancespectracing) | object |  |  | OpenTelemetry tracing configuration. When present, tracing is automatically enabled.<br />Configure additional exporter-specific OTEL_* variables via spec.env. |
+| [`ui`](#pocketidinstancespecui) | object |  |  | UI configuration. The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured. |
+| [`userManagement`](#pocketidinstancespecusermanagement) | object |  |  | User registration and account management settings. |
+| [`webauthn`](#pocketidinstancespecwebauthn) | object |  |  | Passkey restrictions. The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured. |
+| [`geoip`](#pocketidinstancespecgeoip) | object |  |  | GeoIP/MaxMind integration for audit log geolocation. |
+| `auditLogRetentionDays` | integer |  |  | Audit log retention in days. |
+| `analyticsDisabled` | boolean |  |  | Disable the anonymous 24-hour usage analytics heartbeat. |
+| `versionCheckDisabled` | boolean |  |  | Disable GitHub version checks. |
+| `rateLimitingDisabled` | boolean |  |  | Disable Pocket-ID's built-in rate limiting. Pocket-ID's rate limiting is permissive enough for the operator, so it is recommended to keep rate limiting enabled for security. |
+| `internalAppUrl` | string |  |  | Internal base URL for OIDC .well-known endpoints (for split-horizon DNS). |
+| `localIPv6Ranges` | string |  |  | Custom local IPv6 ranges for audit log IP classification (comma-separated CIDRs). |
+| [`trustedProxies`](#pocketidinstancespectrustedproxies) | object |  |  | TrustedProxies configures which proxies Pocket-ID trusts for X-Forwarded-* headers. When unset, the operator trusts the private/loopback ranges if spec.route.enabled is set. |
+| `timezone` | string |  |  | Timezone for the Pocket-ID instance (e.g. "America/New_York"). Sets the TZ environment variable. |
+| `cimdUrlAllowlist` | string array |  |  | CIMDURLAllowlist restricts which https URLs may be used as OAuth Client ID Metadata Documents. The operator automatically sets UI_CONFIG_DISABLED=true when this field is set. |
 | [`OIDCClientRotation`](#pocketidinstancespecoidcclientrotation) | object |  |  | OIDCClientRotation configures instance-wide throttling of OIDC client secret rotations. |
 
 ## `PocketIDInstance.spec.encryptionKey`
@@ -69,21 +69,19 @@ SensitiveValue holds a value that can be provided as plain text or from a Kubern
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `value` | string |  |  | Plain text value |
-| `valueFrom` | [EnvVarSource](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#envvarsource-v1-core) |  |  | Source for the value (e.g. secretKeyRef, configMapKeyRef) |
+| `value` | string |  |  | Plain text value. |
+| `valueFrom` | [EnvVarSource](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#envvarsource-v1-core) |  |  | Source for the value (e.g. secretKeyRef, configMapKeyRef). |
 
 ## `PocketIDInstance.spec.external`
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-ExternalInstanceConfig points the operator at an existing, externally-managed
-Pocket-ID instead of deploying one. When set, the operator creates no workload
-and manages OIDC clients, users, and groups on that instance via its API.
+ExternalInstanceConfig points the operator at an existing, externally-managed Pocket-ID instead of deploying one. When set, the operator creates no workload and manages OIDC clients, users, and groups on that instance via its API.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `url` | string | yes |  | URL is the base URL of the existing Pocket-ID instance (e.g. https://auth.example.com).<br />_Pattern: `^https?://`_ |
-| `apiKeySecretRef` | [SecretKeySelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#secretkeyselector-v1-core) | yes |  | APIKeySecretRef references a Secret key holding a Pocket-ID API key with<br />permission to manage clients, users, and groups on the instance. |
+| `apiKeySecretRef` | [SecretKeySelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#secretkeyselector-v1-core) | yes |  | APIKeySecretRef references a Secret key holding a Pocket-ID API key with permission to manage clients, users, and groups on the instance. |
 
 ## `PocketIDInstance.spec.databaseUrl`
 
@@ -93,8 +91,8 @@ SensitiveValue holds a value that can be provided as plain text or from a Kubern
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `value` | string |  |  | Plain text value |
-| `valueFrom` | [EnvVarSource](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#envvarsource-v1-core) |  |  | Source for the value (e.g. secretKeyRef, configMapKeyRef) |
+| `value` | string |  |  | Plain text value. |
+| `valueFrom` | [EnvVarSource](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#envvarsource-v1-core) |  |  | Source for the value (e.g. secretKeyRef, configMapKeyRef). |
 
 ## `PocketIDInstance.spec.persistence`
 
@@ -104,49 +102,47 @@ PersistenceConfig configures persistence for the pocket-id container.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `enabled` | boolean | yes | `false` | Enables mounting a persistent volume |
-| `existingClaim` | string |  |  | Name of an existing, externally-managed PVC to mount |
-| `storageClass` | string |  |  | Name of storageClass to provision a volume from |
-| `size` | [Quantity](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#quantity-resource-api) |  | `1Gi` | Size of the claim to dynamically provision |
-| `accessModes` | [PersistentVolumeAccessMode](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#persistentvolumeaccessmode-v1-core) array |  | `[ReadWriteOnce]` | AccessModes for the PVC |
-| `path` | string |  | `/app/data` | Path where the data volume is mounted in the container |
-| `subPath` | string |  |  | SubPath within the volume to mount (volumeMount.subPath) |
-| `extraVolumeMounts` | [VolumeMount](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#volumemount-v1-core) array |  |  | Extra volume mounts to add to the pocket-id container.<br />Useful for mounting volumes defined in spec.podTemplate. |
+| `enabled` | boolean | yes | `false` | Enables mounting a persistent volume. |
+| `existingClaim` | string |  |  | Name of an existing, externally-managed PVC to mount. |
+| `storageClass` | string |  |  | Name of the StorageClass to provision a volume from. |
+| `size` | [Quantity](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#quantity-resource-api) |  | `1Gi` | Size of the claim to dynamically provision. |
+| `accessModes` | [PersistentVolumeAccessMode](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#persistentvolumeaccessmode-v1-core) array |  | `[ReadWriteOnce]` | AccessModes for the PVC. |
+| `path` | string |  | `/app/data` | Path where the data volume is mounted in the container. |
+| `subPath` | string |  |  | SubPath within the volume to mount (volumeMount.subPath). |
+| `extraVolumeMounts` | [VolumeMount](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#volumemount-v1-core) array |  |  | Extra volume mounts to add to the pocket-id container. This is useful for mounting volumes defined in spec.podTemplate. |
 
 ## `PocketIDInstance.spec.metrics`
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-MetricsConfig configures the Prometheus metrics endpoint for Pocket-ID
+MetricsConfig configures the Prometheus metrics endpoint for Pocket-ID.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `enabled` | boolean | yes | `false` | Enables the Prometheus metrics endpoint |
-| `port` | integer |  | `9464` | Port for the Prometheus metrics endpoint |
+| `enabled` | boolean | yes | `false` | Enables the Prometheus metrics endpoint. |
+| `port` | integer |  | `9464` | Port for the Prometheus metrics endpoint. |
 
 ## `PocketIDInstance.spec.route`
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-HTTPRouteConfig configures an HTTPRoute (Gateway API) for the instance
+HTTPRouteConfig configures an HTTPRoute (Gateway API) for the instance. Gateway API CRDs must already be present in the cluster.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `enabled` | boolean | yes | `false` | Enables creation of an HTTPRoute |
-| `name` | string |  |  | Name override for the HTTPRoute (defaults to instance name) |
-| `labels` | object (keys:string, values:string) |  |  | Additional labels for the HTTPRoute |
-| `annotations` | object (keys:string, values:string) |  |  | Additional annotations for the HTTPRoute |
-| `parentRefs` | [ParentReference](https://gateway-api.sigs.k8s.io/reference/spec/#parentreference) array | yes |  | Gateway parent references<br />_MinItems: 1_ |
-| `hostnames` | [Hostname](https://gateway-api.sigs.k8s.io/reference/spec/#hostname) array |  |  | Hostnames for the route<br />Will be automatically set to the hostname from spec.appUrl if not specified |
-| `template` | [HTTPRouteSpec](https://gateway-api.sigs.k8s.io/reference/spec/#httproutespec) |  |  | Template is merged with the operator-built HTTPRoute spec.<br />Operator-managed fields (parentRefs, hostnames, and the default backend rule to the<br />Service) always take precedence.<br />_Schemaless: \{\}_ |
+| `enabled` | boolean | yes | `false` | Enables creation of an HTTPRoute. |
+| `name` | string |  |  | Name override for the HTTPRoute (defaults to the instance name). |
+| `labels` | object (keys:string, values:string) |  |  | Additional labels for the HTTPRoute. |
+| `annotations` | object (keys:string, values:string) |  |  | Additional annotations for the HTTPRoute. |
+| `parentRefs` | [ParentReference](https://gateway-api.sigs.k8s.io/reference/spec/#parentreference) array | yes |  | Gateway parent references.<br />_MinItems: 1_ |
+| `hostnames` | [Hostname](https://gateway-api.sigs.k8s.io/reference/spec/#hostname) array |  |  | Hostnames for the route.<br />Automatically set to the hostname from spec.appUrl if not specified. |
+| `template` | [HTTPRouteSpec](https://gateway-api.sigs.k8s.io/reference/spec/#httproutespec) |  |  | Template is merged with the operator-built HTTPRoute spec.<br />Operator-managed fields (parentRefs, hostnames, and the default backend rule to the Service) always take precedence.<br />_Schemaless: \{\}_ |
 
 ## `PocketIDInstance.spec.tls`
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-TLSConfig terminates TLS inside the Pocket-ID pod instead of at a proxy in front
-of it. The referenced Secret is mounted read-only and Pocket-ID watches it, so
-certificate renewals are picked up without restarting the pod.
+TLSConfig terminates TLS inside the Pocket-ID pod instead of at a proxy in front of it. Pocket-ID watches the mount, so certificate renewals can be picked up without restarting the pod.
 
 **Validation rules:**
 
@@ -154,7 +150,7 @@ certificate renewals are picked up without restarting the pod.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `secretRef` | [LocalObjectReference](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#localobjectreference-v1-core) | yes |  | SecretRef names a kubernetes.io/tls Secret in the instance's namespace holding<br />tls.crt and tls.key. |
+| `secretRef` | [LocalObjectReference](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#localobjectreference-v1-core) | yes |  | SecretRef names a kubernetes.io/tls Secret in the instance's namespace holding tls.crt and tls.key. |
 
 ## `PocketIDInstance.spec.s3`
 
@@ -165,13 +161,13 @@ When present, FILE_BACKEND is automatically set to "s3".
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `bucket` | string | yes |  | S3 bucket name |
-| `region` | string | yes |  | S3 region |
-| `endpoint` | string |  |  | S3 endpoint URL (for MinIO, Ceph, or other S3-compatible stores) |
-| [`accessKeyId`](#pocketidinstancespecs3accesskeyid) | object | yes |  | S3 access key ID |
-| [`secretAccessKey`](#pocketidinstancespecs3secretaccesskey) | object | yes |  | S3 secret access key |
-| `forcePathStyle` | boolean |  | `false` | Force path-style URLs instead of virtual-hosted-style |
-| `disableDefaultIntegrityChecks` | boolean |  | `false` | Disable default S3 integrity checks |
+| `bucket` | string | yes |  | S3 bucket name. |
+| `region` | string | yes |  | S3 region. |
+| `endpoint` | string |  |  | S3 endpoint URL. |
+| [`accessKeyId`](#pocketidinstancespecs3accesskeyid) | object | yes |  | S3 access key ID. |
+| [`secretAccessKey`](#pocketidinstancespecs3secretaccesskey) | object | yes |  | S3 secret access key. |
+| `forcePathStyle` | boolean |  |  | Force path-style URLs instead of virtual-hosted-style URLs. |
+| `disableDefaultIntegrityChecks` | boolean |  |  | Disable default S3 integrity checks. |
 
 ## `PocketIDInstance.spec.s3.accessKeyId`
 
@@ -181,8 +177,8 @@ SensitiveValue holds a value that can be provided as plain text or from a Kubern
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `value` | string |  |  | Plain text value |
-| `valueFrom` | [EnvVarSource](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#envvarsource-v1-core) |  |  | Source for the value (e.g. secretKeyRef, configMapKeyRef) |
+| `value` | string |  |  | Plain text value. |
+| `valueFrom` | [EnvVarSource](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#envvarsource-v1-core) |  |  | Source for the value (e.g. secretKeyRef, configMapKeyRef). |
 
 ## `PocketIDInstance.spec.s3.secretAccessKey`
 
@@ -192,25 +188,24 @@ SensitiveValue holds a value that can be provided as plain text or from a Kubern
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `value` | string |  |  | Plain text value |
-| `valueFrom` | [EnvVarSource](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#envvarsource-v1-core) |  |  | Source for the value (e.g. secretKeyRef, configMapKeyRef) |
+| `value` | string |  |  | Plain text value. |
+| `valueFrom` | [EnvVarSource](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#envvarsource-v1-core) |  |  | Source for the value (e.g. secretKeyRef, configMapKeyRef). |
 
 ## `PocketIDInstance.spec.smtp`
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-SMTPConfig configures SMTP email transport.
-When present, SMTP is automatically enabled.
+SMTPConfig configures SMTP email transport. When present, SMTP is automatically enabled.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `host` | string | yes |  | SMTP server hostname |
-| `port` | integer | yes |  | SMTP server port |
-| `from` | string | yes |  | Sender email address |
-| `user` | string |  |  | SMTP authentication username |
-| [`password`](#pocketidinstancespecsmtppassword) | object |  |  | SMTP authentication password |
-| `tls` | string |  | `none` | TLS mode for the SMTP connection<br />_Enum: [none starttls tls]_ |
-| `skipCertVerify` | boolean |  | `false` | Skip certificate verification (for self-signed certs) |
+| `host` | string | yes |  | SMTP server hostname. |
+| `port` | integer | yes |  | SMTP server port. |
+| `from` | string | yes |  | Sender email address. |
+| `user` | string |  |  | SMTP authentication username. |
+| [`password`](#pocketidinstancespecsmtppassword) | object |  |  | SMTP authentication password. |
+| `tls` | string |  |  | TLS mode for the SMTP connection.<br />_Enum: [none starttls tls]_ |
+| `skipCertVerify` | boolean |  |  | Skip certificate verification (for self-signed certificates). |
 
 ## `PocketIDInstance.spec.smtp.password`
 
@@ -220,43 +215,41 @@ SensitiveValue holds a value that can be provided as plain text or from a Kubern
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `value` | string |  |  | Plain text value |
-| `valueFrom` | [EnvVarSource](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#envvarsource-v1-core) |  |  | Source for the value (e.g. secretKeyRef, configMapKeyRef) |
+| `value` | string |  |  | Plain text value. |
+| `valueFrom` | [EnvVarSource](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#envvarsource-v1-core) |  |  | Source for the value (e.g. secretKeyRef, configMapKeyRef). |
 
 ## `PocketIDInstance.spec.emailNotifications`
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-EmailNotificationsConfig controls which email notifications Pocket-ID sends.
-Only relevant when SMTP is configured.
+EmailNotificationsConfig controls which email notifications Pocket-ID sends. This is only relevant when SMTP is configured.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `loginNotification` | boolean |  | `false` | Notify users of logins from new devices |
-| `oneTimeAccessAsAdmin` | boolean |  | `false` | Allow admins to send one-time login access codes |
-| `apiKeyExpiration` | boolean |  | `false` | Notify users of expiring API keys |
-| `oneTimeAccessAsUnauthenticated` | boolean |  | `false` | Allow email-based login bypass for unauthenticated users (reduced security) |
-| `verification` | boolean |  | `false` | Send verification emails on signup or email change |
+| `loginNotification` | boolean |  |  | Notify users of logins from new devices. |
+| `oneTimeAccessAsAdmin` | boolean |  |  | Allow admins to send one-time login access codes. |
+| `apiKeyExpiration` | boolean |  |  | Notify users of expiring API keys. |
+| `oneTimeAccessAsUnauthenticated` | boolean |  |  | Allow email-based login bypass for unauthenticated users (reduced security). |
+| `verification` | boolean |  |  | Send verification emails on signup or email change. |
 
 ## `PocketIDInstance.spec.ldap`
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-LDAPConfig configures LDAP authentication.
-When present, LDAP is automatically enabled.
+LDAPConfig configures LDAP authentication. When present, LDAP is automatically enabled.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `url` | string | yes |  | LDAP server connection URL (e.g. ldaps://ldap.example.com) |
-| `bindDN` | string | yes |  | LDAP bind distinguished name |
-| [`bindPassword`](#pocketidinstancespecldapbindpassword) | object | yes |  | LDAP bind password |
-| `base` | string | yes |  | LDAP search base DN |
-| `skipCertVerify` | boolean |  | `false` | Skip LDAP certificate verification |
-| `softDeleteUsers` | boolean |  | `false` | Disable removed LDAP users instead of deleting them |
-| `adminGroupName` | string |  |  | LDAP group name that grants admin privileges |
-| `userSearchFilter` | string |  |  | LDAP user search filter |
-| `userGroupSearchFilter` | string |  |  | LDAP group search filter |
-| [`attributeMapping`](#pocketidinstancespecldapattributemapping) | object |  |  | LDAP attribute mappings |
+| `url` | string | yes |  | LDAP server connection URL (e.g. ldaps://ldap.example.com). |
+| `bindDN` | string | yes |  | LDAP bind distinguished name. |
+| [`bindPassword`](#pocketidinstancespecldapbindpassword) | object | yes |  | LDAP bind password. |
+| `base` | string | yes |  | LDAP search base DN. |
+| `skipCertVerify` | boolean |  |  | Skip LDAP certificate verification. |
+| `softDeleteUsers` | boolean |  |  | Disable removed LDAP users instead of deleting them. |
+| `adminGroupName` | string |  |  | LDAP group name that grants admin privileges. |
+| `userSearchFilter` | string |  |  | LDAP user search filter. |
+| `userGroupSearchFilter` | string |  |  | LDAP group search filter. |
+| [`attributeMapping`](#pocketidinstancespecldapattributemapping) | object |  |  | LDAP attribute mappings. |
 
 ## `PocketIDInstance.spec.ldap.bindPassword`
 
@@ -266,8 +259,8 @@ SensitiveValue holds a value that can be provided as plain text or from a Kubern
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `value` | string |  |  | Plain text value |
-| `valueFrom` | [EnvVarSource](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#envvarsource-v1-core) |  |  | Source for the value (e.g. secretKeyRef, configMapKeyRef) |
+| `value` | string |  |  | Plain text value. |
+| `valueFrom` | [EnvVarSource](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#envvarsource-v1-core) |  |  | Source for the value (e.g. secretKeyRef, configMapKeyRef). |
 
 ## `PocketIDInstance.spec.ldap.attributeMapping`
 
@@ -277,16 +270,16 @@ LDAPAttributeMappingConfig maps LDAP attributes to Pocket-ID user/group fields.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `userUniqueIdentifier` | string |  |  | LDAP attribute for immutable user identifier |
-| `userUsername` | string |  |  | LDAP attribute for username |
-| `userEmail` | string |  |  | LDAP attribute for email |
-| `userFirstName` | string |  |  | LDAP attribute for first name |
-| `userLastName` | string |  |  | LDAP attribute for last name |
-| `userDisplayName` | string |  |  | LDAP attribute for display name |
-| `userProfilePicture` | string |  |  | LDAP attribute for profile picture |
-| `groupMember` | string |  |  | LDAP attribute for group membership |
-| `groupUniqueIdentifier` | string |  |  | LDAP attribute for immutable group identifier |
-| `groupName` | string |  |  | LDAP attribute for group name |
+| `userUniqueIdentifier` | string |  |  | LDAP attribute for the immutable user identifier. |
+| `userUsername` | string |  |  | LDAP attribute for the username. |
+| `userEmail` | string |  |  | LDAP attribute for the email address. |
+| `userFirstName` | string |  |  | LDAP attribute for the first name. |
+| `userLastName` | string |  |  | LDAP attribute for the last name. |
+| `userDisplayName` | string |  |  | LDAP attribute for the display name. |
+| `userProfilePicture` | string |  |  | LDAP attribute for the profile picture. |
+| `groupMember` | string |  |  | LDAP attribute for group membership. |
+| `groupUniqueIdentifier` | string |  |  | LDAP attribute for the immutable group identifier. |
+| `groupName` | string |  |  | LDAP attribute for the group name. |
 
 ## `PocketIDInstance.spec.logging`
 
@@ -296,36 +289,34 @@ LoggingConfig configures logging behavior.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `level` | string |  |  | Log level<br />_Enum: [debug info warn error]_ |
-| `json` | boolean |  | `false` | Output logs as JSON |
-| `queryArgs` | boolean |  | `false` | Include SQL query parameter values in traces and in the query logs emitted<br />at the debug level. These values may contain sensitive data. |
+| `level` | string |  |  | Log level.<br />_Enum: [debug info warn error]_ |
+| `json` | boolean |  |  | Output logs as JSON. |
+| `queryArgs` | boolean |  |  | Include SQL query parameter values in traces and in the query logs emitted<br />at the debug level. These values may contain sensitive data. |
 
 ## `PocketIDInstance.spec.tracing`
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-TracingConfig enables OpenTelemetry tracing.
-When present, tracing is automatically enabled.
-Configure additional exporter-specific OTEL_* variables via the env escape hatch.
+TracingConfig enables OpenTelemetry tracing. When present, tracing is automatically enabled.
+Configure additional exporter-specific OTEL_* variables via spec.env.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `endpoint` | string |  |  | OTLP traces endpoint including path, e.g. http://collector:4318/v1/traces<br />(sets OTEL_EXPORTER_OTLP_TRACES_ENDPOINT) |
+| `endpoint` | string |  |  | OTLP traces endpoint, including the path (e.g. http://collector:4318/v1/traces).<br />Sets OTEL_EXPORTER_OTLP_TRACES_ENDPOINT. |
 
 ## `PocketIDInstance.spec.ui`
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-UIConfig configures Pocket-ID UI settings.
-The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured.
+UIConfig configures Pocket-ID UI settings. The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `appName` | string |  |  | Application display name |
-| `sessionDuration` | integer |  |  | User session timeout in minutes |
-| `homePageUrl` | string |  |  | Post-login redirect page |
-| `disableAnimations` | boolean |  | `false` | Turn off UI animations |
-| `accentColor` | string |  |  | Custom CSS color value for UI accent theme |
+| `appName` | string |  |  | Application display name. |
+| `sessionDuration` | integer |  |  | User session timeout in minutes. |
+| `homePageUrl` | string |  |  | Post-login redirect page. |
+| `disableAnimations` | boolean |  |  | Turn off UI animations. |
+| `accentColor` | string |  |  | Custom CSS color value for the UI accent theme. |
 
 ## `PocketIDInstance.spec.userManagement`
 
@@ -335,26 +326,24 @@ UserManagementConfig configures user registration and account settings.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `emailsVerified` | boolean |  | `false` | Auto-verify emails on signup or change |
-| `allowOwnAccountEdit` | boolean |  |  | Allow users to edit their own account details |
-| `requireUserEmail` | boolean |  |  | Require users to have an email address |
-| `allowUserSignups` | string |  |  | User signup mode<br />_Enum: [disabled withToken open]_ |
-| `signupDefaultCustomClaims` | string |  |  | Default custom claims to assign to new users (JSON array) |
-| `signupDefaultUserGroupIds` | string array |  |  | Default user group IDs to assign to new users |
+| `emailsVerified` | boolean |  |  | Auto-verify emails on signup or change. |
+| `allowOwnAccountEdit` | boolean |  |  | Allow users to edit their own account details. |
+| `requireUserEmail` | boolean |  |  | Require users to have an email address. |
+| `allowUserSignups` | string |  |  | User signup mode.<br />_Enum: [disabled withToken open]_ |
+| `signupDefaultCustomClaims` | string |  |  | Default custom claims to assign to new users (JSON array). |
+| `signupDefaultUserGroupIds` | string array |  |  | Default user group IDs to assign to new users. |
 
 ## `PocketIDInstance.spec.webauthn`
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-WebAuthnConfig restricts which passkeys Pocket-ID accepts.
-Omitted fields are left unset so Pocket-ID's own defaults apply.
-The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured.
+WebAuthnConfig restricts which passkeys Pocket-ID accepts. The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `userVerification` | string |  |  | Whether the authenticator must verify the user (PIN, biometric) during login<br />_Enum: [required preferred]_ |
-| `allowSyncedPasskeys` | boolean |  |  | Accept passkeys that are backup-eligible, i.e. synced to a cloud account<br />such as iCloud Keychain or Google Password Manager |
-| `authenticatorAttachment` | string |  |  | Authenticator type accepted at registration: platform (device-bound),<br />cross-platform (roaming security key), or any<br />_Enum: [any platform cross-platform]_ |
+| `userVerification` | string |  |  | Whether the authenticator must verify the user (PIN, biometric) during login.<br />_Enum: [required preferred]_ |
+| `allowSyncedPasskeys` | boolean |  |  | Accept passkeys that are backup-eligible, i.e. synced to a cloud account<br />such as iCloud Keychain or Google Password Manager. |
+| `authenticatorAttachment` | string |  |  | Authenticator type accepted at registration: platform (device-bound),<br />cross-platform (roaming security key), or any.<br />_Enum: [any platform cross-platform]_ |
 
 ## `PocketIDInstance.spec.geoip`
 
@@ -364,9 +353,9 @@ GeoIPConfig configures GeoIP/MaxMind integration for audit log geolocation.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| [`maxmindLicenseKey`](#pocketidinstancespecgeoipmaxmindlicensekey) | object |  |  | MaxMind license key for downloading GeoLite2 database |
-| `dbPath` | string |  |  | Custom path to the GeoLite2 database file |
-| [`dbUrl`](#pocketidinstancespecgeoipdburl) | object |  |  | Custom URL to download the GeoLite2 database from<br />May contain credentials so supports secretKeyRef |
+| [`maxmindLicenseKey`](#pocketidinstancespecgeoipmaxmindlicensekey) | object |  |  | MaxMind license key for downloading the GeoLite2 database. |
+| `dbPath` | string |  |  | Custom path to the GeoLite2 database file. |
+| [`dbUrl`](#pocketidinstancespecgeoipdburl) | object |  |  | Custom URL to download the GeoLite2 database from.<br />May contain credentials, so secretKeyRef is supported. |
 
 ## `PocketIDInstance.spec.geoip.maxmindLicenseKey`
 
@@ -376,8 +365,8 @@ SensitiveValue holds a value that can be provided as plain text or from a Kubern
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `value` | string |  |  | Plain text value |
-| `valueFrom` | [EnvVarSource](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#envvarsource-v1-core) |  |  | Source for the value (e.g. secretKeyRef, configMapKeyRef) |
+| `value` | string |  |  | Plain text value. |
+| `valueFrom` | [EnvVarSource](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#envvarsource-v1-core) |  |  | Source for the value (e.g. secretKeyRef, configMapKeyRef). |
 
 ## `PocketIDInstance.spec.geoip.dbUrl`
 
@@ -387,24 +376,21 @@ SensitiveValue holds a value that can be provided as plain text or from a Kubern
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `value` | string |  |  | Plain text value |
-| `valueFrom` | [EnvVarSource](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#envvarsource-v1-core) |  |  | Source for the value (e.g. secretKeyRef, configMapKeyRef) |
+| `value` | string |  |  | Plain text value. |
+| `valueFrom` | [EnvVarSource](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#envvarsource-v1-core) |  |  | Source for the value (e.g. secretKeyRef, configMapKeyRef). |
 
 ## `PocketIDInstance.spec.trustedProxies`
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-TrustedProxiesConfig configures which upstream proxies Pocket-ID trusts for
-X-Forwarded-* headers (the TRUST_PROXY environment variable). This determines the
-client IP Pocket-ID sees, which feeds rate limiting, audit-log IPs, and GeoIP.
-
-When this section is omitted, the operator sets TRUST_PROXY=false unless it manages the instance's route (spec.route.enabled),
-in which case it trusts the private/loopback ranges where a Gateway's ip would be.
+TrustedProxiesConfig configures which upstream proxies Pocket-ID trusts for X-Forwarded-* headers (the TRUST_PROXY environment variable).
+This determines the client IP Pocket-ID sees, which feeds rate limiting, audit-log IPs, and GeoIP.
+When this section is omitted, the operator sets TRUST_PROXY=false unless it manages the instance's route (spec.route.enabled), in which case it trusts the private/loopback ranges where a Gateway's IP would be.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `enabled` | boolean | yes | `false` | Enabled turns on trust of X-Forwarded-* headers.<br />When false, TRUST_PROXY is set to "false". |
-| `cidrs` | string array |  |  | CIDRs is the list of trusted proxy IPs/CIDRs. Only used when enabled is true.<br />When empty, TRUST_PROXY is set to "true", trusting all upstream sources<br />To restrict trust, list explicit ranges: e.g. the in-cluster gateway network, or a CDN's<br />published ranges when it connects directly to the pod. |
+| `enabled` | boolean | yes | `false` | Enabled turns on trust of X-Forwarded-* headers. When false, TRUST_PROXY is set to "false". |
+| `cidrs` | string array |  |  | CIDRs is the list of trusted proxy IPs/CIDRs. Only used when enabled is true. When empty, TRUST_PROXY is set to "true", trusting all upstream sources.<br />To restrict trust, list explicit ranges, e.g. the cluster pod network or a CDN's published ranges when it connects directly to the pod. |
 
 ## `PocketIDInstance.spec.OIDCClientRotation`
 
@@ -414,7 +400,7 @@ OIDCClientRotationConfig controls instance-wide throttling of OIDC client secret
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `minSpacing` | [Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#duration-v1-meta) | yes |  | MinSpacing is the minimum time between any two client secret rotations on this instance.<br />Prevents thundering-herd when many clients become due simultaneously. |
+| `minSpacing` | [Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#duration-v1-meta) | yes |  | MinSpacing is the minimum time between any two client secret rotations on this instance.<br />Prevents a thundering herd when many clients become due simultaneously. |
 
 ## `PocketIDInstance.status`
 
@@ -422,7 +408,7 @@ PocketIDInstanceStatus defines the observed state of PocketIDInstance.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `version` | string |  |  | Version is the current deployed version of the PocketID instance,<br />retrieved from the /api/version/current endpoint. |
-| `staticApiKeySecretName` | string |  |  | StaticAPIKeySecretName is the name of the secret containing the STATIC_API_KEY |
+| `version` | string |  |  | Version is the current deployed version of the Pocket-ID instance, retrieved from the /api/version/current endpoint. |
+| `staticApiKeySecretName` | string |  |  | StaticAPIKeySecretName is the name of the Secret containing the STATIC_API_KEY. |
 | `conditions` | [Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#condition-v1-meta) array |  |  | Conditions represent the current state of the Instance resource. |
-| `lastRotatedClientSecret` | [Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#time-v1-meta) |  |  | LastRotatedClientSecret is the timestamp of the most recent OIDC client secret rotation<br />on this instance. Used to enforce spec.OIDCClientRotation.minSpacing. |
+| `lastRotatedClientSecret` | [Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#time-v1-meta) |  |  | LastRotatedClientSecret is the timestamp of the most recent OIDC client secret rotation on this instance.<br />Used to enforce spec.OIDCClientRotation.minSpacing. |

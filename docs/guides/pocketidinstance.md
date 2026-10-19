@@ -1,11 +1,11 @@
 # PocketIDInstance
 
-A `PocketIDInstance` provisions Pocket-ID in the cluster. It creates either a Deployment
-or a StatefulSet, a Service on port 1411, and a static API key Secret used by the
-operator for authentication.
+A `PocketIDInstance` provisions Pocket-ID in the cluster. It creates a Deployment or a StatefulSet, a Service exposing port 1411, and a Secret with the static API key used by the operator for authentication.
+
+Most of the configuration available in this custom resource simply sets the corresponding [environment variables](https://pocket-id.org/docs/configuration/environment-variables). These are exposed as custom resource fields instead of just relying on `spec.env` to offer a better experience deploying in Kubernetes and simplify the configuration (automatically setting `UI_CONFIG_DISABLED` when necessary, setting HTTPRoute hostname, `TRUST_PROXY` config, etc.). Any of these fields can be overwritten by setting the variable in `spec.env` if preferred.
 
 ## Minimal Example
-
+For full documentation on each field in this CRD see [the API reference](../reference/pocketidinstance.md). For common configurations see [the examples](../examples/pocketidinstance.md), including a [full featured example](../examples/pocketidinstance.md#full-featured-example).
 ```yaml
 apiVersion: v1
 kind: Secret
@@ -29,256 +29,44 @@ spec:
   appUrl: "https://pocket-id.example.com"
 ```
 
-## Full Featured Example
-
-```yaml
-apiVersion: pocketid.internal/v1alpha1
-kind: PocketIDInstance
-metadata:
-  name: pocket-id
-  namespace: pocket-id
-spec:
-  encryptionKey:
-    valueFrom:
-      secretKeyRef:
-        name: pocket-id-encryption
-        key: key
-  appUrl: "https://pocket-id.example.com"
-  databaseUrl:
-    valueFrom:
-      secretKeyRef:
-        name: pocket-id-db
-        key: uri
-  persistence:
-    enabled: true
-    existingClaim: pocket-id-data
-  smtp:
-    host: "smtp.example.com"
-    port: 587
-    from: "noreply@example.com"
-    user: "smtpuser"
-    password:
-      valueFrom:
-        secretKeyRef:
-          name: smtp-creds
-          key: password
-    tls: "starttls"
-  emailNotifications:
-    loginNotification: true
-    oneTimeAccessAsAdmin: true
-    apiKeyExpiration: true
-    verification: true
-  ui:
-    appName: "My SSO"
-    sessionDuration: 1440
-    accentColor: "#3b82f6"
-  userManagement:
-    allowOwnAccountEdit: true
-    allowUserSignups: "disabled"
-  logging:
-    level: "info"
-    json: true
-  metrics:
-    enabled: true
-  versionCheckDisabled: true
-  auditLogRetentionDays: 30
-  timezone: "America/New_York"
-  localIPv6Ranges: "fd00::/8,fe80::/10"
-```
-
 ## Image
 
-`spec.image` is optional. When it is omitted the operator runs the Pocket-ID version it
-was released and tested against.
+!!! warning
+    I finally learned how CRDs work. Instances created before v0.14.2 (08/24/26) have an image hardcoded into `spec.image` even if they never set one. Earlier operators declared the default in the CRD schema, so the API server stamped it into the object at creation, leaving those instances pinned to whichever Pocket-ID version was current when they were created. In addition to missing out on updates, these instances will eventually drift below the operator's minimum supported version. To fix, drop the field from the custom resource:
+    ```sh
+    kubectl patch pocketidinstance <name> -n <namespace> \
+      --type=json -p '[{"op":"remove","path":"/spec/image"}]'
+    ```
 
-Set it to pin a specific version:
+`spec.image` is optional. When it is omitted the operator runs the Pocket-ID version it was released and tested against.
+
+To set it to pin a specific version:
 
 ```yaml
 spec:
   image: ghcr.io/pocket-id/pocket-id:v2.18.0-distroless
 ```
 
-> [!IMPORTANT]
-> I finally learned how CRDs work. Instances created before v0.14.2 (08/24/26) have an image written into `spec.image` even if they
-> never set one. Earlier operators declared the default in the CRD schema, so the API
-> server stamped it into the object at creation, leaving those
-> instances pinned to whichever Pocket-ID version was current when they were created,
-> and eventually below the operator's minimum supported version. To hand the image back
-> to the operator, drop the field:
->
-> ```sh
-> kubectl patch pocketidinstance <name> -n <namespace> \
->   --type=json -p '[{"op":"remove","path":"/spec/image"}]'
-> ```
-
 ## S3 File Backend
 
-When the `s3` block is present, the operator automatically sets `FILE_BACKEND=s3`.
-
-```yaml
-spec:
-  s3:
-    bucket: "pocket-id-uploads"
-    region: "us-east-1"
-    endpoint: "https://minio.example.com"   # optional, for S3-compatible stores
-    accessKeyId:
-      valueFrom:
-        secretKeyRef:
-          name: s3-creds
-          key: access-key
-    secretAccessKey:
-      valueFrom:
-        secretKeyRef:
-          name: s3-creds
-          key: secret-key
-    forcePathStyle: true                     # required for most S3-compatible stores
-    disableDefaultIntegrityChecks: false      # disable S3 default integrity checks
-```
+When the `s3` block is present, the operator automatically sets `FILE_BACKEND=s3`. See [the example configuration](../examples/pocketidinstance.md#s3-file-backend), for up to date documentation on all supported fields see [the API reference](../reference/pocketidinstance.md#pocketidinstancespecs3).
 
 ## SMTP
 
-When the `smtp` block is present, the operator automatically sets `SMTP_ENABLED=true`.
-
-```yaml
-spec:
-  smtp:
-    host: "smtp.example.com"
-    port: 587
-    from: "noreply@example.com"
-    user: "smtpuser"                         # optional
-    password:                                # optional, supports value or valueFrom
-      valueFrom:
-        secretKeyRef:
-          name: smtp-creds
-          key: password
-    tls: "starttls"                          # none, starttls, or tls (default: none)
-    skipCertVerify: false                    # for self-signed certs
-```
-
-## Email Notifications
-
-Controls which email notifications are sent. Only relevant when SMTP is configured.
-
-```yaml
-spec:
-  emailNotifications:
-    loginNotification: true                  # notify on login from new device
-    oneTimeAccessAsAdmin: true               # admins can send login codes
-    apiKeyExpiration: true                   # notify on expiring API keys
-    oneTimeAccessAsUnauthenticated: false     # email-based login bypass (reduced security)
-    verification: true                       # email verification on signup/change
-```
+When the `smtp` block is present, the operator automatically sets `SMTP_ENABLED=true`. See [the example configuration](../examples/pocketidinstance.md#smtp), for up to date documentation on all supported fields see [the API reference](../reference/pocketidinstance.md#pocketidinstancespecsmtp).
 
 ## LDAP
 
-When the `ldap` block is present, the operator automatically sets `LDAP_ENABLED=true`.
-
-```yaml
-spec:
-  ldap:
-    url: "ldaps://ldap.example.com"
-    bindDN: "cn=admin,dc=example,dc=com"
-    bindPassword:
-      valueFrom:
-        secretKeyRef:
-          name: ldap-creds
-          key: password
-    base: "dc=example,dc=com"
-    skipCertVerify: false
-    softDeleteUsers: false                   # disable instead of delete removed users
-    adminGroupName: "pocket-id-admins"       # LDAP group that grants admin
-    userSearchFilter: "(objectClass=person)"
-    userGroupSearchFilter: "(objectClass=groupOfNames)"
-    attributeMapping:
-      userUniqueIdentifier: "uid"
-      userUsername: "uid"
-      userEmail: "mail"
-      userFirstName: "givenName"
-      userLastName: "sn"
-      userDisplayName: "cn"
-      groupMember: "member"
-      groupName: "cn"
-```
+When the `ldap` block is present, the operator automatically sets `LDAP_ENABLED=true`. See [example](../examples/pocketidinstance.md#ldap).
 
 ## UI Configuration
 
-The operator automatically sets `UI_CONFIG_DISABLED=true` when any of the `ui`, `userManagement`, `webauthn`, `smtp`, `emailNotifications`, or `ldap` sections, or `cimdUrlAllowlist`, are configured.
-
-```yaml
-spec:
-  ui:
-    appName: "My SSO"                        # display name
-    sessionDuration: 60                      # session timeout in minutes
-    homePageUrl: "/settings/account"         # post-login redirect
-    disableAnimations: false
-    accentColor: "#3b82f6"                   # any valid CSS color
-```
-
-## Client ID Metadata Documents
-
-`cimdUrlAllowlist` restricts which `https` URLs may be used as OAuth Client ID Metadata
-Documents, letting clients self-register by publishing metadata instead of being
-provisioned ahead of time. Entries are callback-URL patterns, so wildcards are allowed. The
-operator JSON-encodes the list into `CIMD_URL_ALLOWLIST`; leaving it empty keeps CIMD off
-and `client_id_metadata_document_supported` false in the discovery document.
-
-```yaml
-spec:
-  cimdUrlAllowlist:
-    - "https://apps.example.com/*/client-metadata.json"
-```
-
-Removing a URL from this list is how you revoke a self-registered app's access. To manage
-an individual CIMD client's policy from the cluster, see
-[pocketidoidcclient.md](pocketidoidcclient.md#client-id-metadata-documents).
-
-## User Management
-
-```yaml
-spec:
-  userManagement:
-    emailsVerified: false                    # auto-verify emails
-    allowOwnAccountEdit: true                # let users edit own details
-    requireUserEmail: true                   # require users to have an email
-    allowUserSignups: "disabled"             # disabled, withToken, or open
-    signupDefaultCustomClaims: '[]'          # JSON array of default claims
-    signupDefaultUserGroupIds:               # UUIDs of default groups
-      - "550e8400-e29b-41d4-a716-446655440000"
-```
-
-## Passkeys
-
-`webauthn` restricts which passkeys are accepted at registration and login. Omitted
-fields are left unset, so Pocket-ID's own defaults apply.
-
-```yaml
-spec:
-  webauthn:
-    userVerification: "required"             # required or preferred
-    allowSyncedPasskeys: false               # reject iCloud/Google-synced credentials
-    authenticatorAttachment: "cross-platform" # any, platform, or cross-platform
-```
-
-Combining `allowSyncedPasskeys: false` with `authenticatorAttachment: cross-platform`
-effectively requires hardware security keys.
-```
-
-## Logging
-
-```yaml
-spec:
-  logging:
-    level: "info"                            # debug, info, warn, error
-    json: true                               # JSON log output
-    queryArgs: false                         # SQL parameter values in debug logs and traces
-```
+The operator automatically sets `UI_CONFIG_DISABLED=true` when any of the `ui`, `userManagement`, `webauthn`, `smtp`, `emailNotifications`, or `ldap` sections, or `cimdUrlAllowlist`, are configured. See [example](../examples/pocketidinstance.md#ui-configuration).
 
 ## Tracing
 
 When the `tracing` block is present, the operator sets `OTEL_TRACES_EXPORTER=otlp`.
-Set `endpoint` to configure `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (include the full
-path); configure any other exporter-specific `OTEL_*` variables via the `env`
-escape hatch.
+Due to the nature of OTEL, the only supported  field in the resource is `spec.tracing.endpoint`. To configure any other exporter-specific `OTEL_*` variables use the freeform env fields at `spec.env`
 
 ```yaml
 spec:
@@ -286,26 +74,12 @@ spec:
     endpoint: "http://otel-collector:4318/v1/traces"
 ```
 
-## GeoIP
-
-```yaml
-spec:
-  geoip:
-    maxmindLicenseKey:
-      valueFrom:
-        secretKeyRef:
-          name: maxmind
-          key: license-key
-    dbPath: ""                               # custom GeoLite2 DB path
-    dbUrl:                                   # custom download URL (supports value or valueFrom)
-      value: "https://custom.example.com/GeoLite2-City.mmdb"
-```
-
 ## Persistence
 
-The `persistence` block controls the data volume mounted into the pocket-id container.
+The `persistence` block controls the data volume mounted into the pocket-id container. See examples for a [custom mount path and subPath](../examples/pocketidinstance.md#custom-mount-path-and-subpath) and a [StatefulSet with an operator-managed PVC](../examples/pocketidinstance.md#statefulset-with-operator-managed-pvc).
 
 ### Fields
+The table below describes the behavior when each field is set.
 
 | Field | Default | Description |
 |---|---|---|
@@ -318,94 +92,23 @@ The `persistence` block controls the data volume mounted into the pocket-id cont
 | `subPath` | — | `subPath` within the volume to mount |
 | `extraVolumeMounts` | — | Additional volume mounts to inject into the pocket-id container |
 
-### Custom Mount Path and SubPath
-
-```yaml
-spec:
-  persistence:
-    enabled: true
-    size: 5Gi
-    path: /data                  # override the default mount path
-    subPath: pocket-id           # mount only this subdirectory of the volume
-```
-
 ### Extra Volume Mounts
 
-`extraVolumeMounts` lets you mount volumes that are defined in `spec.podTemplate`
-directly into the pocket-id container. This is useful for config maps, secrets, or
-other volumes that need to be visible to the main container.
-
-```yaml
-spec:
-  podTemplate:
-    spec:
-      volumes:
-        - name: custom-config
-          configMap:
-            name: pocket-id-custom-config
-  persistence:
-    extraVolumeMounts:
-      - name: custom-config
-        mountPath: /app/custom-config
-        readOnly: true
-```
-
-## StatefulSet With Operator-Managed PVC
-
-```yaml
-apiVersion: pocketid.internal/v1alpha1
-kind: PocketIDInstance
-metadata:
-  name: pocket-id
-  namespace: pocket-id
-spec:
-  deploymentType: StatefulSet
-  encryptionKey:
-    valueFrom:
-      secretKeyRef:
-        name: pocket-id-encryption
-        key: key
-  persistence:
-    enabled: true
-    size: 5Gi
-```
+`extraVolumeMounts` lets you mount volumes that are defined in `spec.podTemplate` directly into the pocket-id container. This is useful for config maps, secrets, or other volumes that need to be visible to the pod. See [example](../examples/pocketidinstance.md#extra-volume-mounts).
 
 ## HTTPRoute (Gateway API)
 
-You can optionally have the operator manage a `HTTPRoute` for the instance.
+You can optionally have the operator manage a `HTTPRoute` for the instance. See [example](../examples/pocketidinstance.md#httproute-gateway-api).
 
 Requirements:
 - Gateway API CRDs must be installed in the cluster (`gateway.networking.k8s.io/v1`).
 - At least one `parentRef` is required.
 
 Behavior:
-- If `spec.route.hostnames` is omitted, the operator derives hostname from `spec.appUrl`.
+- If `spec.route.hostnames` is omitted, the operator derives the hostname from `spec.appUrl`.
 - If Gateway API CRDs are missing and route is enabled, reconcile logs an error and does not create the route.
 - Created HTTPRoute defaults to the name of the PocketIDInstance
-- Enabling the route also sets a sensible `TRUST_PROXY` default (see [Trusted Proxies](#trusted-proxies)).
-
-```yaml
-apiVersion: pocketid.internal/v1alpha1
-kind: PocketIDInstance
-metadata:
-  name: pocket-id
-  namespace: pocket-id
-spec:
-  encryptionKey:
-    valueFrom:
-      secretKeyRef:
-        name: pocket-id-encryption
-        key: key
-  appUrl: "https://pocket-id.example.com"
-  route:
-    enabled: true
-    name: pocket-id-route
-    parentRefs:
-      - group: gateway.networking.k8s.io
-        kind: Gateway
-        name: shared-gateway
-        namespace: infra-gateway
-```
+- Enabling the route also sets a sensible `TRUST_PROXY` default of private CIDRs (see [Trusted Proxies](#trusted-proxies)).
 
 ### Freeform Route Spec
 
@@ -413,282 +116,64 @@ spec:
 operator-built route, for fields the structured config doesn't cover (additional rules,
 matches, filters, timeouts, etc.). The operator always wins: `parentRefs` and `hostnames`
 come from the structured config, and the default rule routing to the Service on port 1411
-is always injected first. Any `rules` you set in the template are appended after it.
-
-```yaml
-spec:
-  route:
-    enabled: true
-    parentRefs:
-      - name: shared-gateway
-    template:
-      rules:
-        # Appended after the operator's default Service backend rule
-        - matches:
-            - path:
-                type: PathPrefix
-                value: /healthz
-          filters:
-            - type: RequestRedirect
-              requestRedirect:
-                statusCode: 302
-                path:
-                  type: ReplaceFullPath
-                  replaceFullPath: /readyz
-```
+is always injected first. Any `rules` you set in the template are appended after it. See [example](../examples/pocketidinstance.md#freeform-route-spec).
 
 ## TLS
 
-`spec.tls` terminates HTTPS inside the Pocket-ID pod instead of at a proxy in front of it.
-The referenced `kubernetes.io/tls` Secret is mounted read-only at `/etc/pocket-id/tls` and
-Pocket-ID is pointed at it with `TLS_CERT_FILE` / `TLS_KEY_FILE`. Pocket-ID watches the
-mount, so certificate renewals apply without restarting the pod.
-The certificate is NOT verified to allow access over the cluster dns. 
+`spec.tls` terminates HTTPS inside the Pocket-ID pod instead of at a proxy in front of it. The referenced `kubernetes.io/tls` Secret is mounted read-only at `/etc/pocket-id/tls` and Pocket-ID is pointed at it with `TLS_CERT_FILE` / `TLS_KEY_FILE`. Pocket-ID watches the mount, so certificate renewals apply without restarting the pod. The certificate is NOT verified to allow access over the cluster dns.
 
 Enabling TLS also:
-- switches the operator's default readiness/liveness probes to `scheme: HTTPS`
-  (a probe you set in `spec.readinessProbe`/`spec.livenessProbe` is used verbatim),
-- sets `appProtocol: https` on the Service's `http` port. The port keeps its name so
-  existing references stay valid.
+- switches the operator's default readiness/liveness probes to `scheme: HTTPS` unless overridden.
+- sets `appProtocol: https` on the Service's `http` port.
 
-```yaml
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: pocket-id-tls
-  namespace: pocket-id
-spec:
-  secretName: pocket-id-tls
-  dnsNames:
-    - pocket-id.example.com
-  issuerRef:
-    name: letsencrypt
-    kind: ClusterIssuer
----
-apiVersion: pocketid.internal/v1alpha1
-kind: PocketIDInstance
-metadata:
-  name: pocket-id
-  namespace: pocket-id
-spec:
-  encryptionKey:
-    valueFrom:
-      secretKeyRef:
-        name: pocket-id-encryption
-        key: key
-  appUrl: "https://pocket-id.example.com"
-  tls:
-    secretRef:
-      name: pocket-id-tls
-```
+See [example with cert-manager](../examples/pocketidinstance.md#tls-with-cert-manager).
 
 ## Trusted Proxies
 
-`spec.trustedProxies` controls which upstream proxies Pocket-ID trusts for
-`X-Forwarded-*` headers (the `TRUST_PROXY` environment variable). This governs the
-client IP Pocket-ID sees, which feeds rate limiting, audit-log IPs, and GeoIP.
+`spec.trustedProxies` controls which upstream proxies Pocket-ID trusts for `X-Forwarded-*` headers (the `TRUST_PROXY` environment variable). This determines the client IP Pocket-ID sees, which feeds rate limiting, audit-log IPs, and GeoIP.
+
+`enabled: true` maps to `TRUST_PROXY=true`. To restrict trust, list explicit `cidrs`. This will likely be your k8s pod network.
 
 | Spec | Resulting `TRUST_PROXY` |
 |---|---|
 | unset, `spec.route.enabled: true` | private/loopback ranges (see below) |
-| unset, no managed route | `false` — Pocket-ID's default (trust nothing) |
-| `{enabled: false}` | `false` (overrides the route-derived default) |
-| `{enabled: true}` | `true` — trust every upstream (matches Pocket-ID's own `TRUST_PROXY=true`) |
+| unset, no managed route | `false` (trust nothing) |
+| `{enabled: false}` | `false` even if `spec.route` is configured |
+| `{enabled: true}` | `true` (any IP) |
 | `{enabled: true, cidrs: [...]}` | the listed CIDRs |
 
-`enabled: true` maps to `TRUST_PROXY=true`. To restrict trust, list explicit `cidrs`.
+When the operator manages the route (`spec.route.enabled: true`) and you leave `trustedProxies` unset, the operator sets the private/loopback ranges `10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 127.0.0.1/32, ::1/128, fd00::/8`.
 
-When the operator manages the route (`spec.route.enabled: true`) and you leave
-`trustedProxies` unset, it defaults to the private/loopback ranges
-`10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 127.0.0.1/32, ::1/128, fd00::/8`.
-The pod's immediate upstream is then the in-cluster Gateway, which always forwards
-from a private pod IP, so its headers are honored while a client reaching the pod
-directly over a public path cannot spoof them.
-
-```yaml
-spec:
-  # Pod is exposed directly to Cloudflare (no operator-managed gateway in front)
-  trustedProxies:
-    enabled: true
-    cidrs:
-      - "173.245.48.0/20"
-      - "103.21.244.0/22"
-      # ... rest of https://www.cloudflare.com/ips/
-```
-
-> **Behavior change:** older operator releases always set `TRUST_PROXY=true`. If you run
-> behind a proxy the operator does not manage (your own Ingress, an externally-managed
-> HTTPRoute, etc.) and do **not** use `spec.route`, set `spec.trustedProxies`
-> explicitly so client-IP-derived features keep working.
+Also see [example behind Cloudflare](../examples/pocketidinstance.md#trusted-proxies-behind-cloudflare).
 
 ## Metrics and ServiceMonitor
 
-The operator can enable a Prometheus metrics endpoint on the Pocket ID instance.
-Note that Pocket ID does not currently expose any useful metrics
-beyond the default OTEL SDK metrics. See [pocket-id/pocket-id#1318](https://github.com/pocket-id/pocket-id/issues/1318).
+The operator can enable a Prometheus metrics endpoint on the Pocket ID instance. Note that Pocket ID does not yet expose any useful metrics beyond the default OTEL SDK metrics. See [pocket-id/pocket-id#1318](https://github.com/pocket-id/pocket-id/issues/1318).
 
-To enable metrics, set `spec.metrics.enabled: true` on the `PocketIDInstance`. The operator
-will inject the required OpenTelemetry environment variables and add a `metrics` port to
-the Service.
+To enable metrics, set `spec.metrics.enabled: true` on the `PocketIDInstance`. The operator will inject the required OpenTelemetry environment variables and add a `metrics` port to the Service. See [example](../examples/pocketidinstance.md#enable-metrics).
 
-```yaml
-apiVersion: pocketid.internal/v1alpha1
-kind: PocketIDInstance
-metadata:
-  name: pocket-id
-  namespace: pocket-id
-spec:
-  encryptionKey:
-    valueFrom:
-      secretKeyRef:
-        name: pocket-id-encryption
-        key: key
-  appUrl: "https://pocket-id.example.com"
-  metrics:
-    enabled: true
-    # port: 9464  # default
-```
+If installing via the Helm chart, you can also deploy a `ServiceMonitor` for the instance. See [example](../examples/pocketidinstance.md#servicemonitor-via-helm).
 
-If installing via the Helm chart, you can also deploy a `ServiceMonitor` for the instance:
+This creates a `ServiceMonitor` that scrapes the `metrics` port if the Prometheus Operator CRDs are installed.
 
-```yaml
-# values.yaml
-instance:
-  enabled: true
-  spec:
-    metrics:
-      enabled: true
-  serviceMonitor:
-    enabled: true
-    # interval: 30s
-    # labels: {}
-```
-
-This creates a `ServiceMonitor` that scrapes the `metrics` port. You must have the
-Prometheus Operator CRDs installed for this to work.
-
-If you're not using the Helm chart, you can deploy a `ServiceMonitor` directly:
-
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: pocket-id
-  namespace: pocket-id
-  labels:
-    app.kubernetes.io/name: pocket-id
-    app.kubernetes.io/instance: pocket-id
-spec:
-  endpoints:
-    - port: metrics
-      path: /metrics
-      interval: 30s
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: pocket-id
-      app.kubernetes.io/instance: pocket-id
-```
+If you're not using the Helm chart, you can deploy a `ServiceMonitor` directly. See [example](../examples/pocketidinstance.md#standalone-servicemonitor).
 
 ## Pod Template
 
-`spec.podTemplate` allows editing the instance's pod spec to add custom 
-init containers, sidecars, tolerations, affinity, node selectors, extra volumes, etc.
-The instance's spec is merged on top of `spec.podTemplate`, therefore the pocket-id container
-remains managed by the operator and changes here will not affect it. The rest of the pod is freely editable.
+`spec.podTemplate` allows editing the instance's pod spec to add custom init containers, sidecars, tolerations, affinity, node selectors, extra volumes, etc.
+The instance's spec is merged on top of `spec.podTemplate`, therefore the pocket-id container remains managed by the operator and changes here will not affect it. The rest of the pod is freely editable.
 
-### Init container
-
-```yaml
-spec:
-  podTemplate:
-    spec:
-      initContainers:
-        - name: init-db
-          image: ghcr.io/home-operations/postgres-init
-          envFrom:
-            - secretRef:
-                name: pocket-id-db-secret
-```
-
-### Tolerations and node selector
-
-```yaml
-spec:
-  podTemplate:
-    spec:
-      tolerations:
-        - key: node-role
-          operator: Equal
-          value: storage
-          effect: NoSchedule
-      nodeSelector:
-        kubernetes.io/arch: amd64
-```
-
-### Sidecar
-
-```yaml
-spec:
-  podTemplate:
-    spec:
-      containers:
-        - name: oauth2-proxy
-          image: quay.io/oauth2-proxy/oauth2-proxy
-          args:
-            - --upstream=http://localhost:1411
-            - --http-address=0.0.0.0:4180
-```
+See examples for an [init container](../examples/pocketidinstance.md#init-container), [tolerations and node selector](../examples/pocketidinstance.md#tolerations-and-node-selector), and a [sidecar](../examples/pocketidinstance.md#sidecar).
 
 ## Service Template
 
-`spec.serviceTemplate` accepts an arbitrary `ServiceSpec` that is merged with the
-operator-built Service, for fields the operator doesn't model (e.g. `type: LoadBalancer`,
-`sessionAffinity`, `externalTrafficPolicy`, extra ports). The operator always wins: the
-`selector` and the `http` port (plus the `metrics` port when metrics are enabled) are
-managed by the operator. Extra ports you add under other names pass through; a port you
-define named `http` or `metrics` is overridden by the operator's.
-
-```yaml
-spec:
-  serviceTemplate:
-    type: LoadBalancer
-    sessionAffinity: ClientIP
-    ports:
-      - name: extra
-        port: 8080
-        targetPort: 8080
-```
+`spec.serviceTemplate` accepts an arbitrary `ServiceSpec` that is merged with the operator-built Service, for fields the operator doesn't expose (e.g. `type: LoadBalancer`, `sessionAffinity`, `externalTrafficPolicy`, extra ports). The operator configuration always takes preference over anything set here, managing the `selector` and the `http` port (plus the `metrics` port when metrics are enabled). Extra ports will be added as long as their names do not conflict (`http`, `metrics`). See [example](../examples/pocketidinstance.md#service-template).
 
 ## External Instance
 
-Setting `spec.external` switches the instance to adoption mode: the operator creates no workload
-and instead manages OIDC clients, users, and groups on an existing Pocket-ID via its API.
-All workload configuration (`spec.encryptionKey`, `spec.smtp`, `spec.persistence`, etc.) is
-ignored in this mode. `spec.external` and `spec.encryptionKey` are mutually exclusive. To migrate from an external instance to an internal one or vice versa, the instance must be recreated.
+Configuring `spec.external` allows the operator to manage an instance deployed outside of the PockerIDInstance CRD e.g. e deployment in a remote cluster, a handwritten deployment, community helm chart, etc. All workload configuration (`spec.encryptionKey`, `spec.smtp`, `spec.persistence`, etc.) is ignored in this mode. There are no limitations for the other custom resources, they will all work as-documented. `spec.external` and `spec.encryptionKey` are mutually exclusive. To migrate from an external instance to an internal one or vice versa, the instance must be recreated.
 
-Pocket-ID ships a permissive rate limiter (100 req/s per IP, burst 300), so the operator does not trip it during normal syncs. If you manage a very large number of resources on an external instance, you can set `DISABLE_RATE_LIMITING=true` on it to be safe. Managed instances keep rate limiting on by default; opt out with `spec.rateLimitingDisabled: true`.
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: pocket-id-api-key
-  namespace: pocket-id
-stringData:
-  key: "your-api-key-here"
----
-apiVersion: pocketid.internal/v1alpha1
-kind: PocketIDInstance
-metadata:
-  name: pocket-id
-  namespace: pocket-id
-spec:
-  external:
-    url: "https://auth.example.com"
-    apiKeySecretRef:
-      name: pocket-id-api-key
-      key: key
-```
+See [example](../examples/pocketidinstance.md#external-instance).
 
 ## Generated Resources And Environment
 
@@ -724,4 +209,4 @@ spec:
   - `DISABLE_RATE_LIMITING=true` (set only when `spec.rateLimitingDisabled` is enabled)
   - Any additional values from `spec.env` (applied last, can override anything above)
 
-*Note:* For all options and an up-to-date spec `kubectl explain PocketIDInstance`
+*Note:* For all options and an up-to-date spec see [the API reference](../reference/pocketidinstance.md) or use `kubectl explain PocketIDInstance`.

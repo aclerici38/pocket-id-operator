@@ -78,14 +78,14 @@
         "properties": {
           "spec": {
             "additionalProperties": false,
-            "description": "spec defines the desired state of PocketIDInstance",
+            "description": "spec defines the desired state of PocketIDInstance.",
             "properties": {
               "OIDCClientRotation": {
                 "additionalProperties": false,
                 "description": "OIDCClientRotation configures instance-wide throttling of OIDC client secret rotations.",
                 "properties": {
                   "minSpacing": {
-                    "description": "MinSpacing is the minimum time between any two client secret rotations on this instance.\nPrevents thundering-herd when many clients become due simultaneously.",
+                    "description": "MinSpacing is the minimum time between any two client secret rotations on this instance.\nPrevents a thundering herd when many clients become due simultaneously.",
                     "type": "string",
                     "x-kubernetes-validations": [
                       {
@@ -104,8 +104,7 @@
                 ]
               },
               "analyticsDisabled": {
-                "default": false,
-                "description": "Disable anonymous 24-hour usage analytics heartbeat",
+                "description": "Disable the anonymous 24-hour usage analytics heartbeat.",
                 "type": [
                   "boolean",
                   "null"
@@ -115,21 +114,21 @@
                 "additionalProperties": {
                   "type": "string"
                 },
-                "description": "Additional annotations to add to the workload and pod",
+                "description": "Additional annotations to add to the workload and pod.",
                 "type": [
                   "object",
                   "null"
                 ]
               },
               "appUrl": {
-                "description": "External URL Pocket-id can be reached at\nSee the official documentation for APP_URL",
+                "description": "External URL Pocket-ID can be reached at.\nSee the official documentation for APP_URL.",
                 "type": [
                   "string",
                   "null"
                 ]
               },
               "auditLogRetentionDays": {
-                "description": "Audit log retention in days",
+                "description": "Audit log retention in days.",
                 "format": "int32",
                 "type": [
                   "integer",
@@ -137,7 +136,7 @@
                 ]
               },
               "cimdUrlAllowlist": {
-                "description": "CIMDURLAllowlist restricts which https URLs may be used as OAuth Client ID Metadata\nDocuments. Entries are callback-URL patterns (wildcards allowed). A non-empty list\nenables CIMD; leaving it empty keeps the feature off.\nThe operator automatically sets UI_CONFIG_DISABLED=true when this field is set.",
+                "description": "CIMDURLAllowlist restricts which https URLs may be used as OAuth Client ID Metadata Documents. The operator automatically sets UI_CONFIG_DISABLED=true when this field is set.",
                 "items": {
                   "type": "string"
                 },
@@ -148,7 +147,7 @@
               },
               "containerSecurityContext": {
                 "additionalProperties": false,
-                "description": "Container security context",
+                "description": "Container security context.",
                 "properties": {
                   "allowPrivilegeEscalation": {
                     "description": "AllowPrivilegeEscalation controls whether a process can gain more\nprivileges than its parent process. This bool directly controls if\nthe no_new_privs flag will be set on the container process.\nAllowPrivilegeEscalation is true always when the container is:\n1) run as Privileged\n2) has CAP_SYS_ADMIN\nNote that this field cannot be set when spec.os.name is windows.",
@@ -367,10 +366,10 @@
               },
               "databaseUrl": {
                 "additionalProperties": false,
-                "description": "URL to access database at\nSee the official documentation for DB_CONNECTION_STRING\nFor sqlite only add the filepath e.g. \"/app/data/pocket-id.db\"\nUses application default (/app/data/pocket-id.db) if empty",
+                "description": "URL to access the database at. For SQLite, only add the file path e.g. \"/app/data/pocket-id.db\".\nSee the official documentation for DB_CONNECTION_STRING.",
                 "properties": {
                   "value": {
-                    "description": "Plain text value",
+                    "description": "Plain text value.",
                     "type": [
                       "string",
                       "null"
@@ -378,7 +377,7 @@
                   },
                   "valueFrom": {
                     "additionalProperties": false,
-                    "description": "Source for the value (e.g. secretKeyRef, configMapKeyRef)",
+                    "description": "Source for the value (e.g. secretKeyRef, configMapKeyRef).",
                     "properties": {
                       "configMapKeyRef": {
                         "additionalProperties": false,
@@ -562,7 +561,7 @@
               },
               "deploymentType": {
                 "default": "Deployment",
-                "description": "Kind of workload to create, Deployment or StatefulSet\nDefaults to Deployment (immutable after creation)",
+                "description": "Kind of workload to create: Deployment or StatefulSet. Defaults to Deployment and is immutable after creation.",
                 "enum": [
                   "Deployment",
                   "StatefulSet"
@@ -574,43 +573,38 @@
               },
               "emailNotifications": {
                 "additionalProperties": false,
-                "description": "Email notification settings\nOnly relevant when SMTP is configured",
+                "description": "Email notification settings.",
                 "properties": {
                   "apiKeyExpiration": {
-                    "default": false,
-                    "description": "Notify users of expiring API keys",
+                    "description": "Notify users of expiring API keys.",
                     "type": [
                       "boolean",
                       "null"
                     ]
                   },
                   "loginNotification": {
-                    "default": false,
-                    "description": "Notify users of logins from new devices",
+                    "description": "Notify users of logins from new devices.",
                     "type": [
                       "boolean",
                       "null"
                     ]
                   },
                   "oneTimeAccessAsAdmin": {
-                    "default": false,
-                    "description": "Allow admins to send one-time login access codes",
+                    "description": "Allow admins to send one-time login access codes.",
                     "type": [
                       "boolean",
                       "null"
                     ]
                   },
                   "oneTimeAccessAsUnauthenticated": {
-                    "default": false,
-                    "description": "Allow email-based login bypass for unauthenticated users (reduced security)",
+                    "description": "Allow email-based login bypass for unauthenticated users (reduced security).",
                     "type": [
                       "boolean",
                       "null"
                     ]
                   },
                   "verification": {
-                    "default": false,
-                    "description": "Send verification emails on signup or email change",
+                    "description": "Send verification emails on signup or email change.",
                     "type": [
                       "boolean",
                       "null"
@@ -624,10 +618,10 @@
               },
               "encryptionKey": {
                 "additionalProperties": false,
-                "description": "Encryption Key\nRequired when deploying an instance; omit for external instances.\nSee the official documentation for ENCRYPTION_KEY environment variable",
+                "description": "Encryption key.\nRequired when deploying an instance; omit for external instances.\nSee the official documentation for the ENCRYPTION_KEY environment variable.",
                 "properties": {
                   "value": {
-                    "description": "Plain text value",
+                    "description": "Plain text value.",
                     "type": [
                       "string",
                       "null"
@@ -635,7 +629,7 @@
                   },
                   "valueFrom": {
                     "additionalProperties": false,
-                    "description": "Source for the value (e.g. secretKeyRef, configMapKeyRef)",
+                    "description": "Source for the value (e.g. secretKeyRef, configMapKeyRef).",
                     "properties": {
                       "configMapKeyRef": {
                         "additionalProperties": false,
@@ -818,7 +812,7 @@
                 ]
               },
               "env": {
-                "description": "Additional environment variables to set\nUses k8s env var syntax (includes secretKeyRef, configMapKeyRef, etc.)",
+                "description": "Additional environment variables to set. Uses Kubernetes env var syntax (secretKeyRef, configMapKeyRef, etc.).",
                 "items": {
                   "additionalProperties": false,
                   "description": "EnvVar represents an environment variable present in a Container.",
@@ -1025,11 +1019,11 @@
               },
               "external": {
                 "additionalProperties": false,
-                "description": "External adopts an existing Pocket-ID instead of deploying one. When set, no\nworkload/service/PVC is created and the operator manages OIDC clients, users,\nand groups on that instance via its API. Mutually exclusive with encryptionKey\nand the other deployment fields.",
+                "description": "External adopts an existing Pocket-ID instead of deploying one. When set, no workload/service/PVC is created and the operator manages OIDC clients, users, and groups on that instance via its API.\nMutually exclusive with encryptionKey and the other deployment fields.",
                 "properties": {
                   "apiKeySecretRef": {
                     "additionalProperties": false,
-                    "description": "APIKeySecretRef references a Secret key holding a Pocket-ID API key with\npermission to manage clients, users, and groups on the instance.",
+                    "description": "APIKeySecretRef references a Secret key holding a Pocket-ID API key with permission to manage clients, users, and groups on the instance.",
                     "properties": {
                       "key": {
                         "description": "The key of the secret to select from.  Must be a valid secret key.",
@@ -1073,7 +1067,7 @@
                 ]
               },
               "fileBackend": {
-                "description": "File storage backend\nAutomatically set to \"s3\" when s3 config is present",
+                "description": "File storage backend. Automatically set to \"s3\" when s3 config is present.",
                 "enum": [
                   "filesystem",
                   "s3",
@@ -1086,10 +1080,10 @@
               },
               "geoip": {
                 "additionalProperties": false,
-                "description": "GeoIP/MaxMind integration for audit log geolocation",
+                "description": "GeoIP/MaxMind integration for audit log geolocation.",
                 "properties": {
                   "dbPath": {
-                    "description": "Custom path to the GeoLite2 database file",
+                    "description": "Custom path to the GeoLite2 database file.",
                     "type": [
                       "string",
                       "null"
@@ -1097,10 +1091,10 @@
                   },
                   "dbUrl": {
                     "additionalProperties": false,
-                    "description": "Custom URL to download the GeoLite2 database from\nMay contain credentials so supports secretKeyRef",
+                    "description": "Custom URL to download the GeoLite2 database from.\nMay contain credentials, so secretKeyRef is supported.",
                     "properties": {
                       "value": {
-                        "description": "Plain text value",
+                        "description": "Plain text value.",
                         "type": [
                           "string",
                           "null"
@@ -1108,7 +1102,7 @@
                       },
                       "valueFrom": {
                         "additionalProperties": false,
-                        "description": "Source for the value (e.g. secretKeyRef, configMapKeyRef)",
+                        "description": "Source for the value (e.g. secretKeyRef, configMapKeyRef).",
                         "properties": {
                           "configMapKeyRef": {
                             "additionalProperties": false,
@@ -1292,10 +1286,10 @@
                   },
                   "maxmindLicenseKey": {
                     "additionalProperties": false,
-                    "description": "MaxMind license key for downloading GeoLite2 database",
+                    "description": "MaxMind license key for downloading the GeoLite2 database.",
                     "properties": {
                       "value": {
-                        "description": "Plain text value",
+                        "description": "Plain text value.",
                         "type": [
                           "string",
                           "null"
@@ -1303,7 +1297,7 @@
                       },
                       "valueFrom": {
                         "additionalProperties": false,
-                        "description": "Source for the value (e.g. secretKeyRef, configMapKeyRef)",
+                        "description": "Source for the value (e.g. secretKeyRef, configMapKeyRef).",
                         "properties": {
                           "configMapKeyRef": {
                             "additionalProperties": false,
@@ -1493,21 +1487,21 @@
               },
               "hostUsers": {
                 "default": true,
-                "description": "HostUsers controls whether the container's user namespace is separate from the host\nDefaults to true",
+                "description": "Deprecated: use spec.podTemplate.hostUsers instead.",
                 "type": [
                   "boolean",
                   "null"
                 ]
               },
               "image": {
-                "description": "Container image to run. When empty the operator supplies the latest distroless\nversion tested against this release.",
+                "description": "Container image to run. When unset, the operator uses the latest version tested against this release.",
                 "type": [
                   "string",
                   "null"
                 ]
               },
               "internalAppUrl": {
-                "description": "Internal base URL for OIDC .well-known endpoints (for split-horizon DNS)",
+                "description": "Internal base URL for OIDC .well-known endpoints (for split-horizon DNS).",
                 "type": [
                   "string",
                   "null"
@@ -1517,7 +1511,7 @@
                 "additionalProperties": {
                   "type": "string"
                 },
-                "description": "Additional labels to add to the workload and pod",
+                "description": "Additional labels to add to the workload and pod.",
                 "type": [
                   "object",
                   "null"
@@ -1525,10 +1519,10 @@
               },
               "ldap": {
                 "additionalProperties": false,
-                "description": "LDAP authentication configuration\nWhen present, LDAP is automatically enabled",
+                "description": "LDAP authentication configuration. When present, LDAP is automatically enabled.",
                 "properties": {
                   "adminGroupName": {
-                    "description": "LDAP group name that grants admin privileges",
+                    "description": "LDAP group name that grants admin privileges.",
                     "type": [
                       "string",
                       "null"
@@ -1536,73 +1530,73 @@
                   },
                   "attributeMapping": {
                     "additionalProperties": false,
-                    "description": "LDAP attribute mappings",
+                    "description": "LDAP attribute mappings.",
                     "properties": {
                       "groupMember": {
-                        "description": "LDAP attribute for group membership",
+                        "description": "LDAP attribute for group membership.",
                         "type": [
                           "string",
                           "null"
                         ]
                       },
                       "groupName": {
-                        "description": "LDAP attribute for group name",
+                        "description": "LDAP attribute for the group name.",
                         "type": [
                           "string",
                           "null"
                         ]
                       },
                       "groupUniqueIdentifier": {
-                        "description": "LDAP attribute for immutable group identifier",
+                        "description": "LDAP attribute for the immutable group identifier.",
                         "type": [
                           "string",
                           "null"
                         ]
                       },
                       "userDisplayName": {
-                        "description": "LDAP attribute for display name",
+                        "description": "LDAP attribute for the display name.",
                         "type": [
                           "string",
                           "null"
                         ]
                       },
                       "userEmail": {
-                        "description": "LDAP attribute for email",
+                        "description": "LDAP attribute for the email address.",
                         "type": [
                           "string",
                           "null"
                         ]
                       },
                       "userFirstName": {
-                        "description": "LDAP attribute for first name",
+                        "description": "LDAP attribute for the first name.",
                         "type": [
                           "string",
                           "null"
                         ]
                       },
                       "userLastName": {
-                        "description": "LDAP attribute for last name",
+                        "description": "LDAP attribute for the last name.",
                         "type": [
                           "string",
                           "null"
                         ]
                       },
                       "userProfilePicture": {
-                        "description": "LDAP attribute for profile picture",
+                        "description": "LDAP attribute for the profile picture.",
                         "type": [
                           "string",
                           "null"
                         ]
                       },
                       "userUniqueIdentifier": {
-                        "description": "LDAP attribute for immutable user identifier",
+                        "description": "LDAP attribute for the immutable user identifier.",
                         "type": [
                           "string",
                           "null"
                         ]
                       },
                       "userUsername": {
-                        "description": "LDAP attribute for username",
+                        "description": "LDAP attribute for the username.",
                         "type": [
                           "string",
                           "null"
@@ -1615,19 +1609,19 @@
                     ]
                   },
                   "base": {
-                    "description": "LDAP search base DN",
+                    "description": "LDAP search base DN.",
                     "type": "string"
                   },
                   "bindDN": {
-                    "description": "LDAP bind distinguished name",
+                    "description": "LDAP bind distinguished name.",
                     "type": "string"
                   },
                   "bindPassword": {
                     "additionalProperties": false,
-                    "description": "LDAP bind password",
+                    "description": "LDAP bind password.",
                     "properties": {
                       "value": {
-                        "description": "Plain text value",
+                        "description": "Plain text value.",
                         "type": [
                           "string",
                           "null"
@@ -1635,7 +1629,7 @@
                       },
                       "valueFrom": {
                         "additionalProperties": false,
-                        "description": "Source for the value (e.g. secretKeyRef, configMapKeyRef)",
+                        "description": "Source for the value (e.g. secretKeyRef, configMapKeyRef).",
                         "properties": {
                           "configMapKeyRef": {
                             "additionalProperties": false,
@@ -1815,34 +1809,32 @@
                     "type": "object"
                   },
                   "skipCertVerify": {
-                    "default": false,
-                    "description": "Skip LDAP certificate verification",
+                    "description": "Skip LDAP certificate verification.",
                     "type": [
                       "boolean",
                       "null"
                     ]
                   },
                   "softDeleteUsers": {
-                    "default": false,
-                    "description": "Disable removed LDAP users instead of deleting them",
+                    "description": "Disable removed LDAP users instead of deleting them.",
                     "type": [
                       "boolean",
                       "null"
                     ]
                   },
                   "url": {
-                    "description": "LDAP server connection URL (e.g. ldaps://ldap.example.com)",
+                    "description": "LDAP server connection URL (e.g. ldaps://ldap.example.com).",
                     "type": "string"
                   },
                   "userGroupSearchFilter": {
-                    "description": "LDAP group search filter",
+                    "description": "LDAP group search filter.",
                     "type": [
                       "string",
                       "null"
                     ]
                   },
                   "userSearchFilter": {
-                    "description": "LDAP user search filter",
+                    "description": "LDAP user search filter.",
                     "type": [
                       "string",
                       "null"
@@ -1862,7 +1854,7 @@
               },
               "livenessProbe": {
                 "additionalProperties": false,
-                "description": "Liveness probe configuration",
+                "description": "Liveness probe configuration.",
                 "properties": {
                   "exec": {
                     "additionalProperties": false,
@@ -2085,7 +2077,7 @@
                 ]
               },
               "localIPv6Ranges": {
-                "description": "Custom local IPv6 ranges for audit log IP classification (comma-separated CIDRs)",
+                "description": "Custom local IPv6 ranges for audit log IP classification (comma-separated CIDRs).",
                 "type": [
                   "string",
                   "null"
@@ -2093,18 +2085,17 @@
               },
               "logging": {
                 "additionalProperties": false,
-                "description": "Logging configuration",
+                "description": "Logging configuration.",
                 "properties": {
                   "json": {
-                    "default": false,
-                    "description": "Output logs as JSON",
+                    "description": "Output logs as JSON.",
                     "type": [
                       "boolean",
                       "null"
                     ]
                   },
                   "level": {
-                    "description": "Log level",
+                    "description": "Log level.",
                     "enum": [
                       "debug",
                       "info",
@@ -2117,7 +2108,6 @@
                     ]
                   },
                   "queryArgs": {
-                    "default": false,
                     "description": "Include SQL query parameter values in traces and in the query logs emitted\nat the debug level. These values may contain sensitive data.",
                     "type": [
                       "boolean",
@@ -2132,16 +2122,16 @@
               },
               "metrics": {
                 "additionalProperties": false,
-                "description": "Prometheus metrics configuration\nWhen enabled the operator injects the required OTEL environment variables\nand exposes a metrics port on the Service",
+                "description": "Prometheus metrics configuration. When enabled, the operator injects the required OTEL environment variables and exposes a metrics port on the Service.",
                 "properties": {
                   "enabled": {
                     "default": false,
-                    "description": "Enables the Prometheus metrics endpoint",
+                    "description": "Enables the Prometheus metrics endpoint.",
                     "type": "boolean"
                   },
                   "port": {
                     "default": 9464,
-                    "description": "Port for the Prometheus metrics endpoint",
+                    "description": "Port for the Prometheus metrics endpoint.",
                     "format": "int32",
                     "type": [
                       "integer",
@@ -2159,13 +2149,13 @@
               },
               "persistence": {
                 "additionalProperties": false,
-                "description": "Configures persistence for Pocket-ID\nNote: Pocket-ID can be run statelessly if using Postgres as a file and db backend\nIf not enabled mounts an emptydir instead",
+                "description": "Configures persistence for Pocket-ID. Pocket-ID can be run statelessly; see pocket-id-operator.pages.dev/pocketidinstance#stateless-deployment.\nIf not enabled, an emptyDir is mounted instead.",
                 "properties": {
                   "accessModes": {
                     "default": [
                       "ReadWriteOnce"
                     ],
-                    "description": "AccessModes for the PVC",
+                    "description": "AccessModes for the PVC.",
                     "items": {
                       "type": "string"
                     },
@@ -2176,18 +2166,18 @@
                   },
                   "enabled": {
                     "default": false,
-                    "description": "Enables mounting a persistent volume",
+                    "description": "Enables mounting a persistent volume.",
                     "type": "boolean"
                   },
                   "existingClaim": {
-                    "description": "Name of an existing, externally-managed PVC to mount",
+                    "description": "Name of an existing, externally-managed PVC to mount.",
                     "type": [
                       "string",
                       "null"
                     ]
                   },
                   "extraVolumeMounts": {
-                    "description": "Extra volume mounts to add to the pocket-id container.\nUseful for mounting volumes defined in spec.podTemplate.",
+                    "description": "Extra volume mounts to add to the pocket-id container. This is useful for mounting volumes defined in spec.podTemplate.",
                     "items": {
                       "additionalProperties": false,
                       "description": "VolumeMount describes a mounting of a Volume within a container.",
@@ -2260,7 +2250,7 @@
                   },
                   "path": {
                     "default": "/app/data",
-                    "description": "Path where the data volume is mounted in the container",
+                    "description": "Path where the data volume is mounted in the container.",
                     "type": [
                       "string",
                       "null"
@@ -2268,7 +2258,7 @@
                   },
                   "size": {
                     "default": "1Gi",
-                    "description": "Size of the claim to dynamically provision",
+                    "description": "Size of the claim to dynamically provision.",
                     "oneOf": [
                       {
                         "pattern": "^(\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))))?$",
@@ -2284,14 +2274,14 @@
                     "x-kubernetes-int-or-string": true
                   },
                   "storageClass": {
-                    "description": "Name of storageClass to provision a volume from",
+                    "description": "Name of the StorageClass to provision a volume from.",
                     "type": [
                       "string",
                       "null"
                     ]
                   },
                   "subPath": {
-                    "description": "SubPath within the volume to mount (volumeMount.subPath)",
+                    "description": "SubPath within the volume to mount (volumeMount.subPath).",
                     "type": [
                       "string",
                       "null"
@@ -2308,7 +2298,7 @@
               },
               "podSecurityContext": {
                 "additionalProperties": false,
-                "description": "Pod security context",
+                "description": "Pod security context.",
                 "properties": {
                   "appArmorProfile": {
                     "additionalProperties": false,
@@ -2532,12 +2522,11 @@
                 ]
               },
               "podTemplate": {
-                "description": "Pod template to merge with the operator-built pod spec.\nOperator-managed fields including the pocket-id container always take precedence.",
+                "description": "Pod template to merge with the operator-built pod spec. Operator-managed fields including the pocket-id container always take precedence.",
                 "x-kubernetes-preserve-unknown-fields": true
               },
               "rateLimitingDisabled": {
-                "default": false,
-                "description": "Disable Pocket-ID's built-in rate limiting. Enabled by default.",
+                "description": "Disable Pocket-ID's built-in rate limiting. Pocket-ID's rate limiting is permissive enough for the operator, so it is recommended to keep rate limiting enabled for security.",
                 "type": [
                   "boolean",
                   "null"
@@ -2545,7 +2534,7 @@
               },
               "readinessProbe": {
                 "additionalProperties": false,
-                "description": "Readiness probe configuration",
+                "description": "Readiness probe configuration.",
                 "properties": {
                   "exec": {
                     "additionalProperties": false,
@@ -2769,7 +2758,7 @@
               },
               "resources": {
                 "additionalProperties": false,
-                "description": "Resource requests and limits for the container",
+                "description": "Resource requests and limits for the container.",
                 "properties": {
                   "claims": {
                     "description": "Claims lists the names of resources, defined in spec.resourceClaims,\nthat are used by this container.\n\nThis field depends on the\nDynamicResourceAllocation feature gate.\n\nThis field is immutable. It can only be set for containers.",
@@ -2849,13 +2838,13 @@
               },
               "route": {
                 "additionalProperties": false,
-                "description": "HTTPRoute configuration\nCreates an HTTPRoute when enabled. Requires Gateway API CRDs to be installed.",
+                "description": "Configures an HTTPRoute when enabled. Requires Gateway API CRDs to be installed.",
                 "properties": {
                   "annotations": {
                     "additionalProperties": {
                       "type": "string"
                     },
-                    "description": "Additional annotations for the HTTPRoute",
+                    "description": "Additional annotations for the HTTPRoute.",
                     "type": [
                       "object",
                       "null"
@@ -2863,11 +2852,11 @@
                   },
                   "enabled": {
                     "default": false,
-                    "description": "Enables creation of an HTTPRoute",
+                    "description": "Enables creation of an HTTPRoute.",
                     "type": "boolean"
                   },
                   "hostnames": {
-                    "description": "Hostnames for the route\nWill be automatically set to the hostname from spec.appUrl if not specified",
+                    "description": "Hostnames for the route.\nAutomatically set to the hostname from spec.appUrl if not specified.",
                     "items": {
                       "description": "Hostname is the fully qualified domain name of a network host. This matches\nthe RFC 1123 definition of a hostname with 2 notable exceptions:\n\n 1. IPs are not allowed.\n 2. A hostname may be prefixed with a wildcard label (`*.`). The wildcard\n    label must appear by itself as the first label.\n\nHostname can be \"precise\" which is a domain name without the terminating\ndot of a network host (e.g. \"foo.example.com\") or \"wildcard\", which is a\ndomain name prefixed with a single wildcard label (e.g. `*.example.com`).\n\nNote that as per RFC1035 and RFC1123, a *label* must consist of lower case\nalphanumeric characters or '-', and must start and end with an alphanumeric\ncharacter. No other punctuation is allowed.",
                       "maxLength": 253,
@@ -2884,21 +2873,21 @@
                     "additionalProperties": {
                       "type": "string"
                     },
-                    "description": "Additional labels for the HTTPRoute",
+                    "description": "Additional labels for the HTTPRoute.",
                     "type": [
                       "object",
                       "null"
                     ]
                   },
                   "name": {
-                    "description": "Name override for the HTTPRoute (defaults to instance name)",
+                    "description": "Name override for the HTTPRoute (defaults to the instance name).",
                     "type": [
                       "string",
                       "null"
                     ]
                   },
                   "parentRefs": {
-                    "description": "Gateway parent references",
+                    "description": "Gateway parent references.",
                     "items": {
                       "additionalProperties": false,
                       "description": "ParentReference identifies an API object (usually a Gateway) that can be considered\na parent of this resource (usually a route). There are two kinds of parent resources\nwith \"Core\" support:\n\n* Gateway (Gateway conformance profile)\n* Service (Mesh conformance profile, ClusterIP Services only)\n\nThis API may be extended in the future to support additional kinds of parent\nresources.\n\nThe API object must be valid in the cluster; the Group and Kind must\nbe registered in the cluster for this reference to be valid.",
@@ -2970,7 +2959,7 @@
                     "type": "array"
                   },
                   "template": {
-                    "description": "Template is merged with the operator-built HTTPRoute spec.\nOperator-managed fields (parentRefs, hostnames, and the default backend rule to the\nService) always take precedence.",
+                    "description": "Template is merged with the operator-built HTTPRoute spec.\nOperator-managed fields (parentRefs, hostnames, and the default backend rule to the Service) always take precedence.",
                     "x-kubernetes-preserve-unknown-fields": true
                   }
                 },
@@ -2985,14 +2974,14 @@
               },
               "s3": {
                 "additionalProperties": false,
-                "description": "S3 file backend configuration\nWhen present, FILE_BACKEND is automatically set to \"s3\"",
+                "description": "S3 file backend configuration. When present, FILE_BACKEND is automatically set to \"s3\".",
                 "properties": {
                   "accessKeyId": {
                     "additionalProperties": false,
-                    "description": "S3 access key ID",
+                    "description": "S3 access key ID.",
                     "properties": {
                       "value": {
-                        "description": "Plain text value",
+                        "description": "Plain text value.",
                         "type": [
                           "string",
                           "null"
@@ -3000,7 +2989,7 @@
                       },
                       "valueFrom": {
                         "additionalProperties": false,
-                        "description": "Source for the value (e.g. secretKeyRef, configMapKeyRef)",
+                        "description": "Source for the value (e.g. secretKeyRef, configMapKeyRef).",
                         "properties": {
                           "configMapKeyRef": {
                             "additionalProperties": false,
@@ -3180,42 +3169,40 @@
                     "type": "object"
                   },
                   "bucket": {
-                    "description": "S3 bucket name",
+                    "description": "S3 bucket name.",
                     "type": "string"
                   },
                   "disableDefaultIntegrityChecks": {
-                    "default": false,
-                    "description": "Disable default S3 integrity checks",
+                    "description": "Disable default S3 integrity checks.",
                     "type": [
                       "boolean",
                       "null"
                     ]
                   },
                   "endpoint": {
-                    "description": "S3 endpoint URL (for MinIO, Ceph, or other S3-compatible stores)",
+                    "description": "S3 endpoint URL.",
                     "type": [
                       "string",
                       "null"
                     ]
                   },
                   "forcePathStyle": {
-                    "default": false,
-                    "description": "Force path-style URLs instead of virtual-hosted-style",
+                    "description": "Force path-style URLs instead of virtual-hosted-style URLs.",
                     "type": [
                       "boolean",
                       "null"
                     ]
                   },
                   "region": {
-                    "description": "S3 region",
+                    "description": "S3 region.",
                     "type": "string"
                   },
                   "secretAccessKey": {
                     "additionalProperties": false,
-                    "description": "S3 secret access key",
+                    "description": "S3 secret access key.",
                     "properties": {
                       "value": {
-                        "description": "Plain text value",
+                        "description": "Plain text value.",
                         "type": [
                           "string",
                           "null"
@@ -3223,7 +3210,7 @@
                       },
                       "valueFrom": {
                         "additionalProperties": false,
-                        "description": "Source for the value (e.g. secretKeyRef, configMapKeyRef)",
+                        "description": "Source for the value (e.g. secretKeyRef, configMapKeyRef).",
                         "properties": {
                           "configMapKeyRef": {
                             "additionalProperties": false,
@@ -3415,27 +3402,27 @@
                 ]
               },
               "serviceTemplate": {
-                "description": "ServiceTemplate is merged with the operator-built Service spec.\nOperator-managed fields (the selector and the number, protocol and appProtocol of\nthe http/metrics ports) always take precedence. A nodePort set on those ports is\nhonoured, as are extra ports and every other field.",
+                "description": "ServiceTemplate is merged with the operator-built Service spec.\nOperator-managed fields (the selector and the number, protocol, and appProtocol of the http/metrics ports) always take precedence.",
                 "x-kubernetes-preserve-unknown-fields": true
               },
               "smtp": {
                 "additionalProperties": false,
-                "description": "SMTP email transport configuration\nWhen present, SMTP is automatically enabled",
+                "description": "SMTP email transport configuration. When present, SMTP is automatically enabled.",
                 "properties": {
                   "from": {
-                    "description": "Sender email address",
+                    "description": "Sender email address.",
                     "type": "string"
                   },
                   "host": {
-                    "description": "SMTP server hostname",
+                    "description": "SMTP server hostname.",
                     "type": "string"
                   },
                   "password": {
                     "additionalProperties": false,
-                    "description": "SMTP authentication password",
+                    "description": "SMTP authentication password.",
                     "properties": {
                       "value": {
-                        "description": "Plain text value",
+                        "description": "Plain text value.",
                         "type": [
                           "string",
                           "null"
@@ -3443,7 +3430,7 @@
                       },
                       "valueFrom": {
                         "additionalProperties": false,
-                        "description": "Source for the value (e.g. secretKeyRef, configMapKeyRef)",
+                        "description": "Source for the value (e.g. secretKeyRef, configMapKeyRef).",
                         "properties": {
                           "configMapKeyRef": {
                             "additionalProperties": false,
@@ -3626,21 +3613,19 @@
                     ]
                   },
                   "port": {
-                    "description": "SMTP server port",
+                    "description": "SMTP server port.",
                     "format": "int32",
                     "type": "integer"
                   },
                   "skipCertVerify": {
-                    "default": false,
-                    "description": "Skip certificate verification (for self-signed certs)",
+                    "description": "Skip certificate verification (for self-signed certificates).",
                     "type": [
                       "boolean",
                       "null"
                     ]
                   },
                   "tls": {
-                    "default": "none",
-                    "description": "TLS mode for the SMTP connection",
+                    "description": "TLS mode for the SMTP connection.",
                     "enum": [
                       "none",
                       "starttls",
@@ -3652,7 +3637,7 @@
                     ]
                   },
                   "user": {
-                    "description": "SMTP authentication username",
+                    "description": "SMTP authentication username.",
                     "type": [
                       "string",
                       "null"
@@ -3670,7 +3655,7 @@
                 ]
               },
               "timezone": {
-                "description": "Timezone for the Pocket-ID instance (e.g. \"America/New_York\")\nSets the TZ environment variable",
+                "description": "Timezone for the Pocket-ID instance (e.g. \"America/New_York\"). Sets the TZ environment variable.",
                 "type": [
                   "string",
                   "null"
@@ -3682,7 +3667,7 @@
                 "properties": {
                   "secretRef": {
                     "additionalProperties": false,
-                    "description": "SecretRef names a kubernetes.io/tls Secret in the instance's namespace holding\ntls.crt and tls.key.",
+                    "description": "SecretRef names a kubernetes.io/tls Secret in the instance's namespace holding tls.crt and tls.key.",
                     "properties": {
                       "name": {
                         "default": "",
@@ -3713,10 +3698,10 @@
               },
               "tracing": {
                 "additionalProperties": false,
-                "description": "OpenTelemetry tracing configuration\nWhen present, tracing is automatically enabled\nConfigure additional exporter-specific OTEL_* variables via the env escape hatch",
+                "description": "OpenTelemetry tracing configuration. When present, tracing is automatically enabled.\nConfigure additional exporter-specific OTEL_* variables via spec.env.",
                 "properties": {
                   "endpoint": {
-                    "description": "OTLP traces endpoint including path, e.g. http://collector:4318/v1/traces\n(sets OTEL_EXPORTER_OTLP_TRACES_ENDPOINT)",
+                    "description": "OTLP traces endpoint, including the path (e.g. http://collector:4318/v1/traces).\nSets OTEL_EXPORTER_OTLP_TRACES_ENDPOINT.",
                     "type": [
                       "string",
                       "null"
@@ -3730,10 +3715,10 @@
               },
               "trustedProxies": {
                 "additionalProperties": false,
-                "description": "TrustedProxies configures which proxies Pocket-ID trusts for X-Forwarded-* headers\n(sets TRUST_PROXY). When unset, the operator trusts the private/loopback ranges if\nspec.route.enabled is set.",
+                "description": "TrustedProxies configures which proxies Pocket-ID trusts for X-Forwarded-* headers. When unset, the operator trusts the private/loopback ranges if spec.route.enabled is set.",
                 "properties": {
                   "cidrs": {
-                    "description": "CIDRs is the list of trusted proxy IPs/CIDRs. Only used when enabled is true.\nWhen empty, TRUST_PROXY is set to \"true\", trusting all upstream sources\nTo restrict trust, list explicit ranges: e.g. the in-cluster gateway network, or a CDN's\npublished ranges when it connects directly to the pod.",
+                    "description": "CIDRs is the list of trusted proxy IPs/CIDRs. Only used when enabled is true. When empty, TRUST_PROXY is set to \"true\", trusting all upstream sources.\nTo restrict trust, list explicit ranges, e.g. the cluster pod network or a CDN's published ranges when it connects directly to the pod.",
                     "items": {
                       "type": "string"
                     },
@@ -3744,7 +3729,7 @@
                   },
                   "enabled": {
                     "default": false,
-                    "description": "Enabled turns on trust of X-Forwarded-* headers.\nWhen false, TRUST_PROXY is set to \"false\".",
+                    "description": "Enabled turns on trust of X-Forwarded-* headers. When false, TRUST_PROXY is set to \"false\".",
                     "type": "boolean"
                   }
                 },
@@ -3758,39 +3743,38 @@
               },
               "ui": {
                 "additionalProperties": false,
-                "description": "UI configuration\nThe operator automatically sets UI_CONFIG_DISABLED=true when this section is configured",
+                "description": "UI configuration. The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured.",
                 "properties": {
                   "accentColor": {
-                    "description": "Custom CSS color value for UI accent theme",
+                    "description": "Custom CSS color value for the UI accent theme.",
                     "type": [
                       "string",
                       "null"
                     ]
                   },
                   "appName": {
-                    "description": "Application display name",
+                    "description": "Application display name.",
                     "type": [
                       "string",
                       "null"
                     ]
                   },
                   "disableAnimations": {
-                    "default": false,
-                    "description": "Turn off UI animations",
+                    "description": "Turn off UI animations.",
                     "type": [
                       "boolean",
                       "null"
                     ]
                   },
                   "homePageUrl": {
-                    "description": "Post-login redirect page",
+                    "description": "Post-login redirect page.",
                     "type": [
                       "string",
                       "null"
                     ]
                   },
                   "sessionDuration": {
-                    "description": "User session timeout in minutes",
+                    "description": "User session timeout in minutes.",
                     "format": "int32",
                     "type": [
                       "integer",
@@ -3805,17 +3789,17 @@
               },
               "userManagement": {
                 "additionalProperties": false,
-                "description": "User registration and account management settings",
+                "description": "User registration and account management settings.",
                 "properties": {
                   "allowOwnAccountEdit": {
-                    "description": "Allow users to edit their own account details",
+                    "description": "Allow users to edit their own account details.",
                     "type": [
                       "boolean",
                       "null"
                     ]
                   },
                   "allowUserSignups": {
-                    "description": "User signup mode",
+                    "description": "User signup mode.",
                     "enum": [
                       "disabled",
                       "withToken",
@@ -3827,29 +3811,28 @@
                     ]
                   },
                   "emailsVerified": {
-                    "default": false,
-                    "description": "Auto-verify emails on signup or change",
+                    "description": "Auto-verify emails on signup or change.",
                     "type": [
                       "boolean",
                       "null"
                     ]
                   },
                   "requireUserEmail": {
-                    "description": "Require users to have an email address",
+                    "description": "Require users to have an email address.",
                     "type": [
                       "boolean",
                       "null"
                     ]
                   },
                   "signupDefaultCustomClaims": {
-                    "description": "Default custom claims to assign to new users (JSON array)",
+                    "description": "Default custom claims to assign to new users (JSON array).",
                     "type": [
                       "string",
                       "null"
                     ]
                   },
                   "signupDefaultUserGroupIds": {
-                    "description": "Default user group IDs to assign to new users",
+                    "description": "Default user group IDs to assign to new users.",
                     "items": {
                       "type": "string"
                     },
@@ -3865,8 +3848,7 @@
                 ]
               },
               "versionCheckDisabled": {
-                "default": false,
-                "description": "Disable GitHub version checks",
+                "description": "Disable GitHub version checks.",
                 "type": [
                   "boolean",
                   "null"
@@ -3874,17 +3856,17 @@
               },
               "webauthn": {
                 "additionalProperties": false,
-                "description": "Passkey restrictions\nThe operator automatically sets UI_CONFIG_DISABLED=true when this section is configured",
+                "description": "Passkey restrictions. The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured.",
                 "properties": {
                   "allowSyncedPasskeys": {
-                    "description": "Accept passkeys that are backup-eligible, i.e. synced to a cloud account\nsuch as iCloud Keychain or Google Password Manager",
+                    "description": "Accept passkeys that are backup-eligible, i.e. synced to a cloud account\nsuch as iCloud Keychain or Google Password Manager.",
                     "type": [
                       "boolean",
                       "null"
                     ]
                   },
                   "authenticatorAttachment": {
-                    "description": "Authenticator type accepted at registration: platform (device-bound),\ncross-platform (roaming security key), or any",
+                    "description": "Authenticator type accepted at registration: platform (device-bound),\ncross-platform (roaming security key), or any.",
                     "enum": [
                       "any",
                       "platform",
@@ -3896,7 +3878,7 @@
                     ]
                   },
                   "userVerification": {
-                    "description": "Whether the authenticator must verify the user (PIN, biometric) during login",
+                    "description": "Whether the authenticator must verify the user (PIN, biometric) during login.",
                     "enum": [
                       "required",
                       "preferred"

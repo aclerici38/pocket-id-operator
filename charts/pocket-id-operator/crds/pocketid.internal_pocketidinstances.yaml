@@ -19,7 +19,7 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: PocketIDInstance is the Schema for the pocketidinstances API
+        description: PocketIDInstance is the Schema for the pocketidinstances API.
         properties:
           apiVersion:
             description: |-
@@ -39,7 +39,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of PocketIDInstance
+            description: spec defines the desired state of PocketIDInstance.
             properties:
               OIDCClientRotation:
                 description: OIDCClientRotation configures instance-wide throttling
@@ -48,7 +48,7 @@ spec:
                   minSpacing:
                     description: |-
                       MinSpacing is the minimum time between any two client secret rotations on this instance.
-                      Prevents thundering-herd when many clients become due simultaneously.
+                      Prevents a thundering herd when many clients become due simultaneously.
                     type: string
                     x-kubernetes-validations:
                     - message: minSpacing must be a positive duration
@@ -57,34 +57,31 @@ spec:
                 - minSpacing
                 type: object
               analyticsDisabled:
-                default: false
-                description: Disable anonymous 24-hour usage analytics heartbeat
+                description: Disable the anonymous 24-hour usage analytics heartbeat.
                 type: boolean
               annotations:
                 additionalProperties:
                   type: string
-                description: Additional annotations to add to the workload and pod
+                description: Additional annotations to add to the workload and pod.
                 type: object
               appUrl:
                 description: |-
-                  External URL Pocket-id can be reached at
-                  See the official documentation for APP_URL
+                  External URL Pocket-ID can be reached at.
+                  See the official documentation for APP_URL.
                 type: string
               auditLogRetentionDays:
-                description: Audit log retention in days
+                description: Audit log retention in days.
                 format: int32
                 type: integer
               cimdUrlAllowlist:
-                description: |-
-                  CIMDURLAllowlist restricts which https URLs may be used as OAuth Client ID Metadata
-                  Documents. Entries are callback-URL patterns (wildcards allowed). A non-empty list
-                  enables CIMD; leaving it empty keeps the feature off.
-                  The operator automatically sets UI_CONFIG_DISABLED=true when this field is set.
+                description: CIMDURLAllowlist restricts which https URLs may be used
+                  as OAuth Client ID Metadata Documents. The operator automatically
+                  sets UI_CONFIG_DISABLED=true when this field is set.
                 items:
                   type: string
                 type: array
               containerSecurityContext:
-                description: Container security context
+                description: Container security context.
                 properties:
                   allowPrivilegeEscalation:
                     description: |-
@@ -274,16 +271,14 @@ spec:
                 type: object
               databaseUrl:
                 description: |-
-                  URL to access database at
-                  See the official documentation for DB_CONNECTION_STRING
-                  For sqlite only add the filepath e.g. "/app/data/pocket-id.db"
-                  Uses application default (/app/data/pocket-id.db) if empty
+                  URL to access the database at. For SQLite, only add the file path e.g. "/app/data/pocket-id.db".
+                  See the official documentation for DB_CONNECTION_STRING.
                 properties:
                   value:
-                    description: Plain text value
+                    description: Plain text value.
                     type: string
                   valueFrom:
-                    description: Source for the value (e.g. secretKeyRef, configMapKeyRef)
+                    description: Source for the value (e.g. secretKeyRef, configMapKeyRef).
                     properties:
                       configMapKeyRef:
                         description: Selects a key of a ConfigMap.
@@ -416,51 +411,43 @@ spec:
                 type: object
               deploymentType:
                 default: Deployment
-                description: |-
-                  Kind of workload to create, Deployment or StatefulSet
-                  Defaults to Deployment (immutable after creation)
+                description: 'Kind of workload to create: Deployment or StatefulSet.
+                  Defaults to Deployment and is immutable after creation.'
                 enum:
                 - Deployment
                 - StatefulSet
                 type: string
               emailNotifications:
-                description: |-
-                  Email notification settings
-                  Only relevant when SMTP is configured
+                description: Email notification settings.
                 properties:
                   apiKeyExpiration:
-                    default: false
-                    description: Notify users of expiring API keys
+                    description: Notify users of expiring API keys.
                     type: boolean
                   loginNotification:
-                    default: false
-                    description: Notify users of logins from new devices
+                    description: Notify users of logins from new devices.
                     type: boolean
                   oneTimeAccessAsAdmin:
-                    default: false
-                    description: Allow admins to send one-time login access codes
+                    description: Allow admins to send one-time login access codes.
                     type: boolean
                   oneTimeAccessAsUnauthenticated:
-                    default: false
                     description: Allow email-based login bypass for unauthenticated
-                      users (reduced security)
+                      users (reduced security).
                     type: boolean
                   verification:
-                    default: false
-                    description: Send verification emails on signup or email change
+                    description: Send verification emails on signup or email change.
                     type: boolean
                 type: object
               encryptionKey:
                 description: |-
-                  Encryption Key
+                  Encryption key.
                   Required when deploying an instance; omit for external instances.
-                  See the official documentation for ENCRYPTION_KEY environment variable
+                  See the official documentation for the ENCRYPTION_KEY environment variable.
                 properties:
                   value:
-                    description: Plain text value
+                    description: Plain text value.
                     type: string
                   valueFrom:
-                    description: Source for the value (e.g. secretKeyRef, configMapKeyRef)
+                    description: Source for the value (e.g. secretKeyRef, configMapKeyRef).
                     properties:
                       configMapKeyRef:
                         description: Selects a key of a ConfigMap.
@@ -592,9 +579,8 @@ spec:
                     type: object
                 type: object
               env:
-                description: |-
-                  Additional environment variables to set
-                  Uses k8s env var syntax (includes secretKeyRef, configMapKeyRef, etc.)
+                description: Additional environment variables to set. Uses Kubernetes
+                  env var syntax (secretKeyRef, configMapKeyRef, etc.).
                 items:
                   description: EnvVar represents an environment variable present in
                     a Container.
@@ -754,15 +740,13 @@ spec:
                 type: array
               external:
                 description: |-
-                  External adopts an existing Pocket-ID instead of deploying one. When set, no
-                  workload/service/PVC is created and the operator manages OIDC clients, users,
-                  and groups on that instance via its API. Mutually exclusive with encryptionKey
-                  and the other deployment fields.
+                  External adopts an existing Pocket-ID instead of deploying one. When set, no workload/service/PVC is created and the operator manages OIDC clients, users, and groups on that instance via its API.
+                  Mutually exclusive with encryptionKey and the other deployment fields.
                 properties:
                   apiKeySecretRef:
-                    description: |-
-                      APIKeySecretRef references a Secret key holding a Pocket-ID API key with
-                      permission to manage clients, users, and groups on the instance.
+                    description: APIKeySecretRef references a Secret key holding a
+                      Pocket-ID API key with permission to manage clients, users,
+                      and groups on the instance.
                     properties:
                       key:
                         description: The key of the secret to select from.  Must be
@@ -795,30 +779,29 @@ spec:
                 - url
                 type: object
               fileBackend:
-                description: |-
-                  File storage backend
-                  Automatically set to "s3" when s3 config is present
+                description: File storage backend. Automatically set to "s3" when
+                  s3 config is present.
                 enum:
                 - filesystem
                 - s3
                 - database
                 type: string
               geoip:
-                description: GeoIP/MaxMind integration for audit log geolocation
+                description: GeoIP/MaxMind integration for audit log geolocation.
                 properties:
                   dbPath:
-                    description: Custom path to the GeoLite2 database file
+                    description: Custom path to the GeoLite2 database file.
                     type: string
                   dbUrl:
                     description: |-
-                      Custom URL to download the GeoLite2 database from
-                      May contain credentials so supports secretKeyRef
+                      Custom URL to download the GeoLite2 database from.
+                      May contain credentials, so secretKeyRef is supported.
                     properties:
                       value:
-                        description: Plain text value
+                        description: Plain text value.
                         type: string
                       valueFrom:
-                        description: Source for the value (e.g. secretKeyRef, configMapKeyRef)
+                        description: Source for the value (e.g. secretKeyRef, configMapKeyRef).
                         properties:
                           configMapKeyRef:
                             description: Selects a key of a ConfigMap.
@@ -950,13 +933,14 @@ spec:
                         type: object
                     type: object
                   maxmindLicenseKey:
-                    description: MaxMind license key for downloading GeoLite2 database
+                    description: MaxMind license key for downloading the GeoLite2
+                      database.
                     properties:
                       value:
-                        description: Plain text value
+                        description: Plain text value.
                         type: string
                       valueFrom:
-                        description: Source for the value (e.g. secretKeyRef, configMapKeyRef)
+                        description: Source for the value (e.g. secretKeyRef, configMapKeyRef).
                         properties:
                           configMapKeyRef:
                             description: Selects a key of a ConfigMap.
@@ -1090,80 +1074,76 @@ spec:
                 type: object
               hostUsers:
                 default: true
-                description: |-
-                  HostUsers controls whether the container's user namespace is separate from the host
-                  Defaults to true
+                description: 'Deprecated: use spec.podTemplate.hostUsers instead.'
                 type: boolean
               image:
-                description: |-
-                  Container image to run. When empty the operator supplies the latest distroless
-                  version tested against this release.
+                description: Container image to run. When unset, the operator uses
+                  the latest version tested against this release.
                 type: string
               internalAppUrl:
                 description: Internal base URL for OIDC .well-known endpoints (for
-                  split-horizon DNS)
+                  split-horizon DNS).
                 type: string
               labels:
                 additionalProperties:
                   type: string
-                description: Additional labels to add to the workload and pod
+                description: Additional labels to add to the workload and pod.
                 type: object
               ldap:
-                description: |-
-                  LDAP authentication configuration
-                  When present, LDAP is automatically enabled
+                description: LDAP authentication configuration. When present, LDAP
+                  is automatically enabled.
                 properties:
                   adminGroupName:
-                    description: LDAP group name that grants admin privileges
+                    description: LDAP group name that grants admin privileges.
                     type: string
                   attributeMapping:
-                    description: LDAP attribute mappings
+                    description: LDAP attribute mappings.
                     properties:
                       groupMember:
-                        description: LDAP attribute for group membership
+                        description: LDAP attribute for group membership.
                         type: string
                       groupName:
-                        description: LDAP attribute for group name
+                        description: LDAP attribute for the group name.
                         type: string
                       groupUniqueIdentifier:
-                        description: LDAP attribute for immutable group identifier
+                        description: LDAP attribute for the immutable group identifier.
                         type: string
                       userDisplayName:
-                        description: LDAP attribute for display name
+                        description: LDAP attribute for the display name.
                         type: string
                       userEmail:
-                        description: LDAP attribute for email
+                        description: LDAP attribute for the email address.
                         type: string
                       userFirstName:
-                        description: LDAP attribute for first name
+                        description: LDAP attribute for the first name.
                         type: string
                       userLastName:
-                        description: LDAP attribute for last name
+                        description: LDAP attribute for the last name.
                         type: string
                       userProfilePicture:
-                        description: LDAP attribute for profile picture
+                        description: LDAP attribute for the profile picture.
                         type: string
                       userUniqueIdentifier:
-                        description: LDAP attribute for immutable user identifier
+                        description: LDAP attribute for the immutable user identifier.
                         type: string
                       userUsername:
-                        description: LDAP attribute for username
+                        description: LDAP attribute for the username.
                         type: string
                     type: object
                   base:
-                    description: LDAP search base DN
+                    description: LDAP search base DN.
                     type: string
                   bindDN:
-                    description: LDAP bind distinguished name
+                    description: LDAP bind distinguished name.
                     type: string
                   bindPassword:
-                    description: LDAP bind password
+                    description: LDAP bind password.
                     properties:
                       value:
-                        description: Plain text value
+                        description: Plain text value.
                         type: string
                       valueFrom:
-                        description: Source for the value (e.g. secretKeyRef, configMapKeyRef)
+                        description: Source for the value (e.g. secretKeyRef, configMapKeyRef).
                         properties:
                           configMapKeyRef:
                             description: Selects a key of a ConfigMap.
@@ -1295,21 +1275,19 @@ spec:
                         type: object
                     type: object
                   skipCertVerify:
-                    default: false
-                    description: Skip LDAP certificate verification
+                    description: Skip LDAP certificate verification.
                     type: boolean
                   softDeleteUsers:
-                    default: false
-                    description: Disable removed LDAP users instead of deleting them
+                    description: Disable removed LDAP users instead of deleting them.
                     type: boolean
                   url:
-                    description: LDAP server connection URL (e.g. ldaps://ldap.example.com)
+                    description: LDAP server connection URL (e.g. ldaps://ldap.example.com).
                     type: string
                   userGroupSearchFilter:
-                    description: LDAP group search filter
+                    description: LDAP group search filter.
                     type: string
                   userSearchFilter:
-                    description: LDAP user search filter
+                    description: LDAP user search filter.
                     type: string
                 required:
                 - base
@@ -1318,7 +1296,7 @@ spec:
                 - url
                 type: object
               livenessProbe:
-                description: Liveness probe configuration
+                description: Liveness probe configuration.
                 properties:
                   exec:
                     description: Exec specifies a command to execute in the container.
@@ -1482,17 +1460,16 @@ spec:
                 type: object
               localIPv6Ranges:
                 description: Custom local IPv6 ranges for audit log IP classification
-                  (comma-separated CIDRs)
+                  (comma-separated CIDRs).
                 type: string
               logging:
-                description: Logging configuration
+                description: Logging configuration.
                 properties:
                   json:
-                    default: false
-                    description: Output logs as JSON
+                    description: Output logs as JSON.
                     type: boolean
                   level:
-                    description: Log level
+                    description: Log level.
                     enum:
                     - debug
                     - info
@@ -1500,25 +1477,23 @@ spec:
                     - error
                     type: string
                   queryArgs:
-                    default: false
                     description: |-
                       Include SQL query parameter values in traces and in the query logs emitted
                       at the debug level. These values may contain sensitive data.
                     type: boolean
                 type: object
               metrics:
-                description: |-
-                  Prometheus metrics configuration
-                  When enabled the operator injects the required OTEL environment variables
-                  and exposes a metrics port on the Service
+                description: Prometheus metrics configuration. When enabled, the operator
+                  injects the required OTEL environment variables and exposes a metrics
+                  port on the Service.
                 properties:
                   enabled:
                     default: false
-                    description: Enables the Prometheus metrics endpoint
+                    description: Enables the Prometheus metrics endpoint.
                     type: boolean
                   port:
                     default: 9464
-                    description: Port for the Prometheus metrics endpoint
+                    description: Port for the Prometheus metrics endpoint.
                     format: int32
                     type: integer
                 required:
@@ -1526,28 +1501,26 @@ spec:
                 type: object
               persistence:
                 description: |-
-                  Configures persistence for Pocket-ID
-                  Note: Pocket-ID can be run statelessly if using Postgres as a file and db backend
-                  If not enabled mounts an emptydir instead
+                  Configures persistence for Pocket-ID. Pocket-ID can be run statelessly; see pocket-id-operator.pages.dev/pocketidinstance#stateless-deployment.
+                  If not enabled, an emptyDir is mounted instead.
                 properties:
                   accessModes:
                     default:
                     - ReadWriteOnce
-                    description: AccessModes for the PVC
+                    description: AccessModes for the PVC.
                     items:
                       type: string
                     type: array
                   enabled:
                     default: false
-                    description: Enables mounting a persistent volume
+                    description: Enables mounting a persistent volume.
                     type: boolean
                   existingClaim:
-                    description: Name of an existing, externally-managed PVC to mount
+                    description: Name of an existing, externally-managed PVC to mount.
                     type: string
                   extraVolumeMounts:
-                    description: |-
-                      Extra volume mounts to add to the pocket-id container.
-                      Useful for mounting volumes defined in spec.podTemplate.
+                    description: Extra volume mounts to add to the pocket-id container.
+                      This is useful for mounting volumes defined in spec.podTemplate.
                     items:
                       description: VolumeMount describes a mounting of a Volume within
                         a container.
@@ -1623,27 +1596,27 @@ spec:
                     type: array
                   path:
                     default: /app/data
-                    description: Path where the data volume is mounted in the container
+                    description: Path where the data volume is mounted in the container.
                     type: string
                   size:
                     anyOf:
                     - type: integer
                     - type: string
                     default: 1Gi
-                    description: Size of the claim to dynamically provision
+                    description: Size of the claim to dynamically provision.
                     pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                     x-kubernetes-int-or-string: true
                   storageClass:
-                    description: Name of storageClass to provision a volume from
+                    description: Name of the StorageClass to provision a volume from.
                     type: string
                   subPath:
-                    description: SubPath within the volume to mount (volumeMount.subPath)
+                    description: SubPath within the volume to mount (volumeMount.subPath).
                     type: string
                 required:
                 - enabled
                 type: object
               podSecurityContext:
-                description: Pod security context
+                description: Pod security context.
                 properties:
                   appArmorProfile:
                     description: |-
@@ -1872,17 +1845,17 @@ spec:
                     type: object
                 type: object
               podTemplate:
-                description: |-
-                  Pod template to merge with the operator-built pod spec.
-                  Operator-managed fields including the pocket-id container always take precedence.
+                description: Pod template to merge with the operator-built pod spec.
+                  Operator-managed fields including the pocket-id container always
+                  take precedence.
                 x-kubernetes-preserve-unknown-fields: true
               rateLimitingDisabled:
-                default: false
-                description: Disable Pocket-ID's built-in rate limiting. Enabled by
-                  default.
+                description: Disable Pocket-ID's built-in rate limiting. Pocket-ID's
+                  rate limiting is permissive enough for the operator, so it is recommended
+                  to keep rate limiting enabled for security.
                 type: boolean
               readinessProbe:
-                description: Readiness probe configuration
+                description: Readiness probe configuration.
                 properties:
                   exec:
                     description: Exec specifies a command to execute in the container.
@@ -2045,7 +2018,7 @@ spec:
                     type: integer
                 type: object
               resources:
-                description: Resource requests and limits for the container
+                description: Resource requests and limits for the container.
                 properties:
                   claims:
                     description: |-
@@ -2104,23 +2077,22 @@ spec:
                     type: object
                 type: object
               route:
-                description: |-
-                  HTTPRoute configuration
-                  Creates an HTTPRoute when enabled. Requires Gateway API CRDs to be installed.
+                description: Configures an HTTPRoute when enabled. Requires Gateway
+                  API CRDs to be installed.
                 properties:
                   annotations:
                     additionalProperties:
                       type: string
-                    description: Additional annotations for the HTTPRoute
+                    description: Additional annotations for the HTTPRoute.
                     type: object
                   enabled:
                     default: false
-                    description: Enables creation of an HTTPRoute
+                    description: Enables creation of an HTTPRoute.
                     type: boolean
                   hostnames:
                     description: |-
-                      Hostnames for the route
-                      Will be automatically set to the hostname from spec.appUrl if not specified
+                      Hostnames for the route.
+                      Automatically set to the hostname from spec.appUrl if not specified.
                     items:
                       description: |-
                         Hostname is the fully qualified domain name of a network host. This matches
@@ -2145,14 +2117,14 @@ spec:
                   labels:
                     additionalProperties:
                       type: string
-                    description: Additional labels for the HTTPRoute
+                    description: Additional labels for the HTTPRoute.
                     type: object
                   name:
-                    description: Name override for the HTTPRoute (defaults to instance
-                      name)
+                    description: Name override for the HTTPRoute (defaults to the
+                      instance name).
                     type: string
                   parentRefs:
-                    description: Gateway parent references
+                    description: Gateway parent references.
                     items:
                       description: |-
                         ParentReference identifies an API object (usually a Gateway) that can be considered
@@ -2305,26 +2277,24 @@ spec:
                   template:
                     description: |-
                       Template is merged with the operator-built HTTPRoute spec.
-                      Operator-managed fields (parentRefs, hostnames, and the default backend rule to the
-                      Service) always take precedence.
+                      Operator-managed fields (parentRefs, hostnames, and the default backend rule to the Service) always take precedence.
                     x-kubernetes-preserve-unknown-fields: true
                 required:
                 - enabled
                 - parentRefs
                 type: object
               s3:
-                description: |-
-                  S3 file backend configuration
-                  When present, FILE_BACKEND is automatically set to "s3"
+                description: S3 file backend configuration. When present, FILE_BACKEND
+                  is automatically set to "s3".
                 properties:
                   accessKeyId:
-                    description: S3 access key ID
+                    description: S3 access key ID.
                     properties:
                       value:
-                        description: Plain text value
+                        description: Plain text value.
                         type: string
                       valueFrom:
-                        description: Source for the value (e.g. secretKeyRef, configMapKeyRef)
+                        description: Source for the value (e.g. secretKeyRef, configMapKeyRef).
                         properties:
                           configMapKeyRef:
                             description: Selects a key of a ConfigMap.
@@ -2456,31 +2426,29 @@ spec:
                         type: object
                     type: object
                   bucket:
-                    description: S3 bucket name
+                    description: S3 bucket name.
                     type: string
                   disableDefaultIntegrityChecks:
-                    default: false
-                    description: Disable default S3 integrity checks
+                    description: Disable default S3 integrity checks.
                     type: boolean
                   endpoint:
-                    description: S3 endpoint URL (for MinIO, Ceph, or other S3-compatible
-                      stores)
+                    description: S3 endpoint URL.
                     type: string
                   forcePathStyle:
-                    default: false
                     description: Force path-style URLs instead of virtual-hosted-style
+                      URLs.
                     type: boolean
                   region:
-                    description: S3 region
+                    description: S3 region.
                     type: string
                   secretAccessKey:
-                    description: S3 secret access key
+                    description: S3 secret access key.
                     properties:
                       value:
-                        description: Plain text value
+                        description: Plain text value.
                         type: string
                       valueFrom:
-                        description: Source for the value (e.g. secretKeyRef, configMapKeyRef)
+                        description: Source for the value (e.g. secretKeyRef, configMapKeyRef).
                         properties:
                           configMapKeyRef:
                             description: Selects a key of a ConfigMap.
@@ -2620,29 +2588,26 @@ spec:
               serviceTemplate:
                 description: |-
                   ServiceTemplate is merged with the operator-built Service spec.
-                  Operator-managed fields (the selector and the number, protocol and appProtocol of
-                  the http/metrics ports) always take precedence. A nodePort set on those ports is
-                  honoured, as are extra ports and every other field.
+                  Operator-managed fields (the selector and the number, protocol, and appProtocol of the http/metrics ports) always take precedence.
                 x-kubernetes-preserve-unknown-fields: true
               smtp:
-                description: |-
-                  SMTP email transport configuration
-                  When present, SMTP is automatically enabled
+                description: SMTP email transport configuration. When present, SMTP
+                  is automatically enabled.
                 properties:
                   from:
-                    description: Sender email address
+                    description: Sender email address.
                     type: string
                   host:
-                    description: SMTP server hostname
+                    description: SMTP server hostname.
                     type: string
                   password:
-                    description: SMTP authentication password
+                    description: SMTP authentication password.
                     properties:
                       value:
-                        description: Plain text value
+                        description: Plain text value.
                         type: string
                       valueFrom:
-                        description: Source for the value (e.g. secretKeyRef, configMapKeyRef)
+                        description: Source for the value (e.g. secretKeyRef, configMapKeyRef).
                         properties:
                           configMapKeyRef:
                             description: Selects a key of a ConfigMap.
@@ -2774,23 +2739,21 @@ spec:
                         type: object
                     type: object
                   port:
-                    description: SMTP server port
+                    description: SMTP server port.
                     format: int32
                     type: integer
                   skipCertVerify:
-                    default: false
-                    description: Skip certificate verification (for self-signed certs)
+                    description: Skip certificate verification (for self-signed certificates).
                     type: boolean
                   tls:
-                    default: none
-                    description: TLS mode for the SMTP connection
+                    description: TLS mode for the SMTP connection.
                     enum:
                     - none
                     - starttls
                     - tls
                     type: string
                   user:
-                    description: SMTP authentication username
+                    description: SMTP authentication username.
                     type: string
                 required:
                 - from
@@ -2798,18 +2761,16 @@ spec:
                 - port
                 type: object
               timezone:
-                description: |-
-                  Timezone for the Pocket-ID instance (e.g. "America/New_York")
-                  Sets the TZ environment variable
+                description: Timezone for the Pocket-ID instance (e.g. "America/New_York").
+                  Sets the TZ environment variable.
                 type: string
               tls:
                 description: TLS terminates HTTPS in the Pocket-ID pod from a mounted
                   certificate Secret.
                 properties:
                   secretRef:
-                    description: |-
-                      SecretRef names a kubernetes.io/tls Secret in the instance's namespace holding
-                      tls.crt and tls.key.
+                    description: SecretRef names a kubernetes.io/tls Secret in the
+                      instance's namespace holding tls.crt and tls.key.
                     properties:
                       name:
                         default: ""
@@ -2830,111 +2791,101 @@ spec:
                   rule: size(self.secretRef.name) > 0
               tracing:
                 description: |-
-                  OpenTelemetry tracing configuration
-                  When present, tracing is automatically enabled
-                  Configure additional exporter-specific OTEL_* variables via the env escape hatch
+                  OpenTelemetry tracing configuration. When present, tracing is automatically enabled.
+                  Configure additional exporter-specific OTEL_* variables via spec.env.
                 properties:
                   endpoint:
                     description: |-
-                      OTLP traces endpoint including path, e.g. http://collector:4318/v1/traces
-                      (sets OTEL_EXPORTER_OTLP_TRACES_ENDPOINT)
+                      OTLP traces endpoint, including the path (e.g. http://collector:4318/v1/traces).
+                      Sets OTEL_EXPORTER_OTLP_TRACES_ENDPOINT.
                     type: string
                 type: object
               trustedProxies:
-                description: |-
-                  TrustedProxies configures which proxies Pocket-ID trusts for X-Forwarded-* headers
-                  (sets TRUST_PROXY). When unset, the operator trusts the private/loopback ranges if
-                  spec.route.enabled is set.
+                description: TrustedProxies configures which proxies Pocket-ID trusts
+                  for X-Forwarded-* headers. When unset, the operator trusts the private/loopback
+                  ranges if spec.route.enabled is set.
                 properties:
                   cidrs:
                     description: |-
-                      CIDRs is the list of trusted proxy IPs/CIDRs. Only used when enabled is true.
-                      When empty, TRUST_PROXY is set to "true", trusting all upstream sources
-                      To restrict trust, list explicit ranges: e.g. the in-cluster gateway network, or a CDN's
-                      published ranges when it connects directly to the pod.
+                      CIDRs is the list of trusted proxy IPs/CIDRs. Only used when enabled is true. When empty, TRUST_PROXY is set to "true", trusting all upstream sources.
+                      To restrict trust, list explicit ranges, e.g. the cluster pod network or a CDN's published ranges when it connects directly to the pod.
                     items:
                       type: string
                     type: array
                   enabled:
                     default: false
-                    description: |-
-                      Enabled turns on trust of X-Forwarded-* headers.
+                    description: Enabled turns on trust of X-Forwarded-* headers.
                       When false, TRUST_PROXY is set to "false".
                     type: boolean
                 required:
                 - enabled
                 type: object
               ui:
-                description: |-
-                  UI configuration
-                  The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured
+                description: UI configuration. The operator automatically sets UI_CONFIG_DISABLED=true
+                  when this section is configured.
                 properties:
                   accentColor:
-                    description: Custom CSS color value for UI accent theme
+                    description: Custom CSS color value for the UI accent theme.
                     type: string
                   appName:
-                    description: Application display name
+                    description: Application display name.
                     type: string
                   disableAnimations:
-                    default: false
-                    description: Turn off UI animations
+                    description: Turn off UI animations.
                     type: boolean
                   homePageUrl:
-                    description: Post-login redirect page
+                    description: Post-login redirect page.
                     type: string
                   sessionDuration:
-                    description: User session timeout in minutes
+                    description: User session timeout in minutes.
                     format: int32
                     type: integer
                 type: object
               userManagement:
-                description: User registration and account management settings
+                description: User registration and account management settings.
                 properties:
                   allowOwnAccountEdit:
-                    description: Allow users to edit their own account details
+                    description: Allow users to edit their own account details.
                     type: boolean
                   allowUserSignups:
-                    description: User signup mode
+                    description: User signup mode.
                     enum:
                     - disabled
                     - withToken
                     - open
                     type: string
                   emailsVerified:
-                    default: false
-                    description: Auto-verify emails on signup or change
+                    description: Auto-verify emails on signup or change.
                     type: boolean
                   requireUserEmail:
-                    description: Require users to have an email address
+                    description: Require users to have an email address.
                     type: boolean
                   signupDefaultCustomClaims:
                     description: Default custom claims to assign to new users (JSON
-                      array)
+                      array).
                     type: string
                   signupDefaultUserGroupIds:
-                    description: Default user group IDs to assign to new users
+                    description: Default user group IDs to assign to new users.
                     items:
                       type: string
                     type: array
                 type: object
               versionCheckDisabled:
-                default: false
-                description: Disable GitHub version checks
+                description: Disable GitHub version checks.
                 type: boolean
               webauthn:
-                description: |-
-                  Passkey restrictions
-                  The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured
+                description: Passkey restrictions. The operator automatically sets
+                  UI_CONFIG_DISABLED=true when this section is configured.
                 properties:
                   allowSyncedPasskeys:
                     description: |-
                       Accept passkeys that are backup-eligible, i.e. synced to a cloud account
-                      such as iCloud Keychain or Google Password Manager
+                      such as iCloud Keychain or Google Password Manager.
                     type: boolean
                   authenticatorAttachment:
                     description: |-
                       Authenticator type accepted at registration: platform (device-bound),
-                      cross-platform (roaming security key), or any
+                      cross-platform (roaming security key), or any.
                     enum:
                     - any
                     - platform
@@ -2942,7 +2893,7 @@ spec:
                     type: string
                   userVerification:
                     description: Whether the authenticator must verify the user (PIN,
-                      biometric) during login
+                      biometric) during login.
                     enum:
                     - required
                     - preferred
@@ -2966,7 +2917,7 @@ spec:
                 encryptionKey (deploy a new one)
               rule: has(self.external) != has(self.encryptionKey)
           status:
-            description: status defines the observed state of PocketIDInstance
+            description: status defines the observed state of PocketIDInstance.
             properties:
               conditions:
                 description: Conditions represent the current state of the Instance
@@ -3031,18 +2982,17 @@ spec:
                 x-kubernetes-list-type: map
               lastRotatedClientSecret:
                 description: |-
-                  LastRotatedClientSecret is the timestamp of the most recent OIDC client secret rotation
-                  on this instance. Used to enforce spec.OIDCClientRotation.minSpacing.
+                  LastRotatedClientSecret is the timestamp of the most recent OIDC client secret rotation on this instance.
+                  Used to enforce spec.OIDCClientRotation.minSpacing.
                 format: date-time
                 type: string
               staticApiKeySecretName:
-                description: StaticAPIKeySecretName is the name of the secret containing
-                  the STATIC_API_KEY
+                description: StaticAPIKeySecretName is the name of the Secret containing
+                  the STATIC_API_KEY.
                 type: string
               version:
-                description: |-
-                  Version is the current deployed version of the PocketID instance,
-                  retrieved from the /api/version/current endpoint.
+                description: Version is the current deployed version of the Pocket-ID
+                  instance, retrieved from the /api/version/current endpoint.
                 type: string
             type: object
         required:

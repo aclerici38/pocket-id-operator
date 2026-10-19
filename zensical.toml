@@ -17,6 +17,9 @@ nav = [
     "guides/annotations.md",
     "guides/metrics.md",
   ] },
+  { "Examples" = [
+    "examples/pocketidinstance.md",
+  ] },
   { "API Reference" = [
     "reference/pocketidinstance.md",
     "reference/pocketiduser.md",
