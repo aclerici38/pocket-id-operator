@@ -59,8 +59,8 @@ NamespacedOIDCClientReference references a PocketIDOIDCClient by name and namesp
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `name` | string |  |  | Name is the name of the PocketIDOIDCClient CR |
-| `namespace` | string |  |  | Namespace is the namespace of the PocketIDOIDCClient CR<br />Defaults to the referencing resource's namespace |
+| `name` | string |  |  | Name is the name of the PocketIDOIDCClient CR. |
+| `namespace` | string |  |  | Namespace is the namespace of the PocketIDOIDCClient CR.<br />Defaults to the referencing resource's namespace. |
 
 ## `PocketIDUserGroup.status`
 

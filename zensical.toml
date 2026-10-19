@@ -19,6 +19,7 @@ nav = [
   ] },
   { "Examples" = [
     "examples/pocketidinstance.md",
+    "examples/pocketidoidcclient.md",
   ] },
   { "API Reference" = [
     "reference/pocketidinstance.md",
