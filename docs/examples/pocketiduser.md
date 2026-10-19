@@ -8,19 +8,19 @@ Common `PocketIDUser` configurations. For how each feature behaves see [the Pock
 apiVersion: pocketid.internal/v1alpha1
 kind: PocketIDUser
 metadata:
-  name: alice
+  name: jsmith
   namespace: pocket-id
 spec:
   username:
-    value: alice
+    value: jsmith
   firstName:
-    value: Alice
+    value: John
   lastName:
-    value: Ng
+    value: Smith
   displayName:
-    value: Alice Ng
+    value: John Smith
   email:
-    value: "alice@example.com"
+    value: "jsmith@example.com"
   admin: true
   locale: en
 ```
@@ -33,23 +33,23 @@ spec:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: alice-user-info
+  name: jsmith-user-info
   namespace: pocket-id
 stringData:
-  username: "alice"
-  firstName: "Alice"
-  lastName: "Ng"
-  email: "alice@example.com"
-  displayName: "Alice Ng"
+  username: "jsmith"
+  firstName: "John"
+  lastName: "Smith"
+  email: "jsmith@example.com"
+  displayName: "John Smith"
 ---
 apiVersion: pocketid.internal/v1alpha1
 kind: PocketIDUser
 metadata:
-  name: alice
+  name: jsmith
   namespace: pocket-id
 spec:
   userInfoSecretRef:
-    name: alice-user-info
+    name: jsmith-user-info
 ```
 
 ### Individual Fields
@@ -59,7 +59,7 @@ spec:
   email:
     valueFrom:
       secretKeyRef:
-        name: alice-private
+        name: jsmith-private
         key: email
 ```
 
@@ -69,12 +69,12 @@ spec:
 apiVersion: pocketid.internal/v1alpha1
 kind: PocketIDUser
 metadata:
-  name: alice
+  name: jsmith
   namespace: pocket-id
 spec:
   userID: 3f8a1c72-9b4d-4e61-8a0f-2c5d7e9b1a34
   email:
-    value: "alice@example.com"
+    value: "jsmith@example.com"
 ```
 
 ## Custom Claims

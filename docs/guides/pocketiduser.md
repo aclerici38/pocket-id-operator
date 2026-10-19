@@ -12,11 +12,11 @@ For full documentation on each field in this CRD see [the API reference](../refe
 apiVersion: pocketid.internal/v1alpha1
 kind: PocketIDUser
 metadata:
-  name: alice
+  name: jsmith
   namespace: pocket-id
 spec:
   email:
-    value: "alice@example.com"
+    value: "jsmith@example.com"
 ```
 
 ## Profile

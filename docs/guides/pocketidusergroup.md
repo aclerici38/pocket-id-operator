@@ -32,7 +32,7 @@ spec:
       value: admin
   users:
     userRefs:
-      - name: alice
+      - name: jsmith
       - name: bob
         namespace: pocket-id
     usernames:
@@ -65,7 +65,7 @@ spec:
       namespace: observability
   users:
     userRefs:
-      - name: alice
+      - name: jsmith
 ```
 
 - `spec.allowedOIDCClients[].name`: name of the `PocketIDOIDCClient` CR.
