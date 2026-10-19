@@ -201,10 +201,30 @@ provenance = "github-attestations"
 version = "0.0.71"
 backend = "pypi:zensical"
 specifiers = ["0.0.71"]
-uv = { path = ".mise/locks/pypi-zensical/0.0.71~e0d36179", digest = "sha256:61d09b2fce31cf1f8164fbe72b76afea7fd64e8bcfd06c3a2e776a2c87327d5d" }
+uv = { path = ".mise/locks/pypi-zensical/0.0.71~e0d36179", digest = "sha256:9507d95709f6c6edcd1e4e19eb0eff686bc1686bdae7955b59be4e69bbc74e76" }
 
 [tools."pypi:zensical".options]
 python = "3.14"
+
+[[tools.python]]
+version = "3.14.8"
+backend = "core:python"
+specifiers = ["3.14"]
+
+[tools.python."platforms.linux-arm64"]
+checksum = "sha256:d8ae14f303d3971431184cf423ae5467202de2bc19bf6491a490250b87647d4b"
+url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261013/cpython-3.14.8+20261013-aarch64-unknown-linux-gnu-install_only_stripped.tar.gz"
+provenance = "github-attestations"
+
+[tools.python."platforms.linux-x64"]
+checksum = "sha256:d8faa1b588506b9e3e5a3f57807bb056d534a1641a6b10d15b6ea3f0b413b960"
+url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261013/cpython-3.14.8+20261013-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz"
+provenance = "github-attestations"
+
+[tools.python."platforms.macos-arm64"]
+checksum = "sha256:994adadc202c5df0b4570192cc9a70e3f2c131e512f4a125c56efa8562f44b28"
+url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261013/cpython-3.14.8+20261013-aarch64-apple-darwin-install_only_stripped.tar.gz"
+provenance = "github-attestations"
 
 [[tools.sd]]
 version = "1.1.0"

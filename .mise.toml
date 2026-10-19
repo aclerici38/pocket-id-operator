@@ -1,6 +1,9 @@
 # Install everything with `mise install`. Run `mise tasks` to list tasks,
 # `mise run <task>` to run one. Multi-line tasks live in ./.mise-tasks.
 
+# 2026.10.12 added the per-tool `python` option used by pypi:zensical.
+min_version = "2026.10.12"
+
 [settings]
 experimental = true
 lockfile = true

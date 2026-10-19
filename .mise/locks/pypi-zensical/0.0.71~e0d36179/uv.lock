@@ -3,7 +3,7 @@ revision = 5
 requires-python = "==3.14.*"
 
 [options]
-exclude-newer = "2026-10-18T00:40:36.01815Z"
+exclude-newer = "2026-10-18T02:17:40.219755Z"
 
 [[package]]
 name = "click"
