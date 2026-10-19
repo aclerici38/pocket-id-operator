@@ -5,8 +5,7 @@ containing client credentials and metadata.
 
 ## Client Secret
 
-Pocket-ID only discloses a client secret's value at the moment it is created, so the operator
-creates one when it creates or adopts an OIDC client in order to store it in a Kubernetes Secret.
+Pocket-ID only returns a client secret's value at the moment it is created, so the operator creates one when it creates or adopts an OIDC client in order to store it in a Kubernetes Secret.
 
 A client can hold up to 20 secrets, all valid until deleted. The operator presents a single
 credential, so it keeps the secret whose value is in the credentials Secret and deletes the rest,

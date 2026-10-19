@@ -25,9 +25,7 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// NamespacedUserGroupReference selects a Pocket-ID user group, either by the
-// PocketIDUserGroup CR that manages it or, for groups managed outside this cluster,
-// by their name or ID in Pocket-ID.
+// NamespacedUserGroupReference selects a Pocket-ID user group, either by the PocketIDUserGroup CR that manages it or, for groups managed outside this cluster, by their name or ID in Pocket-ID.
 // +kubebuilder:validation:XValidation:rule="(has(self.name) ? 1 : 0) + (has(self.groupName) ? 1 : 0) + (has(self.groupID) ? 1 : 0) == 1",message="exactly one of name, groupName, or groupID must be set"
 // +kubebuilder:validation:XValidation:rule="!has(self.namespace) || has(self.name)",message="namespace may only be set together with name"
 type NamespacedUserGroupReference struct {
@@ -37,23 +35,20 @@ type NamespacedUserGroupReference struct {
 	// +optional
 	Name string `json:"name,omitempty"`
 
-	// Namespace is the namespace of the PocketIDUserGroup CR
-	// Defaults to the PocketIDOIDCClient namespace
+	// Namespace is the namespace of the PocketIDUserGroup CR.
+	// Defaults to the PocketIDOIDCClient namespace.
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
 	// +optional
 	Namespace string `json:"namespace,omitempty"`
 
-	// GroupName is the name of an existing user group in Pocket-ID, for groups not
-	// managed by a PocketIDUserGroup in this cluster. The operator only resolves the
-	// group to grant this client access and never modifies the group itself.
+	// GroupName is the name of an existing user group in Pocket-ID, for groups not managed by a PocketIDUserGroup in this cluster.
 	// +kubebuilder:validation:MinLength=2
 	// +kubebuilder:validation:MaxLength=255
 	// +optional
 	GroupName string `json:"groupName,omitempty"`
 
-	// GroupID is the Pocket-ID ID of an existing user group. Like groupName, the
-	// group itself is left untouched.
+	// GroupID is the Pocket-ID ID of an existing user group, for groups not managed by a PocketIDUserGroup in this cluster.
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=64
 	// +optional
@@ -62,33 +57,31 @@ type NamespacedUserGroupReference struct {
 
 // NamespacedOIDCClientReference references a PocketIDOIDCClient by name and namespace.
 type NamespacedOIDCClientReference struct {
-	// Name is the name of the PocketIDOIDCClient CR
+	// Name is the name of the PocketIDOIDCClient CR.
 	// +optional
 	Name string `json:"name,omitempty"`
 
-	// Namespace is the namespace of the PocketIDOIDCClient CR
-	// Defaults to the referencing resource's namespace
+	// Namespace is the namespace of the PocketIDOIDCClient CR.
+	// Defaults to the referencing resource's namespace.
 	// +optional
 	Namespace string `json:"namespace,omitempty"`
 }
 
 // NamespacedAPIReference references a PocketIDAPI by name and namespace.
 type NamespacedAPIReference struct {
-	// Name is the name of the PocketIDAPI CR
+	// Name is the name of the PocketIDAPI CR.
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`
 
-	// Namespace is the namespace of the PocketIDAPI CR
-	// Defaults to the referencing resource's namespace
+	// Namespace is the namespace of the PocketIDAPI CR.
+	// Defaults to the referencing resource's namespace.
 	// +optional
 	Namespace string `json:"namespace,omitempty"`
 }
 
 // OIDCClientAPIAccess grants a client scoped permissions on a referenced PocketIDAPI.
-// Permissions are referenced by their key; the controller resolves them to Pocket-ID
-// permission IDs via the PocketIDAPI status.
-// The access flags exist to grant a flow that selects no permissions, so setting one to false
-// alongside a permission list is rejected rather than silently ignoring the list.
+// Permissions are referenced by their key and the operator resolves them to Pocket-ID permission IDs via the PocketIDAPI status.
+// The access flags grant a flow that selects no permissions, so setting one to false alongside a permission list is rejected rather than silently ignoring the list.
 // +kubebuilder:validation:XValidation:rule="!has(self.delegatedAccess) || self.delegatedAccess || !has(self.delegatedPermissions) || size(self.delegatedPermissions) == 0",message="delegatedAccess: false conflicts with delegatedPermissions; drop the permissions to revoke the flow, or remove the flag to grant them"
 // +kubebuilder:validation:XValidation:rule="!has(self.clientAccess) || self.clientAccess || !has(self.clientPermissions) || size(self.clientPermissions) == 0",message="clientAccess: false conflicts with clientPermissions; drop the permissions to revoke the flow, or remove the flag to grant them"
 type OIDCClientAPIAccess struct {
@@ -96,18 +89,15 @@ type OIDCClientAPIAccess struct {
 	// +kubebuilder:validation:Required
 	APIRef NamespacedAPIReference `json:"apiRef"`
 
-	// DelegatedPermissions are permission keys granted for the user-delegated
-	// (authorization code) flow, where the client acts on behalf of a user.
+	// DelegatedPermissions are permission keys granted for the user-delegated (authorization code) flow, where the client acts on behalf of a user.
 	// +optional
 	DelegatedPermissions []string `json:"delegatedPermissions,omitempty"`
 
-	// ClientPermissions are permission keys granted for the client-credentials
-	// (machine-to-machine) flow. These require a confidential client.
+	// ClientPermissions are permission keys granted for the client-credentials (machine-to-machine) flow. These require a confidential client.
 	// +optional
 	ClientPermissions []string `json:"clientPermissions,omitempty"`
 
-	// DelegatedAccess grants the user-delegated flow even with no permissions selected,
-	// e.g. a client requesting a resource that doesn't need any scopes.
+	// DelegatedAccess grants the user-delegated flow even with no permissions selected, e.g. a client requesting a resource that doesn't need any scopes.
 	// Defaults to true when delegatedPermissions is non-empty.
 	// +optional
 	DelegatedAccess *bool `json:"delegatedAccess,omitempty"`
@@ -120,27 +110,27 @@ type OIDCClientAPIAccess struct {
 
 // OIDCClientFederatedIdentity defines a federated identity for OIDC client credentials.
 type OIDCClientFederatedIdentity struct {
-	// Issuer is the OIDC issuer for the identity
+	// Issuer is the OIDC issuer for the identity.
 	// +optional
 	Issuer string `json:"issuer,omitempty"`
 
-	// Subject is the subject for the identity
+	// Subject is the subject for the identity.
 	// +optional
 	Subject string `json:"subject,omitempty"`
 
-	// Audience is the audience for the identity
+	// Audience is the audience for the identity.
 	// +optional
 	Audience string `json:"audience,omitempty"`
 
-	// JWKS is the URL of the identity's JWKS. Defaults to the issuer's /.well-known/jwks.json
+	// JWKS is the URL of the identity's JWKS. Defaults to the issuer's /.well-known/jwks.json.
 	// +optional
 	JWKS string `json:"jwks,omitempty"`
 
-	// PublicKeys are the keys that verify the identity's assertions, used instead of a JWKS URL
+	// PublicKeys are the keys that verify the identity's assertions, used instead of a JWKS URL.
 	// +optional
 	PublicKeys []OIDCClientPublicKey `json:"publicKeys,omitempty"`
 
-	// ReplayProtection requires client assertions to carry a jti and rejects replays
+	// ReplayProtection requires client assertions to carry a jti and rejects replays.
 	// +kubebuilder:default=false
 	// +optional
 	ReplayProtection bool `json:"replayProtection,omitempty"`
@@ -149,7 +139,7 @@ type OIDCClientFederatedIdentity struct {
 // OIDCClientPublicKey is a public key given inline or read from a ConfigMap or Secret.
 // +kubebuilder:validation:XValidation:rule="has(self.value) != has(self.valueFrom)",message="exactly one of value or valueFrom must be set"
 type OIDCClientPublicKey struct {
-	// Value is a JWK
+	// Value is a JWK.
 	// +kubebuilder:validation:Type=object
 	// +optional
 	Value *apiextensionsv1.JSON `json:"value,omitempty"`
@@ -173,21 +163,17 @@ type OIDCClientPublicKeySource struct {
 // OIDCClientSecretSpec defines how credentials should be stored in a Secret.
 type OIDCClientSecretSpec struct {
 	// Enabled controls whether to create a secret with OIDC client credentials.
-	// If false, no secret will be created. Defaults to true
+	// If false, no secret will be created. Defaults to true.
 	// +kubebuilder:default=true
 	// +optional
 	Enabled *bool `json:"enabled,omitempty"`
 
-	// Name is the name of the secret to create.
-	// Defaults to metadata.name + "-oidc-credentials"
+	// Name is the name of the secret to create. Defaults to metadata.name + "-oidc-credentials"
 	// +optional
 	Name string `json:"name,omitempty"`
 
 	// StoreClientSecret controls whether the operator manages the client secret.
-	// When false, the operator never regenerates an existing client secret: a client
-	// created by the operator still gets its initial secret minted and stored, while
-	// an adopted client keeps its externally-managed secret and the Secret omits the
-	// client_secret key. Defaults to true
+	// When false, a client created by the operator still gets its initial secret minted and stored, while an adopted client keeps its externally-managed secret and the Secret omits the client_secret key.
 	// +kubebuilder:default=true
 	// +optional
 	StoreClientSecret *bool `json:"storeClientSecret,omitempty"`
@@ -196,14 +182,12 @@ type OIDCClientSecretSpec struct {
 	// +optional
 	Keys *OIDCClientSecretKeys `json:"keys,omitempty"`
 
-	// AdditionalLabels allows setting custom labels on the secret created by the PocketIDOIDCClient
-	// custom resource
+	// AdditionalLabels allows setting custom labels on the secret created by the PocketIDOIDCClient custom resource
 	// +optional
 	AdditionalLabels map[string]string `json:"additionalLabels,omitempty"`
 
-	// AdditionalAnnotations allows setting custom annotations on the secret created by the
-	// PocketIDOIDCClient custom resource. Operator-managed annotations take precedence and
-	// cannot be overridden.
+	// AdditionalAnnotations allows setting custom annotations on the secret created by the PocketIDOIDCClient custom resource.
+	// Operator-managed annotations take precedence and cannot be overridden.
 	// +optional
 	AdditionalAnnotations map[string]string `json:"additionalAnnotations,omitempty"`
 }
@@ -211,92 +195,75 @@ type OIDCClientSecretSpec struct {
 // OIDCClientSecretKeys defines customizable keys for secret data fields.
 type OIDCClientSecretKeys struct {
 	// ClientID is the key name for the OIDC client ID.
-	// Defaults to client_id
 	// +kubebuilder:default="client_id"
 	// +optional
 	ClientID string `json:"clientID,omitempty"`
 
 	// ClientSecret is the key name for the OIDC client secret.
 	// +kubebuilder:default="client_secret"
-	// Defaults to client_secret
 	// +optional
 	ClientSecret string `json:"clientSecret,omitempty"`
 
 	// IssuerURL is the key name for the OIDC issuer URL.
-	// Defaults to issuer_url
 	// +kubebuilder:default="issuer_url"
 	// +optional
 	IssuerURL string `json:"issuerUrl,omitempty"`
 
 	// CallbackURLs is the key name for the callback URLs.
-	// Defaults to callback_urls
 	// +kubebuilder:default="callback_urls"
 	// +optional
 	CallbackURLs string `json:"callbackUrls,omitempty"`
 
 	// LogoutCallbackURLs is the key name for the logout callback URLs.
-	// Defaults to logout_callback_urls
 	// +kubebuilder:default="logout_callback_urls"
 	// +optional
 	LogoutCallbackURLs string `json:"logoutCallbackUrls,omitempty"`
 
 	// DiscoveryURL is the key name for the OIDC discovery URL.
-	// Defaults to discovery_url
 	// +kubebuilder:default="discovery_url"
 	// +optional
 	DiscoveryURL string `json:"discoveryUrl,omitempty"`
 
 	// AuthorizationURL is the key name for the OIDC authorization endpoint URL.
-	// Defaults to authorization_url
 	// +kubebuilder:default="authorization_url"
 	// +optional
 	AuthorizationURL string `json:"authorizationUrl,omitempty"`
 
 	// TokenURL is the key name for the OIDC token endpoint URL.
-	// Defaults to token_url
 	// +kubebuilder:default="token_url"
 	// +optional
 	TokenURL string `json:"tokenUrl,omitempty"`
 
 	// UserinfoURL is the key name for the OIDC userinfo endpoint URL.
-	// Defaults to userinfo_url
 	// +kubebuilder:default="userinfo_url"
 	// +optional
 	UserinfoURL string `json:"userinfoUrl,omitempty"`
 
 	// JwksURL is the key name for the OIDC JWKS (JSON Web Key Set) endpoint URL.
-	// Defaults to jwks_url
 	// +kubebuilder:default="jwks_url"
 	// +optional
 	JwksURL string `json:"jwksUrl,omitempty"`
 
 	// EndSessionURL is the key name for the OIDC end session (logout) endpoint URL.
-	// Defaults to end_session_url
 	// +kubebuilder:default="end_session_url"
 	// +optional
 	EndSessionURL string `json:"endSessionUrl,omitempty"`
 
-	// Resource is the key name for the audience to request tokens for, taken from the APIs
-	// in apiAccess. It also prefixes the per-API key "<resource>_<apiRef.name>".
-	// Defaults to resource
+	// Resource is the key name for the audience to request tokens for, taken from the APIs in apiAccess. It also prefixes the per-API key "<resource>_<apiRef.name>".
 	// +kubebuilder:default="resource"
 	// +optional
 	Resource string `json:"resource,omitempty"`
 
-	// Scopes is the key name for the space-delimited scopes apiAccess grants the
-	// client-credentials flow. It also prefixes the per-API key "<scopes>_<apiRef.name>".
-	// Defaults to scopes
+	// Scopes is the key name for the space-delimited scopes apiAccess grants the client-credentials flow. It also prefixes the per-API key "<scopes>_<apiRef.name>".
 	// +kubebuilder:default="scopes"
 	// +optional
 	Scopes string `json:"scopes,omitempty"`
 }
 
 // OIDCClientLogoSpec configures logo URLs for the OIDC client.
-// Logo URLs support template substitution with {{name}} replaced by the
-// resolved logo name (nameOverride, or metadata.name).
+// Logo URLs support template substitution with {{name}} replaced by the resolved logo name (nameOverride, or metadata.name).
 type OIDCClientLogoSpec struct {
-	// AutoGenerate controls whether to auto-generate logo URLs from templates
-	// when logoUrl/darkLogoUrl are not explicitly set in this struct.
+	// AutoGenerate controls whether to auto-generate logo URLs from templates when logoUrl/darkLogoUrl are not explicitly set in this struct.
 	// If not set, defaults to the AUTOGENERATE_LOGOS env var on the operator, which defaults to true.
 	// +optional
 	AutoGenerate *bool `json:"autoGenerate,omitempty"`
@@ -306,28 +273,24 @@ type OIDCClientLogoSpec struct {
 	// +optional
 	NameOverride string `json:"nameOverride,omitempty"`
 
-	// LogoURL is the URL template for the light logo.
-	// Use {{name}} as a placeholder for the logo name.
+	// LogoURL is the URL template for the light logo. Use {{name}} as a placeholder for the logo name.
 	// Defaults to the DEFAULT_LOGO_URL env var on the operator.
 	// +optional
 	LogoURL string `json:"logoUrl,omitempty"`
 
-	// DarkLogoURL is the URL template for the dark logo.
-	// Use {{name}} as a placeholder for the logo name.
+	// DarkLogoURL is the URL template for the dark logo. Use {{name}} as a placeholder for the logo name.
 	// Defaults to the DEFAULT_DARK_LOGO_URL env var on the operator.
 	// +optional
 	DarkLogoURL string `json:"darkLogoUrl,omitempty"`
 }
 
-// SCIMSpec configures SCIM provisioning for the OIDC client.
-// Pocket ID will push user/group changes to the given endpoint.
+// SCIMSpec configures SCIM provisioning for the OIDC client. Pocket ID will push user/group changes to the given endpoint.
 type SCIMSpec struct {
 	// Endpoint is the URL of the external SCIM service provider.
 	// +kubebuilder:validation:Required
 	Endpoint string `json:"endpoint"`
 
-	// TokenSecretRef references a Kubernetes Secret key containing the
-	// bearer token used to authenticate with the SCIM endpoint.
+	// TokenSecretRef references a Kubernetes Secret key containing the bearer token used to authenticate with the SCIM endpoint.
 	// If omitted, no Authorization header is sent.
 	// +optional
 	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
@@ -346,8 +309,7 @@ type SCIMSpec struct {
 // +kubebuilder:validation:XValidation:rule="!has(self.clientSecretOverlap) || !has(self.clientSecretRotation) || !has(self.clientSecretRotation.interval) || duration(self.clientSecretOverlap) <= duration(self.clientSecretRotation.interval)",message="clientSecretOverlap must not exceed clientSecretRotation.interval"
 // +kubebuilder:validation:XValidation:rule="!has(self.clientSecretOverlap) || !self.isPublic",message="clientSecretOverlap requires a confidential client (isPublic must be false)"
 type PocketIDOIDCClientSpec struct {
-	// Name of the oidc client to create in Pocket ID.
-	// If omitted, defaults to metadata.name of the oidcclient resource.
+	// Name of the oidc client to create in Pocket ID. If omitted, defaults to metadata.name of the oidcclient resource.
 	// +optional
 	Name string `json:"name,omitempty"`
 
@@ -361,37 +323,33 @@ type PocketIDOIDCClientSpec struct {
 	// +optional
 	InstanceSelector *metav1.LabelSelector `json:"instanceSelector,omitempty"`
 
-	// ClientID is the optional OIDC client ID to use instead of a generated one.
-	// The Client ID is immutable and cannot be changed once the oidc client is created.
-	// An https:// URL marks the client as an OAuth Client ID Metadata Document (CIMD)
-	// client, which the operator adopts but never creates and only partially manages.
+	// ClientID is the optional OIDC client ID to use instead of a generated one. The Client ID is immutable and cannot be changed once the oidc client is created.
+	// An https:// URL marks the client as an OAuth Client ID Metadata Document (CIMD) client, which the operator adopts but never creates and only partially manages.
 	// +kubebuilder:validation:MinLength=2
 	// +kubebuilder:validation:MaxLength=512
 	// +optional
 	ClientID string `json:"clientID,omitempty"`
 
-	// Callback URLs for the client
+	// Callback URLs for the client.
 	// +optional
 	CallbackURLs []string `json:"callbackUrls,omitempty"`
 
-	// Logout callback URLs for the client
+	// Logout callback URLs for the client.
 	// +optional
 	LogoutCallbackURLs []string `json:"logoutCallbackUrls,omitempty"`
 
-	// Back-channel logout URL Pocket-ID notifies when a user's session for the client ends
+	// Back-channel logout URL Pocket-ID notifies when a user's session for the client ends.
 	// +optional
 	BackchannelLogoutURL string `json:"backchannelLogoutUrl,omitempty"`
 
-	// Launch URL for the client
+	// Launch URL for the client. Used in the "apps" dashboard in the Pocket-ID ui.
 	// +optional
 	LaunchURL string `json:"launchUrl,omitempty"`
 
-	// Logo URL for the client
 	// Deprecated: Use spec.logo.logoUrl instead.
 	// +optional
 	LogoURL string `json:"logoUrl,omitempty"`
 
-	// Dark logo URL for the client
 	// Deprecated: Use spec.logo.darkLogoUrl instead.
 	// +optional
 	DarkLogoURL string `json:"darkLogoUrl,omitempty"`
@@ -400,60 +358,55 @@ type PocketIDOIDCClientSpec struct {
 	// +optional
 	Logo *OIDCClientLogoSpec `json:"logo,omitempty"`
 
-	// Indicates if the client is public (no client secret)
+	// Indicates if the client is public (no client secret).
 	// +kubebuilder:default=false
 	// +optional
 	IsPublic bool `json:"isPublic,omitempty"`
 
-	// Enables PKCE for the client
+	// Enables PKCE for the client.
 	// +kubebuilder:default=false
 	// +optional
 	PKCEEnabled bool `json:"pkceEnabled,omitempty"`
 
-	// Requires reauthentication on login
+	// Requires reauthentication on login.
 	// +kubebuilder:default=false
 	// +optional
 	RequiresReauthentication bool `json:"requiresReauthentication,omitempty"`
 
-	// Requires the client to use pushed authorization requests (PAR)
+	// Requires the client to use pushed authorization requests (PAR).
 	// +kubebuilder:default=false
 	// +optional
 	RequiresPushedAuthorizationRequests bool `json:"requiresPushedAuthorizationRequests,omitempty"`
 
-	// Skips the consent screen on initial authorization for this client
+	// Skips the consent screen on initial authorization for this client.
 	// +kubebuilder:default=false
 	// +optional
 	SkipConsent bool `json:"skipConsent,omitempty"`
 
-	// How long access tokens issued to this client stay valid, in minutes
+	// How long access tokens issued to this client stay valid, in minutes.
 	// +kubebuilder:default=60
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=525600
 	// +optional
 	AccessTokenDurationMinutes int64 `json:"accessTokenDurationMinutes,omitempty"`
 
-	// How long refresh tokens issued to this client stay valid, in minutes
+	// How long refresh tokens issued to this client stay valid, in minutes.
 	// +kubebuilder:default=43200
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=525600
 	// +optional
 	RefreshTokenDurationMinutes int64 `json:"refreshTokenDurationMinutes,omitempty"`
 
-	// FederatedIdentities configures JWT assertion identities
+	// FederatedIdentities configures JWT assertion identities.
 	// +optional
 	FederatedIdentities []OIDCClientFederatedIdentity `json:"federatedIdentities,omitempty"`
 
-	// AllowedUserGroups restricts access to the listed user groups. Each entry names
-	// either a PocketIDUserGroup CR or, for groups managed outside this cluster, an
-	// existing Pocket-ID group by name or ID.
+	// AllowedUserGroups restricts access to the listed user groups.
+	// Each entry names either a PocketIDUserGroup CR or, for groups managed outside this cluster, an existing Pocket-ID group by name or ID.
 	// +optional
 	AllowedUserGroups []NamespacedUserGroupReference `json:"allowedUserGroups,omitempty"`
 
-	// APIAccess grants this client permission to request scoped access on the
-	// referenced PocketIDAPIs. The client is the sole owner of its API access in
-	// Pocket-ID: while this field is set the operator keeps the access in sync and
-	// clears it if the field is later emptied. When never set, existing API access
-	// configured out-of-band is left untouched.
+	// APIAccess grants this client permission to request scoped access on the referenced PocketIDAPIs.
 	// +optional
 	APIAccess []OIDCClientAPIAccess `json:"apiAccess,omitempty"`
 
@@ -461,31 +414,23 @@ type PocketIDOIDCClientSpec struct {
 	// +optional
 	Secret *OIDCClientSecretSpec `json:"secret,omitempty"`
 
-	// SCIM configures SCIM provisioning for this OIDC client.
-	// Pocket ID will push user/group changes to the configured endpoint.
+	// SCIM configures SCIM provisioning for this OIDC client. Pocket ID will push user/group changes to the configured endpoint.
 	// +optional
 	SCIM *SCIMSpec `json:"scim,omitempty"`
 
 	// ClientSecretRotation configures automatic, scheduled regeneration of the client secret.
-	// When unset the secret is only regenerated on create/adopt, on self-heal,
-	// or when the regenerate-client-secret annotation is set.
+	// When unset the secret is only regenerated on create/adopt, on self-heal, or when the regenerate-client-secret annotation is set.
 	// +optional
 	ClientSecretRotation *ClientSecretRotation `json:"clientSecretRotation,omitempty"`
 
-	// ClientSecretRef references a Kubernetes Secret key holding the client secret to set in
-	// Pocket-ID, instead of letting the operator generate one. The value must be at least 16
-	// printable ASCII characters. While set, the operator never generates or rotates the secret:
-	// clientSecretRotation cannot be enabled and the regenerate-client-secret annotation is
-	// ignored.
+	// ClientSecretRef references a Kubernetes Secret key holding the client secret to set in Pocket-ID, instead of letting the operator generate one. The value must be at least 16 printable ASCII characters.
+	// While set, the operator never generates or rotates the secret.
 	// +optional
 	ClientSecretRef *corev1.SecretKeySelector `json:"clientSecretRef,omitempty"`
 
-	// ClientSecretOverlap is how long the client-secret a replacement supersedes stays valid in
-	// Pocket-ID, giving consumers that cached it time to pick up the new one. It covers every
-	// replacement: scheduled rotations, the regenerate-client-secret annotation, and clientSecretRef updates.
-	//
-	// When unset or zero the previous secret is deleted as soon as the replacement is stored,
-	// so exactly one secret is ever valid. Must not exceed 168h, nor clientSecretRotation.interval if set.
+	// ClientSecretOverlap is how long the client-secret a replacement supersedes stays valid in Pocket-ID, giving consumers time to rollout and pick up the new one.
+	// When unset or zero the previous secret is deleted as soon as the replacement is stored, so exactly one secret is ever valid.
+	// Must not exceed 168h, nor clientSecretRotation.interval if set.
 	// +optional
 	// +kubebuilder:validation:XValidation:rule="duration(self) <= duration('168h')",message="clientSecretOverlap must not exceed 168h (7 days)"
 	ClientSecretOverlap *metav1.Duration `json:"clientSecretOverlap,omitempty"`
@@ -504,9 +449,7 @@ type RotationWindow struct {
 }
 
 // ClientSecretRotation configures automatic, scheduled regeneration of the OIDC client secret.
-// When enabled, a rotation trigger is required: set interval , window
-// (secret rotates once per window opening), or both (interval-driven,
-// confined to the window). Instance-wide min-spacing is honored in every mode.
+// When enabled, a rotation trigger is required: set interval, window (secret rotates once per window opening), or both (interval-driven, confined to the window). Instance-wide min-spacing is honored in every mode.
 // +kubebuilder:validation:XValidation:rule="!self.enabled || has(self.interval) || has(self.window)",message="enabled rotation requires interval, window, or both"
 // +kubebuilder:validation:XValidation:rule="!has(self.window) || !has(self.interval) || duration(self.window.closesAfter) <= duration(self.interval)",message="window.closesAfter must not exceed interval"
 type ClientSecretRotation struct {
@@ -514,17 +457,13 @@ type ClientSecretRotation struct {
 	// +kubebuilder:default=false
 	Enabled bool `json:"enabled"`
 
-	// Interval is the minimum time between rotations (e.g. "720h" for 30 days). Must be between
-	// 1h and 8760h. When omitted, rotation is driven entirely by window (which then becomes
-	// required) and the secret rotates once per window opening.
+	// Interval is the minimum time between rotations (e.g. "720h" for 30 days). Must be between 1h and 8760h. When omitted, rotation is driven entirely by window (which then becomes required) and the secret rotates once per window opening.
 	// +optional
 	// +kubebuilder:validation:XValidation:rule="duration(self) >= duration('1h') && duration(self) <= duration('8760h')",message="interval must be between 1h and 8760h (1 year)"
 	Interval *metav1.Duration `json:"interval,omitempty"`
 
-	// Window restricts rotations to a recurring maintenance window. When interval is set, rotations
-	// fire as soon as the interval and global min-spacing are satisfied, confined to the window
-	// when one is configured. When interval is omitted, the window opening is itself the trigger:
-	// the secret rotates once per opening (subject to min-spacing).
+	// Window restricts rotations to a recurring maintenance window. When interval is set, rotations fire as soon as the interval and global min-spacing are satisfied, confined to the window when one is configured.
+	// When interval is omitted, the window opening is the trigger and the secret rotates once per opening subject to min-spacing.
 	// +optional
 	Window *RotationWindow `json:"window,omitempty"`
 }
@@ -537,17 +476,16 @@ type PocketIDOIDCClientStatus struct {
 	// For Kubernetes API conventions, see:
 	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
 
-	// ClientID is the ID assigned by Pocket-ID
+	// ClientID is the ID assigned by Pocket-ID.
 	// +optional
 	ClientID string `json:"clientID,omitempty"`
 
-	// Name is the resolved name from Pocket-ID
+	// Name is the resolved name from Pocket-ID.
 	// +optional
 	Name string `json:"name,omitempty"`
 
 	// ClientType is how the client was registered in Pocket-ID: "standard" or "cimd".
-	// For a "cimd" client the operator manages only the fields Pocket-ID persists on an
-	// admin update; the rest are owned by its OAuth Client ID Metadata Document.
+	// For a "cimd" client the operator manages only the fields Pocket-ID persists on an admin update; the rest are owned by its OAuth Client ID Metadata Document.
 	// +optional
 	ClientType string `json:"clientType,omitempty"`
 
@@ -567,8 +505,7 @@ type PocketIDOIDCClientStatus struct {
 	// +optional
 	AllowedUserGroupIDs []string `json:"allowedUserGroupIDs,omitempty"`
 
-	// ManagedAPIPermissionIDs are the Pocket-ID API permission IDs the operator last
-	// pushed as this client's API access (both delegated and client-credentials).
+	// ManagedAPIPermissionIDs are the Pocket-ID API permission IDs the operator last pushed as this client's API access (both delegated and client-credentials).
 	// +optional
 	ManagedAPIPermissionIDs []string `json:"managedAPIPermissionIDs,omitempty"`
 
@@ -576,15 +513,11 @@ type PocketIDOIDCClientStatus struct {
 	// +optional
 	ManagedAPIs []string `json:"managedAPIs,omitempty"`
 
-	// CIMDGrantedAPIs are the API resources this client can reach because the API grants
-	// every Client ID Metadata Document client access, rather than because of spec.apiAccess.
-	// Removing an apiAccess entry does not revoke access listed here; that is turned off on
-	// the PocketIDAPI. Only ever set for a cimd client.
+	// CIMDGrantedAPIs are the resources of APIs reachable through their cimdAccess setting rather than this client's own grant; revoke it on the PocketIDAPI, not via spec.apiAccess. Only populated for cimd clients.
 	// +optional
 	CIMDGrantedAPIs []string `json:"cimdGrantedAPIs,omitempty"`
 
-	// PKCESupported indicates Pocket-ID observed the client using PKCE during an
-	// authorization flow while spec.pkceEnabled is false, signalling PKCE can be enabled.
+	// PKCESupported indicates Pocket-ID observed the client using PKCE during an authorization flow while spec.pkceEnabled is false, signalling PKCE can be enabled.
 	// +optional
 	PKCESupported *bool `json:"pkceSupported,omitempty"`
 
@@ -592,8 +525,7 @@ type PocketIDOIDCClientStatus struct {
 	// +optional
 	LogoURL string `json:"logoUrl,omitempty"`
 
-	// LogoReachable reports whether Pocket-ID could fetch and store the light logo from the
-	// URL the spec resolves to. Unset when the spec asks for no light logo.
+	// LogoReachable reports whether Pocket-ID could fetch and store the light logo from the URL the spec resolves to.
 	// +optional
 	LogoReachable *bool `json:"logoReachable,omitempty"`
 
@@ -601,8 +533,7 @@ type PocketIDOIDCClientStatus struct {
 	// +optional
 	DarkLogoURL string `json:"darkLogoUrl,omitempty"`
 
-	// DarkLogoReachable reports whether Pocket-ID could fetch and store the dark logo from the
-	// URL the spec resolves to. Unset when the spec asks for no dark logo.
+	// DarkLogoReachable reports whether Pocket-ID could fetch and store the dark logo from the URL the spec resolves to.
 	// +optional
 	DarkLogoReachable *bool `json:"darkLogoReachable,omitempty"`
 
@@ -616,14 +547,11 @@ type PocketIDOIDCClientStatus struct {
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// LastRotatedAt is the time the client secret was last regenerated by the
-	// operator. Used to determine when the next scheduled rotation is due.
+	// LastRotatedAt is the time the client secret was last regenerated by the operator. Used to determine when the next scheduled rotation is due.
 	// +optional
 	LastRotatedAt *metav1.Time `json:"lastRotatedAt,omitempty"`
 
-	// ClientSecretSourceVersion identifies the spec.clientSecretRef source last pushed to
-	// Pocket-ID. Pocket-ID stores the secret hashed and never returns it, so this is how the
-	// operator detects that the referenced Secret changed and needs pushing again.
+	// ClientSecretSourceVersion identifies the spec.clientSecretRef source last pushed to Pocket-ID. Pocket-ID stores the secret hashed and never returns it, so this is how the operator detects that the referenced Secret changed and needs pushing again.
 	// +optional
 	ClientSecretSourceVersion string `json:"clientSecretSourceVersion,omitempty"`
 }
