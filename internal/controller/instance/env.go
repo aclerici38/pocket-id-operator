@@ -88,8 +88,8 @@ func buildCoreEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.
 	}
 
 	// Rate limiting is on by default; opt out via spec.rateLimitingDisabled.
-	if instance.Spec.RateLimitingDisabled {
-		env = append(env, corev1.EnvVar{Name: "DISABLE_RATE_LIMITING", Value: "true"})
+	if instance.Spec.RateLimitingDisabled != nil {
+		env = append(env, corev1.EnvVar{Name: "DISABLE_RATE_LIMITING", Value: fmt.Sprintf("%t", *instance.Spec.RateLimitingDisabled)})
 	}
 	if needsUIConfigDisabled(instance) {
 		env = append(env, corev1.EnvVar{Name: "UI_CONFIG_DISABLED", Value: "true"})
@@ -181,11 +181,11 @@ func buildS3Env(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.En
 	}
 	env = append(env, sensitiveValueToEnvVar("S3_ACCESS_KEY_ID", &s3.AccessKeyID))
 	env = append(env, sensitiveValueToEnvVar("S3_SECRET_ACCESS_KEY", &s3.SecretAccessKey))
-	if s3.ForcePathStyle {
-		env = append(env, corev1.EnvVar{Name: "S3_FORCE_PATH_STYLE", Value: "true"})
+	if s3.ForcePathStyle != nil {
+		env = append(env, corev1.EnvVar{Name: "S3_FORCE_PATH_STYLE", Value: fmt.Sprintf("%t", *s3.ForcePathStyle)})
 	}
-	if s3.DisableDefaultIntegrityChecks {
-		env = append(env, corev1.EnvVar{Name: "S3_DISABLE_DEFAULT_INTEGRITY_CHECKS", Value: "true"})
+	if s3.DisableDefaultIntegrityChecks != nil {
+		env = append(env, corev1.EnvVar{Name: "S3_DISABLE_DEFAULT_INTEGRITY_CHECKS", Value: fmt.Sprintf("%t", *s3.DisableDefaultIntegrityChecks)})
 	}
 	return env
 }
@@ -210,8 +210,8 @@ func buildSMTPEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.
 	if smtp.TLS != "" {
 		env = append(env, corev1.EnvVar{Name: "SMTP_TLS", Value: smtp.TLS})
 	}
-	if smtp.SkipCertVerify {
-		env = append(env, corev1.EnvVar{Name: "SMTP_SKIP_CERT_VERIFY", Value: "true"})
+	if smtp.SkipCertVerify != nil {
+		env = append(env, corev1.EnvVar{Name: "SMTP_SKIP_CERT_VERIFY", Value: fmt.Sprintf("%t", *smtp.SkipCertVerify)})
 	}
 	return env
 }
@@ -222,20 +222,20 @@ func buildEmailNotificationsEnv(instance *pocketidinternalv1alpha1.PocketIDInsta
 	}
 	en := instance.Spec.EmailNotifications
 	var env []corev1.EnvVar
-	if en.LoginNotification {
-		env = append(env, corev1.EnvVar{Name: "EMAIL_LOGIN_NOTIFICATION_ENABLED", Value: "true"})
+	if en.LoginNotification != nil {
+		env = append(env, corev1.EnvVar{Name: "EMAIL_LOGIN_NOTIFICATION_ENABLED", Value: fmt.Sprintf("%t", *en.LoginNotification)})
 	}
-	if en.OneTimeAccessAsAdmin {
-		env = append(env, corev1.EnvVar{Name: "EMAIL_ONE_TIME_ACCESS_AS_ADMIN_ENABLED", Value: "true"})
+	if en.OneTimeAccessAsAdmin != nil {
+		env = append(env, corev1.EnvVar{Name: "EMAIL_ONE_TIME_ACCESS_AS_ADMIN_ENABLED", Value: fmt.Sprintf("%t", *en.OneTimeAccessAsAdmin)})
 	}
-	if en.APIKeyExpiration {
-		env = append(env, corev1.EnvVar{Name: "EMAIL_API_KEY_EXPIRATION_ENABLED", Value: "true"})
+	if en.APIKeyExpiration != nil {
+		env = append(env, corev1.EnvVar{Name: "EMAIL_API_KEY_EXPIRATION_ENABLED", Value: fmt.Sprintf("%t", *en.APIKeyExpiration)})
 	}
-	if en.OneTimeAccessAsUnauthenticated {
-		env = append(env, corev1.EnvVar{Name: "EMAIL_ONE_TIME_ACCESS_AS_UNAUTHENTICATED_ENABLED", Value: "true"})
+	if en.OneTimeAccessAsUnauthenticated != nil {
+		env = append(env, corev1.EnvVar{Name: "EMAIL_ONE_TIME_ACCESS_AS_UNAUTHENTICATED_ENABLED", Value: fmt.Sprintf("%t", *en.OneTimeAccessAsUnauthenticated)})
 	}
-	if en.Verification {
-		env = append(env, corev1.EnvVar{Name: "EMAIL_VERIFICATION_ENABLED", Value: "true"})
+	if en.Verification != nil {
+		env = append(env, corev1.EnvVar{Name: "EMAIL_VERIFICATION_ENABLED", Value: fmt.Sprintf("%t", *en.Verification)})
 	}
 	return env
 }
@@ -252,11 +252,11 @@ func buildLDAPEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.
 		sensitiveValueToEnvVar("LDAP_BIND_PASSWORD", &ldap.BindPassword),
 		{Name: "LDAP_BASE", Value: ldap.Base},
 	}
-	if ldap.SkipCertVerify {
-		env = append(env, corev1.EnvVar{Name: "LDAP_SKIP_CERT_VERIFY", Value: "true"})
+	if ldap.SkipCertVerify != nil {
+		env = append(env, corev1.EnvVar{Name: "LDAP_SKIP_CERT_VERIFY", Value: fmt.Sprintf("%t", *ldap.SkipCertVerify)})
 	}
-	if ldap.SoftDeleteUsers {
-		env = append(env, corev1.EnvVar{Name: "LDAP_SOFT_DELETE_USERS", Value: "true"})
+	if ldap.SoftDeleteUsers != nil {
+		env = append(env, corev1.EnvVar{Name: "LDAP_SOFT_DELETE_USERS", Value: fmt.Sprintf("%t", *ldap.SoftDeleteUsers)})
 	}
 	if ldap.AdminGroupName != "" {
 		env = append(env, corev1.EnvVar{Name: "LDAP_ADMIN_GROUP_NAME", Value: ldap.AdminGroupName})
@@ -316,11 +316,11 @@ func buildLoggingEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []core
 	if instance.Spec.Logging.Level != "" {
 		env = append(env, corev1.EnvVar{Name: "LOG_LEVEL", Value: instance.Spec.Logging.Level})
 	}
-	if instance.Spec.Logging.JSON {
-		env = append(env, corev1.EnvVar{Name: "LOG_JSON", Value: "true"})
+	if instance.Spec.Logging.JSON != nil {
+		env = append(env, corev1.EnvVar{Name: "LOG_JSON", Value: fmt.Sprintf("%t", *instance.Spec.Logging.JSON)})
 	}
-	if instance.Spec.Logging.QueryArgs {
-		env = append(env, corev1.EnvVar{Name: "LOG_QUERY_ARGS", Value: "true"})
+	if instance.Spec.Logging.QueryArgs != nil {
+		env = append(env, corev1.EnvVar{Name: "LOG_QUERY_ARGS", Value: fmt.Sprintf("%t", *instance.Spec.Logging.QueryArgs)})
 	}
 	return env
 }
@@ -353,8 +353,8 @@ func buildUIEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.En
 	if ui.HomePageURL != "" {
 		env = append(env, corev1.EnvVar{Name: "HOME_PAGE_URL", Value: ui.HomePageURL})
 	}
-	if ui.DisableAnimations {
-		env = append(env, corev1.EnvVar{Name: "DISABLE_ANIMATIONS", Value: "true"})
+	if ui.DisableAnimations != nil {
+		env = append(env, corev1.EnvVar{Name: "DISABLE_ANIMATIONS", Value: fmt.Sprintf("%t", *ui.DisableAnimations)})
 	}
 	if ui.AccentColor != "" {
 		env = append(env, corev1.EnvVar{Name: "ACCENT_COLOR", Value: ui.AccentColor})
@@ -368,8 +368,8 @@ func buildUserManagementEnv(instance *pocketidinternalv1alpha1.PocketIDInstance)
 	}
 	um := instance.Spec.UserManagement
 	var env []corev1.EnvVar
-	if um.EmailsVerified {
-		env = append(env, corev1.EnvVar{Name: "EMAILS_VERIFIED", Value: "true"})
+	if um.EmailsVerified != nil {
+		env = append(env, corev1.EnvVar{Name: "EMAILS_VERIFIED", Value: fmt.Sprintf("%t", *um.EmailsVerified)})
 	}
 	if um.AllowOwnAccountEdit != nil {
 		env = append(env, corev1.EnvVar{Name: "ALLOW_OWN_ACCOUNT_EDIT", Value: fmt.Sprintf("%t", *um.AllowOwnAccountEdit)})
@@ -443,11 +443,11 @@ func buildStandaloneEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []c
 	if instance.Spec.AuditLogRetentionDays != nil {
 		env = append(env, corev1.EnvVar{Name: "AUDIT_LOG_RETENTION_DAYS", Value: fmt.Sprintf("%d", *instance.Spec.AuditLogRetentionDays)})
 	}
-	if instance.Spec.AnalyticsDisabled {
-		env = append(env, corev1.EnvVar{Name: "ANALYTICS_DISABLED", Value: "true"})
+	if instance.Spec.AnalyticsDisabled != nil {
+		env = append(env, corev1.EnvVar{Name: "ANALYTICS_DISABLED", Value: fmt.Sprintf("%t", *instance.Spec.AnalyticsDisabled)})
 	}
-	if instance.Spec.VersionCheckDisabled {
-		env = append(env, corev1.EnvVar{Name: "VERSION_CHECK_DISABLED", Value: "true"})
+	if instance.Spec.VersionCheckDisabled != nil {
+		env = append(env, corev1.EnvVar{Name: "VERSION_CHECK_DISABLED", Value: fmt.Sprintf("%t", *instance.Spec.VersionCheckDisabled)})
 	}
 	if instance.Spec.InternalAppURL != "" {
 		env = append(env, corev1.EnvVar{Name: "INTERNAL_APP_URL", Value: instance.Spec.InternalAppURL})

@@ -30,7 +30,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
@@ -511,7 +510,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: "test-oidc-store-secret", Namespace: namespace},
 				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 					CallbackURLs: []string{"https://store-secret.example.com/callback"},
-					Secret:       &pocketidinternalv1alpha1.OIDCClientSecretSpec{StoreClientSecret: ptr.To(false)},
+					Secret:       &pocketidinternalv1alpha1.OIDCClientSecretSpec{StoreClientSecret: new(false)},
 					ClientSecretRotation: &pocketidinternalv1alpha1.ClientSecretRotation{
 						Enabled:  true,
 						Interval: &metav1.Duration{Duration: 720 * time.Hour},
@@ -530,7 +529,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: "test-oidc-store-secret-update", Namespace: namespace},
 				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 					CallbackURLs: []string{"https://store-secret.example.com/callback"},
-					Secret:       &pocketidinternalv1alpha1.OIDCClientSecretSpec{StoreClientSecret: ptr.To(false)},
+					Secret:       &pocketidinternalv1alpha1.OIDCClientSecretSpec{StoreClientSecret: new(false)},
 				},
 			}
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
@@ -848,14 +847,14 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 		It("rejects delegatedAccess false alongside delegatedPermissions", func() {
 			expectRejectedWith(newClient("flags-cel-delegated", pocketidinternalv1alpha1.OIDCClientAPIAccess{
 				DelegatedPermissions: []string{"read"},
-				DelegatedAccess:      ptr.To(false),
+				DelegatedAccess:      new(false),
 			}), "delegatedAccess: false conflicts with delegatedPermissions")
 		})
 
 		It("rejects clientAccess false alongside clientPermissions", func() {
 			expectRejectedWith(newClient("flags-cel-client", pocketidinternalv1alpha1.OIDCClientAPIAccess{
 				ClientPermissions: []string{"read"},
-				ClientAccess:      ptr.To(false),
+				ClientAccess:      new(false),
 			}), "clientAccess: false conflicts with clientPermissions")
 		})
 
@@ -864,7 +863,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 		// the clientPermissions half of this same rule; this is the clientAccess half.
 		It("rejects clientAccess on a public client", func() {
 			resource := newClient("flags-cel-public", pocketidinternalv1alpha1.OIDCClientAPIAccess{
-				ClientAccess: ptr.To(true),
+				ClientAccess: new(true),
 			})
 			resource.Spec.IsPublic = true
 			expectRejectedWith(resource, "require a confidential client (isPublic must be false)")
@@ -873,26 +872,26 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 		It("accepts a false flag on the flow that selects no permissions", func() {
 			expectAccepted(newClient("flags-cel-other-flow", pocketidinternalv1alpha1.OIDCClientAPIAccess{
 				DelegatedPermissions: []string{"read"},
-				ClientAccess:         ptr.To(false),
+				ClientAccess:         new(false),
 			}))
 		})
 
 		It("accepts a true flag alongside permissions, which is the derived default", func() {
 			expectAccepted(newClient("flags-cel-true", pocketidinternalv1alpha1.OIDCClientAPIAccess{
 				DelegatedPermissions: []string{"read"},
-				DelegatedAccess:      ptr.To(true),
+				DelegatedAccess:      new(true),
 			}))
 		})
 
 		It("accepts a flag on its own, which is the scopeless grant", func() {
 			expectAccepted(newClient("flags-cel-scopeless", pocketidinternalv1alpha1.OIDCClientAPIAccess{
-				DelegatedAccess: ptr.To(true),
+				DelegatedAccess: new(true),
 			}))
 		})
 
 		It("accepts a false flag on its own, which grants nothing", func() {
 			expectAccepted(newClient("flags-cel-false-alone", pocketidinternalv1alpha1.OIDCClientAPIAccess{
-				DelegatedAccess: ptr.To(false),
+				DelegatedAccess: new(false),
 			}))
 		})
 	})

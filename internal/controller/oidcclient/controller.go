@@ -774,7 +774,7 @@ func logoReachable(resolved, applied string) *bool {
 	if resolved == "" {
 		return nil
 	}
-	return ptr.To(applied == resolved)
+	return new(applied == resolved)
 }
 
 func (p *logoPlan) hasPush() bool { return p.pushLight != "" || p.pushDark != "" }

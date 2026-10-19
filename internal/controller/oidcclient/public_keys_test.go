@@ -12,7 +12,6 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
@@ -35,7 +34,7 @@ func inlineKey(key string) pocketidinternalv1alpha1.OIDCClientPublicKey {
 func configMapKey(name, key string, optional bool) pocketidinternalv1alpha1.OIDCClientPublicKey {
 	return pocketidinternalv1alpha1.OIDCClientPublicKey{ValueFrom: &pocketidinternalv1alpha1.OIDCClientPublicKeySource{
 		ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
-			LocalObjectReference: corev1.LocalObjectReference{Name: name}, Key: key, Optional: ptr.To(optional),
+			LocalObjectReference: corev1.LocalObjectReference{Name: name}, Key: key, Optional: new(optional),
 		},
 	}}
 }

@@ -423,8 +423,8 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 
 	// Pod-level settings
 	pt.Spec.SecurityContext = buildPodSecurityContext(instance)
-	if instance.Spec.HostUsers != nil {
-		pt.Spec.HostUsers = instance.Spec.HostUsers
+	if instance.Spec.HostUsers != nil { //nolint:staticcheck // still honored until the field is removed
+		pt.Spec.HostUsers = instance.Spec.HostUsers //nolint:staticcheck // still honored until the field is removed
 	}
 
 	return pt

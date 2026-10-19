@@ -10,7 +10,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -128,7 +127,7 @@ func adoptedClient(generation int64) *pocketidinternalv1alpha1.PocketIDOIDCClien
 			Finalizers: []string{oidcClientFinalizer},
 		},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-			Secret: &pocketidinternalv1alpha1.OIDCClientSecretSpec{Enabled: ptr.To(false)},
+			Secret: &pocketidinternalv1alpha1.OIDCClientSecretSpec{Enabled: new(false)},
 			APIAccess: []pocketidinternalv1alpha1.OIDCClientAPIAccess{{
 				APIRef:               pocketidinternalv1alpha1.NamespacedAPIReference{Name: "orders"},
 				DelegatedPermissions: []string{"read:orders"},

@@ -1,6 +1,7 @@
 package instance
 
 import (
+	"fmt"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -147,7 +148,7 @@ func TestBuildEnvVars_TrustProxyTrustAll(t *testing.T) {
 
 func TestBuildEnvVars_RateLimitingDisabled(t *testing.T) {
 	inst := minimalInstance()
-	inst.Spec.RateLimitingDisabled = true
+	inst.Spec.RateLimitingDisabled = new(true)
 
 	env := buildEnvVars(inst)
 	requireEnv(t, env, "DISABLE_RATE_LIMITING", "true")
@@ -175,7 +176,7 @@ func TestBuildEnvVars_UIConfigDisabledWhenUISet(t *testing.T) {
 
 func TestBuildEnvVars_UIConfigDisabledWhenUserManagementSet(t *testing.T) {
 	inst := minimalInstance()
-	inst.Spec.UserManagement = &pocketidinternalv1alpha1.UserManagementConfig{EmailsVerified: true}
+	inst.Spec.UserManagement = &pocketidinternalv1alpha1.UserManagementConfig{EmailsVerified: new(true)}
 	requireEnv(t, buildEnvVars(inst), "UI_CONFIG_DISABLED", "true")
 }
 
@@ -324,7 +325,7 @@ func TestBuildEnvVars_S3(t *testing.T) {
 			},
 		},
 		SecretAccessKey: pocketidinternalv1alpha1.SensitiveValue{Value: "my-secret-key"},
-		ForcePathStyle:  true,
+		ForcePathStyle:  new(true),
 	}
 
 	env := buildEnvVars(inst)
@@ -345,7 +346,7 @@ func TestBuildEnvVars_S3DisableIntegrityChecks(t *testing.T) {
 		Region:                        "us-east-1",
 		AccessKeyID:                   pocketidinternalv1alpha1.SensitiveValue{Value: "key"},
 		SecretAccessKey:               pocketidinternalv1alpha1.SensitiveValue{Value: "secret"},
-		DisableDefaultIntegrityChecks: true,
+		DisableDefaultIntegrityChecks: new(true),
 	}
 
 	env := buildEnvVars(inst)
@@ -370,7 +371,7 @@ func TestBuildEnvVars_SMTP(t *testing.T) {
 			Value: "smtp-pass",
 		},
 		TLS:            "starttls",
-		SkipCertVerify: true,
+		SkipCertVerify: new(true),
 	}
 
 	env := buildEnvVars(inst)
@@ -402,11 +403,11 @@ func TestBuildEnvVars_SMTPMinimal(t *testing.T) {
 func TestBuildEnvVars_EmailNotifications(t *testing.T) {
 	inst := minimalInstance()
 	inst.Spec.EmailNotifications = &pocketidinternalv1alpha1.EmailNotificationsConfig{
-		LoginNotification:              true,
-		OneTimeAccessAsAdmin:           true,
-		APIKeyExpiration:               true,
-		OneTimeAccessAsUnauthenticated: true,
-		Verification:                   true,
+		LoginNotification:              new(true),
+		OneTimeAccessAsAdmin:           new(true),
+		APIKeyExpiration:               new(true),
+		OneTimeAccessAsUnauthenticated: new(true),
+		Verification:                   new(true),
 	}
 
 	env := buildEnvVars(inst)
@@ -440,8 +441,8 @@ func TestBuildEnvVars_LDAP(t *testing.T) {
 			},
 		},
 		Base:                  "dc=example,dc=com",
-		SkipCertVerify:        true,
-		SoftDeleteUsers:       true,
+		SkipCertVerify:        new(true),
+		SoftDeleteUsers:       new(true),
 		AdminGroupName:        "admins",
 		UserSearchFilter:      "(objectClass=inetOrgPerson)",
 		UserGroupSearchFilter: "(objectClass=groupOfNames)",
@@ -482,8 +483,8 @@ func TestBuildEnvVars_Logging(t *testing.T) {
 	inst := minimalInstance()
 	inst.Spec.Logging = &pocketidinternalv1alpha1.LoggingConfig{
 		Level:     "debug",
-		JSON:      true,
-		QueryArgs: true,
+		JSON:      new(true),
+		QueryArgs: new(true),
 	}
 
 	env := buildEnvVars(inst)
@@ -575,7 +576,7 @@ func TestBuildEnvVars_UI(t *testing.T) {
 		AppName:           "My SSO",
 		SessionDuration:   &sessionDuration,
 		HomePageURL:       "/dashboard",
-		DisableAnimations: true,
+		DisableAnimations: new(true),
 		AccentColor:       "#3b82f6",
 	}
 
@@ -592,7 +593,7 @@ func TestBuildEnvVars_UserManagement(t *testing.T) {
 	allowEdit := false
 	requireEmail := false
 	inst.Spec.UserManagement = &pocketidinternalv1alpha1.UserManagementConfig{
-		EmailsVerified:            true,
+		EmailsVerified:            new(true),
 		AllowOwnAccountEdit:       &allowEdit,
 		RequireUserEmail:          &requireEmail,
 		AllowUserSignups:          "withToken",
@@ -659,8 +660,8 @@ func TestBuildEnvVars_StandaloneSettings(t *testing.T) {
 	inst := minimalInstance()
 	retention := int32(30)
 	inst.Spec.AuditLogRetentionDays = &retention
-	inst.Spec.AnalyticsDisabled = true
-	inst.Spec.VersionCheckDisabled = true
+	inst.Spec.AnalyticsDisabled = new(true)
+	inst.Spec.VersionCheckDisabled = new(true)
 	inst.Spec.InternalAppURL = "http://pocket-id.pocket-id.svc:1411"
 
 	env := buildEnvVars(inst)
@@ -760,5 +761,73 @@ func TestSensitiveValueToEnvVar_SecretRef(t *testing.T) {
 	}
 	if e.ValueFrom.SecretKeyRef.Name != "my-secret" {
 		t.Errorf("secret name: got %q, want %q", e.ValueFrom.SecretKeyRef.Name, "my-secret")
+	}
+}
+
+// Optional booleans are passed through whenever set, including an explicit false,
+// and left unset otherwise so Pocket-ID's own default applies.
+func TestBuildEnvVars_OptionalBools(t *testing.T) {
+	type spec = pocketidinternalv1alpha1.PocketIDInstanceSpec
+	cases := []struct {
+		env string
+		set func(s *spec, v *bool)
+	}{
+		{"S3_FORCE_PATH_STYLE", func(s *spec, v *bool) {
+			s.S3 = &pocketidinternalv1alpha1.S3Config{ForcePathStyle: v}
+		}},
+		{"S3_DISABLE_DEFAULT_INTEGRITY_CHECKS", func(s *spec, v *bool) {
+			s.S3 = &pocketidinternalv1alpha1.S3Config{DisableDefaultIntegrityChecks: v}
+		}},
+		{"SMTP_SKIP_CERT_VERIFY", func(s *spec, v *bool) {
+			s.SMTP = &pocketidinternalv1alpha1.SMTPConfig{SkipCertVerify: v}
+		}},
+		{"EMAIL_LOGIN_NOTIFICATION_ENABLED", func(s *spec, v *bool) {
+			s.EmailNotifications = &pocketidinternalv1alpha1.EmailNotificationsConfig{LoginNotification: v}
+		}},
+		{"EMAIL_ONE_TIME_ACCESS_AS_ADMIN_ENABLED", func(s *spec, v *bool) {
+			s.EmailNotifications = &pocketidinternalv1alpha1.EmailNotificationsConfig{OneTimeAccessAsAdmin: v}
+		}},
+		{"EMAIL_API_KEY_EXPIRATION_ENABLED", func(s *spec, v *bool) {
+			s.EmailNotifications = &pocketidinternalv1alpha1.EmailNotificationsConfig{APIKeyExpiration: v}
+		}},
+		{"EMAIL_ONE_TIME_ACCESS_AS_UNAUTHENTICATED_ENABLED", func(s *spec, v *bool) {
+			s.EmailNotifications = &pocketidinternalv1alpha1.EmailNotificationsConfig{OneTimeAccessAsUnauthenticated: v}
+		}},
+		{"EMAIL_VERIFICATION_ENABLED", func(s *spec, v *bool) {
+			s.EmailNotifications = &pocketidinternalv1alpha1.EmailNotificationsConfig{Verification: v}
+		}},
+		{"LDAP_SKIP_CERT_VERIFY", func(s *spec, v *bool) {
+			s.LDAP = &pocketidinternalv1alpha1.LDAPConfig{SkipCertVerify: v}
+		}},
+		{"LDAP_SOFT_DELETE_USERS", func(s *spec, v *bool) {
+			s.LDAP = &pocketidinternalv1alpha1.LDAPConfig{SoftDeleteUsers: v}
+		}},
+		{"LOG_JSON", func(s *spec, v *bool) {
+			s.Logging = &pocketidinternalv1alpha1.LoggingConfig{JSON: v}
+		}},
+		{"LOG_QUERY_ARGS", func(s *spec, v *bool) {
+			s.Logging = &pocketidinternalv1alpha1.LoggingConfig{QueryArgs: v}
+		}},
+		{"DISABLE_ANIMATIONS", func(s *spec, v *bool) {
+			s.UI = &pocketidinternalv1alpha1.UIConfig{DisableAnimations: v}
+		}},
+		{"EMAILS_VERIFIED", func(s *spec, v *bool) {
+			s.UserManagement = &pocketidinternalv1alpha1.UserManagementConfig{EmailsVerified: v}
+		}},
+		{"ANALYTICS_DISABLED", func(s *spec, v *bool) { s.AnalyticsDisabled = v }},
+		{"VERSION_CHECK_DISABLED", func(s *spec, v *bool) { s.VersionCheckDisabled = v }},
+		{"DISABLE_RATE_LIMITING", func(s *spec, v *bool) { s.RateLimitingDisabled = v }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.env, func(t *testing.T) {
+			for _, v := range []bool{true, false} {
+				inst := minimalInstance()
+				tc.set(&inst.Spec, new(v))
+				requireEnv(t, buildEnvVars(inst), tc.env, fmt.Sprintf("%t", v))
+			}
+			inst := minimalInstance()
+			tc.set(&inst.Spec, nil)
+			requireEnvAbsent(t, buildEnvVars(inst), tc.env)
+		})
 	}
 }

@@ -84,11 +84,11 @@ type S3Config struct {
 
 	// Force path-style URLs instead of virtual-hosted-style URLs.
 	// +optional
-	ForcePathStyle bool `json:"forcePathStyle,omitempty"`
+	ForcePathStyle *bool `json:"forcePathStyle,omitempty"`
 
 	// Disable default S3 integrity checks.
 	// +optional
-	DisableDefaultIntegrityChecks bool `json:"disableDefaultIntegrityChecks,omitempty"`
+	DisableDefaultIntegrityChecks *bool `json:"disableDefaultIntegrityChecks,omitempty"`
 }
 
 // SMTPConfig configures SMTP email transport. When present, SMTP is automatically enabled.
@@ -120,30 +120,30 @@ type SMTPConfig struct {
 
 	// Skip certificate verification (for self-signed certificates).
 	// +optional
-	SkipCertVerify bool `json:"skipCertVerify,omitempty"`
+	SkipCertVerify *bool `json:"skipCertVerify,omitempty"`
 }
 
 // EmailNotificationsConfig controls which email notifications Pocket-ID sends. This is only relevant when SMTP is configured.
 type EmailNotificationsConfig struct {
 	// Notify users of logins from new devices.
 	// +optional
-	LoginNotification bool `json:"loginNotification,omitempty"`
+	LoginNotification *bool `json:"loginNotification,omitempty"`
 
 	// Allow admins to send one-time login access codes.
 	// +optional
-	OneTimeAccessAsAdmin bool `json:"oneTimeAccessAsAdmin,omitempty"`
+	OneTimeAccessAsAdmin *bool `json:"oneTimeAccessAsAdmin,omitempty"`
 
 	// Notify users of expiring API keys.
 	// +optional
-	APIKeyExpiration bool `json:"apiKeyExpiration,omitempty"`
+	APIKeyExpiration *bool `json:"apiKeyExpiration,omitempty"`
 
 	// Allow email-based login bypass for unauthenticated users (reduced security).
 	// +optional
-	OneTimeAccessAsUnauthenticated bool `json:"oneTimeAccessAsUnauthenticated,omitempty"`
+	OneTimeAccessAsUnauthenticated *bool `json:"oneTimeAccessAsUnauthenticated,omitempty"`
 
 	// Send verification emails on signup or email change.
 	// +optional
-	Verification bool `json:"verification,omitempty"`
+	Verification *bool `json:"verification,omitempty"`
 }
 
 // LDAPAttributeMappingConfig maps LDAP attributes to Pocket-ID user/group fields.
@@ -209,11 +209,11 @@ type LDAPConfig struct {
 
 	// Skip LDAP certificate verification.
 	// +optional
-	SkipCertVerify bool `json:"skipCertVerify,omitempty"`
+	SkipCertVerify *bool `json:"skipCertVerify,omitempty"`
 
 	// Disable removed LDAP users instead of deleting them.
 	// +optional
-	SoftDeleteUsers bool `json:"softDeleteUsers,omitempty"`
+	SoftDeleteUsers *bool `json:"softDeleteUsers,omitempty"`
 
 	// LDAP group name that grants admin privileges.
 	// +optional
@@ -241,12 +241,12 @@ type LoggingConfig struct {
 
 	// Output logs as JSON.
 	// +optional
-	JSON bool `json:"json,omitempty"`
+	JSON *bool `json:"json,omitempty"`
 
 	// Include SQL query parameter values in traces and in the query logs emitted
 	// at the debug level. These values may contain sensitive data.
 	// +optional
-	QueryArgs bool `json:"queryArgs,omitempty"`
+	QueryArgs *bool `json:"queryArgs,omitempty"`
 }
 
 // TracingConfig enables OpenTelemetry tracing. When present, tracing is automatically enabled.
@@ -274,7 +274,7 @@ type UIConfig struct {
 
 	// Turn off UI animations.
 	// +optional
-	DisableAnimations bool `json:"disableAnimations,omitempty"`
+	DisableAnimations *bool `json:"disableAnimations,omitempty"`
 
 	// Custom CSS color value for the UI accent theme.
 	// +optional
@@ -285,7 +285,7 @@ type UIConfig struct {
 type UserManagementConfig struct {
 	// Auto-verify emails on signup or change.
 	// +optional
-	EmailsVerified bool `json:"emailsVerified,omitempty"`
+	EmailsVerified *bool `json:"emailsVerified,omitempty"`
 
 	// Allow users to edit their own account details.
 	// +optional
@@ -613,15 +613,15 @@ type PocketIDInstanceSpec struct {
 
 	// Disable the anonymous 24-hour usage analytics heartbeat.
 	// +optional
-	AnalyticsDisabled bool `json:"analyticsDisabled,omitempty"`
+	AnalyticsDisabled *bool `json:"analyticsDisabled,omitempty"`
 
 	// Disable GitHub version checks.
 	// +optional
-	VersionCheckDisabled bool `json:"versionCheckDisabled,omitempty"`
+	VersionCheckDisabled *bool `json:"versionCheckDisabled,omitempty"`
 
 	// Disable Pocket-ID's built-in rate limiting. Pocket-ID's rate limiting is permissive enough for the operator, so it is recommended to keep rate limiting enabled for security.
 	// +optional
-	RateLimitingDisabled bool `json:"rateLimitingDisabled,omitempty"`
+	RateLimitingDisabled *bool `json:"rateLimitingDisabled,omitempty"`
 
 	// Internal base URL for OIDC .well-known endpoints (for split-horizon DNS).
 	// +optional
