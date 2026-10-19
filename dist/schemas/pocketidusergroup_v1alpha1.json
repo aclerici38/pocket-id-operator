@@ -32,14 +32,14 @@
             "description": "NamespacedOIDCClientReference references a PocketIDOIDCClient by name and namespace.",
             "properties": {
               "name": {
-                "description": "Name is the name of the PocketIDOIDCClient CR",
+                "description": "Name is the name of the PocketIDOIDCClient CR.",
                 "type": [
                   "string",
                   "null"
                 ]
               },
               "namespace": {
-                "description": "Namespace is the namespace of the PocketIDOIDCClient CR\nDefaults to the referencing resource's namespace",
+                "description": "Namespace is the namespace of the PocketIDOIDCClient CR.\nDefaults to the referencing resource's namespace.",
                 "type": [
                   "string",
                   "null"

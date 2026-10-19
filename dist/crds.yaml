@@ -3409,34 +3409,32 @@ spec:
               accessTokenDurationMinutes:
                 default: 60
                 description: How long access tokens issued to this client stay valid,
-                  in minutes
+                  in minutes.
                 format: int64
                 maximum: 525600
                 minimum: 1
                 type: integer
               allowedUserGroups:
                 description: |-
-                  AllowedUserGroups restricts access to the listed user groups. Each entry names
-                  either a PocketIDUserGroup CR or, for groups managed outside this cluster, an
-                  existing Pocket-ID group by name or ID.
+                  AllowedUserGroups restricts access to the listed user groups.
+                  Each entry names either a PocketIDUserGroup CR or, for groups managed outside this cluster, an existing Pocket-ID group by name or ID.
                 items:
-                  description: |-
-                    NamespacedUserGroupReference selects a Pocket-ID user group, either by the
-                    PocketIDUserGroup CR that manages it or, for groups managed outside this cluster,
-                    by their name or ID in Pocket-ID.
+                  description: NamespacedUserGroupReference selects a Pocket-ID user
+                    group, either by the PocketIDUserGroup CR that manages it or,
+                    for groups managed outside this cluster, by their name or ID in
+                    Pocket-ID.
                   properties:
                     groupID:
-                      description: |-
-                        GroupID is the Pocket-ID ID of an existing user group. Like groupName, the
-                        group itself is left untouched.
+                      description: GroupID is the Pocket-ID ID of an existing user
+                        group, for groups not managed by a PocketIDUserGroup in this
+                        cluster.
                       maxLength: 64
                       minLength: 1
                       type: string
                     groupName:
-                      description: |-
-                        GroupName is the name of an existing user group in Pocket-ID, for groups not
-                        managed by a PocketIDUserGroup in this cluster. The operator only resolves the
-                        group to grant this client access and never modifies the group itself.
+                      description: GroupName is the name of an existing user group
+                        in Pocket-ID, for groups not managed by a PocketIDUserGroup
+                        in this cluster.
                       maxLength: 255
                       minLength: 2
                       type: string
@@ -3447,8 +3445,8 @@ spec:
                       type: string
                     namespace:
                       description: |-
-                        Namespace is the namespace of the PocketIDUserGroup CR
-                        Defaults to the PocketIDOIDCClient namespace
+                        Namespace is the namespace of the PocketIDUserGroup CR.
+                        Defaults to the PocketIDOIDCClient namespace.
                       maxLength: 63
                       minLength: 1
                       type: string
@@ -3461,30 +3459,24 @@ spec:
                     rule: '!has(self.namespace) || has(self.name)'
                 type: array
               apiAccess:
-                description: |-
-                  APIAccess grants this client permission to request scoped access on the
-                  referenced PocketIDAPIs. The client is the sole owner of its API access in
-                  Pocket-ID: while this field is set the operator keeps the access in sync and
-                  clears it if the field is later emptied. When never set, existing API access
-                  configured out-of-band is left untouched.
+                description: APIAccess grants this client permission to request scoped
+                  access on the referenced PocketIDAPIs.
                 items:
                   description: |-
                     OIDCClientAPIAccess grants a client scoped permissions on a referenced PocketIDAPI.
-                    Permissions are referenced by their key; the controller resolves them to Pocket-ID
-                    permission IDs via the PocketIDAPI status.
-                    The access flags exist to grant a flow that selects no permissions, so setting one to false
-                    alongside a permission list is rejected rather than silently ignoring the list.
+                    Permissions are referenced by their key and the operator resolves them to Pocket-ID permission IDs via the PocketIDAPI status.
+                    The access flags grant a flow that selects no permissions, so setting one to false alongside a permission list is rejected rather than silently ignoring the list.
                   properties:
                     apiRef:
                       description: APIRef references the PocketIDAPI granting access.
                       properties:
                         name:
-                          description: Name is the name of the PocketIDAPI CR
+                          description: Name is the name of the PocketIDAPI CR.
                           type: string
                         namespace:
                           description: |-
-                            Namespace is the namespace of the PocketIDAPI CR
-                            Defaults to the referencing resource's namespace
+                            Namespace is the namespace of the PocketIDAPI CR.
+                            Defaults to the referencing resource's namespace.
                           type: string
                       required:
                       - name
@@ -3495,22 +3487,21 @@ spec:
                         Defaults to true when clientPermissions is non-empty, and requires a confidential client.
                       type: boolean
                     clientPermissions:
-                      description: |-
-                        ClientPermissions are permission keys granted for the client-credentials
-                        (machine-to-machine) flow. These require a confidential client.
+                      description: ClientPermissions are permission keys granted for
+                        the client-credentials (machine-to-machine) flow. These require
+                        a confidential client.
                       items:
                         type: string
                       type: array
                     delegatedAccess:
                       description: |-
-                        DelegatedAccess grants the user-delegated flow even with no permissions selected,
-                        e.g. a client requesting a resource that doesn't need any scopes.
+                        DelegatedAccess grants the user-delegated flow even with no permissions selected, e.g. a client requesting a resource that doesn't need any scopes.
                         Defaults to true when delegatedPermissions is non-empty.
                       type: boolean
                     delegatedPermissions:
-                      description: |-
-                        DelegatedPermissions are permission keys granted for the user-delegated
-                        (authorization code) flow, where the client acts on behalf of a user.
+                      description: DelegatedPermissions are permission keys granted
+                        for the user-delegated (authorization code) flow, where the
+                        client acts on behalf of a user.
                       items:
                         type: string
                       type: array
@@ -3531,41 +3522,33 @@ spec:
                 type: array
               backchannelLogoutUrl:
                 description: Back-channel logout URL Pocket-ID notifies when a user's
-                  session for the client ends
+                  session for the client ends.
                 type: string
               callbackUrls:
-                description: Callback URLs for the client
+                description: Callback URLs for the client.
                 items:
                   type: string
                 type: array
               clientID:
                 description: |-
-                  ClientID is the optional OIDC client ID to use instead of a generated one.
-                  The Client ID is immutable and cannot be changed once the oidc client is created.
-                  An https:// URL marks the client as an OAuth Client ID Metadata Document (CIMD)
-                  client, which the operator adopts but never creates and only partially manages.
+                  ClientID is the optional OIDC client ID to use instead of a generated one. The Client ID is immutable and cannot be changed once the oidc client is created.
+                  An https:// URL marks the client as an OAuth Client ID Metadata Document (CIMD) client, which the operator adopts but never creates and only partially manages.
                 maxLength: 512
                 minLength: 2
                 type: string
               clientSecretOverlap:
                 description: |-
-                  ClientSecretOverlap is how long the client-secret a replacement supersedes stays valid in
-                  Pocket-ID, giving consumers that cached it time to pick up the new one. It covers every
-                  replacement: scheduled rotations, the regenerate-client-secret annotation, and clientSecretRef updates.
-
-                  When unset or zero the previous secret is deleted as soon as the replacement is stored,
-                  so exactly one secret is ever valid. Must not exceed 168h, nor clientSecretRotation.interval if set.
+                  ClientSecretOverlap is how long the client-secret a replacement supersedes stays valid in Pocket-ID, giving consumers time to rollout and pick up the new one.
+                  When unset or zero the previous secret is deleted as soon as the replacement is stored, so exactly one secret is ever valid.
+                  Must not exceed 168h, nor clientSecretRotation.interval if set.
                 type: string
                 x-kubernetes-validations:
                 - message: clientSecretOverlap must not exceed 168h (7 days)
                   rule: duration(self) <= duration('168h')
               clientSecretRef:
                 description: |-
-                  ClientSecretRef references a Kubernetes Secret key holding the client secret to set in
-                  Pocket-ID, instead of letting the operator generate one. The value must be at least 16
-                  printable ASCII characters. While set, the operator never generates or rotates the secret:
-                  clientSecretRotation cannot be enabled and the regenerate-client-secret annotation is
-                  ignored.
+                  ClientSecretRef references a Kubernetes Secret key holding the client secret to set in Pocket-ID, instead of letting the operator generate one. The value must be at least 16 printable ASCII characters.
+                  While set, the operator never generates or rotates the secret.
                 properties:
                   key:
                     description: The key of the secret to select from.  Must be a
@@ -3590,18 +3573,17 @@ spec:
               clientSecretRotation:
                 description: |-
                   ClientSecretRotation configures automatic, scheduled regeneration of the client secret.
-                  When unset the secret is only regenerated on create/adopt, on self-heal,
-                  or when the regenerate-client-secret annotation is set.
+                  When unset the secret is only regenerated on create/adopt, on self-heal, or when the regenerate-client-secret annotation is set.
                 properties:
                   enabled:
                     default: false
                     description: Enabled controls whether automatic rotation is active.
                     type: boolean
                   interval:
-                    description: |-
-                      Interval is the minimum time between rotations (e.g. "720h" for 30 days). Must be between
-                      1h and 8760h. When omitted, rotation is driven entirely by window (which then becomes
-                      required) and the secret rotates once per window opening.
+                    description: Interval is the minimum time between rotations (e.g.
+                      "720h" for 30 days). Must be between 1h and 8760h. When omitted,
+                      rotation is driven entirely by window (which then becomes required)
+                      and the secret rotates once per window opening.
                     type: string
                     x-kubernetes-validations:
                     - message: interval must be between 1h and 8760h (1 year)
@@ -3609,10 +3591,8 @@ spec:
                         duration('8760h')
                   window:
                     description: |-
-                      Window restricts rotations to a recurring maintenance window. When interval is set, rotations
-                      fire as soon as the interval and global min-spacing are satisfied, confined to the window
-                      when one is configured. When interval is omitted, the window opening is itself the trigger:
-                      the secret rotates once per opening (subject to min-spacing).
+                      Window restricts rotations to a recurring maintenance window. When interval is set, rotations fire as soon as the interval and global min-spacing are satisfied, confined to the window when one is configured.
+                      When interval is omitted, the window opening is the trigger and the secret rotates once per opening subject to min-spacing.
                     properties:
                       closesAfter:
                         description: ClosesAfter is how long the window stays open
@@ -3639,39 +3619,37 @@ spec:
                   rule: '!has(self.window) || !has(self.interval) || duration(self.window.closesAfter)
                     <= duration(self.interval)'
               darkLogoUrl:
-                description: |-
-                  Dark logo URL for the client
-                  Deprecated: Use spec.logo.darkLogoUrl instead.
+                description: 'Deprecated: Use spec.logo.darkLogoUrl instead.'
                 type: string
               description:
                 description: Description is an optional description for the client
                 maxLength: 150
                 type: string
               federatedIdentities:
-                description: FederatedIdentities configures JWT assertion identities
+                description: FederatedIdentities configures JWT assertion identities.
                 items:
                   description: OIDCClientFederatedIdentity defines a federated identity
                     for OIDC client credentials.
                   properties:
                     audience:
-                      description: Audience is the audience for the identity
+                      description: Audience is the audience for the identity.
                       type: string
                     issuer:
-                      description: Issuer is the OIDC issuer for the identity
+                      description: Issuer is the OIDC issuer for the identity.
                       type: string
                     jwks:
                       description: JWKS is the URL of the identity's JWKS. Defaults
-                        to the issuer's /.well-known/jwks.json
+                        to the issuer's /.well-known/jwks.json.
                       type: string
                     publicKeys:
                       description: PublicKeys are the keys that verify the identity's
-                        assertions, used instead of a JWKS URL
+                        assertions, used instead of a JWKS URL.
                       items:
                         description: OIDCClientPublicKey is a public key given inline
                           or read from a ConfigMap or Secret.
                         properties:
                           value:
-                            description: Value is a JWK
+                            description: Value is a JWK.
                             type: object
                             x-kubernetes-preserve-unknown-fields: true
                           valueFrom:
@@ -3742,10 +3720,10 @@ spec:
                     replayProtection:
                       default: false
                       description: ReplayProtection requires client assertions to
-                        carry a jti and rejects replays
+                        carry a jti and rejects replays.
                       type: boolean
                     subject:
-                      description: Subject is the subject for the identity
+                      description: Subject is the subject for the identity.
                       type: string
                   type: object
                 type: array
@@ -3799,10 +3777,11 @@ spec:
                 x-kubernetes-map-type: atomic
               isPublic:
                 default: false
-                description: Indicates if the client is public (no client secret)
+                description: Indicates if the client is public (no client secret).
                 type: boolean
               launchUrl:
-                description: Launch URL for the client
+                description: Launch URL for the client. Used in the "apps" dashboard
+                  in the Pocket-ID ui.
                 type: string
               logo:
                 description: Logo configures logo URLs for the OIDC client with template
@@ -3810,20 +3789,17 @@ spec:
                 properties:
                   autoGenerate:
                     description: |-
-                      AutoGenerate controls whether to auto-generate logo URLs from templates
-                      when logoUrl/darkLogoUrl are not explicitly set in this struct.
+                      AutoGenerate controls whether to auto-generate logo URLs from templates when logoUrl/darkLogoUrl are not explicitly set in this struct.
                       If not set, defaults to the AUTOGENERATE_LOGOS env var on the operator, which defaults to true.
                     type: boolean
                   darkLogoUrl:
                     description: |-
-                      DarkLogoURL is the URL template for the dark logo.
-                      Use {{name}} as a placeholder for the logo name.
+                      DarkLogoURL is the URL template for the dark logo. Use {{name}} as a placeholder for the logo name.
                       Defaults to the DEFAULT_DARK_LOGO_URL env var on the operator.
                     type: string
                   logoUrl:
                     description: |-
-                      LogoURL is the URL template for the light logo.
-                      Use {{name}} as a placeholder for the logo name.
+                      LogoURL is the URL template for the light logo. Use {{name}} as a placeholder for the logo name.
                       Defaults to the DEFAULT_LOGO_URL env var on the operator.
                     type: string
                   nameOverride:
@@ -3833,28 +3809,25 @@ spec:
                     type: string
                 type: object
               logoUrl:
-                description: |-
-                  Logo URL for the client
-                  Deprecated: Use spec.logo.logoUrl instead.
+                description: 'Deprecated: Use spec.logo.logoUrl instead.'
                 type: string
               logoutCallbackUrls:
-                description: Logout callback URLs for the client
+                description: Logout callback URLs for the client.
                 items:
                   type: string
                 type: array
               name:
-                description: |-
-                  Name of the oidc client to create in Pocket ID.
-                  If omitted, defaults to metadata.name of the oidcclient resource.
+                description: Name of the oidc client to create in Pocket ID. If omitted,
+                  defaults to metadata.name of the oidcclient resource.
                 type: string
               pkceEnabled:
                 default: false
-                description: Enables PKCE for the client
+                description: Enables PKCE for the client.
                 type: boolean
               refreshTokenDurationMinutes:
                 default: 43200
                 description: How long refresh tokens issued to this client stay valid,
-                  in minutes
+                  in minutes.
                 format: int64
                 maximum: 525600
                 minimum: 1
@@ -3862,15 +3835,14 @@ spec:
               requiresPushedAuthorizationRequests:
                 default: false
                 description: Requires the client to use pushed authorization requests
-                  (PAR)
+                  (PAR).
                 type: boolean
               requiresReauthentication:
                 default: false
-                description: Requires reauthentication on login
+                description: Requires reauthentication on login.
                 type: boolean
               scim:
-                description: |-
-                  SCIM configures SCIM provisioning for this OIDC client.
+                description: SCIM configures SCIM provisioning for this OIDC client.
                   Pocket ID will push user/group changes to the configured endpoint.
                 properties:
                   endpoint:
@@ -3879,8 +3851,7 @@ spec:
                     type: string
                   tokenSecretRef:
                     description: |-
-                      TokenSecretRef references a Kubernetes Secret key containing the
-                      bearer token used to authenticate with the SCIM endpoint.
+                      TokenSecretRef references a Kubernetes Secret key containing the bearer token used to authenticate with the SCIM endpoint.
                       If omitted, no Authorization header is sent.
                     properties:
                       key:
@@ -3915,22 +3886,20 @@ spec:
                     additionalProperties:
                       type: string
                     description: |-
-                      AdditionalAnnotations allows setting custom annotations on the secret created by the
-                      PocketIDOIDCClient custom resource. Operator-managed annotations take precedence and
-                      cannot be overridden.
+                      AdditionalAnnotations allows setting custom annotations on the secret created by the PocketIDOIDCClient custom resource.
+                      Operator-managed annotations take precedence and cannot be overridden.
                     type: object
                   additionalLabels:
                     additionalProperties:
                       type: string
-                    description: |-
-                      AdditionalLabels allows setting custom labels on the secret created by the PocketIDOIDCClient
-                      custom resource
+                    description: AdditionalLabels allows setting custom labels on
+                      the secret created by the PocketIDOIDCClient custom resource
                     type: object
                   enabled:
                     default: true
                     description: |-
                       Enabled controls whether to create a secret with OIDC client credentials.
-                      If false, no secret will be created. Defaults to true
+                      If false, no secret will be created. Defaults to true.
                     type: boolean
                   keys:
                     description: Keys allows customization of the secret keys for
@@ -3938,104 +3907,87 @@ spec:
                     properties:
                       authorizationUrl:
                         default: authorization_url
-                        description: |-
-                          AuthorizationURL is the key name for the OIDC authorization endpoint URL.
-                          Defaults to authorization_url
+                        description: AuthorizationURL is the key name for the OIDC
+                          authorization endpoint URL.
                         type: string
                       callbackUrls:
                         default: callback_urls
-                        description: |-
-                          CallbackURLs is the key name for the callback URLs.
-                          Defaults to callback_urls
+                        description: CallbackURLs is the key name for the callback
+                          URLs.
                         type: string
                       clientID:
                         default: client_id
-                        description: |-
-                          ClientID is the key name for the OIDC client ID.
-                          Defaults to client_id
+                        description: ClientID is the key name for the OIDC client
+                          ID.
                         type: string
                       clientSecret:
                         default: client_secret
-                        description: |-
-                          ClientSecret is the key name for the OIDC client secret.
-                          Defaults to client_secret
+                        description: ClientSecret is the key name for the OIDC client
+                          secret.
                         type: string
                       discoveryUrl:
                         default: discovery_url
-                        description: |-
-                          DiscoveryURL is the key name for the OIDC discovery URL.
-                          Defaults to discovery_url
+                        description: DiscoveryURL is the key name for the OIDC discovery
+                          URL.
                         type: string
                       endSessionUrl:
                         default: end_session_url
-                        description: |-
-                          EndSessionURL is the key name for the OIDC end session (logout) endpoint URL.
-                          Defaults to end_session_url
+                        description: EndSessionURL is the key name for the OIDC end
+                          session (logout) endpoint URL.
                         type: string
                       issuerUrl:
                         default: issuer_url
-                        description: |-
-                          IssuerURL is the key name for the OIDC issuer URL.
-                          Defaults to issuer_url
+                        description: IssuerURL is the key name for the OIDC issuer
+                          URL.
                         type: string
                       jwksUrl:
                         default: jwks_url
-                        description: |-
-                          JwksURL is the key name for the OIDC JWKS (JSON Web Key Set) endpoint URL.
-                          Defaults to jwks_url
+                        description: JwksURL is the key name for the OIDC JWKS (JSON
+                          Web Key Set) endpoint URL.
                         type: string
                       logoutCallbackUrls:
                         default: logout_callback_urls
-                        description: |-
-                          LogoutCallbackURLs is the key name for the logout callback URLs.
-                          Defaults to logout_callback_urls
+                        description: LogoutCallbackURLs is the key name for the logout
+                          callback URLs.
                         type: string
                       resource:
                         default: resource
-                        description: |-
-                          Resource is the key name for the audience to request tokens for, taken from the APIs
-                          in apiAccess. It also prefixes the per-API key "<resource>_<apiRef.name>".
-                          Defaults to resource
+                        description: Resource is the key name for the audience to
+                          request tokens for, taken from the APIs in apiAccess. It
+                          also prefixes the per-API key "<resource>_<apiRef.name>".
                         type: string
                       scopes:
                         default: scopes
-                        description: |-
-                          Scopes is the key name for the space-delimited scopes apiAccess grants the
-                          client-credentials flow. It also prefixes the per-API key "<scopes>_<apiRef.name>".
-                          Defaults to scopes
+                        description: Scopes is the key name for the space-delimited
+                          scopes apiAccess grants the client-credentials flow. It
+                          also prefixes the per-API key "<scopes>_<apiRef.name>".
                         type: string
                       tokenUrl:
                         default: token_url
-                        description: |-
-                          TokenURL is the key name for the OIDC token endpoint URL.
-                          Defaults to token_url
+                        description: TokenURL is the key name for the OIDC token endpoint
+                          URL.
                         type: string
                       userinfoUrl:
                         default: userinfo_url
-                        description: |-
-                          UserinfoURL is the key name for the OIDC userinfo endpoint URL.
-                          Defaults to userinfo_url
+                        description: UserinfoURL is the key name for the OIDC userinfo
+                          endpoint URL.
                         type: string
                     type: object
                   name:
-                    description: |-
-                      Name is the name of the secret to create.
-                      Defaults to metadata.name + "-oidc-credentials"
+                    description: Name is the name of the secret to create. Defaults
+                      to metadata.name + "-oidc-credentials"
                     type: string
                   storeClientSecret:
                     default: true
                     description: |-
                       StoreClientSecret controls whether the operator manages the client secret.
-                      When false, the operator never regenerates an existing client secret: a client
-                      created by the operator still gets its initial secret minted and stored, while
-                      an adopted client keeps its externally-managed secret and the Secret omits the
-                      client_secret key. Defaults to true
+                      When false, a client created by the operator still gets its initial secret minted and stored, while an adopted client keeps its externally-managed secret and the Secret omits the client_secret key.
                     type: boolean
                 type: object
               skipConsent:
                 default: false
                 description: Skips the consent screen on initial authorization for
-                  this client
+                  this client.
                 type: boolean
             type: object
             x-kubernetes-validations:
@@ -4101,28 +4053,26 @@ spec:
                   type: string
                 type: array
               cimdGrantedAPIs:
-                description: |-
-                  CIMDGrantedAPIs are the API resources this client can reach because the API grants
-                  every Client ID Metadata Document client access, rather than because of spec.apiAccess.
-                  Removing an apiAccess entry does not revoke access listed here; that is turned off on
-                  the PocketIDAPI. Only ever set for a cimd client.
+                description: CIMDGrantedAPIs are the resources of APIs reachable through
+                  their cimdAccess setting rather than this client's own grant; revoke
+                  it on the PocketIDAPI, not via spec.apiAccess. Only populated for
+                  cimd clients.
                 items:
                   type: string
                 type: array
               clientID:
-                description: ClientID is the ID assigned by Pocket-ID
+                description: ClientID is the ID assigned by Pocket-ID.
                 type: string
               clientSecretSourceVersion:
-                description: |-
-                  ClientSecretSourceVersion identifies the spec.clientSecretRef source last pushed to
-                  Pocket-ID. Pocket-ID stores the secret hashed and never returns it, so this is how the
-                  operator detects that the referenced Secret changed and needs pushing again.
+                description: ClientSecretSourceVersion identifies the spec.clientSecretRef
+                  source last pushed to Pocket-ID. Pocket-ID stores the secret hashed
+                  and never returns it, so this is how the operator detects that the
+                  referenced Secret changed and needs pushing again.
                 type: string
               clientType:
                 description: |-
                   ClientType is how the client was registered in Pocket-ID: "standard" or "cimd".
-                  For a "cimd" client the operator manages only the fields Pocket-ID persists on an
-                  admin update; the rest are owned by its OAuth Client ID Metadata Document.
+                  For a "cimd" client the operator manages only the fields Pocket-ID persists on an admin update; the rest are owned by its OAuth Client ID Metadata Document.
                 type: string
               conditions:
                 description: Conditions represent the current state of the PocketIDOIDCClient
@@ -4189,24 +4139,22 @@ spec:
                 description: CreatedAt is the creation timestamp from Pocket-ID
                 type: string
               darkLogoReachable:
-                description: |-
-                  DarkLogoReachable reports whether Pocket-ID could fetch and store the dark logo from the
-                  URL the spec resolves to. Unset when the spec asks for no dark logo.
+                description: DarkLogoReachable reports whether Pocket-ID could fetch
+                  and store the dark logo from the URL the spec resolves to.
                 type: boolean
               darkLogoUrl:
                 description: DarkLogoURL is the dark logo URL the operator last successfully
                   applied to Pocket-ID.
                 type: string
               lastRotatedAt:
-                description: |-
-                  LastRotatedAt is the time the client secret was last regenerated by the
-                  operator. Used to determine when the next scheduled rotation is due.
+                description: LastRotatedAt is the time the client secret was last
+                  regenerated by the operator. Used to determine when the next scheduled
+                  rotation is due.
                 format: date-time
                 type: string
               logoReachable:
-                description: |-
-                  LogoReachable reports whether Pocket-ID could fetch and store the light logo from the
-                  URL the spec resolves to. Unset when the spec asks for no light logo.
+                description: LogoReachable reports whether Pocket-ID could fetch and
+                  store the light logo from the URL the spec resolves to.
                 type: boolean
               logoUrl:
                 description: LogoURL is the light logo URL the operator last successfully
@@ -4219,9 +4167,9 @@ spec:
                   type: string
                 type: array
               managedAPIPermissionIDs:
-                description: |-
-                  ManagedAPIPermissionIDs are the Pocket-ID API permission IDs the operator last
-                  pushed as this client's API access (both delegated and client-credentials).
+                description: ManagedAPIPermissionIDs are the Pocket-ID API permission
+                  IDs the operator last pushed as this client's API access (both delegated
+                  and client-credentials).
                 items:
                   type: string
                 type: array
@@ -4232,12 +4180,12 @@ spec:
                   type: string
                 type: array
               name:
-                description: Name is the resolved name from Pocket-ID
+                description: Name is the resolved name from Pocket-ID.
                 type: string
               pkceSupported:
-                description: |-
-                  PKCESupported indicates Pocket-ID observed the client using PKCE during an
-                  authorization flow while spec.pkceEnabled is false, signalling PKCE can be enabled.
+                description: PKCESupported indicates Pocket-ID observed the client
+                  using PKCE during an authorization flow while spec.pkceEnabled is
+                  false, signalling PKCE can be enabled.
                 type: boolean
               scimProviderID:
                 description: SCIMProviderID is the pocket-id ID of the SCIM service
@@ -4302,12 +4250,12 @@ spec:
                     by name and namespace.
                   properties:
                     name:
-                      description: Name is the name of the PocketIDOIDCClient CR
+                      description: Name is the name of the PocketIDOIDCClient CR.
                       type: string
                     namespace:
                       description: |-
-                        Namespace is the namespace of the PocketIDOIDCClient CR
-                        Defaults to the referencing resource's namespace
+                        Namespace is the namespace of the PocketIDOIDCClient CR.
+                        Defaults to the referencing resource's namespace.
                       type: string
                   type: object
                 type: array
