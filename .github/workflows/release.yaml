@@ -56,10 +56,10 @@ jobs:
           persist-credentials: false
 
       - name: Setup mise
-        uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: "2026.10.12"
+          version: "2026.10.15"
           install_args: "sd yq"
 
       - name: Setup Docker Buildx
@@ -193,10 +193,10 @@ jobs:
           persist-credentials: false
 
       - name: Setup mise
-        uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: "2026.10.12"
+          version: "2026.10.15"
           install_args: "aqua:orhun/git-cliff"
 
       # On a promotion the release tag already sits on this commit, so its history
@@ -306,10 +306,10 @@ jobs:
       #     so the assets are taken from the tree as-is. ---
       - name: Setup mise
         if: ${{ needs.prepare.outputs.promote != 'true' }}
-        uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: "2026.10.12"
+          version: "2026.10.15"
           install_args: "aqua:orhun/git-cliff"
 
       # cliff.toml declares [remote.github] and templates commit.remote.username,
