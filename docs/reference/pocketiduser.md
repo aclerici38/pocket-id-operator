@@ -104,8 +104,8 @@ CustomClaim defines a custom claim key/value pair for a user or user group.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `key` | string | yes |  | Key is the claim key |
-| `value` | string | yes |  | Value is the claim value |
+| `key` | string | yes |  | Key is the claim key. |
+| `value` | string | yes |  | Value is the claim value. |
 
 ## `PocketIDUser.status`
 
@@ -150,5 +150,5 @@ CustomClaim defines a custom claim key/value pair for a user or user group.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `key` | string | yes |  | Key is the claim key |
-| `value` | string | yes |  | Value is the claim value |
+| `key` | string | yes |  | Key is the claim key. |
+| `value` | string | yes |  | Value is the claim value. |

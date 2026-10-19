@@ -2,20 +2,20 @@
 
 # PocketIDUserGroup
 
-PocketIDUserGroup is the Schema for the pocketidusergroups API
+PocketIDUserGroup is the Schema for the pocketidusergroups API.
 
 ## `PocketIDUserGroup.spec`
 
-PocketIDUserGroupSpec defines the desired state of PocketIDUserGroup
+PocketIDUserGroupSpec defines the desired state of PocketIDUserGroup.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `instanceSelector` | [LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#labelselector-v1-meta) |  |  | InstanceSelector selects the PocketIDInstance to reconcile against.<br />If omitted, the controller expects exactly one instance in the cluster. |
-| `name` | string |  |  | Name of the user group. Defaults to the metadata.name<br />_MaxLength: 255_<br />_MinLength: 2_ |
-| `friendlyName` | string |  |  | FriendlyName is the display name for the user group<br />_MaxLength: 50_<br />_MinLength: 2_ |
-| [`customClaims`](#pocketidusergroupspeccustomclaims) | []object |  |  | CustomClaims are additional claims to attach to users in this group |
-| [`users`](#pocketidusergroupspecusers) | object |  |  | Users defines the users to add to this group |
-| [`allowedOIDCClients`](#pocketidusergroupspecallowedoidcclients) | []object |  |  | AllowedOIDCClients lists PocketIDOIDCClient CRs that this group grants access to.<br />The final set of allowed clients is the union of this field and any<br />OIDCClients that reference this group in their allowedUserGroups. |
+| `name` | string |  |  | Name of the user group in Pocket-ID. Defaults to metadata.name.<br />_MaxLength: 255_<br />_MinLength: 2_ |
+| `friendlyName` | string |  |  | FriendlyName is the display name of the user group. Defaults to the name.<br />_MaxLength: 50_<br />_MinLength: 2_ |
+| [`customClaims`](#pocketidusergroupspeccustomclaims) | []object |  |  | CustomClaims are additional claims to attach to every user in this group. A user's own claim with the same key takes precedence. |
+| [`users`](#pocketidusergroupspecusers) | object |  |  | Users defines the members the operator manages in this group. Members added outside the operator are left in place. |
+| [`allowedOIDCClients`](#pocketidusergroupspecallowedoidcclients) | []object |  |  | AllowedOIDCClients lists PocketIDOIDCClient CRs that this group grants access to. Each must be Ready. The final set of allowed clients is the union of this field and any PocketIDOIDCClients that reference this group in their allowedUserGroups. |
 
 ## `PocketIDUserGroup.spec.customClaims[]`
 
@@ -25,20 +25,20 @@ CustomClaim defines a custom claim key/value pair for a user or user group.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `key` | string | yes |  | Key is the claim key |
-| `value` | string | yes |  | Value is the claim value |
+| `key` | string | yes |  | Key is the claim key. |
+| `value` | string | yes |  | Value is the claim value. |
 
 ## `PocketIDUserGroup.spec.users`
 
 <sup>[↩ PocketIDUserGroup.spec](#pocketidusergroupspec)</sup>
 
-UserGroupUsers defines the users to add to a user group.
+UserGroupUsers defines the members the operator manages in a user group.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| [`userRefs`](#pocketidusergroupspecusersuserrefs) | []object |  |  | UserRefs are PocketIDUser custom resources to add to this group |
-| `usernames` | string array |  |  | Usernames are Pocket-ID usernames to add to this group.<br />The controller will look up the user ID from Pocket-ID by username. |
-| `userIDs` | string array |  |  | UserIDs are Pocket-ID user IDs to add directly to this group. |
+| [`userRefs`](#pocketidusergroupspecusersuserrefs) | []object |  |  | UserRefs are PocketIDUser custom resources to add to this group. Each must be Ready. |
+| `usernames` | string array |  |  | Usernames are existing Pocket-ID users to add to this group, for users not managed by a PocketIDUser. Each must exist in Pocket-ID. |
+| `userIDs` | string array |  |  | UserIDs are Pocket-ID user IDs to add to this group, for users not managed by a PocketIDUser. |
 
 ## `PocketIDUserGroup.spec.users.userRefs[]`
 
@@ -48,8 +48,8 @@ NamespacedUserReference references a PocketIDUser by name and namespace.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `name` | string |  |  | Name is the name of the PocketIDUser CR |
-| `namespace` | string |  |  | Namespace is the namespace of the PocketIDUser CR<br />Defaults to the referencing resource's namespace |
+| `name` | string |  |  | Name is the name of the PocketIDUser CR. |
+| `namespace` | string |  |  | Namespace is the namespace of the PocketIDUser CR. Defaults to the referencing resource's namespace. |
 
 ## `PocketIDUserGroup.spec.allowedOIDCClients[]`
 
@@ -68,15 +68,15 @@ PocketIDUserGroupStatus defines the observed state of PocketIDUserGroup.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `groupID` | string |  |  | GroupID is the ID assigned by Pocket-ID |
-| `name` | string |  |  | Name is the resolved group name from Pocket-ID |
-| `friendlyName` | string |  |  | FriendlyName is the resolved display name from Pocket-ID |
-| `createdAt` | string |  |  | CreatedAt is the creation timestamp from Pocket-ID |
-| `ldapID` | string |  |  | LdapID is the LDAP identifier if the group is managed via LDAP |
-| `totalUserCount` | integer |  |  | TotalUserCount is the total number of users in the group including externally managed |
-| `managedUserIDs` | string array |  |  | ManagedUserIDs are the Pocket-ID user IDs that the operator is actively managing.<br />Users not in this list are considered externally managed and won't be removed. |
-| [`customClaims`](#pocketidusergroupstatuscustomclaims) | []object |  |  | CustomClaims are the resolved custom claims on the group |
-| `allowedOIDCClientIDs` | string array |  |  | AllowedOIDCClientIDs are the resolved OIDC client IDs assigned to this group |
+| `groupID` | string |  |  | GroupID is the ID assigned by Pocket-ID. |
+| `name` | string |  |  | Name is the group name from Pocket-ID. |
+| `friendlyName` | string |  |  | FriendlyName is the display name from Pocket-ID. |
+| `createdAt` | string |  |  | CreatedAt is the creation timestamp from Pocket-ID. |
+| `ldapID` | string |  |  | LdapID is the LDAP identifier if the group is synced from LDAP. |
+| `totalUserCount` | integer |  |  | TotalUserCount is the number of members in the group, including those not managed by the operator. |
+| `managedUserIDs` | string array |  |  | ManagedUserIDs are the Pocket-ID user IDs the operator manages in this group. Members not in this list were added outside the operator and are never removed. |
+| [`customClaims`](#pocketidusergroupstatuscustomclaims) | []object |  |  | CustomClaims are the group's custom claims in Pocket-ID. |
+| `allowedOIDCClientIDs` | string array |  |  | AllowedOIDCClientIDs are the IDs of the OIDC clients this group is allowed to access in Pocket-ID. |
 | `conditions` | [Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#condition-v1-meta) array |  |  | Conditions represent the current state of the PocketIDUserGroup resource. |
 
 ## `PocketIDUserGroup.status.customClaims[]`
@@ -87,5 +87,5 @@ CustomClaim defines a custom claim key/value pair for a user or user group.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `key` | string | yes |  | Key is the claim key |
-| `value` | string | yes |  | Value is the claim value |
+| `key` | string | yes |  | Key is the claim key. |
+| `value` | string | yes |  | Value is the claim value. |

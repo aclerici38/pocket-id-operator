@@ -5320,11 +5320,11 @@
                           "description": "CustomClaim defines a custom claim key/value pair for a user or user group.",
                           "properties": {
                             "key": {
-                              "description": "Key is the claim key",
+                              "description": "Key is the claim key.",
                               "type": "string"
                             },
                             "value": {
-                              "description": "Value is the claim value",
+                              "description": "Value is the claim value.",
                               "type": "string"
                             }
                           },
@@ -5739,7 +5739,7 @@
                     "description": "spec defines the desired state of PocketIDUserGroup",
                     "properties": {
                       "allowedOIDCClients": {
-                        "description": "AllowedOIDCClients lists PocketIDOIDCClient CRs that this group grants access to.\nThe final set of allowed clients is the union of this field and any\nOIDCClients that reference this group in their allowedUserGroups.",
+                        "description": "AllowedOIDCClients lists PocketIDOIDCClient CRs that this group grants access to. Each must be Ready. The final set of allowed clients is the union of this field and any PocketIDOIDCClients that reference this group in their allowedUserGroups.",
                         "items": {
                           "additionalProperties": false,
                           "description": "NamespacedOIDCClientReference references a PocketIDOIDCClient by name and namespace.",
@@ -5767,17 +5767,17 @@
                         ]
                       },
                       "customClaims": {
-                        "description": "CustomClaims are additional claims to attach to users in this group",
+                        "description": "CustomClaims are additional claims to attach to every user in this group. A user's own claim with the same key takes precedence.",
                         "items": {
                           "additionalProperties": false,
                           "description": "CustomClaim defines a custom claim key/value pair for a user or user group.",
                           "properties": {
                             "key": {
-                              "description": "Key is the claim key",
+                              "description": "Key is the claim key.",
                               "type": "string"
                             },
                             "value": {
-                              "description": "Value is the claim value",
+                              "description": "Value is the claim value.",
                               "type": "string"
                             }
                           },
@@ -5793,7 +5793,7 @@
                         ]
                       },
                       "friendlyName": {
-                        "description": "FriendlyName is the display name for the user group",
+                        "description": "FriendlyName is the display name of the user group. Defaults to the name.",
                         "maxLength": 50,
                         "minLength": 2,
                         "type": [
@@ -5861,7 +5861,7 @@
                         "x-kubernetes-map-type": "atomic"
                       },
                       "name": {
-                        "description": "Name of the user group. Defaults to the metadata.name",
+                        "description": "Name of the user group in Pocket-ID. Defaults to metadata.name.",
                         "maxLength": 255,
                         "minLength": 2,
                         "type": [
@@ -5871,10 +5871,10 @@
                       },
                       "users": {
                         "additionalProperties": false,
-                        "description": "Users defines the users to add to this group",
+                        "description": "Users defines the members the operator manages in this group. Members added outside the operator are left in place.",
                         "properties": {
                           "userIDs": {
-                            "description": "UserIDs are Pocket-ID user IDs to add directly to this group.",
+                            "description": "UserIDs are Pocket-ID user IDs to add to this group, for users not managed by a PocketIDUser.",
                             "items": {
                               "type": "string"
                             },
@@ -5884,20 +5884,20 @@
                             ]
                           },
                           "userRefs": {
-                            "description": "UserRefs are PocketIDUser custom resources to add to this group",
+                            "description": "UserRefs are PocketIDUser custom resources to add to this group. Each must be Ready.",
                             "items": {
                               "additionalProperties": false,
                               "description": "NamespacedUserReference references a PocketIDUser by name and namespace.",
                               "properties": {
                                 "name": {
-                                  "description": "Name is the name of the PocketIDUser CR",
+                                  "description": "Name is the name of the PocketIDUser CR.",
                                   "type": [
                                     "string",
                                     "null"
                                   ]
                                 },
                                 "namespace": {
-                                  "description": "Namespace is the namespace of the PocketIDUser CR\nDefaults to the referencing resource's namespace",
+                                  "description": "Namespace is the namespace of the PocketIDUser CR. Defaults to the referencing resource's namespace.",
                                   "type": [
                                     "string",
                                     "null"
@@ -5912,7 +5912,7 @@
                             ]
                           },
                           "usernames": {
-                            "description": "Usernames are Pocket-ID usernames to add to this group.\nThe controller will look up the user ID from Pocket-ID by username.",
+                            "description": "Usernames are existing Pocket-ID users to add to this group, for users not managed by a PocketIDUser. Each must exist in Pocket-ID.",
                             "items": {
                               "type": "string"
                             },

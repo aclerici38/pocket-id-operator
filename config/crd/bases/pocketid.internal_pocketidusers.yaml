@@ -103,10 +103,10 @@ spec:
                     a user or user group.
                   properties:
                     key:
-                      description: Key is the claim key
+                      description: Key is the claim key.
                       type: string
                     value:
-                      description: Value is the claim value
+                      description: Value is the claim value.
                       type: string
                   required:
                   - key
@@ -458,10 +458,10 @@ spec:
                     a user or user group.
                   properties:
                     key:
-                      description: Key is the claim key
+                      description: Key is the claim key.
                       type: string
                     value:
-                      description: Value is the claim value
+                      description: Value is the claim value.
                       type: string
                   required:
                   - key

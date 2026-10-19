@@ -20,7 +20,7 @@ On creation a PocketIDUser is matched to an existing user by `spec.userID` if it
 
 **PocketIDUserGroup**
 
-On creation a PocketIDUserGroup is matched to existing user groups by `spec.name` falling back to the resource's `metadata.name` if not specified.
+On creation a PocketIDUserGroup is matched to an existing user group by `spec.name`, falling back to the resource's `metadata.name` if not specified. Members added outside the operator are kept. See [PocketIDUserGroup](guides/pocketidusergroup.md#members) for more details.
 
 **PocketIDOIDCClient**
 

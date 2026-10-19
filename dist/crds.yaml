@@ -4218,7 +4218,7 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: PocketIDUserGroup is the Schema for the pocketidusergroups API
+        description: PocketIDUserGroup is the Schema for the pocketidusergroups API.
         properties:
           apiVersion:
             description: |-
@@ -4241,10 +4241,10 @@ spec:
             description: spec defines the desired state of PocketIDUserGroup
             properties:
               allowedOIDCClients:
-                description: |-
-                  AllowedOIDCClients lists PocketIDOIDCClient CRs that this group grants access to.
-                  The final set of allowed clients is the union of this field and any
-                  OIDCClients that reference this group in their allowedUserGroups.
+                description: AllowedOIDCClients lists PocketIDOIDCClient CRs that
+                  this group grants access to. Each must be Ready. The final set of
+                  allowed clients is the union of this field and any PocketIDOIDCClients
+                  that reference this group in their allowedUserGroups.
                 items:
                   description: NamespacedOIDCClientReference references a PocketIDOIDCClient
                     by name and namespace.
@@ -4260,17 +4260,17 @@ spec:
                   type: object
                 type: array
               customClaims:
-                description: CustomClaims are additional claims to attach to users
-                  in this group
+                description: CustomClaims are additional claims to attach to every
+                  user in this group. A user's own claim with the same key takes precedence.
                 items:
                   description: CustomClaim defines a custom claim key/value pair for
                     a user or user group.
                   properties:
                     key:
-                      description: Key is the claim key
+                      description: Key is the claim key.
                       type: string
                     value:
-                      description: Value is the claim value
+                      description: Value is the claim value.
                       type: string
                   required:
                   - key
@@ -4278,7 +4278,8 @@ spec:
                   type: object
                 type: array
               friendlyName:
-                description: FriendlyName is the display name for the user group
+                description: FriendlyName is the display name of the user group. Defaults
+                  to the name.
                 maxLength: 50
                 minLength: 2
                 type: string
@@ -4331,40 +4332,40 @@ spec:
                 type: object
                 x-kubernetes-map-type: atomic
               name:
-                description: Name of the user group. Defaults to the metadata.name
+                description: Name of the user group in Pocket-ID. Defaults to metadata.name.
                 maxLength: 255
                 minLength: 2
                 type: string
               users:
-                description: Users defines the users to add to this group
+                description: Users defines the members the operator manages in this
+                  group. Members added outside the operator are left in place.
                 properties:
                   userIDs:
-                    description: UserIDs are Pocket-ID user IDs to add directly to
-                      this group.
+                    description: UserIDs are Pocket-ID user IDs to add to this group,
+                      for users not managed by a PocketIDUser.
                     items:
                       type: string
                     type: array
                   userRefs:
                     description: UserRefs are PocketIDUser custom resources to add
-                      to this group
+                      to this group. Each must be Ready.
                     items:
                       description: NamespacedUserReference references a PocketIDUser
                         by name and namespace.
                       properties:
                         name:
-                          description: Name is the name of the PocketIDUser CR
+                          description: Name is the name of the PocketIDUser CR.
                           type: string
                         namespace:
-                          description: |-
-                            Namespace is the namespace of the PocketIDUser CR
-                            Defaults to the referencing resource's namespace
+                          description: Namespace is the namespace of the PocketIDUser
+                            CR. Defaults to the referencing resource's namespace.
                           type: string
                       type: object
                     type: array
                   usernames:
-                    description: |-
-                      Usernames are Pocket-ID usernames to add to this group.
-                      The controller will look up the user ID from Pocket-ID by username.
+                    description: Usernames are existing Pocket-ID users to add to
+                      this group, for users not managed by a PocketIDUser. Each must
+                      exist in Pocket-ID.
                     items:
                       type: string
                     type: array
@@ -4374,8 +4375,8 @@ spec:
             description: status defines the observed state of PocketIDUserGroup
             properties:
               allowedOIDCClientIDs:
-                description: AllowedOIDCClientIDs are the resolved OIDC client IDs
-                  assigned to this group
+                description: AllowedOIDCClientIDs are the IDs of the OIDC clients
+                  this group is allowed to access in Pocket-ID.
                 items:
                   type: string
                 type: array
@@ -4441,19 +4442,19 @@ spec:
                 - type
                 x-kubernetes-list-type: map
               createdAt:
-                description: CreatedAt is the creation timestamp from Pocket-ID
+                description: CreatedAt is the creation timestamp from Pocket-ID.
                 type: string
               customClaims:
-                description: CustomClaims are the resolved custom claims on the group
+                description: CustomClaims are the group's custom claims in Pocket-ID.
                 items:
                   description: CustomClaim defines a custom claim key/value pair for
                     a user or user group.
                   properties:
                     key:
-                      description: Key is the claim key
+                      description: Key is the claim key.
                       type: string
                     value:
-                      description: Value is the claim value
+                      description: Value is the claim value.
                       type: string
                   required:
                   - key
@@ -4461,28 +4462,28 @@ spec:
                   type: object
                 type: array
               friendlyName:
-                description: FriendlyName is the resolved display name from Pocket-ID
+                description: FriendlyName is the display name from Pocket-ID.
                 type: string
               groupID:
-                description: GroupID is the ID assigned by Pocket-ID
+                description: GroupID is the ID assigned by Pocket-ID.
                 type: string
               ldapID:
-                description: LdapID is the LDAP identifier if the group is managed
-                  via LDAP
+                description: LdapID is the LDAP identifier if the group is synced
+                  from LDAP.
                 type: string
               managedUserIDs:
-                description: |-
-                  ManagedUserIDs are the Pocket-ID user IDs that the operator is actively managing.
-                  Users not in this list are considered externally managed and won't be removed.
+                description: ManagedUserIDs are the Pocket-ID user IDs the operator
+                  manages in this group. Members not in this list were added outside
+                  the operator and are never removed.
                 items:
                   type: string
                 type: array
               name:
-                description: Name is the resolved group name from Pocket-ID
+                description: Name is the group name from Pocket-ID.
                 type: string
               totalUserCount:
-                description: TotalUserCount is the total number of users in the group
-                  including externally managed
+                description: TotalUserCount is the number of members in the group,
+                  including those not managed by the operator.
                 type: integer
             type: object
         type: object
@@ -4595,10 +4596,10 @@ spec:
                     a user or user group.
                   properties:
                     key:
-                      description: Key is the claim key
+                      description: Key is the claim key.
                       type: string
                     value:
-                      description: Value is the claim value
+                      description: Value is the claim value.
                       type: string
                   required:
                   - key
@@ -4950,10 +4951,10 @@ spec:
                     a user or user group.
                   properties:
                     key:
-                      description: Key is the claim key
+                      description: Key is the claim key.
                       type: string
                     value:
-                      description: Value is the claim value
+                      description: Value is the claim value.
                       type: string
                   required:
                   - key

@@ -111,11 +111,11 @@
             "description": "CustomClaim defines a custom claim key/value pair for a user or user group.",
             "properties": {
               "key": {
-                "description": "Key is the claim key",
+                "description": "Key is the claim key.",
                 "type": "string"
               },
               "value": {
-                "description": "Value is the claim value",
+                "description": "Value is the claim value.",
                 "type": "string"
               }
             },
@@ -633,11 +633,11 @@
             "description": "CustomClaim defines a custom claim key/value pair for a user or user group.",
             "properties": {
               "key": {
-                "description": "Key is the claim key",
+                "description": "Key is the claim key.",
                 "type": "string"
               },
               "value": {
-                "description": "Value is the claim value",
+                "description": "Value is the claim value.",
                 "type": "string"
               }
             },
