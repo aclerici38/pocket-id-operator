@@ -1076,10 +1076,6 @@ spec:
                 description: |-
                   File storage backend. Automatically set to "s3" when s3 config is present.
                   Sets FILE_BACKEND. See https://pocket-id.org/docs/configuration/environment-variables.
-                enum:
-                - filesystem
-                - s3
-                - database
                 type: string
               geoip:
                 description: GeoIP/MaxMind integration for audit log geolocation.
@@ -1812,11 +1808,6 @@ spec:
                     description: |-
                       Log level.
                       Sets LOG_LEVEL. See https://pocket-id.org/docs/configuration/environment-variables.
-                    enum:
-                    - debug
-                    - info
-                    - warn
-                    - error
                     type: string
                   queryArgs:
                     description: |-
@@ -3113,10 +3104,6 @@ spec:
                     description: |-
                       SMTP TLS mode.
                       Sets SMTP_TLS. See https://pocket-id.org/docs/configuration/environment-variables.
-                    enum:
-                    - none
-                    - starttls
-                    - tls
                     type: string
                   user:
                     description: |-
@@ -3233,10 +3220,6 @@ spec:
                     description: |-
                       User signup mode.
                       Sets ALLOW_USER_SIGNUPS. See https://pocket-id.org/docs/configuration/environment-variables.
-                    enum:
-                    - disabled
-                    - withToken
-                    - open
                     type: string
                   emailsVerified:
                     description: |-
@@ -3279,18 +3262,11 @@ spec:
                     description: |-
                       Accepted authenticator type.
                       Sets WEBAUTHN_AUTHENTICATOR_ATTACHMENT. See https://pocket-id.org/docs/configuration/environment-variables.
-                    enum:
-                    - any
-                    - platform
-                    - cross-platform
                     type: string
                   userVerification:
                     description: |-
                       Passkey user verification requirement.
                       Sets WEBAUTHN_USER_VERIFICATION. See https://pocket-id.org/docs/configuration/environment-variables.
-                    enum:
-                    - required
-                    - preferred
                     type: string
                 type: object
             type: object

@@ -1074,11 +1074,6 @@
                   },
                   "fileBackend": {
                     "description": "File storage backend. Automatically set to \"s3\" when s3 config is present.\nSets FILE_BACKEND. See https://pocket-id.org/docs/configuration/environment-variables.",
-                    "enum": [
-                      "filesystem",
-                      "s3",
-                      "database"
-                    ],
                     "type": [
                       "string",
                       "null"
@@ -2102,12 +2097,6 @@
                       },
                       "level": {
                         "description": "Log level.\nSets LOG_LEVEL. See https://pocket-id.org/docs/configuration/environment-variables.",
-                        "enum": [
-                          "debug",
-                          "info",
-                          "warn",
-                          "error"
-                        ],
                         "type": [
                           "string",
                           "null"
@@ -3632,11 +3621,6 @@
                       },
                       "tls": {
                         "description": "SMTP TLS mode.\nSets SMTP_TLS. See https://pocket-id.org/docs/configuration/environment-variables.",
-                        "enum": [
-                          "none",
-                          "starttls",
-                          "tls"
-                        ],
                         "type": [
                           "string",
                           "null"
@@ -3806,11 +3790,6 @@
                       },
                       "allowUserSignups": {
                         "description": "User signup mode.\nSets ALLOW_USER_SIGNUPS. See https://pocket-id.org/docs/configuration/environment-variables.",
-                        "enum": [
-                          "disabled",
-                          "withToken",
-                          "open"
-                        ],
                         "type": [
                           "string",
                           "null"
@@ -3873,11 +3852,6 @@
                       },
                       "authenticatorAttachment": {
                         "description": "Accepted authenticator type.\nSets WEBAUTHN_AUTHENTICATOR_ATTACHMENT. See https://pocket-id.org/docs/configuration/environment-variables.",
-                        "enum": [
-                          "any",
-                          "platform",
-                          "cross-platform"
-                        ],
                         "type": [
                           "string",
                           "null"
@@ -3885,10 +3859,6 @@
                       },
                       "userVerification": {
                         "description": "Passkey user verification requirement.\nSets WEBAUTHN_USER_VERIFICATION. See https://pocket-id.org/docs/configuration/environment-variables.",
-                        "enum": [
-                          "required",
-                          "preferred"
-                        ],
                         "type": [
                           "string",
                           "null"
@@ -6867,11 +6837,6 @@
               },
               "fileBackend": {
                 "description": "File storage backend. Automatically set to \"s3\" when s3 config is present.\nSets FILE_BACKEND. See https://pocket-id.org/docs/configuration/environment-variables.",
-                "enum": [
-                  "filesystem",
-                  "s3",
-                  "database"
-                ],
                 "type": [
                   "string",
                   "null"
@@ -7895,12 +7860,6 @@
                   },
                   "level": {
                     "description": "Log level.\nSets LOG_LEVEL. See https://pocket-id.org/docs/configuration/environment-variables.",
-                    "enum": [
-                      "debug",
-                      "info",
-                      "warn",
-                      "error"
-                    ],
                     "type": [
                       "string",
                       "null"
@@ -9425,11 +9384,6 @@
                   },
                   "tls": {
                     "description": "SMTP TLS mode.\nSets SMTP_TLS. See https://pocket-id.org/docs/configuration/environment-variables.",
-                    "enum": [
-                      "none",
-                      "starttls",
-                      "tls"
-                    ],
                     "type": [
                       "string",
                       "null"
@@ -9599,11 +9553,6 @@
                   },
                   "allowUserSignups": {
                     "description": "User signup mode.\nSets ALLOW_USER_SIGNUPS. See https://pocket-id.org/docs/configuration/environment-variables.",
-                    "enum": [
-                      "disabled",
-                      "withToken",
-                      "open"
-                    ],
                     "type": [
                       "string",
                       "null"
@@ -9666,11 +9615,6 @@
                   },
                   "authenticatorAttachment": {
                     "description": "Accepted authenticator type.\nSets WEBAUTHN_AUTHENTICATOR_ATTACHMENT. See https://pocket-id.org/docs/configuration/environment-variables.",
-                    "enum": [
-                      "any",
-                      "platform",
-                      "cross-platform"
-                    ],
                     "type": [
                       "string",
                       "null"
@@ -9678,10 +9622,6 @@
                   },
                   "userVerification": {
                     "description": "Passkey user verification requirement.\nSets WEBAUTHN_USER_VERIFICATION. See https://pocket-id.org/docs/configuration/environment-variables.",
-                    "enum": [
-                      "required",
-                      "preferred"
-                    ],
                     "type": [
                       "string",
                       "null"

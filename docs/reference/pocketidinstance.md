@@ -39,7 +39,7 @@ PocketIDInstanceSpec defines the desired state of PocketIDInstance.
 | [`route`](#pocketidinstancespecroute) | object |  |  | Configures an HTTPRoute when enabled. Requires Gateway API CRDs to be installed. |
 | [`tls`](#pocketidinstancespectls) | object |  |  | TLS terminates HTTPS in the Pocket-ID pod from a mounted certificate Secret. |
 | `serviceTemplate` | [ServiceSpec](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#servicespec-v1-core) |  |  | ServiceTemplate is merged with the operator-built Service spec.<br />Operator-managed fields (the selector and the number, protocol, and appProtocol of the http/metrics ports) always take precedence.<br />_Schemaless: \{\}_ |
-| `fileBackend` | string |  |  | File storage backend. Automatically set to "s3" when s3 config is present.<br />Sets FILE_BACKEND. See https://pocket-id.org/docs/configuration/environment-variables.<br />_Enum: [filesystem s3 database]_ |
+| `fileBackend` | string |  |  | File storage backend. Automatically set to "s3" when s3 config is present.<br />Sets FILE_BACKEND. See https://pocket-id.org/docs/configuration/environment-variables. |
 | [`s3`](#pocketidinstancespecs3) | object |  |  | S3 file backend. When present, the operator sets FILE_BACKEND=s3. |
 | [`smtp`](#pocketidinstancespecsmtp) | object |  |  | SMTP email transport. When present, the operator sets SMTP_ENABLED=true and UI_CONFIG_DISABLED=true. |
 | [`emailNotifications`](#pocketidinstancespecemailnotifications) | object |  |  | Email notification settings. Requires smtp. The operator sets UI_CONFIG_DISABLED=true when this section is configured. |
@@ -203,7 +203,7 @@ SMTPConfig configures SMTP email transport. When present, the operator sets SMTP
 | `from` | string | yes |  | Sender email address.<br />Sets SMTP_FROM. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `user` | string |  |  | SMTP username.<br />Sets SMTP_USER. See https://pocket-id.org/docs/configuration/environment-variables. |
 | [`password`](#pocketidinstancespecsmtppassword) | object |  |  | SMTP password.<br />Sets SMTP_PASSWORD. See https://pocket-id.org/docs/configuration/environment-variables. |
-| `tls` | string |  |  | SMTP TLS mode.<br />Sets SMTP_TLS. See https://pocket-id.org/docs/configuration/environment-variables.<br />_Enum: [none starttls tls]_ |
+| `tls` | string |  |  | SMTP TLS mode.<br />Sets SMTP_TLS. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `skipCertVerify` | boolean |  |  | Skip SMTP certificate verification.<br />Sets SMTP_SKIP_CERT_VERIFY. See https://pocket-id.org/docs/configuration/environment-variables. |
 
 ## `PocketIDInstance.spec.smtp.password`
@@ -288,7 +288,7 @@ LoggingConfig configures logging behavior.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `level` | string |  |  | Log level.<br />Sets LOG_LEVEL. See https://pocket-id.org/docs/configuration/environment-variables.<br />_Enum: [debug info warn error]_ |
+| `level` | string |  |  | Log level.<br />Sets LOG_LEVEL. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `json` | boolean |  |  | JSON log output.<br />Sets LOG_JSON. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `queryArgs` | boolean |  |  | Include SQL query arguments in debug logs and traces.<br />Sets LOG_QUERY_ARGS. See https://pocket-id.org/docs/configuration/environment-variables. |
 
@@ -328,7 +328,7 @@ UserManagementConfig configures user registration and account settings. The oper
 | `emailsVerified` | boolean |  |  | Mark emails as verified.<br />Sets EMAILS_VERIFIED. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `allowOwnAccountEdit` | boolean |  |  | Allow users to edit their own account.<br />Sets ALLOW_OWN_ACCOUNT_EDIT. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `requireUserEmail` | boolean |  |  | Require an email address.<br />Sets REQUIRE_USER_EMAIL. See https://pocket-id.org/docs/configuration/environment-variables. |
-| `allowUserSignups` | string |  |  | User signup mode.<br />Sets ALLOW_USER_SIGNUPS. See https://pocket-id.org/docs/configuration/environment-variables.<br />_Enum: [disabled withToken open]_ |
+| `allowUserSignups` | string |  |  | User signup mode.<br />Sets ALLOW_USER_SIGNUPS. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `signupDefaultCustomClaims` | string |  |  | Default custom claims for new users.<br />Sets SIGNUP_DEFAULT_CUSTOM_CLAIMS. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `signupDefaultUserGroupIds` | string array |  |  | Default user group IDs for new users.<br />JSON-encoded into SIGNUP_DEFAULT_USER_GROUP_IDS. See https://pocket-id.org/docs/configuration/environment-variables. |
 
@@ -340,9 +340,9 @@ WebAuthnConfig restricts which passkeys Pocket-ID accepts. The operator sets UI_
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `userVerification` | string |  |  | Passkey user verification requirement.<br />Sets WEBAUTHN_USER_VERIFICATION. See https://pocket-id.org/docs/configuration/environment-variables.<br />_Enum: [required preferred]_ |
+| `userVerification` | string |  |  | Passkey user verification requirement.<br />Sets WEBAUTHN_USER_VERIFICATION. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `allowSyncedPasskeys` | boolean |  |  | Allow synced passkeys.<br />Sets WEBAUTHN_ALLOW_SYNCED_PASSKEYS. See https://pocket-id.org/docs/configuration/environment-variables. |
-| `authenticatorAttachment` | string |  |  | Accepted authenticator type.<br />Sets WEBAUTHN_AUTHENTICATOR_ATTACHMENT. See https://pocket-id.org/docs/configuration/environment-variables.<br />_Enum: [any platform cross-platform]_ |
+| `authenticatorAttachment` | string |  |  | Accepted authenticator type.<br />Sets WEBAUTHN_AUTHENTICATOR_ATTACHMENT. See https://pocket-id.org/docs/configuration/environment-variables. |
 
 ## `PocketIDInstance.spec.geoip`
 

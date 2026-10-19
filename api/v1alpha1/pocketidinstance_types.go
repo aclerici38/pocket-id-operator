@@ -126,7 +126,6 @@ type SMTPConfig struct {
 
 	// SMTP TLS mode.
 	// Sets SMTP_TLS. See https://pocket-id.org/docs/configuration/environment-variables.
-	// +kubebuilder:validation:Enum=none;starttls;tls
 	// +optional
 	TLS string `json:"tls,omitempty"`
 
@@ -273,7 +272,6 @@ type LDAPConfig struct {
 type LoggingConfig struct {
 	// Log level.
 	// Sets LOG_LEVEL. See https://pocket-id.org/docs/configuration/environment-variables.
-	// +kubebuilder:validation:Enum=debug;info;warn;error
 	// +optional
 	Level string `json:"level,omitempty"`
 
@@ -344,7 +342,6 @@ type UserManagementConfig struct {
 
 	// User signup mode.
 	// Sets ALLOW_USER_SIGNUPS. See https://pocket-id.org/docs/configuration/environment-variables.
-	// +kubebuilder:validation:Enum=disabled;withToken;open
 	// +optional
 	AllowUserSignups string `json:"allowUserSignups,omitempty"`
 
@@ -363,7 +360,6 @@ type UserManagementConfig struct {
 type WebAuthnConfig struct {
 	// Passkey user verification requirement.
 	// Sets WEBAUTHN_USER_VERIFICATION. See https://pocket-id.org/docs/configuration/environment-variables.
-	// +kubebuilder:validation:Enum=required;preferred
 	// +optional
 	UserVerification string `json:"userVerification,omitempty"`
 
@@ -374,7 +370,6 @@ type WebAuthnConfig struct {
 
 	// Accepted authenticator type.
 	// Sets WEBAUTHN_AUTHENTICATOR_ATTACHMENT. See https://pocket-id.org/docs/configuration/environment-variables.
-	// +kubebuilder:validation:Enum=any;platform;cross-platform
 	// +optional
 	AuthenticatorAttachment string `json:"authenticatorAttachment,omitempty"`
 }
@@ -615,7 +610,6 @@ type PocketIDInstanceSpec struct {
 
 	// File storage backend. Automatically set to "s3" when s3 config is present.
 	// Sets FILE_BACKEND. See https://pocket-id.org/docs/configuration/environment-variables.
-	// +kubebuilder:validation:Enum=filesystem;s3;database
 	// +optional
 	FileBackend string `json:"fileBackend,omitempty"`
 
