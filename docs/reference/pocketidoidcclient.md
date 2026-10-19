@@ -4,17 +4,7 @@
 
 PocketIDOIDCClient is the Schema for the pocketidoidcclients API
 
-| Field | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `apiVersion` | string | yes | | `pocketid.internal/v1alpha1` |
-| `kind` | string | yes | | `PocketIDOIDCClient` |
-| `metadata` | [ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#objectmeta-v1-meta) |  |  | metadata is a standard object metadata |
-| [`spec`](#pocketidoidcclientspec) | object |  |  | spec defines the desired state of PocketIDOIDCClient |
-| [`status`](#pocketidoidcclientstatus) | object |  |  | status defines the observed state of PocketIDOIDCClient |
-
 ## `PocketIDOIDCClient.spec`
-
-<sup>[↩ PocketIDOIDCClient](#pocketidoidcclient)</sup>
 
 PocketIDOIDCClientSpec defines the desired state of PocketIDOIDCClient
 
@@ -256,8 +246,6 @@ RotationWindow restricts rotations to a recurring time window.
 | `closesAfter` | [Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#duration-v1-meta) | yes |  | ClosesAfter is how long the window stays open after each cron fire. Minimum 5m. |
 
 ## `PocketIDOIDCClient.status`
-
-<sup>[↩ PocketIDOIDCClient](#pocketidoidcclient)</sup>
 
 PocketIDOIDCClientStatus defines the observed state of PocketIDOIDCClient.
 

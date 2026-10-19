@@ -4,17 +4,7 @@
 
 PocketIDInstance is the Schema for the pocketidinstances API
 
-| Field | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `apiVersion` | string | yes | | `pocketid.internal/v1alpha1` |
-| `kind` | string | yes | | `PocketIDInstance` |
-| `metadata` | [ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#objectmeta-v1-meta) |  |  | metadata is a standard object metadata |
-| [`spec`](#pocketidinstancespec) | object | yes |  | spec defines the desired state of PocketIDInstance |
-| [`status`](#pocketidinstancestatus) | object |  |  | status defines the observed state of PocketIDInstance |
-
 ## `PocketIDInstance.spec`
-
-<sup>[↩ PocketIDInstance](#pocketidinstance)</sup>
 
 PocketIDInstanceSpec defines the desired state of PocketIDInstance
 
@@ -427,8 +417,6 @@ OIDCClientRotationConfig controls instance-wide throttling of OIDC client secret
 | `minSpacing` | [Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#duration-v1-meta) | yes |  | MinSpacing is the minimum time between any two client secret rotations on this instance.<br />Prevents thundering-herd when many clients become due simultaneously. |
 
 ## `PocketIDInstance.status`
-
-<sup>[↩ PocketIDInstance](#pocketidinstance)</sup>
 
 PocketIDInstanceStatus defines the observed state of PocketIDInstance.
 

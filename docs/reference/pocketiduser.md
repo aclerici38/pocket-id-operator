@@ -4,17 +4,7 @@
 
 PocketIDUser is the Schema for the pocketidusers API
 
-| Field | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `apiVersion` | string | yes | | `pocketid.internal/v1alpha1` |
-| `kind` | string | yes | | `PocketIDUser` |
-| `metadata` | [ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#objectmeta-v1-meta) |  |  | metadata is a standard object metadata |
-| [`spec`](#pocketiduserspec) | object |  |  | spec defines the desired state of PocketIDUser |
-| [`status`](#pocketiduserstatus) | object |  |  | status defines the observed state of PocketIDUser |
-
 ## `PocketIDUser.spec`
-
-<sup>[↩ PocketIDUser](#pocketiduser)</sup>
 
 PocketIDUserSpec defines the desired state of PocketIDUser
 
@@ -118,8 +108,6 @@ CustomClaim defines a custom claim key/value pair for a user or user group.
 | `value` | string | yes |  | Value is the claim value |
 
 ## `PocketIDUser.status`
-
-<sup>[↩ PocketIDUser](#pocketiduser)</sup>
 
 PocketIDUserStatus defines the observed state of PocketIDUser.
 

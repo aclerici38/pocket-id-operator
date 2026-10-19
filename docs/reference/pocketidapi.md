@@ -4,17 +4,7 @@
 
 PocketIDAPI is the Schema for the pocketidapis API
 
-| Field | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `apiVersion` | string | yes | | `pocketid.internal/v1alpha1` |
-| `kind` | string | yes | | `PocketIDAPI` |
-| `metadata` | [ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#objectmeta-v1-meta) |  |  | metadata is a standard object metadata |
-| [`spec`](#pocketidapispec) | object |  |  | spec defines the desired state of PocketIDAPI |
-| [`status`](#pocketidapistatus) | object |  |  | status defines the observed state of PocketIDAPI |
-
 ## `PocketIDAPI.spec`
-
-<sup>[↩ PocketIDAPI](#pocketidapi)</sup>
 
 PocketIDAPISpec defines the desired state of PocketIDAPI
 
@@ -45,8 +35,6 @@ APIPermission defines a single scoped permission offered by an API.
 | `cimdAccess` | boolean |  |  | CIMDAccess lets clients registered through a Client ID Metadata Document request<br />this permission. Only takes effect while spec.cimdAccess is true. |
 
 ## `PocketIDAPI.status`
-
-<sup>[↩ PocketIDAPI](#pocketidapi)</sup>
 
 PocketIDAPIStatus defines the observed state of PocketIDAPI.
 

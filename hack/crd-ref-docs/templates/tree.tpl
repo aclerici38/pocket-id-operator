@@ -13,16 +13,17 @@ API package get their own section; external types (core/v1, gateway-api) link ou
 # {{ . }}
 
 {{ $t.Doc }}
-
-{{ template "fields" (dict "path" . "type" $t "pkg" $t.Package "gv" $gv.GroupVersionString) }}
+{{ template "fields" (dict "path" . "type" $t "pkg" $t.Package "root" true) }}
 {{- end }}{{ end }}{{ end }}
 {{- end -}}
 
 {{- define "section" -}}
 ## `{{ .path }}`
 
+{{ if contains "." .parent -}}
 <sup>[↩ {{ .parent }}](#{{ template "anchor" .parent }})</sup>
 
+{{ end -}}
 {{ .type.Doc }}
 
 {{ with index .type.Markers "kubebuilder:validation:XValidation" -}}
@@ -35,7 +36,8 @@ API package get their own section; external types (core/v1, gateway-api) link ou
 {{ template "fields" . }}
 {{- end -}}
 
-{{- /* A table of .type's fields, then a section for each field that is a local struct. */ -}}
+{{- /* A table of .type's fields, then a section for each field that is a local struct.
+The Kind itself (root) skips the table: apiVersion/kind/metadata/spec/status is convention. */ -}}
 {{- define "fields" -}}
 {{- $path := .path }}{{ $pkg := .pkg }}{{ $fields := list }}
 {{- range .type.Members }}
@@ -49,16 +51,13 @@ API package get their own section; external types (core/v1, gateway-api) link ou
   {{- $fields = append $fields (dict "field" . "type" $t "suffix" $suffix "child" $child) }}
 {{- end -}}
 
+{{- if not .root -}}
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-{{- with .gv }}
-| `apiVersion` | string | yes | | `{{ . }}` |
-| `kind` | string | yes | | `{{ $path }}` |
-{{- end }}
 {{- range $fields }}
 | {{ template "name" . }} | {{ template "type" . }} | {{ template "required" .field }} | {{ template "default" .field }} | {{ template "description" .field }} |
 {{- end }}
-{{ range $fields }}{{ if .child }}
+{{ end }}{{ range $fields }}{{ if .child }}
 {{ template "section" (dict "path" .child "parent" $path "type" .type "pkg" $pkg) }}
 {{- end }}{{ end }}
 {{- end -}}

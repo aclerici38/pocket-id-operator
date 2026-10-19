@@ -4,17 +4,7 @@
 
 PocketIDUserGroup is the Schema for the pocketidusergroups API
 
-| Field | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `apiVersion` | string | yes | | `pocketid.internal/v1alpha1` |
-| `kind` | string | yes | | `PocketIDUserGroup` |
-| `metadata` | [ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#objectmeta-v1-meta) |  |  | metadata is a standard object metadata |
-| [`spec`](#pocketidusergroupspec) | object |  |  | spec defines the desired state of PocketIDUserGroup |
-| [`status`](#pocketidusergroupstatus) | object |  |  | status defines the observed state of PocketIDUserGroup |
-
 ## `PocketIDUserGroup.spec`
-
-<sup>[↩ PocketIDUserGroup](#pocketidusergroup)</sup>
 
 PocketIDUserGroupSpec defines the desired state of PocketIDUserGroup
 
@@ -73,8 +63,6 @@ NamespacedOIDCClientReference references a PocketIDOIDCClient by name and namesp
 | `namespace` | string |  |  | Namespace is the namespace of the PocketIDOIDCClient CR<br />Defaults to the referencing resource's namespace |
 
 ## `PocketIDUserGroup.status`
-
-<sup>[↩ PocketIDUserGroup](#pocketidusergroup)</sup>
 
 PocketIDUserGroupStatus defines the observed state of PocketIDUserGroup.
 
