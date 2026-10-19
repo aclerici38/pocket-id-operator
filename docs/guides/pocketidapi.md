@@ -1,16 +1,10 @@
 # PocketIDAPI
 
-A `PocketIDAPI` manages an [API](https://pocket-id.org/docs/guides/apis) in Pocket-ID:
-a protected resource that access tokens can be issued for. An API defines a `resource`
-(the token **audience**) and a set of scoped **permissions** that OIDC clients can be
-granted. Backends validate the issued JWTs against Pocket-ID's JWKS without any custom
-session plumbing.
+A `PocketIDAPI` manages an [API](https://pocket-id.org/docs/guides/apis) in Pocket-ID: a protected resource that access tokens can be issued for. The configuration defines a `resource` (the token **audience**) and a set of scoped **permissions** that OIDC clients can be granted. Backends are then able to validate the issued JWTs against Pocket-ID's JWKS.
 
-The operator is the **sole owner** of an API and its permissions: the set in Pocket-ID
-is reconciled to exactly `spec.permissions`, so there is no need to manage these fields
-in the Pocket-ID UI — any permission added out-of-band is removed on the next reconcile.
-Because a permission's deletion cascades to any client grants that reference it, removing
-a permission from `spec.permissions` also revokes it from every client that was granted it.
+Like with the other custom resources, the operator takes over control of any API defined in a custom resource, constantly reconciling the state in pocket-id with the state in the custom resource. Any ui edits will be overwritten on a subsequent reconcile.
+
+Because a permission's deletion cascades to any client grants that reference it, removing a permission from `spec.permissions` also revokes it from every client that was granted it.
 
 ## Minimal Example
 
@@ -43,29 +37,11 @@ spec:
       name: Write orders
 ```
 
-## Fields
-
-| Field | Description |
-|-------|-------------|
-| `spec.name` | Friendly name in Pocket-ID. Defaults to `metadata.name`. |
-| `spec.resource` | The audience identifier for issued tokens (typically a URI). **Immutable** and used to adopt an existing API. |
-| `spec.permissions[].key` | Permission identifier requested as a token scope, e.g. `read:orders`. Must be a valid RFC 6749 scope token (printable ASCII, no space/quote/backslash) and must not reuse a reserved OIDC scope/claim (`openid`, `profile`, `email`, `email_verified`, `groups`, `offline_access`). Up to 100 permissions per API. |
-| `spec.permissions[].name` | Human-friendly label for the permission. |
-| `spec.permissions[].description` | Optional description. |
-| `spec.permissions[].cimdAccess` | Lets CIMD clients request this permission. Only takes effect while `spec.cimdAccess` is true. |
-| `spec.cimdAccess` | Grants every Client ID Metadata Document client access to this API. Defaults to true when any permission sets `cimdAccess`. |
-| `spec.instanceSelector` | Selects the `PocketIDInstance` to reconcile against. Optional when exactly one instance exists. |
-
-`spec.resource` is immutable: to change it, delete and recreate the resource. Because
-`resource` is the permanent identifier, changing `spec.name` renames the API in place
-while keeping the same audience.
+See [the API reference](../reference/pocketidapi.md) for full documentation on each available field.
 
 ## Granting Client Access
 
-An API's permissions are granted to clients from the **`PocketIDOIDCClient`** side, via
-`spec.apiAccess`. Each grant references a `PocketIDAPI` and lists the permission keys to
-grant for the user-delegated (authorization code) flow and/or the client-credentials
-(machine-to-machine) flow:
+An API's permissions are granted to clients from the **`PocketIDOIDCClient`** side, via `spec.apiAccess`. Each grant references a `PocketIDAPI` and lists the permission keys to grant for the user-delegated (authorization code) flow and/or the client-credentials (machine-to-machine) flow:
 
 ```yaml
 apiVersion: pocketid.internal/v1alpha1
@@ -85,26 +61,15 @@ spec:
 
 Notes:
 
-- The client is the **sole owner** of its API access in Pocket-ID. While `spec.apiAccess`
-  is set the operator keeps the access in sync and clears it if the field is later
-  emptied. When it was never set, access configured out-of-band is left untouched.
-- `delegatedAccess` and `clientAccess` grant a flow with no permissions selected, for a
-  client that requests a resource without any scopes. Both default to true when the
-  matching permission list is non-empty, so existing grants are unaffected.
-- `clientPermissions` and `clientAccess` (machine-to-machine) require a **confidential**
-  client (`spec.isPublic: false`), since M2M needs a client secret. This is enforced at
-  admission.
-- Permission keys are resolved to Pocket-ID permission IDs from the referenced API's
-  status, so the `PocketIDAPI` must be `Ready` before the grant can be applied.
-- A `PocketIDAPI` referenced by a client cannot be deleted until the client removes the
-  reference, preventing dangling grants.
+- The client is the **sole owner** of its API access in Pocket-ID. While `spec.apiAccess` is set the operator keeps the access in sync and clears it if the field is later emptied. When it was never set, access configured out-of-band is left untouched.
+- `delegatedAccess` and `clientAccess` grant a flow with no permissions selected, for a client that requests a resource without any scopes. Both default to true when the matching permission list is non-empty, so existing grants are unaffected.
+- `clientPermissions` and `clientAccess` (machine-to-machine) require a **confidential** client (`spec.isPublic: false`), since M2M needs a client secret. This is enforced at admission.
+- Permission keys are resolved to Pocket-ID permission IDs from the referenced API's status, so the `PocketIDAPI` must be `Ready` before the grant can be applied.
+- A `PocketIDAPI` referenced by a client cannot be deleted until the client removes the reference, preventing dangling grants.
 
 ## Granting Metadata Document Clients
 
-Clients registered through an OAuth **Client ID Metadata Document** (CIMD) register
-themselves, so there is no `PocketIDOIDCClient` to attach a grant to. `spec.cimdAccess`
-grants them access at the API instead, which is what makes an MCP server usable without
-an admin registering every client that wants to reach it:
+Clients registered through an OAuth **Client ID Metadata Document** (CIMD) register themselves, oftentimes making management through the oidcclient custom resource cumbersome and unnecessary. To permit all API permisions to all CIMD clients in Pocket-ID, set `spec.cimdAccess: true`. To only allow a subset of the permissions to CIMD clients, set `cimdAccess` on the individual permissions. See the example and table of possible configurations below.
 
 ```yaml
 spec:
@@ -117,9 +82,6 @@ spec:
       name: Write orders
 ```
 
-Marking a permission is enough — `spec.cimdAccess` defaults from the marks, and is only
-needed for the two cases they cannot express:
-
 | `spec.cimdAccess` | Permissions marked | Result |
 |-------------------|--------------------|--------|
 | unset | one or more | Access to the marked permissions |
@@ -129,36 +91,9 @@ needed for the two cases they cannot express:
 
 Notes:
 
-- CIMD must be enabled on the instance first: a client only exists once its URL is on
-  [`spec.cimdUrlAllowlist`](../reference/pocketidinstance.md#pocketidinstancespec). With an empty
-  allowlist `cimdAccess` is accepted and reconciled but grants nobody anything.
-- The operator owns this setting like it owns the permission set: unmarking every
-  permission disables CIMD access in Pocket-ID rather than leaving it as it was.
-- While access is off the marks reach nobody, so the operator stops reconciling them and
-  Pocket-ID may show them either way. Spec is the record: turning access back on pushes the
-  marks again from there.
-- This grants **every** CIMD client. A grant to one specific client goes on that client's
-  `spec.apiAccess` instead.
-- Access granted here is not visible from a client's `spec.apiAccess`, so removing an
-  `apiAccess` entry for an API that also sets `cimdAccess` does **not** revoke the client's
-  access. The client's `status.cimdGrantedAPIs` lists what it reaches this way.
+- This grants **every** CIMD client. To limit access to just a subset of CIMD clients create a custom resource for each CIMD client and use the [PocketIDOIDCClient's `spec.apiAccess`](../reference/pocketidoidcclient.md#pocketidoidcclientspecapiaccess) instead.
+- Access granted here is not visible from a client's `spec.apiAccess`, so removing an `apiAccess` entry for an API that also sets `cimdAccess` does **not** revoke the client's access. The client's `status.cimdGrantedAPIs` lists what it reaches this way.
 
 ## Migrating from an existing setup
 
-`spec.resource` is the audience, which is **globally unique** in Pocket-ID, so on
-creation a `PocketIDAPI` is matched to an existing API by `spec.resource` and taken over
-in place (the existing record's ID is kept — it is never deleted and recreated). Once
-taken over, the operator enforces sole ownership: `spec.name` and `spec.permissions` are
-made authoritative, so declare the full intended permission set in the CR before it
-reconciles to avoid dropping permissions that existing clients rely on.
-
-## Status
-
-| Field | Description |
-|-------|-------------|
-| `status.apiID` | The ID assigned by Pocket-ID. |
-| `status.resource` | The resolved audience identifier. |
-| `status.permissions` | Permissions resolved from Pocket-ID, including their IDs. Used to resolve permission keys referenced by OIDC clients. |
-| `status.permissions[].cimdAccess` | Whether CIMD clients may request the permission. |
-| `status.cimdAccess` | Whether CIMD clients may reach this API. |
-| `status.conditions` | Standard conditions; `Ready` reflects sync state. |
+`spec.resource` is the audience (`aud`), which is **globally unique** in Pocket-ID, so on creation a `PocketIDAPI` is matched to an existing API by `spec.resource` and taken over in place.

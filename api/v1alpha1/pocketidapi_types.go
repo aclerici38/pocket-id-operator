@@ -26,8 +26,7 @@ import (
 // APIPermission defines a single scoped permission offered by an API.
 type APIPermission struct {
 	// Key is the permission identifier requested as a token scope, e.g. "read:orders".
-	// It must be a valid RFC 6749 scope token: printable ASCII with no space, double
-	// quote, or backslash. Reserved OIDC scope/claim names are rejected at the spec level.
+	// It must be a valid RFC 6749 scope token: printable ASCII with no space, double quote, or backslash. Reserved OIDC scope/claim names are rejected.
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=255
 	// +kubebuilder:validation:Pattern=`^[\x21\x23-\x5B\x5D-\x7E]+$`
@@ -43,8 +42,7 @@ type APIPermission struct {
 	// +optional
 	Description string `json:"description,omitempty"`
 
-	// CIMDAccess lets clients registered through a Client ID Metadata Document request
-	// this permission. Only takes effect while spec.cimdAccess is true.
+	// CIMDAccess lets clients registered through a Client ID Metadata Document request this permission.
 	// +optional
 	CIMDAccess bool `json:"cimdAccess,omitempty"`
 }
@@ -58,35 +56,26 @@ type PocketIDAPISpec struct {
 	// +optional
 	InstanceSelector *metav1.LabelSelector `json:"instanceSelector,omitempty"`
 
-	// Name of the API to create in Pocket ID.
-	// If omitted, defaults to metadata.name of the API resource.
+	// Name of the API to create in Pocket ID. If omitted, defaults to metadata.name of the API resource.
 	// +kubebuilder:validation:MinLength=2
 	// +kubebuilder:validation:MaxLength=255
 	// +optional
 	Name string `json:"name,omitempty"`
 
-	// Resource is the audience identifier for tokens issued against this API
-	// (typically a URI). It is the permanent identifier used to adopt an existing
-	// API and is immutable once set.
+	// Resource is the audience identifier for tokens issued against this API typically a URI). It is the permanent identifier used to adopt an existing API and is immutable once set.
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=255
 	Resource string `json:"resource"`
 
-	// Permissions are the scoped permissions offered by this API. The operator is
-	// the sole owner of the API: the permission set in Pocket-ID is reconciled to
-	// exactly this list, so permissions added out-of-band are removed.
+	// Permissions are the scoped permissions offered by this API.
 	// +listType=map
 	// +listMapKey=key
 	// +kubebuilder:validation:MaxItems=100
 	// +optional
 	Permissions []APIPermission `json:"permissions,omitempty"`
 
-	// CIMDAccess grants every client registered through an OAuth Client ID Metadata
-	// Document access to this API, so dynamically-registered clients do not each need an
-	// explicit grant. Defaults to true when any permission sets cimdAccess. Set it to true
-	// explicitly to grant access with no permissions, which is what a client requesting a
-	// resource without any scopes needs, or to false to revoke access while keeping the
-	// per-permission marks.
+	// CIMDAccess grants every client registered through an OAuth Client ID Metadata Document access to this API.
+	// See the documentation for a more in-depth breakdown of the configuration https://pocket-id-operator.pages.dev/guides/pocketidapi/#granting-metadata-document-clients
 	// +optional
 	CIMDAccess *bool `json:"cimdAccess,omitempty"`
 }
