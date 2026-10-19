@@ -1,6 +1,10 @@
 # PocketIDUser
 
-A `PocketIDUser` manages a user in Pocket-ID and can optionally create API keys
+A `PocketIDUser` manages a user in Pocket-ID, including their profile, admin status, custom claims, and optionally API keys stored in Kubernetes Secrets.
+
+Like the other custom resources, the operator continuously reconciles the user in Pocket-ID to match the custom resource, so edits made in the UI to managed fields are overwritten on the next reconcile. A user deleted in Pocket-ID is recreated.
+
+For full documentation on each field in this CRD see [the API reference](../reference/pocketiduser.md). For common configurations see [the examples](../examples/pocketiduser.md).
 
 ## Minimal Example
 
@@ -15,154 +19,49 @@ spec:
     value: "alice@example.com"
 ```
 
+## Profile
+
+`username`, `firstName`, `lastName`, `email`, and `displayName` each take either a plain `value` or a `valueFrom.secretKeyRef`. Alternatively, `spec.userInfoSecretRef` names a single Secret holding any of the keys `username`, `firstName`, `lastName`, `email`, and `displayName`. A field set directly on the spec takes precedence over the same key in that Secret, and missing keys are ignored. See examples for a [full profile](../examples/pocketiduser.md#full-profile) and [profiles from a Secret](../examples/pocketiduser.md#profile-from-a-secret).
+
+Unset fields fall back to defaults, since Pocket-ID requires some of them:
+
+| Field | Default |
+| --- | --- |
+| `username` | `metadata.name` |
+| `firstName` | The username |
+| `email` | `<username>@placeholder.local` |
+| `displayName` | `<firstName> <lastName>` |
+
+The operator writes the profile as stored in Pocket-ID to a Secret named `<user>-user-data`, with the same five keys. Its name is recorded in `status.userInfoSecretName`.
+
+## Adopting Existing Users
+
+When a `PocketIDUser` is created, the operator looks for an existing user in Pocket-ID before creating one: by `spec.userID` if set, otherwise by username, then by email. A match is adopted in place, so the user keeps their passkeys, audit logs, and group memberships. Make sure the spec matches the existing user before applying it, since the operator overwrites the profile on the next reconcile.
+
 ## Declarative User ID
 
-By default Pocket-ID assigns the user ID. Set `spec.userID` to pin it instead, which
-keeps the `sub` claim stable across rebuilds of an instance.
+By default Pocket-ID assigns the user ID. Set `spec.userID` to pin it instead, which keeps the `sub` claim stable across rebuilds of an instance. Pocket-ID only accepts a lowercase UUID. If a user with that ID already exists it is adopted rather than recreated, so the field is also a way to bind a resource to a user created elsewhere. See [example](../examples/pocketiduser.md#declarative-user-id).
 
-```yaml
-apiVersion: pocketid.internal/v1alpha1
-kind: PocketIDUser
-metadata:
-  name: alice
-  namespace: pocket-id
-spec:
-  userID: 3f8a1c72-9b4d-4e61-8a0f-2c5d7e9b1a34
-  email:
-    value: "alice@example.com"
-```
-
-Pocket-ID only accepts a lowercase UUID here. If a user with that ID already exists it
-is adopted rather than recreated, so the field is also a way to bind a resource to a
-user that was created elsewhere.
-
-`spec.userID` is immutable: it cannot be changed, added, or removed after the resource
-is created. To move a user to a different ID, delete the resource and create it again.
-
-## User With Instance Selector And Secret Inputs
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: alice-user-info
-  namespace: pocket-id
-stringData:
-  username: "alice"
-  firstName: "Alice"
-  lastName: "Ng"
-  email: "alice@example.com"
-  displayName: "Alice Ng"
----
-apiVersion: pocketid.internal/v1alpha1
-kind: PocketIDUser
-metadata:
-  name: alice
-  namespace: pocket-id
-spec:
-  userInfoSecretRef:
-    name: alice-user-info
-  admin: true
-  locale: en
-```
-
-## User With Custom Claims
-
-Claims declared here are attached to the user directly and are added to the claims the
-user already inherits from their groups. Where the same key appears in both, the user
-claim wins.
-
-```yaml
-apiVersion: pocketid.internal/v1alpha1
-kind: PocketIDUser
-metadata:
-  name: alice
-  namespace: pocket-id
-spec:
-  email:
-    value: "alice@example.com"
-  customClaims:
-    - key: department
-      value: engineering
-    - key: employee_id
-      value: "E-1042"
-```
-
-The operator owns the full set of user-level claims: removing an entry from
-`spec.customClaims` removes it from Pocket-ID, and claims added to the user outside the
-operator are removed on the next reconcile. Group claims are unaffected — see
-[pocketidusergroup.md](pocketidusergroup.md).
-
-## User With API Keys
-
-```yaml
-apiVersion: pocketid.internal/v1alpha1
-kind: PocketIDUser
-metadata:
-  name: ci-bot
-  namespace: pocket-id
-spec:
-  email:
-    value: "ci-bot@example.com"
-  apiKeys:
-    - name: deploy
-      description: "CI deploy key"
-    - name: ops
-      expiresAt: "2030-01-01T00:00:00Z"
-```
-
-## Using A Pre-Existing API Key Secret
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: existing-api-key
-  namespace: pocket-id
-stringData:
-  token: "pocket-id-api-key-token"
----
-apiVersion: pocketid.internal/v1alpha1
-kind: PocketIDUser
-metadata:
-  name: legacy-user
-  namespace: pocket-id
-spec:
-  email:
-    value: "legacy@example.com"
-  apiKeys:
-    - name: legacy
-      secretRef:
-        name: existing-api-key
-        key: token
-```
+`spec.userID` is immutable: it cannot be changed, added, or removed after the resource is created. To move a user to a different ID, delete the resource and create it again.
 
 ## Logging In
 
-When a user is first created in pocket-id via a custom resource a one-time code is automatically
-generated for them to use on first login. The code will be displayed in the resource's status under `oneTimeLoginToken`.
-If `spec.appUrl` is set on the targeted `PocketIDInstance`, `oneTimeLoginURL` will contain a fqdn that will auto-login the user with the code.
-This code expires after 60 minutes and is subsequently removed from the resource's status.
+The first time the operator reconciles a user, whether created or adopted, it generates a one-time login code valid for 60 minutes and writes it to `status.oneTimeLoginToken`. `status.oneTimeLoginURL` holds a link that signs the user in with the code, built from the instance's `spec.appUrl` (or `spec.external.url` for an external instance), falling back to its internal Service URL. Both are cleared from status once the code expires, and the operator does not generate another.
 
-## Status Highlights
+## Custom Claims
 
-- `status.userID`: Pocket-ID user ID.
-- `status.userInfoSecretName`: name of the output secret containing resolved user
-  profile fields (`<user>-user-data`).
-- `status.apiKeys`: observed API key state and secret references.
-- `status.customClaims`: resolved user-level claims.
-- `status.oneTimeLoginToken` and `status.oneTimeLoginURL`: set for new users.
+`spec.customClaims` attaches claims to the user directly. They are added to the claims the user inherits from their [groups](pocketidusergroup.md), and the user's claim wins when the same key appears in both. See [example](../examples/pocketiduser.md#custom-claims).
 
-## Deletion Annotation
+## API Keys
 
-By default when a PocketIDUser resource is deleted the user will **not** be deleted from the pocket-id database.
-This is to prevent any accidental deletions of the resource requiring users to reset their passkeys.
-If you **would** like user deletion to be synced to Pocket-ID, add this annotation:
+Each entry in `spec.apiKeys` creates an API key for the user in Pocket-ID and writes its token to a Secret named `<user>-<key>-key` under the key `token`. `expiresAt` defaults to one year after creation. `status.apiKeys` records each key's ID, timestamps, and the Secret holding its token. See [example](../examples/pocketiduser.md#operator-created-keys).
 
-```yaml
-metadata:
-  annotations:
-    pocketid.internal/delete-from-pocket-id: "true"
-```
+- A key is only created once. Changing `expiresAt` or `description` on an existing entry has no effect, and an expired key is not renewed. To replace a key, remove the entry and add it again.
+- Removing an entry deletes the key from Pocket-ID along with its Secret.
+- With `secretRef` the operator records the referenced Secret key in status in place of a generated one. The Secret must exist in the user's namespace and contain the key. Removing the entry leaves both the key in Pocket-ID and the Secret in place. See [example](../examples/pocketiduser.md#pre-existing-key-secret).
 
-*Note:* For all options and an up-to-date spec `kubectl explain PocketIDUser` 
+## Deletion
+
+By default, deleting a `PocketIDUser` does **not** delete the user from Pocket-ID, so an accidental deletion of the resource doesn't force the user to re-register their passkeys. To delete the user from Pocket-ID along with the resource, set the [`pocketid.internal/delete-from-pocket-id: "true"`](annotations.md#pocketiduser) annotation. See [example](../examples/pocketiduser.md#delete-from-pocket-id-with-the-resource).
+
+Either way, the operator-created API key Secrets and the `<user>-user-data` Secret are removed with the resource. Deletion is blocked while a [`PocketIDUserGroup`](pocketidusergroup.md) still references the user in `spec.users.userRefs`.

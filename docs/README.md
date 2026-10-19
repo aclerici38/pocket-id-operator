@@ -16,7 +16,7 @@ To migrate an existing PVC to the operator use `spec.persistence.existingClaim`.
 
 **PocketIDUser**
 
-When a PocketIDUser resource is created the operator will lookup any existing user in pocket-id by username. If a matching username exists, the existing user ID will be adopted into the custom resource, allowing users to maintain their passkeys, audit logs, and user group state.
+On creation a PocketIDUser is matched to an existing user by `spec.userID` if it's specified, otherwise by username, then by email. A matching user is adopted into the custom resource, allowing users to maintain their passkeys, audit logs, and user group state. See [PocketIDUser](guides/pocketiduser.md#adopting-existing-users) for more details.
 
 **PocketIDUserGroup**
 
@@ -24,9 +24,9 @@ On creation a PocketIDUserGroup is matched to existing user groups by `spec.name
 
 **PocketIDOIDCClient**
 
-On creation a PocketIDOIDCClient is matched to existing user groups by `spec.clientId` if it's specified, otherwise falling back to the resource's name. 
+On creation a PocketIDOIDCClient is matched to an existing OIDC client by `spec.clientID` if it's specified, otherwise by `spec.name`, falling back to the resource's name.
 
-*IMPORTANT*: When an OIDC client is adopted the operator will generate a new client secret and store it in a k8s secret. This is due to the design of Pocket-ID, which prevents retrieval of the client secret after it is generated. If you would not like the client secret to be regenerated set `spec.secret.enabled` to `false`. See more in [the oidcclient guide](guides/pocketidoidcclient.md).
+*IMPORTANT*: When an OIDC client is adopted the operator will generate a new client secret and store it in a k8s secret. This is due to the design of Pocket-ID, which prevents retrieval of the client secret after it is generated. If you would not like the client secret to be regenerated set `spec.secret.storeClientSecret` to `false`. See more in [the oidcclient guide](guides/pocketidoidcclient.md#externally-managed-secret).
 
 **PocketIDAPI**
 

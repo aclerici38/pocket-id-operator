@@ -4520,7 +4520,7 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: PocketIDUser is the Schema for the pocketidusers API
+        description: PocketIDUser is the Schema for the pocketidusers API.
         properties:
           apiVersion:
             description: |-
@@ -4544,31 +4544,31 @@ spec:
             properties:
               admin:
                 default: false
-                description: Flag whether a user is an admin or not
+                description: Set this user as an admin.
                 type: boolean
               apiKeys:
-                description: APIKeys is a list of API keys to create for this user
+                description: APIKeys is a list of API keys to create for this user.
                 items:
-                  description: APIKeySpec defines the desired state of an API key
+                  description: APIKeySpec defines the desired state of an API key.
                   properties:
                     description:
                       default: Created by pocket-id-operator
-                      description: Description of the API key
+                      description: Description of the API key.
                       type: string
                     expiresAt:
                       description: |-
-                        ExpiresAt is the expiration time in RFC3339 format (e.g., "2030-01-01T00:00:00Z")
-                        Defaults to 1 year in the future
+                        ExpiresAt is the expiration time in RFC3339 format (e.g., "2030-01-01T00:00:00Z").
+                        Defaults to 1 year in the future.
                       type: string
                     name:
-                      description: Name of the API key (3-50 characters)
+                      description: Name of the API key (3-50 characters).
                       maxLength: 50
                       minLength: 3
                       type: string
                     secretRef:
-                      description: |-
-                        SecretRef references an existing Secret containing the API key token
-                        If set, the operator will use this secret instead of creating a new one
+                      description: SecretRef references an existing Secret containing
+                        the API key token. If set, the operator will use this secret
+                        instead of creating a new one.
                       properties:
                         key:
                           description: The key of the secret to select from.  Must
@@ -4596,9 +4596,9 @@ spec:
                   type: object
                 type: array
               customClaims:
-                description: |-
-                  CustomClaims are additional claims to attach to this user.
-                  User claims take precedence over claims inherited from the user's groups.
+                description: CustomClaims are additional claims to attach to this
+                  user. User claims take precedence over claims inherited from the
+                  user's groups.
                 items:
                   description: CustomClaim defines a custom claim key/value pair for
                     a user or user group.
@@ -4616,18 +4616,17 @@ spec:
                 type: array
               disabled:
                 default: false
-                description: Disabled indicates whether the user account is disabled
+                description: Disabled indicates whether the user account is disabled.
                 type: boolean
               displayName:
-                description: |-
-                  DisplayName of the user
-                  Defaults to "spec.FirstName spec.LastName"
+                description: DisplayName of the user. Defaults to the first name followed
+                  by the last name, if set. Can be a plain value or reference a secret.
                 properties:
                   value:
-                    description: Plain text value
+                    description: Plain text value.
                     type: string
                   valueFrom:
-                    description: Source for the value from a secret
+                    description: Source for the value from a secret.
                     properties:
                       key:
                         description: The key of the secret to select from.  Must be
@@ -4652,16 +4651,14 @@ spec:
                     x-kubernetes-map-type: atomic
                 type: object
               email:
-                description: |-
-                  Email of the user
-                  Can be a plain value or reference a secret
-                  Required unless email is disabled in pocket-id
+                description: Email of the user. Defaults to "<username>@placeholder.local".
+                  Can be a plain value or reference a secret.
                 properties:
                   value:
-                    description: Plain text value
+                    description: Plain text value.
                     type: string
                   valueFrom:
-                    description: Source for the value from a secret
+                    description: Source for the value from a secret.
                     properties:
                       key:
                         description: The key of the secret to select from.  Must be
@@ -4686,16 +4683,14 @@ spec:
                     x-kubernetes-map-type: atomic
                 type: object
               firstName:
-                description: |-
-                  First name of the user
-                  Can be a plain value or reference a secret
-                  Defaults to metadata.name of the Resource
+                description: First name of the user. Defaults to the username. Can
+                  be a plain value or reference a secret.
                 properties:
                   value:
-                    description: Plain text value
+                    description: Plain text value.
                     type: string
                   valueFrom:
-                    description: Source for the value from a secret
+                    description: Source for the value from a secret.
                     properties:
                       key:
                         description: The key of the secret to select from.  Must be
@@ -4768,15 +4763,14 @@ spec:
                 type: object
                 x-kubernetes-map-type: atomic
               lastName:
-                description: |-
-                  Last name of the user
-                  Can be a plain value or reference a secret
+                description: Last name of the user. Can be a plain value or reference
+                  a secret.
                 properties:
                   value:
-                    description: Plain text value
+                    description: Plain text value.
                     type: string
                   valueFrom:
-                    description: Source for the value from a secret
+                    description: Source for the value from a secret.
                     properties:
                       key:
                         description: The key of the secret to select from.  Must be
@@ -4802,19 +4796,17 @@ spec:
                 type: object
               locale:
                 description: Locale is the user's preferred locale (e.g., "en", "de",
-                  "fr")
+                  "fr").
                 type: string
               userID:
                 description: |-
                   UserID is the optional user ID to use instead of one generated by Pocket-ID.
-                  Pocket-ID only accepts a lowercase UUID here, and the ID is immutable once the
-                  user is created.
+                  Pocket-ID only accepts a lowercase UUID and the ID is immutable once the user is created.
                 pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
                 type: string
               userInfoSecretRef:
                 description: |-
-                  UserInfoSecretRef references a single Secret containing sensitive user profile fields.
-                  Values from the secret are evaluated last, so spec.username will override the username key in this secret
+                  UserInfoSecretRef references a single Secret containing sensitive user profile fields. Values from the secret are evaluated last, so spec.username will override the username key in this secret.
                   Keys: username, firstName, lastName, email, displayName
                 properties:
                   name:
@@ -4829,15 +4821,14 @@ spec:
                 type: object
                 x-kubernetes-map-type: atomic
               username:
-                description: |-
-                  Username of the user. Defaults to the metadata.name
-                  Can be a plain value or reference a secret
+                description: Username of the user. Defaults to the metadata.name.
+                  Can be a plain value or reference a secret.
                 properties:
                   value:
-                    description: Plain text value
+                    description: Plain text value.
                     type: string
                   valueFrom:
-                    description: Source for the value from a secret
+                    description: Source for the value from a secret.
                     properties:
                       key:
                         description: The key of the secret to select from.  Must be
@@ -4870,31 +4861,31 @@ spec:
             description: status defines the observed state of PocketIDUser
             properties:
               apiKeys:
-                description: APIKeys reflects the observed state of each API key
+                description: APIKeys reflects the observed state of each API key.
                 items:
                   description: APIKeyStatus reflects the observed state of an API
-                    key from Pocket-ID
+                    key from Pocket-ID.
                   properties:
                     createdAt:
-                      description: CreatedAt timestamp from Pocket-ID
+                      description: CreatedAt timestamp from Pocket-ID.
                       type: string
                     expiresAt:
-                      description: ExpiresAt timestamp from Pocket-ID
+                      description: ExpiresAt timestamp from Pocket-ID.
                       type: string
                     id:
-                      description: ID assigned by Pocket-ID
+                      description: ID assigned by Pocket-ID.
                       type: string
                     lastUsedAt:
-                      description: LastUsedAt timestamp from Pocket-ID
+                      description: LastUsedAt timestamp from Pocket-ID.
                       type: string
                     name:
-                      description: Name of the API key (matches spec)
+                      description: Name of the API key (matches spec).
                       type: string
                     secretKey:
-                      description: SecretKey within the secret containing the token
+                      description: SecretKey within the secret containing the token.
                       type: string
                     secretName:
-                      description: SecretName where the API key token is stored
+                      description: SecretName where the API key token is stored.
                       type: string
                   required:
                   - name
@@ -4962,7 +4953,7 @@ spec:
                 - type
                 x-kubernetes-list-type: map
               customClaims:
-                description: CustomClaims are the resolved custom claims on the user
+                description: CustomClaims are the resolved custom claims on the user.
                 items:
                   description: CustomClaim defines a custom claim key/value pair for
                     a user or user group.
@@ -4979,37 +4970,36 @@ spec:
                   type: object
                 type: array
               disabled:
-                description: Disabled reflects whether the user is disabled in Pocket-ID
+                description: Disabled reflects whether the user is disabled in Pocket-ID.
                 type: boolean
               emailVerified:
                 description: EmailVerified reflects whether the user's email has been
                   verified in Pocket-ID.
                 type: boolean
               isAdmin:
-                description: IsAdmin reflects whether the user is an admin in Pocket-ID
+                description: IsAdmin reflects whether the user is an admin in Pocket-ID.
                 type: boolean
               locale:
-                description: Locale of the user from Pocket-ID
+                description: Locale of the user from Pocket-ID.
                 type: string
               oneTimeLoginExpiresAt:
                 description: OneTimeLoginExpiresAt is the RFC3339 timestamp when the
-                  login token expires
+                  login token expires.
                 type: string
               oneTimeLoginToken:
                 description: OneTimeLoginToken is the one-time login token for a newly
-                  created user
+                  created user.
                 type: string
               oneTimeLoginURL:
                 description: OneTimeLoginURL is the login URL built from the one-time
-                  login token
+                  login token.
                 type: string
               userID:
-                description: UserID is the ID assigned by Pocket-ID
+                description: UserID is the ID assigned by Pocket-ID.
                 type: string
               userInfoSecretName:
-                description: |-
-                  UserInfoSecretName is the name of the Secret storing user profile fields.
-                  The operator writes to "<name>-user-data".
+                description: UserInfoSecretName is the name of the Secret storing
+                  user profile fields. The operator writes to "<name>-user-data".
                 type: string
             type: object
         type: object
