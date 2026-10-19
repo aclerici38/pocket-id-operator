@@ -16,10 +16,10 @@ PocketIDAPISpec defines the desired state of PocketIDAPI
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `instanceSelector` | [LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#labelselector-v1-meta) |  |  | InstanceSelector selects the PocketIDInstance to reconcile against.<br />If omitted, the controller expects exactly one instance in the cluster. |
-| `name` | string |  |  | Name of the API to create in Pocket ID.<br />If omitted, defaults to metadata.name of the API resource.<br />_MaxLength: 255_<br />_MinLength: 2_ |
-| `resource` | string | yes |  | Resource is the audience identifier for tokens issued against this API<br />(typically a URI). It is the permanent identifier used to adopt an existing<br />API and is immutable once set.<br />_MaxLength: 255_<br />_MinLength: 1_ |
-| [`permissions`](#pocketidapispecpermissions) | []object |  |  | Permissions are the scoped permissions offered by this API. The operator is<br />the sole owner of the API: the permission set in Pocket-ID is reconciled to<br />exactly this list, so permissions added out-of-band are removed.<br />_MaxItems: 100_ |
-| `cimdAccess` | boolean |  |  | CIMDAccess grants every client registered through an OAuth Client ID Metadata<br />Document access to this API, so dynamically-registered clients do not each need an<br />explicit grant. Defaults to true when any permission sets cimdAccess. Set it to true<br />explicitly to grant access with no permissions, which is what a client requesting a<br />resource without any scopes needs, or to false to revoke access while keeping the<br />per-permission marks. |
+| `name` | string |  |  | Name of the API to create in Pocket ID. If omitted, defaults to metadata.name of the API resource.<br />_MaxLength: 255_<br />_MinLength: 2_ |
+| `resource` | string | yes |  | Resource is the audience identifier for tokens issued against this API typically a URI). It is the permanent identifier used to adopt an existing API and is immutable once set.<br />_MaxLength: 255_<br />_MinLength: 1_ |
+| [`permissions`](#pocketidapispecpermissions) | []object |  |  | Permissions are the scoped permissions offered by this API.<br />_MaxItems: 100_ |
+| `cimdAccess` | boolean |  |  | CIMDAccess grants every client registered through an OAuth Client ID Metadata Document access to this API.<br />See the documentation for a more in-depth breakdown of the configuration https://pocket-id-operator.pages.dev/guides/pocketidapi/#granting-metadata-document-clients |
 
 ## `PocketIDAPI.spec.permissions[]`
 
@@ -29,10 +29,10 @@ APIPermission defines a single scoped permission offered by an API.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `key` | string | yes |  | Key is the permission identifier requested as a token scope, e.g. "read:orders".<br />It must be a valid RFC 6749 scope token: printable ASCII with no space, double<br />quote, or backslash. Reserved OIDC scope/claim names are rejected at the spec level.<br />_MaxLength: 255_<br />_MinLength: 1_<br />_Pattern: `^[\x21\x23-\x5B\x5D-\x7E]+$`_ |
+| `key` | string | yes |  | Key is the permission identifier requested as a token scope, e.g. "read:orders".<br />It must be a valid RFC 6749 scope token: printable ASCII with no space, double quote, or backslash. Reserved OIDC scope/claim names are rejected.<br />_MaxLength: 255_<br />_MinLength: 1_<br />_Pattern: `^[\x21\x23-\x5B\x5D-\x7E]+$`_ |
 | `name` | string | yes |  | Name is a human-friendly label for the permission.<br />_MaxLength: 255_<br />_MinLength: 1_ |
 | `description` | string |  |  | Description optionally explains what the permission grants.<br />_MaxLength: 500_ |
-| `cimdAccess` | boolean |  |  | CIMDAccess lets clients registered through a Client ID Metadata Document request<br />this permission. Only takes effect while spec.cimdAccess is true. |
+| `cimdAccess` | boolean |  |  | CIMDAccess lets clients registered through a Client ID Metadata Document request this permission. |
 
 ## `PocketIDAPI.status`
 
