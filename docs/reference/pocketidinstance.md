@@ -20,10 +20,10 @@ PocketIDInstanceSpec defines the desired state of PocketIDInstance.
 | --- | --- | --- | --- | --- |
 | `deploymentType` | string |  | `Deployment` | Kind of workload to create: Deployment or StatefulSet. Defaults to Deployment and is immutable after creation.<br />_Enum: [Deployment StatefulSet]_ |
 | `image` | string |  |  | Container image to run. When unset, the operator uses the latest version tested against this release. |
-| [`encryptionKey`](#pocketidinstancespecencryptionkey) | object |  |  | Encryption key.<br />Required when deploying an instance; omit for external instances.<br />See the official documentation for the ENCRYPTION_KEY environment variable. |
+| [`encryptionKey`](#pocketidinstancespecencryptionkey) | object |  |  | Encryption key. Required when deploying an instance; omit for external instances.<br />Sets ENCRYPTION_KEY. See https://pocket-id.org/docs/configuration/environment-variables. |
 | [`external`](#pocketidinstancespecexternal) | object |  |  | External adopts an existing Pocket-ID instead of deploying one. When set, no workload/service/PVC is created and the operator manages OIDC clients, users, and groups on that instance via its API.<br />Mutually exclusive with encryptionKey and the other deployment fields. |
-| [`databaseUrl`](#pocketidinstancespecdatabaseurl) | object |  |  | URL to access the database at. For SQLite, only add the file path e.g. "/app/data/pocket-id.db".<br />See the official documentation for DB_CONNECTION_STRING. |
-| `appUrl` | string |  |  | External URL Pocket-ID can be reached at.<br />See the official documentation for APP_URL. |
+| [`databaseUrl`](#pocketidinstancespecdatabaseurl) | object |  |  | Database connection string.<br />Sets DB_CONNECTION_STRING. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `appUrl` | string |  |  | Public URL of Pocket-ID.<br />Sets APP_URL. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `env` | [EnvVar](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#envvar-v1-core) array |  |  | Additional environment variables to set. Uses Kubernetes env var syntax (secretKeyRef, configMapKeyRef, etc.). |
 | [`persistence`](#pocketidinstancespecpersistence) | object |  |  | Configures persistence for Pocket-ID. Pocket-ID can be run statelessly; see pocket-id-operator.pages.dev/pocketidinstance#stateless-deployment.<br />If not enabled, an emptyDir is mounted instead. |
 | `podSecurityContext` | [PodSecurityContext](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#podsecuritycontext-v1-core) |  |  | Pod security context. |
@@ -39,26 +39,26 @@ PocketIDInstanceSpec defines the desired state of PocketIDInstance.
 | [`route`](#pocketidinstancespecroute) | object |  |  | Configures an HTTPRoute when enabled. Requires Gateway API CRDs to be installed. |
 | [`tls`](#pocketidinstancespectls) | object |  |  | TLS terminates HTTPS in the Pocket-ID pod from a mounted certificate Secret. |
 | `serviceTemplate` | [ServiceSpec](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#servicespec-v1-core) |  |  | ServiceTemplate is merged with the operator-built Service spec.<br />Operator-managed fields (the selector and the number, protocol, and appProtocol of the http/metrics ports) always take precedence.<br />_Schemaless: \{\}_ |
-| `fileBackend` | string |  |  | File storage backend. Automatically set to "s3" when s3 config is present.<br />_Enum: [filesystem s3 database]_ |
-| [`s3`](#pocketidinstancespecs3) | object |  |  | S3 file backend configuration. When present, FILE_BACKEND is automatically set to "s3". |
-| [`smtp`](#pocketidinstancespecsmtp) | object |  |  | SMTP email transport configuration. When present, SMTP is automatically enabled. |
-| [`emailNotifications`](#pocketidinstancespecemailnotifications) | object |  |  | Email notification settings. |
-| [`ldap`](#pocketidinstancespecldap) | object |  |  | LDAP authentication configuration. When present, LDAP is automatically enabled. |
+| `fileBackend` | string |  |  | File storage backend. Automatically set to "s3" when s3 config is present.<br />Sets FILE_BACKEND. See https://pocket-id.org/docs/configuration/environment-variables.<br />_Enum: [filesystem s3 database]_ |
+| [`s3`](#pocketidinstancespecs3) | object |  |  | S3 file backend. When present, the operator sets FILE_BACKEND=s3. |
+| [`smtp`](#pocketidinstancespecsmtp) | object |  |  | SMTP email transport. When present, the operator sets SMTP_ENABLED=true and UI_CONFIG_DISABLED=true. |
+| [`emailNotifications`](#pocketidinstancespecemailnotifications) | object |  |  | Email notification settings. Requires smtp. The operator sets UI_CONFIG_DISABLED=true when this section is configured. |
+| [`ldap`](#pocketidinstancespecldap) | object |  |  | LDAP authentication. When present, the operator sets LDAP_ENABLED=true and UI_CONFIG_DISABLED=true. |
 | [`logging`](#pocketidinstancespeclogging) | object |  |  | Logging configuration. |
-| [`tracing`](#pocketidinstancespectracing) | object |  |  | OpenTelemetry tracing configuration. When present, tracing is automatically enabled.<br />Configure additional exporter-specific OTEL_* variables via spec.env. |
-| [`ui`](#pocketidinstancespecui) | object |  |  | UI configuration. The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured. |
-| [`userManagement`](#pocketidinstancespecusermanagement) | object |  |  | User registration and account management settings. |
-| [`webauthn`](#pocketidinstancespecwebauthn) | object |  |  | Passkey restrictions. The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured. |
+| [`tracing`](#pocketidinstancespectracing) | object |  |  | OpenTelemetry tracing. When present, the operator sets OTEL_TRACES_EXPORTER=otlp.<br />Configure other OTEL_* variables via spec.env. |
+| [`ui`](#pocketidinstancespecui) | object |  |  | UI settings. The operator sets UI_CONFIG_DISABLED=true when this section is configured. |
+| [`userManagement`](#pocketidinstancespecusermanagement) | object |  |  | User registration and account settings. The operator sets UI_CONFIG_DISABLED=true when this section is configured. |
+| [`webauthn`](#pocketidinstancespecwebauthn) | object |  |  | Passkey restrictions. The operator sets UI_CONFIG_DISABLED=true when this section is configured. |
 | [`geoip`](#pocketidinstancespecgeoip) | object |  |  | GeoIP/MaxMind integration for audit log geolocation. |
-| `auditLogRetentionDays` | integer |  |  | Audit log retention in days. |
-| `analyticsDisabled` | boolean |  |  | Disable the anonymous 24-hour usage analytics heartbeat. |
-| `versionCheckDisabled` | boolean |  |  | Disable GitHub version checks. |
-| `rateLimitingDisabled` | boolean |  |  | Disable Pocket-ID's built-in rate limiting. Pocket-ID's rate limiting is permissive enough for the operator, so it is recommended to keep rate limiting enabled for security. |
-| `internalAppUrl` | string |  |  | Internal base URL for OIDC .well-known endpoints (for split-horizon DNS). |
-| `localIPv6Ranges` | string |  |  | Custom local IPv6 ranges for audit log IP classification (comma-separated CIDRs). |
-| [`trustedProxies`](#pocketidinstancespectrustedproxies) | object |  |  | TrustedProxies configures which proxies Pocket-ID trusts for X-Forwarded-* headers. When unset, the operator trusts the private/loopback ranges if spec.route.enabled is set. |
-| `timezone` | string |  |  | Timezone for the Pocket-ID instance (e.g. "America/New_York"). Sets the TZ environment variable. |
-| `cimdUrlAllowlist` | string array |  |  | CIMDURLAllowlist restricts which https URLs may be used as OAuth Client ID Metadata Documents. The operator automatically sets UI_CONFIG_DISABLED=true when this field is set. |
+| `auditLogRetentionDays` | integer |  |  | Audit log retention in days.<br />Sets AUDIT_LOG_RETENTION_DAYS. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `analyticsDisabled` | boolean |  |  | Disable anonymous usage analytics.<br />Sets ANALYTICS_DISABLED. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `versionCheckDisabled` | boolean |  |  | Disable version checks.<br />Sets VERSION_CHECK_DISABLED. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `rateLimitingDisabled` | boolean |  |  | Disable rate limiting. Pocket-ID's rate limits are permissive enough for the operator, so keeping them is recommended.<br />Sets DISABLE_RATE_LIMITING. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `internalAppUrl` | string |  |  | Internal base URL for split-horizon DNS.<br />Sets INTERNAL_APP_URL. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `localIPv6Ranges` | string |  |  | Local IPv6 ranges (comma-separated CIDRs).<br />Sets LOCAL_IPV6_RANGES. See https://pocket-id.org/docs/configuration/environment-variables. |
+| [`trustedProxies`](#pocketidinstancespectrustedproxies) | object |  |  | TrustedProxies configures which proxies Pocket-ID trusts for X-Forwarded-* headers. When unset, the operator trusts the private/loopback ranges if spec.route.enabled is set.<br />Sets TRUST_PROXY. See https://pocket-id.org/docs/configuration/environment-variables#trust_proxy. |
+| `timezone` | string |  |  | Timezone (e.g. "America/New_York").<br />Sets TZ. |
+| `cimdUrlAllowlist` | string array |  |  | Allowed OAuth Client ID Metadata Document URLs. The operator sets UI_CONFIG_DISABLED=true when this field is set.<br />JSON-encoded into CIMD_URL_ALLOWLIST. See https://pocket-id.org/docs/configuration/environment-variables. |
 | [`OIDCClientRotation`](#pocketidinstancespecoidcclientrotation) | object |  |  | OIDCClientRotation configures instance-wide throttling of OIDC client secret rotations. |
 
 ## `PocketIDInstance.spec.encryptionKey`
@@ -156,18 +156,17 @@ TLSConfig terminates TLS inside the Pocket-ID pod instead of at a proxy in front
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-S3Config configures S3 as the file backend.
-When present, FILE_BACKEND is automatically set to "s3".
+S3Config configures S3 as the file backend. When present, the operator sets FILE_BACKEND=s3.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `bucket` | string | yes |  | S3 bucket name. |
-| `region` | string | yes |  | S3 region. |
-| `endpoint` | string |  |  | S3 endpoint URL. |
-| [`accessKeyId`](#pocketidinstancespecs3accesskeyid) | object | yes |  | S3 access key ID. |
-| [`secretAccessKey`](#pocketidinstancespecs3secretaccesskey) | object | yes |  | S3 secret access key. |
-| `forcePathStyle` | boolean |  |  | Force path-style URLs instead of virtual-hosted-style URLs. |
-| `disableDefaultIntegrityChecks` | boolean |  |  | Disable default S3 integrity checks. |
+| `bucket` | string | yes |  | S3 bucket name.<br />Sets S3_BUCKET. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `region` | string | yes |  | S3 region.<br />Sets S3_REGION. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `endpoint` | string |  |  | S3 endpoint URL.<br />Sets S3_ENDPOINT. See https://pocket-id.org/docs/configuration/environment-variables. |
+| [`accessKeyId`](#pocketidinstancespecs3accesskeyid) | object | yes |  | S3 access key ID.<br />Sets S3_ACCESS_KEY_ID. See https://pocket-id.org/docs/configuration/environment-variables. |
+| [`secretAccessKey`](#pocketidinstancespecs3secretaccesskey) | object | yes |  | S3 secret access key.<br />Sets S3_SECRET_ACCESS_KEY. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `forcePathStyle` | boolean |  |  | Use path-style S3 URLs.<br />Sets S3_FORCE_PATH_STYLE. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `disableDefaultIntegrityChecks` | boolean |  |  | Disable default S3 integrity checks.<br />Sets S3_DISABLE_DEFAULT_INTEGRITY_CHECKS. See https://pocket-id.org/docs/configuration/environment-variables. |
 
 ## `PocketIDInstance.spec.s3.accessKeyId`
 
@@ -195,17 +194,17 @@ SensitiveValue holds a value that can be provided as plain text or from a Kubern
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-SMTPConfig configures SMTP email transport. When present, SMTP is automatically enabled.
+SMTPConfig configures SMTP email transport. When present, the operator sets SMTP_ENABLED=true and UI_CONFIG_DISABLED=true.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `host` | string | yes |  | SMTP server hostname. |
-| `port` | integer | yes |  | SMTP server port. |
-| `from` | string | yes |  | Sender email address. |
-| `user` | string |  |  | SMTP authentication username. |
-| [`password`](#pocketidinstancespecsmtppassword) | object |  |  | SMTP authentication password. |
-| `tls` | string |  |  | TLS mode for the SMTP connection.<br />_Enum: [none starttls tls]_ |
-| `skipCertVerify` | boolean |  |  | Skip certificate verification (for self-signed certificates). |
+| `host` | string | yes |  | SMTP server hostname.<br />Sets SMTP_HOST. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `port` | integer | yes |  | SMTP server port.<br />Sets SMTP_PORT. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `from` | string | yes |  | Sender email address.<br />Sets SMTP_FROM. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `user` | string |  |  | SMTP username.<br />Sets SMTP_USER. See https://pocket-id.org/docs/configuration/environment-variables. |
+| [`password`](#pocketidinstancespecsmtppassword) | object |  |  | SMTP password.<br />Sets SMTP_PASSWORD. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `tls` | string |  |  | SMTP TLS mode.<br />Sets SMTP_TLS. See https://pocket-id.org/docs/configuration/environment-variables.<br />_Enum: [none starttls tls]_ |
+| `skipCertVerify` | boolean |  |  | Skip SMTP certificate verification.<br />Sets SMTP_SKIP_CERT_VERIFY. See https://pocket-id.org/docs/configuration/environment-variables. |
 
 ## `PocketIDInstance.spec.smtp.password`
 
@@ -222,33 +221,33 @@ SensitiveValue holds a value that can be provided as plain text or from a Kubern
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-EmailNotificationsConfig controls which email notifications Pocket-ID sends. This is only relevant when SMTP is configured.
+EmailNotificationsConfig controls which email notifications Pocket-ID sends. Requires smtp. The operator sets UI_CONFIG_DISABLED=true when this section is configured.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `loginNotification` | boolean |  |  | Notify users of logins from new devices. |
-| `oneTimeAccessAsAdmin` | boolean |  |  | Allow admins to send one-time login access codes. |
-| `apiKeyExpiration` | boolean |  |  | Notify users of expiring API keys. |
-| `oneTimeAccessAsUnauthenticated` | boolean |  |  | Allow email-based login bypass for unauthenticated users (reduced security). |
-| `verification` | boolean |  |  | Send verification emails on signup or email change. |
+| `loginNotification` | boolean |  |  | New-device login notifications.<br />Sets EMAIL_LOGIN_NOTIFICATION_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `oneTimeAccessAsAdmin` | boolean |  |  | Admin-sent login codes.<br />Sets EMAIL_ONE_TIME_ACCESS_AS_ADMIN_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `apiKeyExpiration` | boolean |  |  | API key expiration notifications.<br />Sets EMAIL_API_KEY_EXPIRATION_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `oneTimeAccessAsUnauthenticated` | boolean |  |  | Email login codes for unauthenticated users.<br />Sets EMAIL_ONE_TIME_ACCESS_AS_UNAUTHENTICATED_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `verification` | boolean |  |  | Email verification.<br />Sets EMAIL_VERIFICATION_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables. |
 
 ## `PocketIDInstance.spec.ldap`
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-LDAPConfig configures LDAP authentication. When present, LDAP is automatically enabled.
+LDAPConfig configures LDAP authentication. When present, the operator sets LDAP_ENABLED=true and UI_CONFIG_DISABLED=true.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `url` | string | yes |  | LDAP server connection URL (e.g. ldaps://ldap.example.com). |
-| `bindDN` | string | yes |  | LDAP bind distinguished name. |
-| [`bindPassword`](#pocketidinstancespecldapbindpassword) | object | yes |  | LDAP bind password. |
-| `base` | string | yes |  | LDAP search base DN. |
-| `skipCertVerify` | boolean |  |  | Skip LDAP certificate verification. |
-| `softDeleteUsers` | boolean |  |  | Disable removed LDAP users instead of deleting them. |
-| `adminGroupName` | string |  |  | LDAP group name that grants admin privileges. |
-| `userSearchFilter` | string |  |  | LDAP user search filter. |
-| `userGroupSearchFilter` | string |  |  | LDAP group search filter. |
+| `url` | string | yes |  | LDAP server URL.<br />Sets LDAP_URL. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `bindDN` | string | yes |  | Bind DN.<br />Sets LDAP_BIND_DN. See https://pocket-id.org/docs/configuration/environment-variables. |
+| [`bindPassword`](#pocketidinstancespecldapbindpassword) | object | yes |  | Bind password.<br />Sets LDAP_BIND_PASSWORD. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `base` | string | yes |  | Search base DN.<br />Sets LDAP_BASE. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `skipCertVerify` | boolean |  |  | Skip LDAP certificate verification.<br />Sets LDAP_SKIP_CERT_VERIFY. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `softDeleteUsers` | boolean |  |  | Disable removed users instead of deleting them.<br />Sets LDAP_SOFT_DELETE_USERS. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `adminGroupName` | string |  |  | Group that grants admin privileges.<br />Sets LDAP_ADMIN_GROUP_NAME. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `userSearchFilter` | string |  |  | User search filter.<br />Sets LDAP_USER_SEARCH_FILTER. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `userGroupSearchFilter` | string |  |  | Group search filter.<br />Sets LDAP_USER_GROUP_SEARCH_FILTER. See https://pocket-id.org/docs/configuration/environment-variables. |
 | [`attributeMapping`](#pocketidinstancespecldapattributemapping) | object |  |  | LDAP attribute mappings. |
 
 ## `PocketIDInstance.spec.ldap.bindPassword`
@@ -270,16 +269,16 @@ LDAPAttributeMappingConfig maps LDAP attributes to Pocket-ID user/group fields.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `userUniqueIdentifier` | string |  |  | LDAP attribute for the immutable user identifier. |
-| `userUsername` | string |  |  | LDAP attribute for the username. |
-| `userEmail` | string |  |  | LDAP attribute for the email address. |
-| `userFirstName` | string |  |  | LDAP attribute for the first name. |
-| `userLastName` | string |  |  | LDAP attribute for the last name. |
-| `userDisplayName` | string |  |  | LDAP attribute for the display name. |
-| `userProfilePicture` | string |  |  | LDAP attribute for the profile picture. |
-| `groupMember` | string |  |  | LDAP attribute for group membership. |
-| `groupUniqueIdentifier` | string |  |  | LDAP attribute for the immutable group identifier. |
-| `groupName` | string |  |  | LDAP attribute for the group name. |
+| `userUniqueIdentifier` | string |  |  | User unique identifier attribute.<br />Sets LDAP_ATTRIBUTE_USER_UNIQUE_IDENTIFIER. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `userUsername` | string |  |  | Username attribute.<br />Sets LDAP_ATTRIBUTE_USER_USERNAME. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `userEmail` | string |  |  | Email attribute.<br />Sets LDAP_ATTRIBUTE_USER_EMAIL. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `userFirstName` | string |  |  | First name attribute.<br />Sets LDAP_ATTRIBUTE_USER_FIRST_NAME. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `userLastName` | string |  |  | Last name attribute.<br />Sets LDAP_ATTRIBUTE_USER_LAST_NAME. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `userDisplayName` | string |  |  | Display name attribute.<br />Sets LDAP_ATTRIBUTE_USER_DISPLAY_NAME. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `userProfilePicture` | string |  |  | Profile picture attribute.<br />Sets LDAP_ATTRIBUTE_USER_PROFILE_PICTURE. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `groupMember` | string |  |  | Group membership attribute.<br />Sets LDAP_ATTRIBUTE_GROUP_MEMBER. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `groupUniqueIdentifier` | string |  |  | Group unique identifier attribute.<br />Sets LDAP_ATTRIBUTE_GROUP_UNIQUE_IDENTIFIER. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `groupName` | string |  |  | Group name attribute.<br />Sets LDAP_ATTRIBUTE_GROUP_NAME. See https://pocket-id.org/docs/configuration/environment-variables. |
 
 ## `PocketIDInstance.spec.logging`
 
@@ -289,61 +288,61 @@ LoggingConfig configures logging behavior.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `level` | string |  |  | Log level.<br />_Enum: [debug info warn error]_ |
-| `json` | boolean |  |  | Output logs as JSON. |
-| `queryArgs` | boolean |  |  | Include SQL query parameter values in traces and in the query logs emitted<br />at the debug level. These values may contain sensitive data. |
+| `level` | string |  |  | Log level.<br />Sets LOG_LEVEL. See https://pocket-id.org/docs/configuration/environment-variables.<br />_Enum: [debug info warn error]_ |
+| `json` | boolean |  |  | JSON log output.<br />Sets LOG_JSON. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `queryArgs` | boolean |  |  | Include SQL query arguments in debug logs and traces.<br />Sets LOG_QUERY_ARGS. See https://pocket-id.org/docs/configuration/environment-variables. |
 
 ## `PocketIDInstance.spec.tracing`
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-TracingConfig enables OpenTelemetry tracing. When present, tracing is automatically enabled.
-Configure additional exporter-specific OTEL_* variables via spec.env.
+TracingConfig enables OpenTelemetry tracing. When present, the operator sets OTEL_TRACES_EXPORTER=otlp.
+Configure other OTEL_* variables via spec.env.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `endpoint` | string |  |  | OTLP traces endpoint, including the path (e.g. http://collector:4318/v1/traces).<br />Sets OTEL_EXPORTER_OTLP_TRACES_ENDPOINT. |
+| `endpoint` | string |  |  | OTLP traces endpoint, including the path.<br />Sets OTEL_EXPORTER_OTLP_TRACES_ENDPOINT. See https://pocket-id.org/docs/configuration/environment-variables. |
 
 ## `PocketIDInstance.spec.ui`
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-UIConfig configures Pocket-ID UI settings. The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured.
+UIConfig configures Pocket-ID UI settings. The operator sets UI_CONFIG_DISABLED=true when this section is configured.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `appName` | string |  |  | Application display name. |
-| `sessionDuration` | integer |  |  | User session timeout in minutes. |
-| `homePageUrl` | string |  |  | Post-login redirect page. |
-| `disableAnimations` | boolean |  |  | Turn off UI animations. |
-| `accentColor` | string |  |  | Custom CSS color value for the UI accent theme. |
+| `appName` | string |  |  | Application name.<br />Sets APP_NAME. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `sessionDuration` | integer |  |  | Session duration in minutes.<br />Sets SESSION_DURATION. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `homePageUrl` | string |  |  | Post-login redirect page.<br />Sets HOME_PAGE_URL. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `disableAnimations` | boolean |  |  | Disable UI animations.<br />Sets DISABLE_ANIMATIONS. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `accentColor` | string |  |  | UI accent color.<br />Sets ACCENT_COLOR. See https://pocket-id.org/docs/configuration/environment-variables. |
 
 ## `PocketIDInstance.spec.userManagement`
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-UserManagementConfig configures user registration and account settings.
+UserManagementConfig configures user registration and account settings. The operator sets UI_CONFIG_DISABLED=true when this section is configured.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `emailsVerified` | boolean |  |  | Auto-verify emails on signup or change. |
-| `allowOwnAccountEdit` | boolean |  |  | Allow users to edit their own account details. |
-| `requireUserEmail` | boolean |  |  | Require users to have an email address. |
-| `allowUserSignups` | string |  |  | User signup mode.<br />_Enum: [disabled withToken open]_ |
-| `signupDefaultCustomClaims` | string |  |  | Default custom claims to assign to new users (JSON array). |
-| `signupDefaultUserGroupIds` | string array |  |  | Default user group IDs to assign to new users. |
+| `emailsVerified` | boolean |  |  | Mark emails as verified.<br />Sets EMAILS_VERIFIED. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `allowOwnAccountEdit` | boolean |  |  | Allow users to edit their own account.<br />Sets ALLOW_OWN_ACCOUNT_EDIT. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `requireUserEmail` | boolean |  |  | Require an email address.<br />Sets REQUIRE_USER_EMAIL. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `allowUserSignups` | string |  |  | User signup mode.<br />Sets ALLOW_USER_SIGNUPS. See https://pocket-id.org/docs/configuration/environment-variables.<br />_Enum: [disabled withToken open]_ |
+| `signupDefaultCustomClaims` | string |  |  | Default custom claims for new users.<br />Sets SIGNUP_DEFAULT_CUSTOM_CLAIMS. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `signupDefaultUserGroupIds` | string array |  |  | Default user group IDs for new users.<br />JSON-encoded into SIGNUP_DEFAULT_USER_GROUP_IDS. See https://pocket-id.org/docs/configuration/environment-variables. |
 
 ## `PocketIDInstance.spec.webauthn`
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-WebAuthnConfig restricts which passkeys Pocket-ID accepts. The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured.
+WebAuthnConfig restricts which passkeys Pocket-ID accepts. The operator sets UI_CONFIG_DISABLED=true when this section is configured.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `userVerification` | string |  |  | Whether the authenticator must verify the user (PIN, biometric) during login.<br />_Enum: [required preferred]_ |
-| `allowSyncedPasskeys` | boolean |  |  | Accept passkeys that are backup-eligible, i.e. synced to a cloud account<br />such as iCloud Keychain or Google Password Manager. |
-| `authenticatorAttachment` | string |  |  | Authenticator type accepted at registration: platform (device-bound),<br />cross-platform (roaming security key), or any.<br />_Enum: [any platform cross-platform]_ |
+| `userVerification` | string |  |  | Passkey user verification requirement.<br />Sets WEBAUTHN_USER_VERIFICATION. See https://pocket-id.org/docs/configuration/environment-variables.<br />_Enum: [required preferred]_ |
+| `allowSyncedPasskeys` | boolean |  |  | Allow synced passkeys.<br />Sets WEBAUTHN_ALLOW_SYNCED_PASSKEYS. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `authenticatorAttachment` | string |  |  | Accepted authenticator type.<br />Sets WEBAUTHN_AUTHENTICATOR_ATTACHMENT. See https://pocket-id.org/docs/configuration/environment-variables.<br />_Enum: [any platform cross-platform]_ |
 
 ## `PocketIDInstance.spec.geoip`
 
@@ -353,9 +352,9 @@ GeoIPConfig configures GeoIP/MaxMind integration for audit log geolocation.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| [`maxmindLicenseKey`](#pocketidinstancespecgeoipmaxmindlicensekey) | object |  |  | MaxMind license key for downloading the GeoLite2 database. |
-| `dbPath` | string |  |  | Custom path to the GeoLite2 database file. |
-| [`dbUrl`](#pocketidinstancespecgeoipdburl) | object |  |  | Custom URL to download the GeoLite2 database from.<br />May contain credentials, so secretKeyRef is supported. |
+| [`maxmindLicenseKey`](#pocketidinstancespecgeoipmaxmindlicensekey) | object |  |  | MaxMind license key.<br />Sets MAXMIND_LICENSE_KEY. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `dbPath` | string |  |  | GeoLite2 database path.<br />Sets GEOLITE_DB_PATH. See https://pocket-id.org/docs/configuration/environment-variables. |
+| [`dbUrl`](#pocketidinstancespecgeoipdburl) | object |  |  | GeoLite2 database download URL.<br />Sets GEOLITE_DB_URL. See https://pocket-id.org/docs/configuration/environment-variables. |
 
 ## `PocketIDInstance.spec.geoip.maxmindLicenseKey`
 

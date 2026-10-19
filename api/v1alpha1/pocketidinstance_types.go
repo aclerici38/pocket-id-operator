@@ -59,171 +59,208 @@ func (i *PocketIDInstance) EffectiveAppURL() string {
 	return strings.TrimRight(i.Spec.AppURL, "/")
 }
 
-// S3Config configures S3 as the file backend.
-// When present, FILE_BACKEND is automatically set to "s3".
+// S3Config configures S3 as the file backend. When present, the operator sets FILE_BACKEND=s3.
 type S3Config struct {
 	// S3 bucket name.
+	// Sets S3_BUCKET. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +kubebuilder:validation:Required
 	Bucket string `json:"bucket"`
 
 	// S3 region.
+	// Sets S3_REGION. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +kubebuilder:validation:Required
 	Region string `json:"region"`
 
 	// S3 endpoint URL.
+	// Sets S3_ENDPOINT. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	Endpoint string `json:"endpoint,omitempty"`
 
 	// S3 access key ID.
+	// Sets S3_ACCESS_KEY_ID. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +kubebuilder:validation:Required
 	AccessKeyID SensitiveValue `json:"accessKeyId"`
 
 	// S3 secret access key.
+	// Sets S3_SECRET_ACCESS_KEY. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +kubebuilder:validation:Required
 	SecretAccessKey SensitiveValue `json:"secretAccessKey"`
 
-	// Force path-style URLs instead of virtual-hosted-style URLs.
+	// Use path-style S3 URLs.
+	// Sets S3_FORCE_PATH_STYLE. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	ForcePathStyle *bool `json:"forcePathStyle,omitempty"`
 
 	// Disable default S3 integrity checks.
+	// Sets S3_DISABLE_DEFAULT_INTEGRITY_CHECKS. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	DisableDefaultIntegrityChecks *bool `json:"disableDefaultIntegrityChecks,omitempty"`
 }
 
-// SMTPConfig configures SMTP email transport. When present, SMTP is automatically enabled.
+// SMTPConfig configures SMTP email transport. When present, the operator sets SMTP_ENABLED=true and UI_CONFIG_DISABLED=true.
 type SMTPConfig struct {
 	// SMTP server hostname.
+	// Sets SMTP_HOST. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +kubebuilder:validation:Required
 	Host string `json:"host"`
 
 	// SMTP server port.
+	// Sets SMTP_PORT. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +kubebuilder:validation:Required
 	Port int32 `json:"port"`
 
 	// Sender email address.
+	// Sets SMTP_FROM. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +kubebuilder:validation:Required
 	From string `json:"from"`
 
-	// SMTP authentication username.
+	// SMTP username.
+	// Sets SMTP_USER. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	User string `json:"user,omitempty"`
 
-	// SMTP authentication password.
+	// SMTP password.
+	// Sets SMTP_PASSWORD. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	Password *SensitiveValue `json:"password,omitempty"`
 
-	// TLS mode for the SMTP connection.
+	// SMTP TLS mode.
+	// Sets SMTP_TLS. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +kubebuilder:validation:Enum=none;starttls;tls
 	// +optional
 	TLS string `json:"tls,omitempty"`
 
-	// Skip certificate verification (for self-signed certificates).
+	// Skip SMTP certificate verification.
+	// Sets SMTP_SKIP_CERT_VERIFY. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	SkipCertVerify *bool `json:"skipCertVerify,omitempty"`
 }
 
-// EmailNotificationsConfig controls which email notifications Pocket-ID sends. This is only relevant when SMTP is configured.
+// EmailNotificationsConfig controls which email notifications Pocket-ID sends. Requires smtp. The operator sets UI_CONFIG_DISABLED=true when this section is configured.
 type EmailNotificationsConfig struct {
-	// Notify users of logins from new devices.
+	// New-device login notifications.
+	// Sets EMAIL_LOGIN_NOTIFICATION_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	LoginNotification *bool `json:"loginNotification,omitempty"`
 
-	// Allow admins to send one-time login access codes.
+	// Admin-sent login codes.
+	// Sets EMAIL_ONE_TIME_ACCESS_AS_ADMIN_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	OneTimeAccessAsAdmin *bool `json:"oneTimeAccessAsAdmin,omitempty"`
 
-	// Notify users of expiring API keys.
+	// API key expiration notifications.
+	// Sets EMAIL_API_KEY_EXPIRATION_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	APIKeyExpiration *bool `json:"apiKeyExpiration,omitempty"`
 
-	// Allow email-based login bypass for unauthenticated users (reduced security).
+	// Email login codes for unauthenticated users.
+	// Sets EMAIL_ONE_TIME_ACCESS_AS_UNAUTHENTICATED_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	OneTimeAccessAsUnauthenticated *bool `json:"oneTimeAccessAsUnauthenticated,omitempty"`
 
-	// Send verification emails on signup or email change.
+	// Email verification.
+	// Sets EMAIL_VERIFICATION_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	Verification *bool `json:"verification,omitempty"`
 }
 
 // LDAPAttributeMappingConfig maps LDAP attributes to Pocket-ID user/group fields.
 type LDAPAttributeMappingConfig struct {
-	// LDAP attribute for the immutable user identifier.
+	// User unique identifier attribute.
+	// Sets LDAP_ATTRIBUTE_USER_UNIQUE_IDENTIFIER. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	UserUniqueIdentifier string `json:"userUniqueIdentifier,omitempty"`
 
-	// LDAP attribute for the username.
+	// Username attribute.
+	// Sets LDAP_ATTRIBUTE_USER_USERNAME. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	UserUsername string `json:"userUsername,omitempty"`
 
-	// LDAP attribute for the email address.
+	// Email attribute.
+	// Sets LDAP_ATTRIBUTE_USER_EMAIL. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	UserEmail string `json:"userEmail,omitempty"`
 
-	// LDAP attribute for the first name.
+	// First name attribute.
+	// Sets LDAP_ATTRIBUTE_USER_FIRST_NAME. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	UserFirstName string `json:"userFirstName,omitempty"`
 
-	// LDAP attribute for the last name.
+	// Last name attribute.
+	// Sets LDAP_ATTRIBUTE_USER_LAST_NAME. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	UserLastName string `json:"userLastName,omitempty"`
 
-	// LDAP attribute for the display name.
+	// Display name attribute.
+	// Sets LDAP_ATTRIBUTE_USER_DISPLAY_NAME. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	UserDisplayName string `json:"userDisplayName,omitempty"`
 
-	// LDAP attribute for the profile picture.
+	// Profile picture attribute.
+	// Sets LDAP_ATTRIBUTE_USER_PROFILE_PICTURE. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	UserProfilePicture string `json:"userProfilePicture,omitempty"`
 
-	// LDAP attribute for group membership.
+	// Group membership attribute.
+	// Sets LDAP_ATTRIBUTE_GROUP_MEMBER. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	GroupMember string `json:"groupMember,omitempty"`
 
-	// LDAP attribute for the immutable group identifier.
+	// Group unique identifier attribute.
+	// Sets LDAP_ATTRIBUTE_GROUP_UNIQUE_IDENTIFIER. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	GroupUniqueIdentifier string `json:"groupUniqueIdentifier,omitempty"`
 
-	// LDAP attribute for the group name.
+	// Group name attribute.
+	// Sets LDAP_ATTRIBUTE_GROUP_NAME. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	GroupName string `json:"groupName,omitempty"`
 }
 
-// LDAPConfig configures LDAP authentication. When present, LDAP is automatically enabled.
+// LDAPConfig configures LDAP authentication. When present, the operator sets LDAP_ENABLED=true and UI_CONFIG_DISABLED=true.
 type LDAPConfig struct {
-	// LDAP server connection URL (e.g. ldaps://ldap.example.com).
+	// LDAP server URL.
+	// Sets LDAP_URL. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +kubebuilder:validation:Required
 	URL string `json:"url"`
 
-	// LDAP bind distinguished name.
+	// Bind DN.
+	// Sets LDAP_BIND_DN. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +kubebuilder:validation:Required
 	BindDN string `json:"bindDN"`
 
-	// LDAP bind password.
+	// Bind password.
+	// Sets LDAP_BIND_PASSWORD. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +kubebuilder:validation:Required
 	BindPassword SensitiveValue `json:"bindPassword"`
 
-	// LDAP search base DN.
+	// Search base DN.
+	// Sets LDAP_BASE. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +kubebuilder:validation:Required
 	Base string `json:"base"`
 
 	// Skip LDAP certificate verification.
+	// Sets LDAP_SKIP_CERT_VERIFY. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	SkipCertVerify *bool `json:"skipCertVerify,omitempty"`
 
-	// Disable removed LDAP users instead of deleting them.
+	// Disable removed users instead of deleting them.
+	// Sets LDAP_SOFT_DELETE_USERS. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	SoftDeleteUsers *bool `json:"softDeleteUsers,omitempty"`
 
-	// LDAP group name that grants admin privileges.
+	// Group that grants admin privileges.
+	// Sets LDAP_ADMIN_GROUP_NAME. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	AdminGroupName string `json:"adminGroupName,omitempty"`
 
-	// LDAP user search filter.
+	// User search filter.
+	// Sets LDAP_USER_SEARCH_FILTER. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	UserSearchFilter string `json:"userSearchFilter,omitempty"`
 
-	// LDAP group search filter.
+	// Group search filter.
+	// Sets LDAP_USER_GROUP_SEARCH_FILTER. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	UserGroupSearchFilter string `json:"userGroupSearchFilter,omitempty"`
 
@@ -235,94 +272,108 @@ type LDAPConfig struct {
 // LoggingConfig configures logging behavior.
 type LoggingConfig struct {
 	// Log level.
+	// Sets LOG_LEVEL. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +kubebuilder:validation:Enum=debug;info;warn;error
 	// +optional
 	Level string `json:"level,omitempty"`
 
-	// Output logs as JSON.
+	// JSON log output.
+	// Sets LOG_JSON. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	JSON *bool `json:"json,omitempty"`
 
-	// Include SQL query parameter values in traces and in the query logs emitted
-	// at the debug level. These values may contain sensitive data.
+	// Include SQL query arguments in debug logs and traces.
+	// Sets LOG_QUERY_ARGS. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	QueryArgs *bool `json:"queryArgs,omitempty"`
 }
 
-// TracingConfig enables OpenTelemetry tracing. When present, tracing is automatically enabled.
-// Configure additional exporter-specific OTEL_* variables via spec.env.
+// TracingConfig enables OpenTelemetry tracing. When present, the operator sets OTEL_TRACES_EXPORTER=otlp.
+// Configure other OTEL_* variables via spec.env.
 type TracingConfig struct {
-	// OTLP traces endpoint, including the path (e.g. http://collector:4318/v1/traces).
-	// Sets OTEL_EXPORTER_OTLP_TRACES_ENDPOINT.
+	// OTLP traces endpoint, including the path.
+	// Sets OTEL_EXPORTER_OTLP_TRACES_ENDPOINT. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	Endpoint string `json:"endpoint,omitempty"`
 }
 
-// UIConfig configures Pocket-ID UI settings. The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured.
+// UIConfig configures Pocket-ID UI settings. The operator sets UI_CONFIG_DISABLED=true when this section is configured.
 type UIConfig struct {
-	// Application display name.
+	// Application name.
+	// Sets APP_NAME. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	AppName string `json:"appName,omitempty"`
 
-	// User session timeout in minutes.
+	// Session duration in minutes.
+	// Sets SESSION_DURATION. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	SessionDuration *int32 `json:"sessionDuration,omitempty"`
 
 	// Post-login redirect page.
+	// Sets HOME_PAGE_URL. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	HomePageURL string `json:"homePageUrl,omitempty"`
 
-	// Turn off UI animations.
+	// Disable UI animations.
+	// Sets DISABLE_ANIMATIONS. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	DisableAnimations *bool `json:"disableAnimations,omitempty"`
 
-	// Custom CSS color value for the UI accent theme.
+	// UI accent color.
+	// Sets ACCENT_COLOR. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	AccentColor string `json:"accentColor,omitempty"`
 }
 
-// UserManagementConfig configures user registration and account settings.
+// UserManagementConfig configures user registration and account settings. The operator sets UI_CONFIG_DISABLED=true when this section is configured.
 type UserManagementConfig struct {
-	// Auto-verify emails on signup or change.
+	// Mark emails as verified.
+	// Sets EMAILS_VERIFIED. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	EmailsVerified *bool `json:"emailsVerified,omitempty"`
 
-	// Allow users to edit their own account details.
+	// Allow users to edit their own account.
+	// Sets ALLOW_OWN_ACCOUNT_EDIT. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	AllowOwnAccountEdit *bool `json:"allowOwnAccountEdit,omitempty"`
 
-	// Require users to have an email address.
+	// Require an email address.
+	// Sets REQUIRE_USER_EMAIL. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	RequireUserEmail *bool `json:"requireUserEmail,omitempty"`
 
 	// User signup mode.
+	// Sets ALLOW_USER_SIGNUPS. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +kubebuilder:validation:Enum=disabled;withToken;open
 	// +optional
 	AllowUserSignups string `json:"allowUserSignups,omitempty"`
 
-	// Default custom claims to assign to new users (JSON array).
+	// Default custom claims for new users.
+	// Sets SIGNUP_DEFAULT_CUSTOM_CLAIMS. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	SignupDefaultCustomClaims string `json:"signupDefaultCustomClaims,omitempty"`
 
-	// Default user group IDs to assign to new users.
+	// Default user group IDs for new users.
+	// JSON-encoded into SIGNUP_DEFAULT_USER_GROUP_IDS. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	SignupDefaultUserGroupIDs []string `json:"signupDefaultUserGroupIds,omitempty"`
 }
 
-// WebAuthnConfig restricts which passkeys Pocket-ID accepts. The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured.
+// WebAuthnConfig restricts which passkeys Pocket-ID accepts. The operator sets UI_CONFIG_DISABLED=true when this section is configured.
 type WebAuthnConfig struct {
-	// Whether the authenticator must verify the user (PIN, biometric) during login.
+	// Passkey user verification requirement.
+	// Sets WEBAUTHN_USER_VERIFICATION. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +kubebuilder:validation:Enum=required;preferred
 	// +optional
 	UserVerification string `json:"userVerification,omitempty"`
 
-	// Accept passkeys that are backup-eligible, i.e. synced to a cloud account
-	// such as iCloud Keychain or Google Password Manager.
+	// Allow synced passkeys.
+	// Sets WEBAUTHN_ALLOW_SYNCED_PASSKEYS. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	AllowSyncedPasskeys *bool `json:"allowSyncedPasskeys,omitempty"`
 
-	// Authenticator type accepted at registration: platform (device-bound),
-	// cross-platform (roaming security key), or any.
+	// Accepted authenticator type.
+	// Sets WEBAUTHN_AUTHENTICATOR_ATTACHMENT. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +kubebuilder:validation:Enum=any;platform;cross-platform
 	// +optional
 	AuthenticatorAttachment string `json:"authenticatorAttachment,omitempty"`
@@ -330,16 +381,18 @@ type WebAuthnConfig struct {
 
 // GeoIPConfig configures GeoIP/MaxMind integration for audit log geolocation.
 type GeoIPConfig struct {
-	// MaxMind license key for downloading the GeoLite2 database.
+	// MaxMind license key.
+	// Sets MAXMIND_LICENSE_KEY. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	MaxmindLicenseKey *SensitiveValue `json:"maxmindLicenseKey,omitempty"`
 
-	// Custom path to the GeoLite2 database file.
+	// GeoLite2 database path.
+	// Sets GEOLITE_DB_PATH. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	DBPath string `json:"dbPath,omitempty"`
 
-	// Custom URL to download the GeoLite2 database from.
-	// May contain credentials, so secretKeyRef is supported.
+	// GeoLite2 database download URL.
+	// Sets GEOLITE_DB_URL. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	DBURL *SensitiveValue `json:"dbUrl,omitempty"`
 }
@@ -473,9 +526,8 @@ type PocketIDInstanceSpec struct {
 	// +optional
 	Image string `json:"image,omitempty"`
 
-	// Encryption key.
-	// Required when deploying an instance; omit for external instances.
-	// See the official documentation for the ENCRYPTION_KEY environment variable.
+	// Encryption key. Required when deploying an instance; omit for external instances.
+	// Sets ENCRYPTION_KEY. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	EncryptionKey *SensitiveValue `json:"encryptionKey,omitempty"`
 
@@ -484,13 +536,13 @@ type PocketIDInstanceSpec struct {
 	// +optional
 	External *ExternalInstanceConfig `json:"external,omitempty"`
 
-	// URL to access the database at. For SQLite, only add the file path e.g. "/app/data/pocket-id.db".
-	// See the official documentation for DB_CONNECTION_STRING.
+	// Database connection string.
+	// Sets DB_CONNECTION_STRING. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	DatabaseUrl *SensitiveValue `json:"databaseUrl,omitempty"`
 
-	// External URL Pocket-ID can be reached at.
-	// See the official documentation for APP_URL.
+	// Public URL of Pocket-ID.
+	// Sets APP_URL. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	AppURL string `json:"appUrl,omitempty"`
 
@@ -562,23 +614,24 @@ type PocketIDInstanceSpec struct {
 	ServiceTemplate *corev1.ServiceSpec `json:"serviceTemplate,omitempty"`
 
 	// File storage backend. Automatically set to "s3" when s3 config is present.
+	// Sets FILE_BACKEND. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +kubebuilder:validation:Enum=filesystem;s3;database
 	// +optional
 	FileBackend string `json:"fileBackend,omitempty"`
 
-	// S3 file backend configuration. When present, FILE_BACKEND is automatically set to "s3".
+	// S3 file backend. When present, the operator sets FILE_BACKEND=s3.
 	// +optional
 	S3 *S3Config `json:"s3,omitempty"`
 
-	// SMTP email transport configuration. When present, SMTP is automatically enabled.
+	// SMTP email transport. When present, the operator sets SMTP_ENABLED=true and UI_CONFIG_DISABLED=true.
 	// +optional
 	SMTP *SMTPConfig `json:"smtp,omitempty"`
 
-	// Email notification settings.
+	// Email notification settings. Requires smtp. The operator sets UI_CONFIG_DISABLED=true when this section is configured.
 	// +optional
 	EmailNotifications *EmailNotificationsConfig `json:"emailNotifications,omitempty"`
 
-	// LDAP authentication configuration. When present, LDAP is automatically enabled.
+	// LDAP authentication. When present, the operator sets LDAP_ENABLED=true and UI_CONFIG_DISABLED=true.
 	// +optional
 	LDAP *LDAPConfig `json:"ldap,omitempty"`
 
@@ -586,20 +639,20 @@ type PocketIDInstanceSpec struct {
 	// +optional
 	Logging *LoggingConfig `json:"logging,omitempty"`
 
-	// OpenTelemetry tracing configuration. When present, tracing is automatically enabled.
-	// Configure additional exporter-specific OTEL_* variables via spec.env.
+	// OpenTelemetry tracing. When present, the operator sets OTEL_TRACES_EXPORTER=otlp.
+	// Configure other OTEL_* variables via spec.env.
 	// +optional
 	Tracing *TracingConfig `json:"tracing,omitempty"`
 
-	// UI configuration. The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured.
+	// UI settings. The operator sets UI_CONFIG_DISABLED=true when this section is configured.
 	// +optional
 	UI *UIConfig `json:"ui,omitempty"`
 
-	// User registration and account management settings.
+	// User registration and account settings. The operator sets UI_CONFIG_DISABLED=true when this section is configured.
 	// +optional
 	UserManagement *UserManagementConfig `json:"userManagement,omitempty"`
 
-	// Passkey restrictions. The operator automatically sets UI_CONFIG_DISABLED=true when this section is configured.
+	// Passkey restrictions. The operator sets UI_CONFIG_DISABLED=true when this section is configured.
 	// +optional
 	WebAuthn *WebAuthnConfig `json:"webauthn,omitempty"`
 
@@ -608,38 +661,47 @@ type PocketIDInstanceSpec struct {
 	GeoIP *GeoIPConfig `json:"geoip,omitempty"`
 
 	// Audit log retention in days.
+	// Sets AUDIT_LOG_RETENTION_DAYS. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	AuditLogRetentionDays *int32 `json:"auditLogRetentionDays,omitempty"`
 
-	// Disable the anonymous 24-hour usage analytics heartbeat.
+	// Disable anonymous usage analytics.
+	// Sets ANALYTICS_DISABLED. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	AnalyticsDisabled *bool `json:"analyticsDisabled,omitempty"`
 
-	// Disable GitHub version checks.
+	// Disable version checks.
+	// Sets VERSION_CHECK_DISABLED. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	VersionCheckDisabled *bool `json:"versionCheckDisabled,omitempty"`
 
-	// Disable Pocket-ID's built-in rate limiting. Pocket-ID's rate limiting is permissive enough for the operator, so it is recommended to keep rate limiting enabled for security.
+	// Disable rate limiting. Pocket-ID's rate limits are permissive enough for the operator, so keeping them is recommended.
+	// Sets DISABLE_RATE_LIMITING. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	RateLimitingDisabled *bool `json:"rateLimitingDisabled,omitempty"`
 
-	// Internal base URL for OIDC .well-known endpoints (for split-horizon DNS).
+	// Internal base URL for split-horizon DNS.
+	// Sets INTERNAL_APP_URL. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	InternalAppURL string `json:"internalAppUrl,omitempty"`
 
-	// Custom local IPv6 ranges for audit log IP classification (comma-separated CIDRs).
+	// Local IPv6 ranges (comma-separated CIDRs).
+	// Sets LOCAL_IPV6_RANGES. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	LocalIPv6Ranges string `json:"localIPv6Ranges,omitempty"`
 
 	// TrustedProxies configures which proxies Pocket-ID trusts for X-Forwarded-* headers. When unset, the operator trusts the private/loopback ranges if spec.route.enabled is set.
+	// Sets TRUST_PROXY. See https://pocket-id.org/docs/configuration/environment-variables#trust_proxy.
 	// +optional
 	TrustedProxies *TrustedProxiesConfig `json:"trustedProxies,omitempty"`
 
-	// Timezone for the Pocket-ID instance (e.g. "America/New_York"). Sets the TZ environment variable.
+	// Timezone (e.g. "America/New_York").
+	// Sets TZ.
 	// +optional
 	Timezone string `json:"timezone,omitempty"`
 
-	// CIMDURLAllowlist restricts which https URLs may be used as OAuth Client ID Metadata Documents. The operator automatically sets UI_CONFIG_DISABLED=true when this field is set.
+	// Allowed OAuth Client ID Metadata Document URLs. The operator sets UI_CONFIG_DISABLED=true when this field is set.
+	// JSON-encoded into CIMD_URL_ALLOWLIST. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	CIMDURLAllowlist []string `json:"cimdUrlAllowlist,omitempty"`
 
