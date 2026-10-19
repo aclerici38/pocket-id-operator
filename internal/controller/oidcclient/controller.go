@@ -901,8 +901,8 @@ func (r *Reconciler) applyLogoStatus(ctx context.Context, oidcClient *pocketidin
 // the client has none: only reconcileLogos decides what that absence implies.
 func (r *Reconciler) resolveLogoURLs(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) (logoURL, darkLogoURL string) {
 	// Deprecated fields take precedence for backwards compatibility
-	if oidcClient.Spec.LogoURL != "" || oidcClient.Spec.DarkLogoURL != "" {
-		return oidcClient.Spec.LogoURL, oidcClient.Spec.DarkLogoURL
+	if oidcClient.Spec.LogoURL != "" || oidcClient.Spec.DarkLogoURL != "" { //nolint:staticcheck // still honored until the field is removed
+		return oidcClient.Spec.LogoURL, oidcClient.Spec.DarkLogoURL //nolint:staticcheck // still honored until the field is removed
 	}
 
 	logo := oidcClient.Spec.Logo

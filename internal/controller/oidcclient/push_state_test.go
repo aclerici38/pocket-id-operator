@@ -149,8 +149,8 @@ func TestResolveLogoURLs_DeprecatedFieldsTakePrecedence(t *testing.T) {
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
 		ObjectMeta: metav1.ObjectMeta{Name: "my-app", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-			LogoURL:     "https://explicit.example.com/logo.png",
-			DarkLogoURL: "https://explicit.example.com/logo-dark.png",
+			LogoURL:     "https://explicit.example.com/logo.png",      //nolint:staticcheck // testing the deprecated field
+			DarkLogoURL: "https://explicit.example.com/logo-dark.png", //nolint:staticcheck // testing the deprecated field
 			Logo:        &pocketidinternalv1alpha1.OIDCClientLogoSpec{AutoGenerate: boolPtr(true)},
 		},
 	}
@@ -388,14 +388,13 @@ func (f *fakeLogoAPI) DeleteOIDCClientLogo(_ context.Context, _ string, light bo
 	return nil
 }
 
-// logoClient builds a CR resolving light via the deprecated field, with appliedLight and
+// logoClient builds a CR resolving light via an explicit logo URL, with appliedLight and
 // appliedDark already recorded in status. Callers needing a dark URL set it on the spec.
 func logoClient(light, appliedLight, appliedDark string) *pocketidinternalv1alpha1.PocketIDOIDCClient {
 	return &pocketidinternalv1alpha1.PocketIDOIDCClient{
 		ObjectMeta: metav1.ObjectMeta{Name: "my-app", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-			LogoURL: light,
-			Logo:    &pocketidinternalv1alpha1.OIDCClientLogoSpec{AutoGenerate: boolPtr(false)},
+			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{AutoGenerate: boolPtr(false), LogoURL: light},
 		},
 		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
 			LogoURL:     appliedLight,
@@ -470,9 +469,9 @@ func TestReconcileLogos_BehaviorTable(t *testing.T) {
 				oidcClient := logoClient("", "", "")
 				current := &pocketid.OIDCClient{ID: "client-id"}
 				if light {
-					oidcClient.Spec.LogoURL, oidcClient.Status.LogoURL, current.HasLogo = tt.resolved, tt.applied, tt.serverHasLogo
+					oidcClient.Spec.Logo.LogoURL, oidcClient.Status.LogoURL, current.HasLogo = tt.resolved, tt.applied, tt.serverHasLogo
 				} else {
-					oidcClient.Spec.DarkLogoURL, oidcClient.Status.DarkLogoURL, current.HasDarkLogo = tt.resolved, tt.applied, tt.serverHasLogo
+					oidcClient.Spec.Logo.DarkLogoURL, oidcClient.Status.DarkLogoURL, current.HasDarkLogo = tt.resolved, tt.applied, tt.serverHasLogo
 				}
 
 				r := newPushStateOIDCReconciler(scheme, oidcClient)
@@ -571,9 +570,9 @@ func TestLogoDeletePending(t *testing.T) {
 			for _, light := range []bool{true, false} {
 				oidcClient := logoClient("", "", "")
 				if light {
-					oidcClient.Spec.LogoURL, oidcClient.Status.LogoURL = tt.resolved, tt.applied
+					oidcClient.Spec.Logo.LogoURL, oidcClient.Status.LogoURL = tt.resolved, tt.applied
 				} else {
-					oidcClient.Spec.DarkLogoURL, oidcClient.Status.DarkLogoURL = tt.resolved, tt.applied
+					oidcClient.Spec.Logo.DarkLogoURL, oidcClient.Status.DarkLogoURL = tt.resolved, tt.applied
 				}
 
 				r := &Reconciler{}
@@ -1181,7 +1180,7 @@ func TestPushOIDCClientState_LogoErrorIsNonFatalAndNotRetried(t *testing.T) {
 	oidcClientCR := &pocketidinternalv1alpha1.PocketIDOIDCClient{
 		ObjectMeta: metav1.ObjectMeta{Name: "logo-client", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-			LogoURL: "https://cdn.example.com/missing.png",
+			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{LogoURL: "https://cdn.example.com/missing.png"},
 		},
 		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
 			ClientID:   "logo-id",
@@ -1227,7 +1226,7 @@ func TestPushOIDCClientState_LogoErrorIsNonFatalAndNotRetried(t *testing.T) {
 	}
 
 	// A different URL is a different key, so it is tried once.
-	oidcClientCR.Spec.LogoURL = "https://cdn.example.com/other.png"
+	oidcClientCR.Spec.Logo.LogoURL = "https://cdn.example.com/other.png"
 	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1249,8 +1248,7 @@ func TestPushOIDCClientState_DarkLogoFailureLeavesLightLogoIntact(t *testing.T) 
 	oidcClientCR := &pocketidinternalv1alpha1.PocketIDOIDCClient{
 		ObjectMeta: metav1.ObjectMeta{Name: "logo-client", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-			LogoURL:     lightURL,
-			DarkLogoURL: darkURL,
+			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{LogoURL: lightURL, DarkLogoURL: darkURL},
 		},
 		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
 			ClientID:   "logo-id",

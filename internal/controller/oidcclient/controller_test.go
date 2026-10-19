@@ -46,8 +46,6 @@ func TestOidcClientInput(t *testing.T) {
 			LogoutCallbackURLs:                  []string{"https://example.com/logout"},
 			BackchannelLogoutURL:                "https://example.com/backchannel",
 			LaunchURL:                           "https://example.com",
-			LogoURL:                             "https://example.com/logo.png",
-			DarkLogoURL:                         "https://example.com/logo-dark.png",
 			IsPublic:                            true,
 			PKCEEnabled:                         true,
 			RequiresReauthentication:            true,
