@@ -65,21 +65,27 @@ type APIKeyStatus struct {
 	Name string `json:"name"`
 
 	// ID assigned by Pocket-ID
+	// +optional
 	ID string `json:"id,omitempty"`
 
 	// CreatedAt timestamp from Pocket-ID
+	// +optional
 	CreatedAt string `json:"createdAt,omitempty"`
 
 	// ExpiresAt timestamp from Pocket-ID
+	// +optional
 	ExpiresAt string `json:"expiresAt,omitempty"`
 
 	// LastUsedAt timestamp from Pocket-ID
+	// +optional
 	LastUsedAt string `json:"lastUsedAt,omitempty"`
 
 	// SecretName where the API key token is stored
+	// +optional
 	SecretName string `json:"secretName,omitempty"`
 
 	// SecretKey within the secret containing the token
+	// +optional
 	SecretKey string `json:"secretKey,omitempty"`
 }
 

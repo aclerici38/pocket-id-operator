@@ -20,3 +20,6 @@ mise.lock                                     linguist-generated=true
 dist/schemas/*.json                           linguist-generated=true
 charts/pocket-id-operator/values.schema.json                 linguist-generated=true
 charts/pocket-id-instance/values.schema.json                 linguist-generated=true
+
+# crd-ref-docs (mise run generate-api-docs)
+docs/reference/*.md                           linguist-generated=true

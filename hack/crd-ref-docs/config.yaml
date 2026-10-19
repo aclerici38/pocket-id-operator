@@ -1,0 +1,23 @@
+# crd-ref-docs configuration for the generated CRD reference pages in docs/reference/.
+# Rendered by `mise run generate-api-docs` with the templates in ./templates.
+processor:
+  ignoreTypes:
+    - "(PocketID.*)List$"
+  ignoreFields:
+    - "TypeMeta$"
+
+render:
+  # kubernetesVersion (the Kubernetes API docs core types link to) is injected by
+  # generate-api-docs from the k8s.io/api version in go.mod.
+
+  # Gateway API types are not known to crd-ref-docs, so map them to the upstream spec.
+  knownTypes:
+    - name: HTTPRouteSpec
+      package: sigs.k8s.io/gateway-api/apis/v1
+      link: https://gateway-api.sigs.k8s.io/reference/spec/#httproutespec
+    - name: ParentReference
+      package: sigs.k8s.io/gateway-api/apis/v1
+      link: https://gateway-api.sigs.k8s.io/reference/spec/#parentreference
+    - name: Hostname
+      package: sigs.k8s.io/gateway-api/apis/v1
+      link: https://gateway-api.sigs.k8s.io/reference/spec/#hostname

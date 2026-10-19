@@ -348,6 +348,7 @@ type SCIMSpec struct {
 type PocketIDOIDCClientSpec struct {
 	// Name of the oidc client to create in Pocket ID.
 	// If omitted, defaults to metadata.name of the oidcclient resource.
+	// +optional
 	Name string `json:"name,omitempty"`
 
 	// Description is an optional description for the client

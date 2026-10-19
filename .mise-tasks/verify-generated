@@ -16,6 +16,7 @@ gen=(
   dist/schemas
   charts/pocket-id-operator/values.schema.json
   charts/pocket-id-instance/values.schema.json
+  docs/reference
 )
 
 if ! git diff --quiet -- "${gen[@]}"; then

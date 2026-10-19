@@ -504,10 +504,12 @@ type PocketIDInstanceSpec struct {
 	// Defaults to Deployment (immutable after creation)
 	// +kubebuilder:validation:Enum=Deployment;StatefulSet
 	// +kubebuilder:default=Deployment
+	// +optional
 	DeploymentType string `json:"deploymentType,omitempty"`
 
 	// Container image to run. When empty the operator supplies the latest distroless
 	// version tested against this release.
+	// +optional
 	Image string `json:"image,omitempty"`
 
 	// Encryption Key
@@ -543,6 +545,7 @@ type PocketIDInstanceSpec struct {
 	// Configures persistence for Pocket-ID
 	// Note: Pocket-ID can be run statelessly if using Postgres as a file and db backend
 	// If not enabled mounts an emptydir instead
+	// +optional
 	Persistence PersistenceConfig `json:"persistence,omitempty"`
 
 	// Pod security context
@@ -556,6 +559,7 @@ type PocketIDInstanceSpec struct {
 	// HostUsers controls whether the container's user namespace is separate from the host
 	// Defaults to true
 	// +kubebuilder:default=true
+	// +optional
 	HostUsers *bool `json:"hostUsers,omitempty"`
 
 	// Additional labels to add to the workload and pod

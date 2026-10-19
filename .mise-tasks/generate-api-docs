@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+#MISE description="Generate a CRD reference page per Kind in docs/reference/ from the API types"
+#MISE depends=["manifests"]
+set -euo pipefail
+
+command -v crd-ref-docs >/dev/null 2>&1 || { echo "Error: crd-ref-docs not found. Run 'mise install'."; exit 1; }
+
+rm -rf docs/reference
+mkdir -p docs/reference
+
+# Link core types to the Kubernetes API docs matching k8s.io/api in go.mod (v0.37.1 -> 1.37).
+k8s_api="$(go list -m -f '{{.Version}}' k8s.io/api)"
+IFS=. read -r _ minor _ <<<"$k8s_api"
+export K8S_VERSION="1.$minor"
+
+# crd-ref-docs only splits output per API group, so render each Kind separately.
+for crd in config/crd/bases/*.yaml; do
+  crd-ref-docs --log-level=ERROR --source-path=api --renderer=markdown \
+    --config=<(yq '.render.kubernetesVersion = strenv(K8S_VERSION)' hack/crd-ref-docs/config.yaml) \
+    --templates-dir=hack/crd-ref-docs/templates \
+    --template-value=kind="$(yq '.spec.names.kind' "$crd")" \
+    --output-path="docs/reference/$(yq '.spec.names.singular' "$crd").md"
+done
