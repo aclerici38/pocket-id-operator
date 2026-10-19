@@ -34,7 +34,7 @@ jobs:
         uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: "2026.10.14"
+          version: "2026.10.15"
           install_args: golangci-lint
 
       - name: Run golangci-lint
