@@ -1,0 +1,49 @@
+# Docs site config. Preview with `mise run docs-serve`; see https://zensical.org/docs/setup/basics/.
+[project]
+site_name = "Pocket-ID Operator"
+site_description = "Kubernetes operator to manage Pocket-ID"
+site_url = "https://pocket-id-operator.pages.dev/"
+repo_url = "https://github.com/aclerici38/pocket-id-operator"
+repo_name = "aclerici38/pocket-id-operator"
+nav = [
+  { "Home" = "README.md" },
+  { "Guides" = [
+    "pocketidinstance.md",
+    "pocketiduser.md",
+    "pocketidusergroup.md",
+    "pocketidoidcclient.md",
+    "pocketidapi.md",
+    "annotations.md",
+    "metrics.md",
+  ] },
+  { "API Reference" = [
+    "reference/pocketidinstance.md",
+    "reference/pocketiduser.md",
+    "reference/pocketidusergroup.md",
+    "reference/pocketidoidcclient.md",
+    "reference/pocketidapi.md",
+  ] },
+]
+
+[project.theme]
+features = [
+  "content.code.copy",
+  "navigation.instant",
+  "navigation.sections",
+  "navigation.top",
+  "navigation.tracking",
+  "search.highlight",
+]
+
+# Follow the OS light/dark setting, with a toggle to override it.
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to light mode"

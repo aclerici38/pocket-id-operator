@@ -14,15 +14,10 @@ As I get more comfortable with Go and k8s development I will continue to go thro
 - `PocketIDUser`
 - `PocketIDUserGroup`
 - `PocketIDOIDCClient`
+- `PocketIDAPI`
 
 ## Documentation
-Start here for detailed configuration guides:
-- `docs/README.md`
-- `docs/pocketidinstance.md`
-- `docs/pocketiduser.md`
-- `docs/pocketidusergroup.md`
-- `docs/pocketidoidcclient.md`
-- `docs/annotations.md`
+See **https://pocket-id-operator.pages.dev** for the full documentation. The full CRD reference is available there as well.
 
 ## Quickstart
 It's recommended to install this operator via the helm chart.

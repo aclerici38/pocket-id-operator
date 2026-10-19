@@ -1,0 +1,133 @@
+name: Docs
+
+# Builds the docs site and deploys it to Cloudflare Pages as one of:
+#   PRs                  -> pr-<number>.<project>.pages.dev
+#   pushes to main       -> head.<project>.pages.dev
+#   releases (ref input) -> <project>.pages.dev (production)
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - "zensical.toml"
+      - ".mise.toml"
+      - "mise.lock"
+      - ".mise/locks/**"
+      - ".github/workflows/docs.yaml"
+  pull_request:
+    paths:
+      - "docs/**"
+      - "zensical.toml"
+      - ".mise.toml"
+      - "mise.lock"
+      - ".mise/locks/**"
+      - ".github/workflows/docs.yaml"
+  # Called by release.yaml with the release commit; dispatch to redeploy a tag by hand.
+  workflow_call:
+    inputs:
+      ref:
+        description: "Release tag or commit to deploy as the latest docs"
+        required: true
+        type: string
+    secrets:
+      CLOUDFLARE_API_TOKEN:
+        required: true
+      CLOUDFLARE_ACCOUNT_ID:
+        required: true
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Release tag to deploy as the latest docs (e.g. v0.15.0)"
+        required: true
+        type: string
+
+concurrency:
+  group: docs-${{ inputs.ref || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # install_args installs this job's tool subset; don't let `mise run`
+  # auto-install the rest of mise.toml on top of it.
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+
+jobs:
+  build:
+    name: Build site
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Resolve commit
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup mise
+        uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        with:
+          # renovate: datasource=github-releases depName=jdx/mise
+          version: "2026.10.8"
+          install_args: uv pypi:zensical
+
+      - name: Build site
+        run: mise run docs-build
+
+      - name: Upload site
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: site
+          path: site
+          retention-days: 1
+
+  # Separate from build so the Cloudflare token never shares a job with PR code.
+  # Fork PRs can't read the secrets, so they build but don't get a preview.
+  deploy:
+    name: Deploy to Cloudflare Pages
+    needs: build
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    env:
+      PROJECT: pocket-id-operator
+      # "release" is the Pages project's production branch; anything else is a preview alias.
+      BRANCH: >-
+        ${{ inputs.ref != '' && 'release'
+          || github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number)
+          || 'head' }}
+      SHA: ${{ needs.build.outputs.sha }}
+    steps:
+      - name: Download site
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: site
+          path: site
+
+      - name: Deploy
+        id: deploy
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # renovate: datasource=npm depName=wrangler
+          wranglerVersion: "4.151.1"
+          command: pages deploy site --project-name=${{ env.PROJECT }} --branch=${{ env.BRANCH }} --commit-hash=${{ env.SHA }}
+          # Creates a GitHub Deployment, so PRs show a "View deployment" link.
+          gitHubToken: ${{ github.token }}
+
+      - name: Summary
+        env:
+          URL: ${{ steps.deploy.outputs.pages-deployment-alias-url || steps.deploy.outputs.deployment-url }}
+        run: echo "Deployed \`$BRANCH\` to $URL" >> "$GITHUB_STEP_SUMMARY"

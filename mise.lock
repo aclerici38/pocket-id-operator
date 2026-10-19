@@ -197,6 +197,15 @@ url = "https://github.com/evilmartians/lefthook/releases/download/v2.2.2/lefthoo
 url_api = "https://api.github.com/repos/evilmartians/lefthook/releases/assets/636518817"
 provenance = "github-attestations"
 
+[[tools."pypi:zensical"]]
+version = "0.0.71"
+backend = "pypi:zensical"
+specifiers = ["0.0.71"]
+uv = { path = ".mise/locks/pypi-zensical/0.0.71~e0d36179", digest = "sha256:61d09b2fce31cf1f8164fbe72b76afea7fd64e8bcfd06c3a2e776a2c87327d5d" }
+
+[tools."pypi:zensical".options]
+python = "3.14"
+
 [[tools.sd]]
 version = "1.1.0"
 backend = "aqua:chmln/sd"
@@ -236,6 +245,29 @@ url_api = "https://api.github.com/repos/kubernetes-sigs/controller-runtime/relea
 checksum = "sha256:7c95d67911e157d2caa02f599bcf9321b4e759d2f008749b4d03ed9d3e6a8c69"
 url = "https://github.com/kubernetes-sigs/controller-runtime/releases/download/v0.25.2/setup-envtest-darwin-arm64"
 url_api = "https://api.github.com/repos/kubernetes-sigs/controller-runtime/releases/assets/603348936"
+
+[[tools.uv]]
+version = "0.13.1"
+backend = "aqua:astral-sh/uv"
+specifiers = ["0.13.1"]
+
+[tools.uv."platforms.linux-arm64"]
+checksum = "sha256:9041c73c99fdc5892cf128140beb354eca9231d502068cc36e6cb53a8e59ad14"
+url = "https://github.com/astral-sh/uv/releases/download/0.13.1/uv-aarch64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/639312990"
+provenance = "github-attestations"
+
+[tools.uv."platforms.linux-x64"]
+checksum = "sha256:eadd9d27c134ab5ac1ffd4473b97a741407f3ea238288f03121fc4deddf90220"
+url = "https://github.com/astral-sh/uv/releases/download/0.13.1/uv-x86_64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/639313223"
+provenance = "github-attestations"
+
+[tools.uv."platforms.macos-arm64"]
+checksum = "sha256:cfe454573412ff7380d15fc7dae5997ab53ffce72fce0a78e91ddbc84001acd2"
+url = "https://github.com/astral-sh/uv/releases/download/0.13.1/uv-aarch64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/639312976"
+provenance = "github-attestations"
 
 [[tools.yq]]
 version = "4.54.1"

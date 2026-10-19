@@ -365,3 +365,20 @@ jobs:
             dist/crds.yaml \
             dist/schemas/*.json \
             /tmp/release-assets/*.values.schema.json
+
+  # Production docs (<project>.pages.dev) track the latest full release.
+  docs:
+    name: Deploy release docs
+    if: ${{ !inputs.prerelease && needs.release.result == 'success' }}
+    permissions:
+      contents: read
+      deployments: write
+    needs:
+      - prepare
+      - release
+    uses: $/.github/workflows/docs.yaml
+    with:
+      ref: ${{ needs.prepare.outputs.sha }}
+    secrets:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
