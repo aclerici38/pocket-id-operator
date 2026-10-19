@@ -1,0 +1,11 @@
+/* Let the layout use more of the screen than the theme's 61rem cap. */
+.md-grid {
+  max-width: 80rem;
+}
+
+/* Slightly larger body text than the theme's .75rem. */
+@media screen {
+  .md-content .md-typeset {
+    font-size: .8rem;
+  }
+}

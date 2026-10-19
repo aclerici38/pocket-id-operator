@@ -5,6 +5,7 @@ site_description = "Kubernetes operator to manage Pocket-ID"
 site_url = "https://pocket-id-operator.pages.dev/"
 repo_url = "https://github.com/aclerici38/pocket-id-operator"
 repo_name = "aclerici38/pocket-id-operator"
+extra_css = ["stylesheets/extra.css"]
 nav = [
   { "Home" = "README.md" },
   { "Guides" = [
