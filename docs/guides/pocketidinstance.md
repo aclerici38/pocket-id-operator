@@ -61,7 +61,7 @@ When the `ldap` block is present, the operator automatically sets `LDAP_ENABLED=
 
 ## UI Configuration
 
-The operator automatically sets `UI_CONFIG_DISABLED=true` when any of the `ui`, `userManagement`, `webauthn`, `smtp`, `emailNotifications`, or `ldap` sections, or `cimdUrlAllowlist`, are configured. See [example](../examples/pocketidinstance.md#ui-configuration).
+The operator automatically sets `UI_CONFIG_DISABLED=true` when any of the `ui`, `userManagement`, `webauthn`, `smtp`, `emailNotifications`, or `ldap` sections, or `cimdUrlAllowlist`, are configured.
 
 ## Tracing
 
@@ -77,6 +77,8 @@ spec:
 ## Persistence
 
 The `persistence` block controls the data volume mounted into the pocket-id container. See examples for a [custom mount path and subPath](../examples/pocketidinstance.md#custom-mount-path-and-subpath) and a [StatefulSet with an operator-managed PVC](../examples/pocketidinstance.md#statefulset-with-operator-managed-pvc).
+
+Pocket-ID can be run statelessly when using Postgres as the database and either Postgres or S3 as the file backend; see [stateless deployment](../examples/pocketidinstance.md#stateless-deployment).
 
 ### Fields
 The table below describes the behavior when each field is set.

@@ -2144,7 +2144,7 @@
                   },
                   "persistence": {
                     "additionalProperties": false,
-                    "description": "Configures persistence for Pocket-ID. Pocket-ID can be run statelessly; see pocket-id-operator.pages.dev/pocketidinstance#stateless-deployment.\nIf not enabled, an emptyDir is mounted instead.",
+                    "description": "Configures persistence for Pocket-ID. Pocket-ID can be run statelessly; see https://pocket-id-operator.pages.dev/examples/pocketidinstance/#stateless-deployment.\nIf not enabled, an emptyDir is mounted instead.",
                     "properties": {
                       "accessModes": {
                         "default": [
@@ -7907,7 +7907,7 @@
               },
               "persistence": {
                 "additionalProperties": false,
-                "description": "Configures persistence for Pocket-ID. Pocket-ID can be run statelessly; see pocket-id-operator.pages.dev/pocketidinstance#stateless-deployment.\nIf not enabled, an emptyDir is mounted instead.",
+                "description": "Configures persistence for Pocket-ID. Pocket-ID can be run statelessly; see https://pocket-id-operator.pages.dev/examples/pocketidinstance/#stateless-deployment.\nIf not enabled, an emptyDir is mounted instead.",
                 "properties": {
                   "accessModes": {
                     "default": [

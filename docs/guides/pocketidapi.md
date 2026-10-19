@@ -130,7 +130,7 @@ needed for the two cases they cannot express:
 Notes:
 
 - CIMD must be enabled on the instance first: a client only exists once its URL is on
-  [`spec.cimdUrlAllowlist`](pocketidinstance.md#client-id-metadata-documents). With an empty
+  [`spec.cimdUrlAllowlist`](../reference/pocketidinstance.md#pocketidinstancespec). With an empty
   allowlist `cimdAccess` is accepted and reconciled but grants nobody anything.
 - The operator owns this setting like it owns the permission set: unmarking every
   permission disables CIMD access in Pocket-ID rather than leaving it as it was.

@@ -545,7 +545,7 @@ type PocketIDInstanceSpec struct {
 	// +optional
 	Env []corev1.EnvVar `json:"env,omitempty"`
 
-	// Configures persistence for Pocket-ID. Pocket-ID can be run statelessly; see pocket-id-operator.pages.dev/pocketidinstance#stateless-deployment.
+	// Configures persistence for Pocket-ID. Pocket-ID can be run statelessly; see https://pocket-id-operator.pages.dev/examples/pocketidinstance/#stateless-deployment.
 	// If not enabled, an emptyDir is mounted instead.
 	// +optional
 	Persistence PersistenceConfig `json:"persistence,omitempty"`

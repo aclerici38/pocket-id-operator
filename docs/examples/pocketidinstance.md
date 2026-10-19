@@ -79,6 +79,69 @@ spec:
     size: 5Gi
 ```
 
+## Stateless Deployment
+
+With Postgres as the database, no persistent volume is required as long as the instance is configured to use an alternative file backend via postgres or in [S3](#s3-file-backend).
+
+### Postgres File Backend
+
+```yaml
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDInstance
+metadata:
+  name: pocket-id
+  namespace: pocket-id
+spec:
+  encryptionKey:
+    valueFrom:
+      secretKeyRef:
+        name: pocket-id-encryption
+        key: key
+  appUrl: "https://pocket-id.example.com"
+  databaseUrl:
+    valueFrom:
+      secretKeyRef:
+        name: pocket-id-db
+        key: uri
+  fileBackend: database
+```
+
+### S3 File Backend
+Notice `fileBackend` is omitted, the operator automatically sets `FILE_BACKEND` to s3 when s3 is configured.
+
+```yaml
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDInstance
+metadata:
+  name: pocket-id
+  namespace: pocket-id
+spec:
+  encryptionKey:
+    valueFrom:
+      secretKeyRef:
+        name: pocket-id-encryption
+        key: key
+  appUrl: "https://pocket-id.example.com"
+  databaseUrl:
+    valueFrom:
+      secretKeyRef:
+        name: pocket-id-db
+        key: uri
+  s3:
+    bucket: "pocket-id-uploads"
+    region: "us-east-1"
+    accessKeyId:
+      valueFrom:
+        secretKeyRef:
+          name: s3-creds
+          key: access-key
+    secretAccessKey:
+      valueFrom:
+        secretKeyRef:
+          name: s3-creds
+          key: secret-key
+```
+
 ## Persistence
 
 ### Custom Mount Path and SubPath

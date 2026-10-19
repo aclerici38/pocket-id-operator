@@ -25,7 +25,7 @@ PocketIDInstanceSpec defines the desired state of PocketIDInstance.
 | [`databaseUrl`](#pocketidinstancespecdatabaseurl) | object |  |  | Database connection string.<br />Sets DB_CONNECTION_STRING. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `appUrl` | string |  |  | Public URL of Pocket-ID.<br />Sets APP_URL. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `env` | [EnvVar](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#envvar-v1-core) array |  |  | Additional environment variables to set. Uses Kubernetes env var syntax (secretKeyRef, configMapKeyRef, etc.). |
-| [`persistence`](#pocketidinstancespecpersistence) | object |  |  | Configures persistence for Pocket-ID. Pocket-ID can be run statelessly; see pocket-id-operator.pages.dev/pocketidinstance#stateless-deployment.<br />If not enabled, an emptyDir is mounted instead. |
+| [`persistence`](#pocketidinstancespecpersistence) | object |  |  | Configures persistence for Pocket-ID. Pocket-ID can be run statelessly; see https://pocket-id-operator.pages.dev/examples/pocketidinstance/#stateless-deployment.<br />If not enabled, an emptyDir is mounted instead. |
 | `podSecurityContext` | [PodSecurityContext](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#podsecuritycontext-v1-core) |  |  | Pod security context. |
 | `containerSecurityContext` | [SecurityContext](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#securitycontext-v1-core) |  |  | Container security context. |
 | `hostUsers` | boolean |  | `true` | Deprecated: use spec.podTemplate.hostUsers instead. |

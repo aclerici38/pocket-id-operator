@@ -236,7 +236,7 @@ spec:
 
 A `cimd` client is synthesized by Pocket-ID from an OAuth Client ID Metadata Document that
 the app publishes at an https URL, rather than being provisioned ahead of time. Enable the
-feature with [`spec.cimdUrlAllowlist`](pocketidinstance.md#client-id-metadata-documents) on
+feature with [`spec.cimdUrlAllowlist`](../reference/pocketidinstance.md#pocketidinstancespec) on
 the instance. `status.clientType` reports `standard` or `cimd`.
 
 Set `spec.clientID` to the metadata document URL to manage one via the operator.
