@@ -44,7 +44,7 @@ To set it to pin a specific version:
 
 ```yaml
 spec:
-  image: ghcr.io/pocket-id/pocket-id:v2.18.0-distroless
+  image: ghcr.io/pocket-id/pocket-id:v2.19.0-distroless
 ```
 
 ## S3 File Backend
