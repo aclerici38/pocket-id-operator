@@ -432,9 +432,20 @@ spec:
                     type: boolean
                   loginNotification:
                     description: |-
+                      Deprecated: use loginNotificationMode instead.
                       New-device login notifications.
                       Sets EMAIL_LOGIN_NOTIFICATION_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables.
                     type: boolean
+                  loginNotificationMode:
+                    description: |-
+                      When users receive a sign-in notification email. Requires Pocket-ID v2.19.0 or newer; takes precedence over loginNotification.
+                      Sets EMAIL_LOGIN_NOTIFICATION_MODE. See https://pocket-id.org/docs/configuration/environment-variables.
+                    enum:
+                    - disabled
+                    - always
+                    - ipAndUserAgent
+                    - browserRecognition
+                    type: string
                   oneTimeAccessAsAdmin:
                     description: |-
                       Admin-sent login codes.

@@ -137,10 +137,15 @@ type SMTPConfig struct {
 
 // EmailNotificationsConfig controls which email notifications Pocket-ID sends. Requires smtp. The operator sets UI_CONFIG_DISABLED=true when this section is configured.
 type EmailNotificationsConfig struct {
-	// New-device login notifications.
-	// Sets EMAIL_LOGIN_NOTIFICATION_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables.
+	// Deprecated: use loginNotificationMode instead.
 	// +optional
 	LoginNotification *bool `json:"loginNotification,omitempty"`
+
+	// When users receive a sign-in notification email. Requires Pocket-ID v2.19.0 or newer; takes precedence over loginNotification.
+	// Sets EMAIL_LOGIN_NOTIFICATION_MODE. See https://pocket-id.org/docs/configuration/environment-variables.
+	// +kubebuilder:validation:Enum=disabled;always;ipAndUserAgent;browserRecognition
+	// +optional
+	LoginNotificationMode string `json:"loginNotificationMode,omitempty"`
 
 	// Admin-sent login codes.
 	// Sets EMAIL_ONE_TIME_ACCESS_AS_ADMIN_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables.

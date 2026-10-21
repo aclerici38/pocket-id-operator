@@ -37,7 +37,7 @@ spec:
           key: password
     tls: "starttls"
   emailNotifications:
-    loginNotification: true
+    loginNotificationMode: "browserRecognition"
     oneTimeAccessAsAdmin: true
     apiKeyExpiration: true
     verification: true

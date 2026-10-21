@@ -146,6 +146,7 @@ spec:
     skipCertVerify: true
   emailNotifications:
     loginNotification: true
+    loginNotificationMode: "browserRecognition"
     oneTimeAccessAsAdmin: true
     apiKeyExpiration: true
     oneTimeAccessAsUnauthenticated: true

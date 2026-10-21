@@ -1892,9 +1892,22 @@
                             ]
                           },
                           "loginNotification": {
-                            "description": "New-device login notifications.\nSets EMAIL_LOGIN_NOTIFICATION_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables.",
+                            "description": "Deprecated: use loginNotificationMode instead.\nNew-device login notifications.\nSets EMAIL_LOGIN_NOTIFICATION_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables.",
                             "type": [
                               "boolean",
+                              "null"
+                            ]
+                          },
+                          "loginNotificationMode": {
+                            "description": "When users receive a sign-in notification email. Requires Pocket-ID v2.19.0 or newer; takes precedence over loginNotification.\nSets EMAIL_LOGIN_NOTIFICATION_MODE. See https://pocket-id.org/docs/configuration/environment-variables.",
+                            "enum": [
+                              "disabled",
+                              "always",
+                              "ipAndUserAgent",
+                              "browserRecognition"
+                            ],
+                            "type": [
+                              "string",
                               "null"
                             ]
                           },

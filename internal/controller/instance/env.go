@@ -222,8 +222,11 @@ func buildEmailNotificationsEnv(instance *pocketidinternalv1alpha1.PocketIDInsta
 	}
 	en := instance.Spec.EmailNotifications
 	var env []corev1.EnvVar
-	if en.LoginNotification != nil {
-		env = append(env, corev1.EnvVar{Name: "EMAIL_LOGIN_NOTIFICATION_ENABLED", Value: fmt.Sprintf("%t", *en.LoginNotification)})
+	if en.LoginNotification != nil { //nolint:staticcheck // still honored until the field is removed
+		env = append(env, corev1.EnvVar{Name: "EMAIL_LOGIN_NOTIFICATION_ENABLED", Value: fmt.Sprintf("%t", *en.LoginNotification)}) //nolint:staticcheck // still honored until the field is removed
+	}
+	if en.LoginNotificationMode != "" {
+		env = append(env, corev1.EnvVar{Name: "EMAIL_LOGIN_NOTIFICATION_MODE", Value: en.LoginNotificationMode})
 	}
 	if en.OneTimeAccessAsAdmin != nil {
 		env = append(env, corev1.EnvVar{Name: "EMAIL_ONE_TIME_ACCESS_AS_ADMIN_ENABLED", Value: fmt.Sprintf("%t", *en.OneTimeAccessAsAdmin)})
