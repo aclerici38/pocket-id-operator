@@ -143,6 +143,18 @@ When the operator manages the route (`spec.route.enabled: true`) and you leave `
 
 Also see [example behind Cloudflare](../examples/pocketidinstance.md#trusted-proxies-behind-cloudflare).
 
+## Outbound Allowlists
+
+Pocket-ID v2.19.0+ blocks private and reserved IPs when it fetches URLs for client logos, client metadata documents, SCIM, back-channel logout, federated JWKS and LDAP pictures. `spec.outboundAllowedHosts` sets the per-feature `OUTBOUND_ALLOWED_HOSTS_*` allowlists; unset fields keep Pocket-ID's defaults.
+
+```yaml
+spec:
+  outboundAllowedHosts:
+    clientLogo: ["logos.internal.example.com"]
+    scim: ["none"]
+    ldapPicture: ["private"]
+```
+
 ## Metrics and ServiceMonitor
 
 The operator can enable a Prometheus metrics endpoint on the Pocket ID instance. Note that Pocket ID does not yet expose any useful metrics beyond the default OTEL SDK metrics. See [pocket-id/pocket-id#1318](https://github.com/pocket-id/pocket-id/issues/1318).
@@ -196,6 +208,7 @@ See [example](../examples/pocketidinstance.md#external-instance).
   - `EMAILS_VERIFIED`, `ALLOW_OWN_ACCOUNT_EDIT`, `REQUIRE_USER_EMAIL`, `ALLOW_USER_SIGNUPS`, `SIGNUP_DEFAULT_*` (from `spec.userManagement`)
   - `WEBAUTHN_USER_VERIFICATION`, `WEBAUTHN_ALLOW_SYNCED_PASSKEYS`, `WEBAUTHN_AUTHENTICATOR_ATTACHMENT` (from `spec.webauthn`)
   - `CIMD_URL_ALLOWLIST` (JSON-encoded from `spec.cimdUrlAllowlist`)
+  - `OUTBOUND_ALLOWED_HOSTS_*` (comma-joined from `spec.outboundAllowedHosts`)
   - `MAXMIND_LICENSE_KEY`, `GEOLITE_DB_PATH`, `GEOLITE_DB_URL` (from `spec.geoip`)
   - `TZ` (from `spec.timezone`)
   - `LOCAL_IPV6_RANGES` (from `spec.localIPv6Ranges`)

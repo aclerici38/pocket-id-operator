@@ -59,6 +59,7 @@ PocketIDInstanceSpec defines the desired state of PocketIDInstance.
 | [`trustedProxies`](#pocketidinstancespectrustedproxies) | object |  |  | TrustedProxies configures which proxies Pocket-ID trusts for X-Forwarded-* headers. When unset, the operator trusts the private/loopback ranges if spec.route.enabled is set.<br />Sets TRUST_PROXY. See https://pocket-id.org/docs/configuration/environment-variables#trust_proxy. |
 | `timezone` | string |  |  | Timezone (e.g. "America/New_York").<br />Sets TZ. |
 | `cimdUrlAllowlist` | string array |  |  | Allowed OAuth Client ID Metadata Document URLs. The operator sets UI_CONFIG_DISABLED=true when this field is set.<br />JSON-encoded into CIMD_URL_ALLOWLIST. See https://pocket-id.org/docs/configuration/environment-variables. |
+| [`outboundAllowedHosts`](#pocketidinstancespecoutboundallowedhosts) | object |  |  | Private or reserved destinations Pocket-ID may reach when fetching URLs, per feature. |
 | [`OIDCClientRotation`](#pocketidinstancespecoidcclientrotation) | object |  |  | OIDCClientRotation configures instance-wide throttling of OIDC client secret rotations. |
 
 ## `PocketIDInstance.spec.encryptionKey`
@@ -392,6 +393,23 @@ When this section is omitted, the operator sets TRUST_PROXY=false unless it mana
 | --- | --- | --- | --- | --- |
 | `enabled` | boolean | yes | `false` | Enabled turns on trust of X-Forwarded-* headers. When false, TRUST_PROXY is set to "false". |
 | `cidrs` | string array |  |  | CIDRs is the list of trusted proxy IPs/CIDRs. Only used when enabled is true. When empty, TRUST_PROXY is set to "true", trusting all upstream sources.<br />To restrict trust, list explicit ranges, e.g. the cluster pod network or a CDN's published ranges when it connects directly to the pod. |
+
+## `PocketIDInstance.spec.outboundAllowedHosts`
+
+<sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
+
+OutboundAllowedHostsConfig lists the private or reserved destinations Pocket-ID may reach when fetching URLs for each feature. Requires Pocket-ID v2.19.0 or newer.
+Entries are IP addresses, CIDR ranges, hostnames ("*.example.com" matches subdomains) or the keywords "private", "loopback" and "none".
+An unset field keeps Pocket-ID's default; use ["none"] to block every private destination.
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `clientLogo` | string array |  |  | Client logo downloads. The icon library host is always allowed.<br />Sets OUTBOUND_ALLOWED_HOSTS_CLIENT_LOGO. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `clientMetadata` | string array |  |  | OAuth Client ID Metadata Document fetches.<br />Sets OUTBOUND_ALLOWED_HOSTS_CLIENT_METADATA. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `scim` | string array |  |  | SCIM provisioning requests. Pocket-ID defaults to private,loopback.<br />Sets OUTBOUND_ALLOWED_HOSTS_SCIM. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `backchannelLogout` | string array |  |  | Back-channel logout requests. Pocket-ID defaults to private,loopback.<br />Sets OUTBOUND_ALLOWED_HOSTS_BACKCHANNEL_LOGOUT. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `federatedJwks` | string array |  |  | Federated identity JWKS fetches. Pocket-ID defaults to private,loopback.<br />Sets OUTBOUND_ALLOWED_HOSTS_FEDERATED_JWKS. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `ldapPicture` | string array |  |  | LDAP profile picture downloads.<br />Sets OUTBOUND_ALLOWED_HOSTS_LDAP_PICTURE. See https://pocket-id.org/docs/configuration/environment-variables. |
 
 ## `PocketIDInstance.spec.OIDCClientRotation`
 

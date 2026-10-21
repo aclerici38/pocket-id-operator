@@ -230,6 +230,38 @@ func TestBuildEnvVars_CIMDURLAllowlist(t *testing.T) {
 		`["https://apps.example.com/*/client-metadata.json","https://quo\"ted.example.com/meta.json"]`)
 }
 
+func TestBuildEnvVars_OutboundAllowedHosts(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.OutboundAllowedHosts = &pocketidinternalv1alpha1.OutboundAllowedHostsConfig{
+		ClientLogo:        []string{"logos.example.com", "*.cdn.example.com"},
+		ClientMetadata:    []string{"10.0.0.0/8"},
+		SCIM:              []string{"none"},
+		BackchannelLogout: []string{"private", "loopback"},
+		FederatedJWKS:     []string{"kubernetes.default.svc"},
+		LDAPPicture:       []string{"192.168.1.10"},
+	}
+
+	env := buildEnvVars(inst)
+	requireEnv(t, env, "OUTBOUND_ALLOWED_HOSTS_CLIENT_LOGO", "logos.example.com,*.cdn.example.com")
+	requireEnv(t, env, "OUTBOUND_ALLOWED_HOSTS_CLIENT_METADATA", "10.0.0.0/8")
+	requireEnv(t, env, "OUTBOUND_ALLOWED_HOSTS_SCIM", "none")
+	requireEnv(t, env, "OUTBOUND_ALLOWED_HOSTS_BACKCHANNEL_LOGOUT", "private,loopback")
+	requireEnv(t, env, "OUTBOUND_ALLOWED_HOSTS_FEDERATED_JWKS", "kubernetes.default.svc")
+	requireEnv(t, env, "OUTBOUND_ALLOWED_HOSTS_LDAP_PICTURE", "192.168.1.10")
+	// These are environment-only settings the UI cannot change
+	requireEnvAbsent(t, env, "UI_CONFIG_DISABLED")
+}
+
+func TestBuildEnvVars_OutboundAllowedHostsAbsentWhenEmpty(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.OutboundAllowedHosts = &pocketidinternalv1alpha1.OutboundAllowedHostsConfig{SCIM: []string{}}
+
+	env := buildEnvVars(inst)
+	for _, name := range []string{"CLIENT_LOGO", "CLIENT_METADATA", "SCIM", "BACKCHANNEL_LOGOUT", "FEDERATED_JWKS", "LDAP_PICTURE"} {
+		requireEnvAbsent(t, env, "OUTBOUND_ALLOWED_HOSTS_"+name)
+	}
+}
+
 func TestBuildEnvVars_CIMDURLAllowlistAbsentWhenEmpty(t *testing.T) {
 	inst := minimalInstance()
 	inst.Spec.CIMDURLAllowlist = []string{}

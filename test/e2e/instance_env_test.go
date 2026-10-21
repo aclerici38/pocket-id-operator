@@ -176,5 +176,12 @@ spec:
       groupName: "cn"
   cimdUrlAllowlist:
   - "%[4]s"
+  outboundAllowedHosts:
+    clientLogo: ["logos.example.com", "*.cdn.example.com"]
+    clientMetadata: ["10.0.0.0/8"]
+    scim: ["none"]
+    backchannelLogout: ["private", "loopback"]
+    federatedJwks: ["kubernetes.default.svc"]
+    ldapPicture: ["192.168.1.10"]
 `, name, namespace, pocketIDImage(), cimdMetadataURL)
 }

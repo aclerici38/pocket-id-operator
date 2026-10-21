@@ -63,6 +63,7 @@ func buildEnvVars(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.
 	env = append(env, buildUserManagementEnv(instance)...)
 	env = append(env, buildWebAuthnEnv(instance)...)
 	env = append(env, buildOIDCEnv(instance)...)
+	env = append(env, buildOutboundAllowedHostsEnv(instance)...)
 	env = append(env, buildGeoIPEnv(instance)...)
 	env = append(env, buildStandaloneEnv(instance)...)
 
@@ -424,6 +425,31 @@ func buildOIDCEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.
 	// Marshalling a []string cannot fail.
 	allowlist, _ := json.Marshal(instance.Spec.CIMDURLAllowlist)
 	return []corev1.EnvVar{{Name: "CIMD_URL_ALLOWLIST", Value: string(allowlist)}}
+}
+
+func buildOutboundAllowedHostsEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.EnvVar {
+	oa := instance.Spec.OutboundAllowedHosts
+	if oa == nil {
+		return nil
+	}
+	var env []corev1.EnvVar
+	// A slice rather than a map keeps the env order stable across reconciles
+	for _, h := range []struct {
+		name  string
+		hosts []string
+	}{
+		{"OUTBOUND_ALLOWED_HOSTS_CLIENT_LOGO", oa.ClientLogo},
+		{"OUTBOUND_ALLOWED_HOSTS_CLIENT_METADATA", oa.ClientMetadata},
+		{"OUTBOUND_ALLOWED_HOSTS_SCIM", oa.SCIM},
+		{"OUTBOUND_ALLOWED_HOSTS_BACKCHANNEL_LOGOUT", oa.BackchannelLogout},
+		{"OUTBOUND_ALLOWED_HOSTS_FEDERATED_JWKS", oa.FederatedJWKS},
+		{"OUTBOUND_ALLOWED_HOSTS_LDAP_PICTURE", oa.LDAPPicture},
+	} {
+		if len(h.hosts) > 0 {
+			env = append(env, corev1.EnvVar{Name: h.name, Value: strings.Join(h.hosts, ",")})
+		}
+	}
+	return env
 }
 
 func buildGeoIPEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.EnvVar {

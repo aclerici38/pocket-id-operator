@@ -1847,6 +1847,53 @@ spec:
                 required:
                 - enabled
                 type: object
+              outboundAllowedHosts:
+                description: Private or reserved destinations Pocket-ID may reach
+                  when fetching URLs, per feature.
+                properties:
+                  backchannelLogout:
+                    description: |-
+                      Back-channel logout requests. Pocket-ID defaults to private,loopback.
+                      Sets OUTBOUND_ALLOWED_HOSTS_BACKCHANNEL_LOGOUT. See https://pocket-id.org/docs/configuration/environment-variables.
+                    items:
+                      type: string
+                    type: array
+                  clientLogo:
+                    description: |-
+                      Client logo downloads. The icon library host is always allowed.
+                      Sets OUTBOUND_ALLOWED_HOSTS_CLIENT_LOGO. See https://pocket-id.org/docs/configuration/environment-variables.
+                    items:
+                      type: string
+                    type: array
+                  clientMetadata:
+                    description: |-
+                      OAuth Client ID Metadata Document fetches.
+                      Sets OUTBOUND_ALLOWED_HOSTS_CLIENT_METADATA. See https://pocket-id.org/docs/configuration/environment-variables.
+                    items:
+                      type: string
+                    type: array
+                  federatedJwks:
+                    description: |-
+                      Federated identity JWKS fetches. Pocket-ID defaults to private,loopback.
+                      Sets OUTBOUND_ALLOWED_HOSTS_FEDERATED_JWKS. See https://pocket-id.org/docs/configuration/environment-variables.
+                    items:
+                      type: string
+                    type: array
+                  ldapPicture:
+                    description: |-
+                      LDAP profile picture downloads.
+                      Sets OUTBOUND_ALLOWED_HOSTS_LDAP_PICTURE. See https://pocket-id.org/docs/configuration/environment-variables.
+                    items:
+                      type: string
+                    type: array
+                  scim:
+                    description: |-
+                      SCIM provisioning requests. Pocket-ID defaults to private,loopback.
+                      Sets OUTBOUND_ALLOWED_HOSTS_SCIM. See https://pocket-id.org/docs/configuration/environment-variables.
+                    items:
+                      type: string
+                    type: array
+                type: object
               persistence:
                 description: |-
                   Configures persistence for Pocket-ID. Pocket-ID can be run statelessly; see https://pocket-id-operator.pages.dev/examples/pocketidinstance/#stateless-deployment.

@@ -490,6 +490,41 @@ type TrustedProxiesConfig struct {
 	CIDRs []string `json:"cidrs,omitempty"`
 }
 
+// OutboundAllowedHostsConfig lists the private or reserved destinations Pocket-ID may reach when fetching URLs for each feature. Requires Pocket-ID v2.19.0 or newer.
+// Entries are IP addresses, CIDR ranges, hostnames ("*.example.com" matches subdomains) or the keywords "private", "loopback" and "none".
+// An unset field keeps Pocket-ID's default; use ["none"] to block every private destination.
+type OutboundAllowedHostsConfig struct {
+	// Client logo downloads. The icon library host is always allowed.
+	// Sets OUTBOUND_ALLOWED_HOSTS_CLIENT_LOGO. See https://pocket-id.org/docs/configuration/environment-variables.
+	// +optional
+	ClientLogo []string `json:"clientLogo,omitempty"`
+
+	// OAuth Client ID Metadata Document fetches.
+	// Sets OUTBOUND_ALLOWED_HOSTS_CLIENT_METADATA. See https://pocket-id.org/docs/configuration/environment-variables.
+	// +optional
+	ClientMetadata []string `json:"clientMetadata,omitempty"`
+
+	// SCIM provisioning requests. Pocket-ID defaults to private,loopback.
+	// Sets OUTBOUND_ALLOWED_HOSTS_SCIM. See https://pocket-id.org/docs/configuration/environment-variables.
+	// +optional
+	SCIM []string `json:"scim,omitempty"`
+
+	// Back-channel logout requests. Pocket-ID defaults to private,loopback.
+	// Sets OUTBOUND_ALLOWED_HOSTS_BACKCHANNEL_LOGOUT. See https://pocket-id.org/docs/configuration/environment-variables.
+	// +optional
+	BackchannelLogout []string `json:"backchannelLogout,omitempty"`
+
+	// Federated identity JWKS fetches. Pocket-ID defaults to private,loopback.
+	// Sets OUTBOUND_ALLOWED_HOSTS_FEDERATED_JWKS. See https://pocket-id.org/docs/configuration/environment-variables.
+	// +optional
+	FederatedJWKS []string `json:"federatedJwks,omitempty"`
+
+	// LDAP profile picture downloads.
+	// Sets OUTBOUND_ALLOWED_HOSTS_LDAP_PICTURE. See https://pocket-id.org/docs/configuration/environment-variables.
+	// +optional
+	LDAPPicture []string `json:"ldapPicture,omitempty"`
+}
+
 // MetricsConfig configures the Prometheus metrics endpoint for Pocket-ID.
 type MetricsConfig struct {
 	// Enables the Prometheus metrics endpoint.
@@ -709,6 +744,10 @@ type PocketIDInstanceSpec struct {
 	// JSON-encoded into CIMD_URL_ALLOWLIST. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	CIMDURLAllowlist []string `json:"cimdUrlAllowlist,omitempty"`
+
+	// Private or reserved destinations Pocket-ID may reach when fetching URLs, per feature.
+	// +optional
+	OutboundAllowedHosts *OutboundAllowedHostsConfig `json:"outboundAllowedHosts,omitempty"`
 
 	// OIDCClientRotation configures instance-wide throttling of OIDC client secret rotations.
 	// +optional
