@@ -1898,7 +1898,7 @@
                                 ]
                               },
                               "loginNotification": {
-                                "description": "Deprecated: use loginNotificationMode instead.\nNew-device login notifications.\nSets EMAIL_LOGIN_NOTIFICATION_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables.",
+                                "description": "Deprecated: use loginNotificationMode instead.",
                                 "type": [
                                   "boolean",
                                   "null"
@@ -7674,7 +7674,7 @@
                             ]
                           },
                           "loginNotification": {
-                            "description": "Deprecated: use loginNotificationMode instead.\nNew-device login notifications.\nSets EMAIL_LOGIN_NOTIFICATION_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables.",
+                            "description": "Deprecated: use loginNotificationMode instead.",
                             "type": [
                               "boolean",
                               "null"

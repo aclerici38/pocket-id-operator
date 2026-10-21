@@ -711,10 +711,7 @@ spec:
                       Sets EMAIL_API_KEY_EXPIRATION_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables.
                     type: boolean
                   loginNotification:
-                    description: |-
-                      Deprecated: use loginNotificationMode instead.
-                      New-device login notifications.
-                      Sets EMAIL_LOGIN_NOTIFICATION_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables.
+                    description: 'Deprecated: use loginNotificationMode instead.'
                     type: boolean
                   loginNotificationMode:
                     description: |-
