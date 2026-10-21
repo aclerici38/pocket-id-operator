@@ -40,7 +40,7 @@ spec:
     loginNotificationMode: "browserRecognition"
     oneTimeAccessAsAdmin: true
     apiKeyExpiration: true
-    verification: true
+    verificationMode: "optional"
   ui:
     appName: "My SSO"
     sessionDuration: 1440

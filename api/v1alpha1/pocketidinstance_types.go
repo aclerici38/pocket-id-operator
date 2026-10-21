@@ -162,10 +162,16 @@ type EmailNotificationsConfig struct {
 	// +optional
 	OneTimeAccessAsUnauthenticated *bool `json:"oneTimeAccessAsUnauthenticated,omitempty"`
 
-	// Email verification.
-	// Sets EMAIL_VERIFICATION_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables.
+	// Deprecated: use verificationMode instead.
 	// +optional
 	Verification *bool `json:"verification,omitempty"`
+
+	// Email verification mode. Requires Pocket-ID v2.19.0 or newer; takes precedence over verification.
+	// With required, non-admin users (including operator-managed ones) must verify their email before using Pocket-ID.
+	// Sets EMAIL_VERIFICATION. See https://pocket-id.org/docs/configuration/environment-variables.
+	// +kubebuilder:validation:Enum=disabled;optional;required
+	// +optional
+	VerificationMode string `json:"verificationMode,omitempty"`
 }
 
 // LDAPAttributeMappingConfig maps LDAP attributes to Pocket-ID user/group fields.

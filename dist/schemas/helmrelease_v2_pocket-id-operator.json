@@ -1932,9 +1932,21 @@
                                 ]
                               },
                               "verification": {
-                                "description": "Email verification.\nSets EMAIL_VERIFICATION_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables.",
+                                "description": "Deprecated: use verificationMode instead.",
                                 "type": [
                                   "boolean",
+                                  "null"
+                                ]
+                              },
+                              "verificationMode": {
+                                "description": "Email verification mode. Requires Pocket-ID v2.19.0 or newer; takes precedence over verification.\nWith required, non-admin users (including operator-managed ones) must verify their email before using Pocket-ID.\nSets EMAIL_VERIFICATION. See https://pocket-id.org/docs/configuration/environment-variables.",
+                                "enum": [
+                                  "disabled",
+                                  "optional",
+                                  "required"
+                                ],
+                                "type": [
+                                  "string",
                                   "null"
                                 ]
                               }
@@ -7708,9 +7720,21 @@
                             ]
                           },
                           "verification": {
-                            "description": "Email verification.\nSets EMAIL_VERIFICATION_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables.",
+                            "description": "Deprecated: use verificationMode instead.",
                             "type": [
                               "boolean",
+                              "null"
+                            ]
+                          },
+                          "verificationMode": {
+                            "description": "Email verification mode. Requires Pocket-ID v2.19.0 or newer; takes precedence over verification.\nWith required, non-admin users (including operator-managed ones) must verify their email before using Pocket-ID.\nSets EMAIL_VERIFICATION. See https://pocket-id.org/docs/configuration/environment-variables.",
+                            "enum": [
+                              "disabled",
+                              "optional",
+                              "required"
+                            ],
+                            "type": [
+                              "string",
                               "null"
                             ]
                           }

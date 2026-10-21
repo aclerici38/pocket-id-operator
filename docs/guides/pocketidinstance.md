@@ -186,7 +186,7 @@ See [example](../examples/pocketidinstance.md#external-instance).
   - `FILE_BACKEND` (from `spec.fileBackend`) NOTE: `FILE_BACKEND` is set to `s3` if `spec.s3` is configured
   - `FILE_BACKEND=s3` + `S3_*` (from `spec.s3`)
   - `SMTP_ENABLED=true` + `SMTP_*` (from `spec.smtp`)
-  - `EMAIL_*_ENABLED`, `EMAIL_LOGIN_NOTIFICATION_MODE` (from `spec.emailNotifications`)
+  - `EMAIL_*_ENABLED`, `EMAIL_LOGIN_NOTIFICATION_MODE`, `EMAIL_VERIFICATION` (from `spec.emailNotifications`)
   - `LDAP_ENABLED=true` + `LDAP_*` (from `spec.ldap`)
   - `TLS_CERT_FILE`, `TLS_KEY_FILE` (from `spec.tls`, pointing at the mounted Secret)
   - `LOG_LEVEL`, `LOG_JSON`, `LOG_QUERY_ARGS` (from `spec.logging`)

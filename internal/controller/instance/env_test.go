@@ -408,10 +408,11 @@ func TestBuildEnvVars_EmailNotifications(t *testing.T) {
 		OneTimeAccessAsAdmin:           new(true),
 		APIKeyExpiration:               new(true),
 		OneTimeAccessAsUnauthenticated: new(true),
-		Verification:                   new(true),
+		Verification:                   new(true), //nolint:staticcheck // testing the deprecated field
+		VerificationMode:               "required",
 	}
 
-	// Both login notification fields pass through untouched; Pocket-ID resolves precedence
+	// Deprecated fields and their replacements pass through untouched; Pocket-ID resolves precedence
 	env := buildEnvVars(inst)
 	requireEnv(t, env, "EMAIL_LOGIN_NOTIFICATION_ENABLED", "true")
 	requireEnv(t, env, "EMAIL_LOGIN_NOTIFICATION_MODE", "ipAndUserAgent")
@@ -419,6 +420,7 @@ func TestBuildEnvVars_EmailNotifications(t *testing.T) {
 	requireEnv(t, env, "EMAIL_API_KEY_EXPIRATION_ENABLED", "true")
 	requireEnv(t, env, "EMAIL_ONE_TIME_ACCESS_AS_UNAUTHENTICATED_ENABLED", "true")
 	requireEnv(t, env, "EMAIL_VERIFICATION_ENABLED", "true")
+	requireEnv(t, env, "EMAIL_VERIFICATION", "required")
 }
 
 func TestBuildEnvVars_EmailNotificationsAllFalse(t *testing.T) {
@@ -429,6 +431,7 @@ func TestBuildEnvVars_EmailNotificationsAllFalse(t *testing.T) {
 	requireEnvAbsent(t, env, "EMAIL_LOGIN_NOTIFICATION_ENABLED")
 	requireEnvAbsent(t, env, "EMAIL_LOGIN_NOTIFICATION_MODE")
 	requireEnvAbsent(t, env, "EMAIL_ONE_TIME_ACCESS_AS_ADMIN_ENABLED")
+	requireEnvAbsent(t, env, "EMAIL_VERIFICATION")
 }
 
 func TestBuildEnvVars_LDAP(t *testing.T) {
@@ -798,7 +801,7 @@ func TestBuildEnvVars_OptionalBools(t *testing.T) {
 			s.EmailNotifications = &pocketidinternalv1alpha1.EmailNotificationsConfig{OneTimeAccessAsUnauthenticated: v}
 		}},
 		{"EMAIL_VERIFICATION_ENABLED", func(s *spec, v *bool) {
-			s.EmailNotifications = &pocketidinternalv1alpha1.EmailNotificationsConfig{Verification: v}
+			s.EmailNotifications = &pocketidinternalv1alpha1.EmailNotificationsConfig{Verification: v} //nolint:staticcheck // testing the deprecated field
 		}},
 		{"LDAP_SKIP_CERT_VERIFY", func(s *spec, v *bool) {
 			s.LDAP = &pocketidinternalv1alpha1.LDAPConfig{SkipCertVerify: v}

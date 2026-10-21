@@ -151,6 +151,7 @@ spec:
     apiKeyExpiration: true
     oneTimeAccessAsUnauthenticated: true
     verification: true
+    verificationMode: "optional"
   ldap:
     url: "ldap://ldap.invalid:389"
     bindDN: "cn=admin,dc=example,dc=com"

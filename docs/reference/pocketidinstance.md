@@ -230,7 +230,8 @@ EmailNotificationsConfig controls which email notifications Pocket-ID sends. Req
 | `oneTimeAccessAsAdmin` | boolean |  |  | Admin-sent login codes.<br />Sets EMAIL_ONE_TIME_ACCESS_AS_ADMIN_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `apiKeyExpiration` | boolean |  |  | API key expiration notifications.<br />Sets EMAIL_API_KEY_EXPIRATION_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `oneTimeAccessAsUnauthenticated` | boolean |  |  | Email login codes for unauthenticated users.<br />Sets EMAIL_ONE_TIME_ACCESS_AS_UNAUTHENTICATED_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables. |
-| `verification` | boolean |  |  | Email verification.<br />Sets EMAIL_VERIFICATION_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `verification` | boolean |  |  | Deprecated: use verificationMode instead. |
+| `verificationMode` | string |  |  | Email verification mode. Requires Pocket-ID v2.19.0 or newer; takes precedence over verification.<br />With required, non-admin users (including operator-managed ones) must verify their email before using Pocket-ID.<br />Sets EMAIL_VERIFICATION. See https://pocket-id.org/docs/configuration/environment-variables.<br />_Enum: [disabled optional required]_ |
 
 ## `PocketIDInstance.spec.ldap`
 
