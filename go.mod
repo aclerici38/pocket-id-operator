@@ -3,7 +3,7 @@ module github.com/aclerici38/pocket-id-operator
 go 1.27.3
 
 require (
-	github.com/aclerici38/pocket-id-go-client/v2 v2.18.0
+	github.com/aclerici38/pocket-id-go-client/v2 v2.19.0
 	github.com/go-logr/logr v1.4.4
 	github.com/go-openapi/runtime v0.33.3
 	github.com/go-openapi/strfmt v0.27.4
@@ -33,10 +33,10 @@ require (
 	github.com/fxamacker/cbor/v2 v2.9.1 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-logr/zapr v1.3.0 // indirect
-	github.com/go-openapi/analysis v1.0.0 // indirect
+	github.com/go-openapi/analysis v1.0.1 // indirect
 	github.com/go-openapi/errors v0.22.9 // indirect
-	github.com/go-openapi/jsonpointer v1.0.1 // indirect
-	github.com/go-openapi/jsonreference v1.0.2 // indirect
+	github.com/go-openapi/jsonpointer v1.0.2 // indirect
+	github.com/go-openapi/jsonreference v1.0.3 // indirect
 	github.com/go-openapi/loads v0.25.3 // indirect
 	github.com/go-openapi/runtime/server-middleware v0.33.3 // indirect
 	github.com/go-openapi/spec v1.0.1 // indirect
@@ -52,7 +52,7 @@ require (
 	github.com/go-openapi/swag/stringutils v0.29.2 // indirect
 	github.com/go-openapi/swag/typeutils v0.29.2 // indirect
 	github.com/go-openapi/swag/yamlutils v0.29.2 // indirect
-	github.com/go-openapi/validate v1.0.0 // indirect
+	github.com/go-openapi/validate v1.0.1 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
