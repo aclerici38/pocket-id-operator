@@ -343,7 +343,7 @@ func init() {
 	)
 
 	// Init ExternalDeletions to 0 so increase() works in rules
-	for _, kind := range []string{"PocketIDUser", "PocketIDUserGroup", "PocketIDOIDCClient"} {
+	for _, kind := range []string{"PocketIDUser", "PocketIDUserGroup", "PocketIDOIDCClient", "PocketIDAPI"} {
 		ExternalDeletions.WithLabelValues(kind).Add(0)
 	}
 }

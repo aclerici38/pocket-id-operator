@@ -65,8 +65,7 @@ The operator automatically sets `UI_CONFIG_DISABLED=true` when any of the `ui`, 
 
 ## Tracing
 
-When the `tracing` block is present, the operator sets `OTEL_TRACES_EXPORTER=otlp`.
-Due to the nature of OTEL, the only supported  field in the resource is `spec.tracing.endpoint`. To configure any other exporter-specific `OTEL_*` variables use the freeform env fields at `spec.env`
+When the `tracing` block is present, the operator sets `OTEL_TRACES_EXPORTER=otlp`. Due to the nature of OTEL, the only supported field in the resource is `spec.tracing.endpoint`. To configure any other exporter-specific `OTEL_*` variables, use the freeform env fields at `spec.env`.
 
 ```yaml
 spec:
@@ -114,11 +113,7 @@ Behavior:
 
 ### Freeform Route Spec
 
-`spec.route.template` accepts an arbitrary `HTTPRouteSpec` that is merged with the
-operator-built route, for fields the structured config doesn't cover (additional rules,
-matches, filters, timeouts, etc.). The operator always wins: `parentRefs` and `hostnames`
-come from the structured config, and the default rule routing to the Service on port 1411
-is always injected first. Any `rules` you set in the template are appended after it. See [example](../examples/pocketidinstance.md#freeform-route-spec).
+`spec.route.template` accepts an arbitrary `HTTPRouteSpec` that is merged with the operator-built route, for fields the structured config doesn't cover (additional rules, matches, filters, timeouts, etc.). The operator always wins: `parentRefs` and `hostnames` come from the structured config, and the default rule routing to the Service on port 1411 is always injected first. Any `rules` you set in the template are appended after it. See [example](../examples/pocketidinstance.md#freeform-route-spec).
 
 ## TLS
 
@@ -162,8 +157,7 @@ If you're not using the Helm chart, you can deploy a `ServiceMonitor` directly. 
 
 ## Pod Template
 
-`spec.podTemplate` allows editing the instance's pod spec to add custom init containers, sidecars, tolerations, affinity, node selectors, extra volumes, etc.
-The instance's spec is merged on top of `spec.podTemplate`, therefore the pocket-id container remains managed by the operator and changes here will not affect it. The rest of the pod is freely editable.
+`spec.podTemplate` allows editing the instance's pod spec to add custom init containers, sidecars, tolerations, affinity, node selectors, extra volumes, etc. The instance's spec is merged on top of `spec.podTemplate`, therefore the pocket-id container remains managed by the operator and changes here will not affect it. The rest of the pod is freely editable.
 
 See examples for an [init container](../examples/pocketidinstance.md#init-container), [tolerations and node selector](../examples/pocketidinstance.md#tolerations-and-node-selector), and a [sidecar](../examples/pocketidinstance.md#sidecar).
 
@@ -173,7 +167,7 @@ See examples for an [init container](../examples/pocketidinstance.md#init-contai
 
 ## External Instance
 
-Configuring `spec.external` allows the operator to manage an instance deployed outside of the PockerIDInstance CRD e.g. e deployment in a remote cluster, a handwritten deployment, community helm chart, etc. All workload configuration (`spec.encryptionKey`, `spec.smtp`, `spec.persistence`, etc.) is ignored in this mode. There are no limitations for the other custom resources, they will all work as-documented. `spec.external` and `spec.encryptionKey` are mutually exclusive. To migrate from an external instance to an internal one or vice versa, the instance must be recreated.
+Configuring `spec.external` allows the operator to manage an instance deployed outside of the PocketIDInstance CRD, e.g. a deployment in a remote cluster, a handwritten deployment, community helm chart, etc. All workload configuration (`spec.encryptionKey`, `spec.smtp`, `spec.persistence`, etc.) is ignored in this mode. There are no limitations for the other custom resources, they will all work as-documented. `spec.external` and `spec.encryptionKey` are mutually exclusive. To migrate from an external instance to an internal one or vice versa, the instance must be recreated.
 
 See [example](../examples/pocketidinstance.md#external-instance).
 

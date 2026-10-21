@@ -1,19 +1,16 @@
 # Metrics
 
-The operator exposes Prometheus metrics on the `/metrics` endpoint of the metrics server.
-By default the server listens on port `8080` (HTTP). This can be changed with the
-`--metrics-bind-address` flag on the manager binary.
+The operator exposes Prometheus metrics over HTTP on the `/metrics` endpoint of its metrics server, which listens on the address given by the manager's `--metrics-bind-address` flag. The binary's default of `0` disables the server.
 
 ## Enabling the Metrics Endpoint
 
-The metrics server is started automatically. The metrics `Service` is created in the
-operator's namespace with the label `control-plane: controller-manager`.
+**Helm:** set `metrics.enabled: true`. The chart then binds the server to `metrics.port` (default `8080`) and creates the `pocket-id-operator-metrics-service` Service with an `http` port, labelled `control-plane: controller-manager`.
+
+**Kustomize / `dist/install.yaml`:** the metrics server is enabled on port `8080`, with the same Service in the `pocket-id-operator-system` namespace.
 
 ### ServiceMonitor
 
-If you are using the [Prometheus Operator](https://github.com/prometheus-operator/prometheus-operator),
-apply a `ServiceMonitor` to enable scraping. The Helm chart can create this automatically
-via `metrics.serviceMonitor.enabled: true`; or apply it manually:
+If you are using the [Prometheus Operator](https://github.com/prometheus-operator/prometheus-operator), the chart creates a `ServiceMonitor` with `metrics.serviceMonitor.enabled: true`. To apply it manually instead:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -35,270 +32,52 @@ spec:
 
 ### Static Scrape Config
 
-If you are not using the Prometheus Operator, point your scrape config directly at the
-metrics service (port `8080`, HTTP):
+Without the Prometheus Operator, point a scrape config at the metrics Service:
 
 ```yaml
 - job_name: pocket-id-operator
-  scheme: https
-  tls_config:
-    insecure_skip_verify: true
-  bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+  scheme: http
   static_configs:
-    - targets: ['pocket-id-operator-metrics-service.pocket-id-operator-system.svc.cluster.local:8443']
+    - targets: ['pocket-id-operator-metrics-service.pocket-id-operator-system.svc.cluster.local:8080']
 ```
-
----
 
 ## Grafana Dashboard
 
 A pre-built dashboard is included in the chart at `charts/pocket-id-operator/files/grafana-dashboard.json`.
 
-**Helm (ConfigMap):** set `metrics.dashboard.enabled: true` — the chart creates a ConfigMap
-with the label `grafana_dashboard: "1"` that Grafana's sidecar will pick up automatically.
+- **Helm (ConfigMap):** `metrics.dashboard.enabled: true` creates a ConfigMap labelled `grafana_dashboard: "1"` (set by `metrics.dashboard.labels`), which Grafana's sidecar picks up automatically.
+- **Helm (GrafanaDashboard):** when the [grafana-operator](https://github.com/grafana/grafana-operator) CRDs are installed, the chart also creates a `GrafanaDashboard` referencing that ConfigMap. Its instance selector defaults to `grafana.internal/instance: grafana` and can be overridden with `metrics.dashboard.grafanaDashboard.instanceSelector.matchLabels`. Set `metrics.dashboard.grafanaDashboard.enabled: false` to skip it.
+- **Manual import:** in Grafana go to Dashboards → Import → Upload JSON file, and select `charts/pocket-id-operator/files/grafana-dashboard.json` from the repository.
 
-**Helm (GrafanaDashboard CRD):** set `metrics.dashboard.grafanaDashboard.enabled: true` —
-the chart additionally creates a `GrafanaDashboard` resource (requires
-[grafana-operator](https://github.com/grafana/grafana-operator)) that references the
-ConfigMap. The `instanceSelector` labels can be overridden via
-`metrics.dashboard.grafanaDashboard.instanceSelector.matchLabels`.
+## Alerting Rules
 
-**Manual import:** in Grafana go to Dashboards → Import → Upload JSON file, and select
-`charts/pocket-id-operator/files/grafana-dashboard.json` from the repository.
+The chart creates a `PrometheusRule` automatically when the `monitoring.coreos.com/v1` CRDs are installed. Disable it with `metrics.prometheusRule.enabled: false`, turn off individual rules with `metrics.prometheusRule.rules.<name>.enabled: false`, and append your own with `metrics.prometheusRule.additionalRules`. See [the template](https://github.com/aclerici38/pocket-id-operator/blob/main/charts/pocket-id-operator/templates/monitoring/prometheusrule.yaml) for the exact expressions.
 
----
-
-## Alerting Rules (PrometheusRule)
-
-The Helm chart includes a `PrometheusRule` that is created automatically when the
-`monitoring.coreos.com/v1` CRD is available on the cluster. It can be disabled with
-`metrics.prometheusRule.enabled: false`. Additional rules can be appended via
-`metrics.prometheusRule.additionalRules`.
-
-These are the current default rules:
-
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: pocket-id-operator
-  namespace: pocket-id-operator-system
-spec:
-  groups:
-    - name: pocket-id-operator
-      rules:
-        # Pocket-ID instance not ready for over 5 minutes
-        - alert: PocketIDInstanceNotReady
-          expr: pocketid_operator_resource_ready{kind="PocketIDInstance"} == 0
-          for: 5m
-          labels:
-            severity: critical
-          annotations:
-            summary: >-
-              Pocket-ID instance {{ $labels.namespace }}/{{ $labels.name }} is not ready
-            description: >-
-              The PocketIDInstance {{ $labels.namespace }}/{{ $labels.name }} has been
-              in a non-ready state for more than 5 minutes.
-
-        # Managed resource not ready for over 5 minutes
-        - alert: PocketIDResourceNotReady
-          expr: pocketid_operator_resource_ready{kind!="PocketIDInstance"} == 0
-          for: 5m
-          labels:
-            severity: warning
-          annotations:
-            summary: >-
-              {{ $labels.kind }} {{ $labels.namespace }}/{{ $labels.name }} is not ready
-            description: >-
-              The {{ $labels.kind }} {{ $labels.namespace }}/{{ $labels.name }} has been
-              in a non-ready state for more than 5 minutes.
-
-        # Pocket-ID API error rate exceeds 50%
-        - alert: PocketIDAPIHighErrorRate
-          expr: |-
-            (
-              sum(rate(pocketid_operator_pocketid_api_requests_total{result="error"}[5m]))
-              / sum(rate(pocketid_operator_pocketid_api_requests_total[5m]))
-            ) > 0.5
-          for: 5m
-          labels:
-            severity: critical
-          annotations:
-            summary: Pocket-ID API error rate is above 50%
-            description: >-
-              More than 50% of Pocket-ID API requests have been failing for over 5 minutes.
-              This usually indicates the Pocket-ID server is unreachable or unhealthy.
-
-        # Pocket-ID API p99 latency exceeds 5 seconds
-        - alert: PocketIDAPISlowRequests
-          expr: |-
-            histogram_quantile(0.99,
-              sum by (le) (
-                rate(pocketid_operator_pocketid_api_request_duration_seconds_bucket[5m])
-              )
-            ) > 5
-          for: 5m
-          labels:
-            severity: warning
-          annotations:
-            summary: Pocket-ID API p99 latency is above 5 seconds
-            description: >-
-              The 99th percentile latency of Pocket-ID API requests has exceeded 5 seconds
-              for more than 5 minutes.
-
-        # Resources deleted outside the operator
-        - alert: PocketIDExternalDeletions
-          expr: increase(pocketid_operator_external_deletions_total[10m]) > 0
-          labels:
-            severity: warning
-          annotations:
-            summary: >-
-              {{ $labels.kind }} resources deleted externally
-            description: >-
-              {{ $value }} {{ $labels.kind }} resource(s) were deleted outside the
-              operator in the last 10 minutes. The operator will recreate them, but this
-              may indicate manual interference or a competing controller.
-
-        # Controller reconciliation errors sustained over 10 minutes
-        - alert: PocketIDReconcileErrors
-          expr: rate(controller_runtime_reconcile_total{result="error",job=~".*pocket-id-operator.*"}[5m]) > 0
-          for: 10m
-          labels:
-            severity: warning
-          annotations:
-            summary: >-
-              {{ $labels.controller }} controller has sustained reconcile errors
-            description: >-
-              The {{ $labels.controller }} controller has been producing reconcile
-              errors continuously for over 10 minutes.
-
-        # Work queue depth growing, indicating the operator is falling behind
-        - alert: PocketIDWorkQueueBackup
-          expr: workqueue_depth{job=~".*pocket-id-operator.*"} > 10
-          for: 10m
-          labels:
-            severity: warning
-          annotations:
-            summary: >-
-              {{ $labels.name }} work queue depth is {{ $value }}
-            description: >-
-              The {{ $labels.name }} work queue has had more than 10 pending items
-              for over 10 minutes, indicating the operator may be falling behind due to errors.
-
-        # A client supports PKCE but has spec.pkceEnabled set to false
-        - alert: PocketIDOIDCClientPKCESupported
-          expr: pocketid_operator_oidcclient_pkce_supported == 1
-          for: 15m
-          labels:
-            severity: warning
-          annotations:
-            summary: >-
-              PKCE supported but not enabled for {{ $labels.namespace }}/{{ $labels.name }}
-            description: >-
-              The PocketIDOIDCClient {{ $labels.namespace }}/{{ $labels.name }} supports PKCE
-              but has it disabled. Set spec.pkceEnabled: true to enable it.
-
-        # A client-secret rotation failed in the last hour
-        - alert: PocketIDOIDCClientRotationFailing
-          expr: increase(pocketid_operator_oidcclient_secret_rotations_total{result="error"}[1h]) > 0
-          labels:
-            severity: warning
-          annotations:
-            summary: >-
-              Client-secret rotation failing for {{ $labels.namespace }}/{{ $labels.name }}
-            description: >-
-              {{ $value }} client-secret rotation(s) for the PocketIDOIDCClient
-              {{ $labels.namespace }}/{{ $labels.name }} (trigger {{ $labels.trigger }})
-              failed in the last hour.
-
-        # An interval-driven client with NO maintenance window has stayed eligible for longer than
-        # a full extra rotation interval — i.e. it has effectively skipped a whole cycle. The
-        # threshold is read per client from its own rotation_interval_seconds gauge (no hardcoded
-        # interval), capped at 48h via clamp_max so very long intervals still alert within 2 days
-        # rather than waiting a second full interval; the effective threshold is min(interval, 48h).
-        # Clients with a window are excluded (`unless ... window_open`) because waiting for the next
-        # opening is expected — they are covered by RotationWindowMissed (window-driven) or the
-        # min_spacing/window_error reasons in RotationDeferrals.
-        - alert: PocketIDOIDCClientRotationOverdue
-          expr: |-
-            (
-              (pocketid_operator_oidcclient_rotation_enabled == 1)
-              and (
-                (time() - pocketid_operator_oidcclient_next_rotation_timestamp_seconds)
-                  > on(namespace, name) clamp_max(pocketid_operator_oidcclient_rotation_interval_seconds, 172800)
-              )
-            )
-            unless on(namespace, name) pocketid_operator_oidcclient_rotation_window_open
-          for: 1h
-          labels:
-            severity: warning
-          annotations:
-            summary: >-
-              Client-secret rotation overdue for {{ $labels.namespace }}/{{ $labels.name }}
-            description: >-
-              The PocketIDOIDCClient {{ $labels.namespace }}/{{ $labels.name }} has been
-              eligible for interval-driven client-secret rotation for longer than its interval
-              (capped at 48h) but has not rotated. This client has no maintenance window, so
-              instance-wide min-spacing starvation or a stalled operator is the likely cause.
-
-        # A window-driven client (no interval) keeps missing its maintenance window: an opening
-        # came and went without rotating, repeatedly, for longer than a typical daily cycle. This
-        # is the window-driven analog of RotationOverdue. Tune `for` above your window period so a
-        # single transient miss (adoption, one brief outage) self-heals quietly.
-        - alert: PocketIDOIDCClientRotationWindowMissed
-          expr: |-
-            sum by (namespace, name) (
-              increase(pocketid_operator_oidcclient_rotation_deferred_total{reason="window_missed"}[1h])
-            ) > 0
-          for: 24h
-          labels:
-            severity: warning
-          annotations:
-            summary: >-
-              Client-secret rotation window repeatedly missed for {{ $labels.namespace }}/{{ $labels.name }}
-            description: >-
-              The window-driven PocketIDOIDCClient {{ $labels.namespace }}/{{ $labels.name }} has had
-              its maintenance window open and close without rotating for over 24h. The operator may
-              be missing the window (window narrower than the reconcile interval) or instance-wide
-              min-spacing may be starving it at every opening.
-
-        # A due rotation has been blocked by a real problem for hours. Restricted to min_spacing
-        # (instance-wide spacing is starving this client) and window_error (invalid window cron).
-        # The benign reasons are intentionally excluded: window_closed is healthy waiting (an
-        # interval client sitting until its window opens) and window_missed has its own alert.
-        - alert: PocketIDOIDCClientRotationDeferrals
-          expr: |-
-            sum by (namespace, name, reason) (
-              increase(pocketid_operator_oidcclient_rotation_deferred_total{reason=~"min_spacing|window_error"}[1h])
-            ) > 0
-          for: 6h
-          labels:
-            severity: info
-          annotations:
-            summary: >-
-              Client-secret rotation deferred ({{ $labels.reason }}) for {{ $labels.namespace }}/{{ $labels.name }}
-            description: >-
-              A due client-secret rotation for {{ $labels.namespace }}/{{ $labels.name }}
-              has been deferred (reason: {{ $labels.reason }}) continuously for over 6 hours.
-              For min_spacing the instance-wide spacing is starving this client; for window_error the
-              maintenance-window cron is invalid and must be fixed.
-```
-
----
+| Rule | Severity | Fires when |
+| --- | --- | --- |
+| `PocketIDInstanceNotReady` | critical | A `PocketIDInstance` has not been Ready for 5 minutes. |
+| `PocketIDResourceNotReady` | warning | Any other custom resource has not been Ready for 5 minutes. |
+| `PocketIDAPIHighErrorRate` | critical | More than 50% of Pocket-ID API requests have failed for 5 minutes. |
+| `PocketIDAPISlowRequests` | warning | Pocket-ID API p99 latency has been above 5 seconds for 5 minutes. |
+| `PocketIDExternalDeletions` | warning | A resource was deleted outside the operator in the last 10 minutes. |
+| `PocketIDReconcileErrors` | warning | A controller has produced reconcile errors continuously for 10 minutes. |
+| `PocketIDWorkQueueBackup` | warning | A work queue has held more than 10 items for 10 minutes. |
+| `PocketIDOIDCClientPKCESupported` | warning | A client uses PKCE but has `spec.pkceEnabled: false`. |
+| `PocketIDOIDCClientRotationFailing` | warning | A client-secret rotation failed in the last hour. |
+| `PocketIDOIDCClientRotationOverdue` | warning | A client with no maintenance window has been eligible for rotation for longer than its interval (capped at 48h) without rotating, usually from instance min-spacing starvation or a stalled operator. |
+| `PocketIDOIDCClientRotationWindowMissed` | warning | A window-driven client has had its window open and close without rotating for over 24h. |
+| `PocketIDOIDCClientRotationDeferrals` | info | A due rotation has been deferred by `min_spacing` or `window_error` for over 6 hours. The benign `window_closed` reason is excluded, and `window_missed` has its own rule. |
 
 ## Default Metrics
 
-The following metrics are emitted by controller-runtime and are available automatically.
-They are **not** duplicated by the custom metrics below.
+The following metrics are emitted by controller-runtime and are available automatically. They are **not** duplicated by the custom metrics below.
 
 | Metric | Description |
-|--------|-------------|
+| --- | --- |
 | `controller_runtime_reconcile_total` | Total reconcile calls per controller and result |
 | `controller_runtime_reconcile_errors_total` | Total reconcile errors per controller |
 | `controller_runtime_reconcile_time_seconds` | Reconcile duration per controller |
 | `workqueue_*` | Work-queue depth, latency, and processing time |
-
----
 
 ## Custom Metrics
 
@@ -306,355 +85,205 @@ They are **not** duplicated by the custom metrics below.
 
 #### `pocketid_operator_pocketid_api_requests_total`
 
-**Type:** Counter
-**Labels:** `operation`, `result`
+**Type:** Counter · **Labels:** `operation`, `result`
 
-Counts every call made to the Pocket-ID REST API, partitioned by operation name and
-outcome. Use this to track error rates and call volumes for individual API operations.
+Counts every call made to the Pocket-ID REST API, partitioned by operation and outcome. Use this to track error rates and call volumes for individual API operations.
 
 | Label | Values |
-|-------|--------|
-| `operation` | Snake-case method name — see the table below |
+| --- | --- |
+| `operation` | Snake-case operation name, see below |
 | `result` | `success`, `not_found`, or `error` |
 
 <details>
 <summary>All operation names</summary>
 
-`get_current_version`, `get_user`, `list_users`, `create_user`, `update_user`,
-`delete_user`, `create_api_key_for_user`, `delete_api_key`,
-`create_one_time_access_token`, `list_oidc_clients`, `create_oidc_client`,
-`update_oidc_client`, `get_oidc_client`, `delete_oidc_client`,
-`update_oidc_client_allowed_groups`, `create_oidc_client_secret`,
-`delete_oidc_client_secret`,
-`get_oidc_client_scim_service_provider`, `create_scim_service_provider`,
-`update_scim_service_provider`, `delete_scim_service_provider`,
-`list_user_groups`, `create_user_group`, `update_user_group`, `get_user_group`,
-`delete_user_group`, `update_user_group_users`,
-`update_user_group_allowed_oidc_clients`, `update_user_group_custom_claims`
+`get_current_version`, `list_users`, `get_user`, `create_user`, `update_user`, `update_user_custom_claims`, `delete_user`, `create_one_time_access_token`, `create_api_key_for_user`, `delete_api_key`, `list_user_groups`, `get_user_group`, `create_user_group`, `update_user_group`, `update_user_group_users`, `update_user_group_custom_claims`, `delete_user_group`, `list_oidc_clients`, `get_oidc_client`, `create_oidc_client`, `update_oidc_client`, `update_oidc_client_allowed_groups`, `delete_oidc_client`, `delete_oidc_client_logo`, `refresh_oidc_client_metadata`, `create_oidc_client_secret`, `delete_oidc_client_secret`, `get_oidc_client_scim_service_provider`, `create_scim_service_provider`, `update_scim_service_provider`, `delete_scim_service_provider`, `list_apis`, `get_api`, `create_api`, `update_api`, `update_api_permissions`, `set_api_cimd_access`, `delete_api`, `list_api_client_grants`, `set_api_client_grant`, `remove_api_client_grant`
 
 </details>
 
----
-
 #### `pocketid_operator_pocketid_api_request_duration_seconds`
 
-**Type:** Histogram
-**Labels:** `operation`
-**Buckets:** Prometheus default (5ms → 10s)
+**Type:** Histogram · **Labels:** `operation` · **Buckets:** 1ms, then the Prometheus defaults (5ms to 10s)
 
-Latency of each Pocket-ID API call in seconds, partitioned by operation. Use this to
-identify slow API calls or to alert on p99 latency regressions.
-
----
+Latency of each Pocket-ID API call in seconds, partitioned by operation. Use this to identify slow API calls or to alert on p99 latency regressions.
 
 ### Resource Lifecycle
 
 #### `pocketid_operator_resource_operations_total`
 
-**Type:** Counter
-**Labels:** `kind`, `operation`
+**Type:** Counter · **Labels:** `kind`, `operation`
 
-Counts meaningful CRUD events at the Pocket-ID resource level. A new increment means
-the operator actually created, updated, or deleted something in Pocket-ID — not just
-that a reconcile loop ran.
+Counts changes the operator made in Pocket-ID. An increment means the operator actually created, adopted, updated, or deleted something, not just that a reconcile ran.
 
 | Label | Values |
-|-------|--------|
-| `kind` | `PocketIDUser`, `PocketIDUserGroup`, `PocketIDOIDCClient` |
+| --- | --- |
+| `kind` | `PocketIDUser`, `PocketIDUserGroup`, `PocketIDOIDCClient`, `PocketIDAPI` |
 | `operation` | `created`, `adopted`, `updated`, `deleted` |
 
-- **`created`** — the resource did not exist in Pocket-ID and was created.
-- **`adopted`** — the resource already existed in Pocket-ID (matched by name/email) and
-  was claimed by the operator without re-creating it.
-- **`updated`** — the operator detected drift and pushed a state change to Pocket-ID.
-- **`deleted`** — the operator deleted the resource from Pocket-ID during finalization.
-
----
+- **`created`**: the resource did not exist in Pocket-ID and was created.
+- **`adopted`**: the resource already existed in Pocket-ID and was taken over without being recreated.
+- **`updated`**: the operator detected drift and pushed a change to Pocket-ID.
+- **`deleted`**: the operator deleted the resource from Pocket-ID while finalizing the custom resource.
 
 #### `pocketid_operator_resource_ready`
 
-**Type:** Gauge
-**Labels:** `kind`, `namespace`, `name`
+**Type:** Gauge · **Labels:** `kind`, `namespace`, `name`
 
-Current readiness of each managed resource. Value is `1` when the `Ready` condition is
-`True`, `0` otherwise. The gauge is removed entirely when a resource is deleted, so
-stale series will not accumulate.
+Current readiness of each custom resource: `1` when the `Ready` condition is `True`, `0` otherwise. The series is removed when the resource is deleted, so stale series do not accumulate.
 
 | Label | Values |
-|-------|--------|
-| `kind` | `PocketIDUser`, `PocketIDUserGroup`, `PocketIDOIDCClient`, `PocketIDInstance` |
-| `namespace` | Kubernetes namespace of the resource |
-| `name` | Kubernetes name of the resource |
-
----
+| --- | --- |
+| `kind` | `PocketIDInstance`, `PocketIDUser`, `PocketIDUserGroup`, `PocketIDOIDCClient`, `PocketIDAPI` |
+| `namespace` | Namespace of the resource |
+| `name` | Name of the resource |
 
 #### `pocketid_operator_external_deletions_total`
 
-**Type:** Counter
-**Labels:** `kind`
+**Type:** Counter · **Labels:** `kind`
 
-Counts resources that were deleted from Pocket-ID **outside** the operator (e.g.,
-manually via the Pocket-ID UI or API). The operator detects this during reconcile when
-a GET returns 404 for a resource that should already exist, and will recreate it
-automatically. A non-zero value here typically indicates out-of-band changes in Pocket-ID.
+Counts resources deleted from Pocket-ID **outside** the operator, e.g. in the Pocket-ID UI or through its API. The operator detects this when a lookup of a resource it manages returns 404, and recreates it. A non-zero value typically indicates out-of-band changes in Pocket-ID.
 
 | Label | Values |
-|-------|--------|
-| `kind` | `PocketIDUser`, `PocketIDUserGroup`, `PocketIDOIDCClient` |
-
----
+| --- | --- |
+| `kind` | `PocketIDUser`, `PocketIDUserGroup`, `PocketIDOIDCClient`, `PocketIDAPI` |
 
 ### API Keys
 
 #### `pocketid_operator_api_key_operations_total`
 
-**Type:** Counter
-**Labels:** `instance_namespace`, `instance_name`, `operation`
+**Type:** Counter · **Labels:** `instance_namespace`, `instance_name`, `operation`
 
-Counts API key lifecycle events per `PocketIDInstance`. Only keys managed by the
-operator are counted; keys provided via `spec.apiKeys[].secretRef` (pre-existing
-secrets) do not increment this counter.
+Counts `PocketIDUser` API keys the operator created or deleted, per `PocketIDInstance`. Keys provided through `spec.apiKeys[].secretRef` are not counted.
 
 | Label | Values |
-|-------|--------|
-| `instance_namespace` | Namespace of the `PocketIDInstance` the user belongs to |
-| `instance_name` | Name of the `PocketIDInstance` the user belongs to |
+| --- | --- |
+| `instance_namespace` | Namespace of the user's `PocketIDInstance` |
+| `instance_name` | Name of the user's `PocketIDInstance` |
 | `operation` | `created` or `deleted` |
-
----
 
 ### Instance
 
 #### `pocketid_operator_instance_info`
 
-**Type:** Gauge (info-style, always `1`)
-**Labels:** `namespace`, `name`, `version`, `deployment_type`, `app_url`
+**Type:** Gauge (info-style, always `1`) · **Labels:** `namespace`, `name`, `version`, `deployment_type`, `app_url`
 
-Exposes metadata about each managed `PocketIDInstance`. The value is always `1`; use
-the label values to identify the instance. When the Pocket-ID version changes, the old
-label set is deleted and replaced so stale series do not accumulate.
+Metadata about each `PocketIDInstance`. The value is always `1`; use the labels to identify the instance. When the Pocket-ID version changes, the old series is deleted and replaced so stale series do not accumulate.
 
 | Label | Values |
-|-------|--------|
-| `namespace` | Kubernetes namespace of the `PocketIDInstance` |
-| `name` | Kubernetes name of the `PocketIDInstance` |
-| `version` | Pocket-ID version string (e.g. `v2.14.0`), empty if not yet fetched |
+| --- | --- |
+| `namespace` | Namespace of the `PocketIDInstance` |
+| `name` | Name of the `PocketIDInstance` |
+| `version` | Pocket-ID version (e.g. `v2.14.0`), empty until fetched |
 | `deployment_type` | `Deployment` or `StatefulSet` |
-| `app_url` | Value of `spec.appUrl`, empty string if not set |
+| `app_url` | Value of `spec.appUrl`, empty if not set |
 
----
+### User Groups
 
 #### `pocketid_operator_usergroup_member_count`
 
-**Type:** Gauge
-**Labels:** `namespace`, `name`
+**Type:** Gauge · **Labels:** `namespace`, `name`
 
-Current number of members in each `PocketIDUserGroup` as reported by the Pocket-ID API
-after each successful reconcile. The gauge is removed when the group is deleted.
-
-| Label | Values |
-|-------|--------|
-| `namespace` | Kubernetes namespace of the `PocketIDUserGroup` |
-| `name` | Kubernetes name of the `PocketIDUserGroup` |
-
----
+Number of members in each `PocketIDUserGroup`, including those not managed by the operator, as reported by Pocket-ID after each successful reconcile. The series is removed when the group is deleted.
 
 ### OIDC Clients
 
+#### `pocketid_operator_oidcclient_allowed_group_count`
+
+**Type:** Gauge · **Labels:** `namespace`, `name`
+
+Number of user groups allowed to access each `PocketIDOIDCClient`, from both `spec.allowedUserGroups` and groups listing the client in `spec.allowedOIDCClients`. `0` means the client is not group-restricted. The series is removed when the client is deleted.
+
 #### `pocketid_operator_oidcclient_pkce_supported`
 
-**Type:** Gauge (`0`/`1`)
-**Labels:** `namespace`, `name`
+**Type:** Gauge (`0`/`1`) · **Labels:** `namespace`, `name`
 
-Whether Pocket-ID observed a client using PKCE during an authorization flow while
-`spec.pkceEnabled` is `false`, mirrored from `status.pkceSupported`. `1` signals PKCE can
-be enabled for the client; `0` otherwise. Use `sum(pocketid_operator_oidcclient_pkce_supported)`
-for the count of clients that should enable PKCE. The gauge is removed when the client is deleted.
-
-| Label | Values |
-|-------|--------|
-| `namespace` | Kubernetes namespace of the `PocketIDOIDCClient` |
-| `name` | Kubernetes name of the `PocketIDOIDCClient` |
-
----
+Mirrors `status.pkceSupported`: `1` when Pocket-ID observed the client using PKCE during an authorization flow while `spec.pkceEnabled` is `false`, signalling PKCE can be enabled. Use `sum(pocketid_operator_oidcclient_pkce_supported)` for the number of clients that should enable it. The series is removed when the client is deleted.
 
 ### Secret Rotation
 
-These metrics track per-client scheduled OIDC **client-secret rotation** (configured via
-`spec.clientSecretRotation` on a `PocketIDOIDCClient` and throttled instance-wide by
-`spec.OIDCClientRotation.minSpacing` on a `PocketIDInstance`). A rotation fires only when its
-gates pass: the per-client **trigger** is due (an elapsed **interval**, a **maintenance window**
-opening, or both), the **maintenance window** is open when one is configured, and the
-instance-wide **min-spacing** is satisfied. See
-[pocketidoidcclient.md](pocketidoidcclient.md#client-secret-rotation) for the feature itself,
-including the interval-driven and window-driven trigger modes.
+These metrics track scheduled [client-secret rotation](pocketidoidcclient.md#client-secret-rotation), configured with `spec.clientSecretRotation` on a `PocketIDOIDCClient` and throttled by `spec.OIDCClientRotation.minSpacing` on a `PocketIDInstance`. A rotation fires only when its trigger is due (an elapsed interval, a window opening, or both), the maintenance window is open when one is configured, and the instance's minimum spacing is satisfied.
+
+All of them carry the labels `namespace` and `name` of the `PocketIDOIDCClient`, and are removed when the client is deleted.
 
 #### `pocketid_operator_oidcclient_rotation_enabled`
 
 **Type:** Gauge (`0`/`1`)
-**Labels:** `namespace`, `name`
 
-Whether scheduled rotation is enabled for a client (`spec.clientSecretRotation.enabled`).
-Use `sum(pocketid_operator_oidcclient_rotation_enabled)` for the count of clients with
-rotation on. Set to `0` when disabled (the schedule gauges below are then removed); the
-whole series is removed when the client is deleted.
-
-| Label | Values |
-|-------|--------|
-| `namespace` | Kubernetes namespace of the `PocketIDOIDCClient` |
-| `name` | Kubernetes name of the `PocketIDOIDCClient` |
-
----
+Whether scheduled rotation is enabled for the client (`spec.clientSecretRotation.enabled`). Use `sum(pocketid_operator_oidcclient_rotation_enabled)` for the number of clients with rotation on. When rotation is disabled this is `0` and the schedule gauges below are removed.
 
 #### `pocketid_operator_oidcclient_rotation_interval_seconds`
 
 **Type:** Gauge
-**Labels:** `namespace`, `name`
 
-The configured rotation interval in seconds. Present while rotation is enabled **in an
-interval-driven mode**; absent for window-driven clients (no `interval` configured), where the
-maintenance-window gauges below describe the schedule instead.
-
----
+The configured rotation interval in seconds. Present for interval-driven clients; absent for window-driven clients (no `interval`), whose schedule is described by the window gauges below.
 
 #### `pocketid_operator_oidcclient_last_rotation_timestamp_seconds`
 
 **Type:** Gauge (Unix seconds)
-**Labels:** `namespace`, `name`
 
-Unix timestamp of the most recent client-secret rotation, read from the managed secret's
-`pocketid.internal/last-rotated-at` annotation. Compute time-since-last-rotation with
-`time() - pocketid_operator_oidcclient_last_rotation_timestamp_seconds`. Absent until the
-client has rotated at least once.
-
----
+Time of the most recent client-secret rotation, read from the credentials Secret's `pocketid.internal/last-rotated-at` annotation. Compute the time since the last rotation with `time() - pocketid_operator_oidcclient_last_rotation_timestamp_seconds`. Absent until the client has rotated at least once.
 
 #### `pocketid_operator_oidcclient_next_rotation_timestamp_seconds`
 
 **Type:** Gauge (Unix seconds)
-**Labels:** `namespace`, `name`
 
-Unix timestamp at which the secret next becomes **eligible** for rotation (rotation anchor +
-interval). The actual rotation may still be delayed by the maintenance window or instance-wide
-min-spacing, so a value in the past means "eligible now" rather than "rotating now." Present for
-interval-driven clients; absent for window-driven clients (no `interval`), whose next opportunity
-is `pocketid_operator_oidcclient_rotation_window_next_open_timestamp_seconds` instead.
-
----
+Time at which the secret next becomes **eligible** for rotation: the rotation anchor plus the interval. The rotation may still be delayed by the maintenance window or the instance's minimum spacing, so a value in the past means "eligible now" rather than "rotating now". Present for interval-driven clients; for window-driven clients, see `pocketid_operator_oidcclient_rotation_window_next_open_timestamp_seconds` instead.
 
 #### `pocketid_operator_oidcclient_rotation_window_open`
 
 **Type:** Gauge (`0`/`1`)
-**Labels:** `namespace`, `name`
 
-Whether the client's maintenance window is currently open (`1`) or closed (`0`). Only present
-for enabled clients that configure `spec.clientSecretRotation.window`. The value refreshes each
-reconcile (default every ~2 minutes). The bundled dashboard surfaces it as the **Window** column
-of the Rotation Schedule table; it also works well in a state-timeline panel that shows when
-windows were open over time. Absent for interval-only clients with no window configured
-(rotation may fire any time the interval has elapsed).
-
----
+Whether the client's maintenance window is currently open, refreshed on every reconcile (by default every ~2 minutes). The bundled dashboard shows it as the **Window** column of the Rotation Schedule table, and it also works well in a state-timeline panel. Only present for clients that configure `spec.clientSecretRotation.window`.
 
 #### `pocketid_operator_oidcclient_rotation_window_next_open_timestamp_seconds`
 
 **Type:** Gauge (Unix seconds)
-**Labels:** `namespace`, `name`
 
-Unix timestamp at which the maintenance window next opens (the next cron fire; when the window
-is currently open, this is the following occurrence). Render "time until next window" with
-`pocketid_operator_oidcclient_rotation_window_next_open_timestamp_seconds - time()`. Only
-present for enabled clients that configure a window.
-
----
+Time at which the maintenance window next opens. While the window is open, this is the following opening. Render the time until the next window with `pocketid_operator_oidcclient_rotation_window_next_open_timestamp_seconds - time()`. Only present for clients that configure a window.
 
 #### `pocketid_operator_oidcclient_rotation_window_next_close_timestamp_seconds`
 
 **Type:** Gauge (Unix seconds)
-**Labels:** `namespace`, `name`
 
-Unix timestamp at which the maintenance window next closes: the close of the currently-open
-window, or — when closed — the close of the next window to open (its opening plus
-`closesAfter`). Render "time until window closes" with
-`pocketid_operator_oidcclient_rotation_window_next_close_timestamp_seconds - time()`. The
-bundled dashboard surfaces it as the **Window Closes (in)** column of the Rotation Schedule
-table. Only present for enabled clients that configure a window.
-
----
+Time at which the maintenance window next closes: the close of the current window while it is open, otherwise the close of the next one. Render the time until it closes with `pocketid_operator_oidcclient_rotation_window_next_close_timestamp_seconds - time()`. The bundled dashboard shows it as the **Window Closes (in)** column of the Rotation Schedule table. Only present for clients that configure a window.
 
 #### `pocketid_operator_oidcclient_secret_rotations_total`
 
-**Type:** Counter
-**Labels:** `namespace`, `name`, `result`, `trigger`
+**Type:** Counter · **Additional labels:** `result`, `trigger`
 
-Counts client-secret rotations that actually reached the Pocket-ID create call,
-partitioned by outcome and what triggered them. Use it to track rotation success/failure
-rates and to alert specifically on failed scheduled rotations.
+Counts client-secret rotations that reached Pocket-ID, partitioned by outcome and what triggered them. Use it to track rotation success and failure rates, and to alert on failed scheduled rotations.
 
-All eight `result`×`trigger` series are seeded at `0` the first time the operator reconciles a
-secret-bearing client, so a client's first rotation of any kind shows up as a `0→1` step. This
-matters because `increase()`/`rate()` cannot measure a step that has no prior sample — without the
-seed, a one-off rotation (e.g. a single `manual` rotation) would be silently dropped from the
-dashboard's event timeline and from the rate-based alerts below.
+All eight `result` × `trigger` series are seeded at `0` the first time the operator reconciles a client with a secret, so a client's first rotation of any kind shows up as a `0` → `1` step. Without the seed, `increase()` and `rate()` could not measure it, and a one-off rotation would be dropped from the dashboard's event timeline and the alerts.
 
 | Label | Values |
-|-------|--------|
-| `namespace` | Kubernetes namespace of the `PocketIDOIDCClient` |
-| `name` | Kubernetes name of the `PocketIDOIDCClient` |
+| --- | --- |
 | `result` | `success`, `error` |
-| `trigger` | `scheduled` (interval-driven or window-driven automatic rotation), `manual` (`regenerate-client-secret` annotation), `initial` (secret created/seeded), `drift` (the stored secret was deleted in Pocket-ID, so a replacement was minted regardless of schedule) |
-
----
+| `trigger` | `scheduled` (interval- or window-driven rotation), `manual` (the `regenerate-client-secret` annotation), `initial` (no credentials Secret existed yet, e.g. a newly created or adopted client), `drift` (the stored secret was deleted in Pocket-ID and replaced) |
 
 #### `pocketid_operator_oidcclient_secrets`
 
 **Type:** Gauge
-**Labels:** `namespace`, `name`
 
-How many secrets Pocket-ID holds for the client, expired ones included, as read at the start of the
-last reconcile — a mint or a retirement during that reconcile is reflected on the next one. Only
-confidential clients report it. Pocket-ID caps the count at 20 per client, so a value climbing
-towards that means superseded secrets are not being retired — usually repeated retirement failures.
+How many secrets Pocket-ID holds for the client, expired ones included, as read at the start of the last reconcile, so a secret created or retired during that reconcile shows up on the next one. Only confidential clients report it. Pocket-ID allows at most 20 secrets per client, so a value climbing towards that means superseded secrets are not being retired, usually from repeated retirement failures.
 
-A `0` means every secret was deleted outside the operator. Unless the secret is managed externally
-(`spec.secret.storeClientSecret: false`) the operator mints a replacement on the next reconcile, so
-this should not persist.
-
-| Label | Values |
-|-------|--------|
-| `namespace` | Kubernetes namespace of the `PocketIDOIDCClient` |
-| `name` | Kubernetes name of the `PocketIDOIDCClient` |
-
----
+A `0` means every secret was deleted outside the operator. Unless the secret is managed externally (`spec.secret.storeClientSecret: false`), the operator creates a replacement on the next reconcile, so this should not persist.
 
 #### `pocketid_operator_oidcclient_secrets_retired_total`
 
-**Type:** Counter
-**Labels:** `namespace`, `name`, `reason`
+**Type:** Counter · **Additional labels:** `reason`
 
-Counts superseded secrets the operator deleted from Pocket-ID. In steady state this tracks
-rotations one-for-one; a `cap` reason means the client hit Pocket-ID's 20-secret limit and secrets
-had to be retired ahead of their overlap to make room.
+Counts superseded secrets the operator deleted from Pocket-ID. In steady state this tracks rotations one-for-one.
 
 | Label | Values |
-|-------|--------|
-| `namespace` | Kubernetes namespace of the `PocketIDOIDCClient` |
-| `name` | Kubernetes name of the `PocketIDOIDCClient` |
-| `reason` | `superseded` (the overlap elapsed), `cap` (room was needed to create a replacement) |
-
----
+| --- | --- |
+| `reason` | `superseded` (the [overlap](pocketidoidcclient.md#client-secret-overlap) elapsed), `cap` (the client hit Pocket-ID's 20-secret limit, so a secret was retired early to make room for a replacement) |
 
 #### `pocketid_operator_oidcclient_rotation_deferred_total`
 
-**Type:** Counter
-**Labels:** `namespace`, `name`, `reason`
+**Type:** Counter · **Additional labels:** `reason`
 
-Counts occasions where a scheduled rotation was **due** (its trigger fired — an elapsed interval,
-or in window-driven mode an opening that has not been served) but a downstream gate prevented it
-from firing. This is the "out of schedule / why" signal.
+Counts times a scheduled rotation was **due** (an elapsed interval, or an unserved window opening in window-driven mode) but another gate kept it from firing.
 
 | Label | Values |
-|-------|--------|
-| `namespace` | Kubernetes namespace of the `PocketIDOIDCClient` |
-| `name` | Kubernetes name of the `PocketIDOIDCClient` |
-| `reason` | `window_closed` (interval-driven: an elapsed interval is waiting for its window to open — healthy), `window_missed` (window-driven: an opening came and went unserved, so the rotation has fallen a full cycle behind), `min_spacing` (instance min-spacing not yet satisfied), `window_error` (invalid window configuration) |
+| --- | --- |
+| `reason` | `window_closed` (interval-driven: an elapsed interval is waiting for its window to open, which is healthy), `window_missed` (window-driven: an opening came and went unserved, so the rotation has fallen a full cycle behind), `min_spacing` (the instance's minimum spacing is not yet satisfied), `window_error` (invalid window configuration) |
