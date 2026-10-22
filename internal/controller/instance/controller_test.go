@@ -11,7 +11,7 @@ import (
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 )
 
-const testImage = "ghcr.io/pocket-id/pocket-id:v2.19.0-distroless@sha256:42241c03892ab3f5e2b89d36c251cabbc946eafb7504a5ed5c418f4b41b8ab03"
+const testImage = "ghcr.io/pocket-id/pocket-id:v2.19.1-distroless@sha256:d035c9c229304cfd25f97a79b2da00bde9cf942abbd70430d452a95420e2836b"
 
 func TestBuildPodTemplate_NoPodTemplate(t *testing.T) {
 	inst := minimalInstance()
