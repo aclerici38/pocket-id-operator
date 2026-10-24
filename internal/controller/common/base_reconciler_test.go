@@ -8,11 +8,13 @@ import (
 
 	runtimeclient "github.com/go-openapi/runtime"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
@@ -150,5 +152,102 @@ func TestRequeueAfterFor_HonorsRetryAfter(t *testing.T) {
 	throttled.RetryAfter = 2 * MaxRateLimitRequeue
 	if got := RequeueAfterFor(throttled); got != MaxRateLimitRequeue {
 		t.Errorf("RequeueAfterFor: got %v, want the cap %v", got, MaxRateLimitRequeue)
+	}
+}
+
+// statusPatchCountingClient wires a fake cluster holding obj and counts status patches sent to it.
+func statusPatchCountingClient(t *testing.T, obj client.Object) (client.Client, *int) {
+	t.Helper()
+	patches := 0
+	k8s := fake.NewClientBuilder().
+		WithScheme(deleteScheme(t)).
+		WithObjects(obj).
+		WithStatusSubresource(obj).
+		WithInterceptorFuncs(interceptor.Funcs{
+			SubResourcePatch: func(ctx context.Context, c client.Client, subResourceName string, obj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error {
+				patches++
+				return c.Status().Patch(ctx, obj, patch, opts...)
+			},
+		}).
+		Build()
+	return k8s, &patches
+}
+
+// An unchanged status must not reach the API server; a changed or cleared one must.
+func TestPatchStatus_SkipsEmptyPatch(t *testing.T) {
+	group := deletingUserGroup()
+	k8s, patches := statusPatchCountingClient(t, group)
+	ctx := context.Background()
+	stored := &pocketidinternalv1alpha1.PocketIDUserGroup{}
+
+	if err := PatchStatus(ctx, k8s, group, group.DeepCopy()); err != nil {
+		t.Fatalf("unchanged patch: %v", err)
+	}
+	if *patches != 0 {
+		t.Fatalf("unchanged status sent %d patches, want 0", *patches)
+	}
+
+	base := group.DeepCopy()
+	group.Status.GroupID = "new-id"
+	if err := PatchStatus(ctx, k8s, group, base); err != nil {
+		t.Fatalf("changed patch: %v", err)
+	}
+	if *patches != 1 {
+		t.Fatalf("changed status sent %d patches, want 1", *patches)
+	}
+	if err := k8s.Get(ctx, client.ObjectKeyFromObject(group), stored); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if stored.Status.GroupID != "new-id" {
+		t.Fatalf("stored GroupID = %q, want %q", stored.Status.GroupID, "new-id")
+	}
+
+	// Clearing a field drives recreation, so the null it produces must still be sent.
+	r := &BaseReconciler{Client: k8s}
+	if err := r.ClearStatusField(ctx, group, func() { group.Status.GroupID = "" }); err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	if *patches != 2 {
+		t.Fatalf("cleared status sent %d patches, want 2", *patches)
+	}
+	if err := k8s.Get(ctx, client.ObjectKeyFromObject(group), stored); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if stored.Status.GroupID != "" {
+		t.Fatalf("stored GroupID = %q, want it cleared", stored.Status.GroupID)
+	}
+}
+
+// A repeated Ready condition is skipped, but a generation bump with the same status must
+// still persist the new observedGeneration.
+func TestSetReadyCondition_SkipsUnchanged(t *testing.T) {
+	group := deletingUserGroup()
+	group.Generation = 1
+	k8s, patches := statusPatchCountingClient(t, group)
+	r := &BaseReconciler{Client: k8s}
+	ctx := context.Background()
+
+	for range 2 {
+		if err := r.SetReadyCondition(ctx, group, metav1.ConditionTrue, "Reconciled", "in sync"); err != nil {
+			t.Fatalf("set ready: %v", err)
+		}
+	}
+	if *patches != 1 {
+		t.Fatalf("repeated Ready sent %d patches, want 1", *patches)
+	}
+
+	group.Generation = 2
+	if err := r.SetReadyCondition(ctx, group, metav1.ConditionTrue, "Reconciled", "in sync"); err != nil {
+		t.Fatalf("set ready after generation bump: %v", err)
+	}
+	if *patches != 2 {
+		t.Fatalf("generation bump sent %d patches, want 2", *patches)
+	}
+	stored := &pocketidinternalv1alpha1.PocketIDUserGroup{}
+	if err := k8s.Get(ctx, client.ObjectKeyFromObject(group), stored); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if cond := meta.FindStatusCondition(stored.Status.Conditions, "Ready"); cond == nil || cond.ObservedGeneration != 2 {
+		t.Fatalf("stored Ready condition = %+v, want observedGeneration 2", cond)
 	}
 }

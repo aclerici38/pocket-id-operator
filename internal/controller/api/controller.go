@@ -290,7 +290,7 @@ func apiName(api *pocketidinternalv1alpha1.PocketIDAPI) string {
 func (r *Reconciler) setAPIID(ctx context.Context, api *pocketidinternalv1alpha1.PocketIDAPI, id string) error {
 	base := api.DeepCopy()
 	api.Status.APIID = id
-	return r.Status().Patch(ctx, api, client.MergeFrom(base))
+	return common.PatchStatus(ctx, r.Client, api, base)
 }
 
 func (r *Reconciler) clearAPIStatus(ctx context.Context, api *pocketidinternalv1alpha1.PocketIDAPI) error {
@@ -310,7 +310,7 @@ func (r *Reconciler) updateAPIStatus(ctx context.Context, api *pocketidinternalv
 	api.Status.CreatedAt = current.CreatedAt
 	api.Status.CIMDAccess = current.AllowCIMDClients
 	api.Status.Permissions = observedPermissions(current.Permissions)
-	return r.Status().Patch(ctx, api, client.MergeFrom(base))
+	return common.PatchStatus(ctx, r.Client, api, base)
 }
 
 func (r *Reconciler) reconcileFinalizers(ctx context.Context, api *pocketidinternalv1alpha1.PocketIDAPI) (bool, error) {

@@ -364,7 +364,7 @@ func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketid
 		}
 		base := userGroup.DeepCopy()
 		userGroup.Status.ManagedUserIDs = managedIDs
-		if err := r.Status().Patch(ctx, userGroup, client.MergeFrom(base)); err != nil {
+		if err := common.PatchStatus(ctx, r.Client, userGroup, base); err != nil {
 			return false, fmt.Errorf("update managed user IDs status: %w", err)
 		}
 	}
@@ -386,7 +386,7 @@ func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketid
 func (r *Reconciler) setGroupID(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, id string) error {
 	base := userGroup.DeepCopy()
 	userGroup.Status.GroupID = id
-	return r.Status().Patch(ctx, userGroup, client.MergeFrom(base))
+	return common.PatchStatus(ctx, r.Client, userGroup, base)
 }
 
 // resolveUsers resolves userRefs, usernames, and userIds to Pocket-ID user IDs.
@@ -477,7 +477,7 @@ func (r *Reconciler) updateUserGroupStatus(ctx context.Context, userGroup *pocke
 	userGroup.Status.TotalUserCount = current.UserCount
 	userGroup.Status.CustomClaims = helpers.CustomClaimsFromPocketID(current.CustomClaims)
 	userGroup.Status.AllowedOIDCClientIDs = current.AllowedOIDCClientIDs
-	if err := r.Status().Patch(ctx, userGroup, client.MergeFrom(base)); err != nil {
+	if err := common.PatchStatus(ctx, r.Client, userGroup, base); err != nil {
 		return err
 	}
 	metrics.UserGroupMemberCount.WithLabelValues(userGroup.Namespace, userGroup.Name).Set(float64(current.UserCount))

@@ -8,6 +8,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -70,7 +71,7 @@ func (r *BaseReconciler) SetReadyCondition(ctx context.Context, obj ConditionedR
 		Message:            message,
 	})
 
-	if err := r.Status().Patch(ctx, obj, client.MergeFrom(base)); err != nil {
+	if err := PatchStatus(ctx, r.Client, obj, base); err != nil {
 		logger.Error(err, "Failed to update status condition")
 		return err
 	}
@@ -264,7 +265,19 @@ func CreateOrAdopt[T any](ctx context.Context, config CreateOrAdoptConfig[T]) (*
 func (r *BaseReconciler) ClearStatusField(ctx context.Context, obj client.Object, clearFunc func()) error {
 	base := obj.DeepCopyObject().(client.Object)
 	clearFunc()
-	return r.Status().Patch(ctx, obj, client.MergeFrom(base))
+	return PatchStatus(ctx, r.Client, obj, base)
+}
+
+// PatchStatus merge-patches obj's status against base, skipping the request when nothing changed.
+func PatchStatus(ctx context.Context, c client.Client, obj, base client.Object) error {
+	data, err := client.MergeFrom(base).Data(obj)
+	if err != nil {
+		return err
+	}
+	if string(data) == "{}" {
+		return nil
+	}
+	return c.Status().Patch(ctx, obj, client.RawPatch(types.MergePatchType, data))
 }
 
 // IsReferencedByList checks if a resource is referenced by any item in a list.

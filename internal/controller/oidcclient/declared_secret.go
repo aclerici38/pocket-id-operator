@@ -9,6 +9,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
@@ -116,7 +117,7 @@ func (r *Reconciler) SyncDeclaredClientSecret(ctx context.Context, oidcClient *p
 		oidcClient.Status.ClientSecretSourceVersion = version
 		// Held rather than returned: until this lands every reconcile pushes again, and skipping
 		// the retirement below on each of them is what fills the client's secret slots.
-		versionErr = r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
+		versionErr = common.PatchStatus(ctx, r.Client, oidcClient, base)
 		minted = &created
 	}
 

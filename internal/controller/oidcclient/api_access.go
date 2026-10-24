@@ -26,6 +26,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/helpers"
 	"github.com/aclerici38/pocket-id-operator/internal/metrics"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
@@ -126,7 +127,7 @@ func (r *Reconciler) patchAPIAccessStatus(ctx context.Context, oidcClient *pocke
 	oidcClient.Status.ManagedAPIPermissionIDs = managed
 	oidcClient.Status.ManagedAPIs = managedAPIs
 	oidcClient.Status.CIMDGrantedAPIs = cimdGranted
-	if err := r.Status().Patch(ctx, oidcClient, client.MergeFrom(base)); err != nil {
+	if err := common.PatchStatus(ctx, r.Client, oidcClient, base); err != nil {
 		return fmt.Errorf("update API access status: %w", err)
 	}
 	return nil

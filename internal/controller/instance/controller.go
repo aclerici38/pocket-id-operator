@@ -243,7 +243,7 @@ func (r *Reconciler) reconcileExternal(ctx context.Context, instance *pocketidin
 	})
 	instance.Status.StaticAPIKeySecretName = ""
 
-	if err := r.Status().Patch(ctx, instance, client.MergeFrom(base)); err != nil {
+	if err := common.PatchStatus(ctx, r.Client, instance, base); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -961,7 +961,7 @@ func (r *Reconciler) reconcileVersion(ctx context.Context, instance *pocketidint
 	if instance.Status.Version != version {
 		base := instance.DeepCopy()
 		instance.Status.Version = version
-		if err := r.Status().Patch(ctx, instance, client.MergeFrom(base)); err != nil {
+		if err := common.PatchStatus(ctx, r.Client, instance, base); err != nil {
 			return err
 		}
 	}
@@ -1070,7 +1070,7 @@ func (r *Reconciler) updateStatus(ctx context.Context, instance *pocketidinterna
 		instance.Status.StaticAPIKeySecretName = staticAPIKeySecret
 	}
 
-	if err := r.Status().Patch(ctx, instance, client.MergeFrom(base)); err != nil {
+	if err := common.PatchStatus(ctx, r.Client, instance, base); err != nil {
 		return err
 	}
 

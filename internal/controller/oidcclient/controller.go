@@ -685,7 +685,7 @@ func reconcileErrorReason(err error) string {
 func (r *Reconciler) setClientID(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, id string) error {
 	base := oidcClient.DeepCopy()
 	oidcClient.Status.ClientID = id
-	return r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
+	return common.PatchStatus(ctx, r.Client, oidcClient, base)
 }
 
 // isPublicClient reports whether the client has no client secret to manage. A CIMD client
@@ -891,7 +891,7 @@ func (r *Reconciler) applyLogoStatus(ctx context.Context, oidcClient *pocketidin
 	oidcClient.Status.LogoReachable = light
 	oidcClient.Status.DarkLogoURL = plan.appliedDark
 	oidcClient.Status.DarkLogoReachable = dark
-	return r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
+	return common.PatchStatus(ctx, r.Client, oidcClient, base)
 }
 
 // resolveLogoURLs determines the logo URL desired for each side of the OIDC client.
@@ -1048,7 +1048,7 @@ func (r *Reconciler) ReconcileSCIM(ctx context.Context, oidcClient *pocketidinte
 func (r *Reconciler) setSCIMProviderID(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, id string) error {
 	base := oidcClient.DeepCopy()
 	oidcClient.Status.SCIMProviderID = id
-	return r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
+	return common.PatchStatus(ctx, r.Client, oidcClient, base)
 }
 
 func (r *Reconciler) clearSCIMProviderID(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) error {
@@ -1079,7 +1079,7 @@ func (r *Reconciler) UpdateOIDCClientStatus(ctx context.Context, oidcClient *poc
 		oidcClient.Status.PKCESupported = nil
 	}
 	metrics.SetOIDCClientPKCESupported(oidcClient.Namespace, oidcClient.Name, pkceRecommended)
-	return r.Status().Patch(ctx, oidcClient, client.MergeFrom(base))
+	return common.PatchStatus(ctx, r.Client, oidcClient, base)
 }
 
 func (r *Reconciler) ReconcileOIDCClientFinalizers(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) (bool, error) {
@@ -1369,7 +1369,7 @@ func (r *Reconciler) applyRotationStatus(ctx context.Context, oidcClient *pocket
 	}
 	base := oidcClient.DeepCopy()
 	oidcClient.Status.LastRotatedAt = rotatedAt
-	if err := r.Status().Patch(ctx, oidcClient, client.MergeFrom(base)); err != nil {
+	if err := common.PatchStatus(ctx, r.Client, oidcClient, base); err != nil {
 		logf.FromContext(ctx).Error(err, "Failed to mirror LastRotatedAt to status")
 	}
 }
@@ -1428,7 +1428,7 @@ func (r *Reconciler) advanceInstanceRotationStatus(ctx context.Context, instance
 
 	base := fresh.DeepCopy()
 	fresh.Status.LastRotatedClientSecret = &metav1.Time{Time: rotatedAt}
-	if err := r.Status().Patch(ctx, fresh, client.MergeFrom(base)); err != nil {
+	if err := common.PatchStatus(ctx, r.Client, fresh, base); err != nil {
 		return fmt.Errorf("failed to advance instance LastRotatedClientSecret: %w", err)
 	}
 	return nil

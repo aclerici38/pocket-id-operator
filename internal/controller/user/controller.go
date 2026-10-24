@@ -577,7 +577,7 @@ func (r *Reconciler) pushUserState(ctx context.Context, user *pocketidinternalv1
 func (r *Reconciler) setUserID(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, id string) error {
 	base := user.DeepCopy()
 	user.Status.UserID = id
-	return r.Status().Patch(ctx, user, client.MergeFrom(base))
+	return common.PatchStatus(ctx, r.Client, user, base)
 }
 
 // clearUserStatus clears the UserID from status, triggering recreation on next reconcile.
@@ -615,7 +615,7 @@ func (r *Reconciler) updateUserStatus(ctx context.Context, user *pocketidinterna
 		latest.Status.EmailVerified = pUser.EmailVerified
 		latest.Status.CustomClaims = helpers.CustomClaimsFromPocketID(pUser.CustomClaims)
 
-		return r.Status().Patch(ctx, latest, client.MergeFrom(base))
+		return common.PatchStatus(ctx, r.Client, latest, base)
 	})
 }
 
@@ -633,7 +633,7 @@ func (r *Reconciler) SetOneTimeLoginStatus(ctx context.Context, user *pocketidin
 	user.Status.OneTimeLoginURL = loginURL
 	user.Status.OneTimeLoginExpiresAt = expiresAt.Format(time.RFC3339)
 
-	return r.Status().Patch(ctx, user, client.MergeFrom(base))
+	return common.PatchStatus(ctx, r.Client, user, base)
 }
 
 // createOneTimeToken generates a one-time login token for the user
@@ -684,7 +684,7 @@ func (r *Reconciler) clearOneTimeLoginStatus(ctx context.Context, user *pocketid
 	user.Status.OneTimeLoginToken = ""
 	user.Status.OneTimeLoginURL = ""
 
-	if err := r.Status().Patch(ctx, user, client.MergeFrom(base)); err != nil {
+	if err := common.PatchStatus(ctx, r.Client, user, base); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -737,7 +737,7 @@ func (r *Reconciler) reconcileAPIKeys(ctx context.Context, user *pocketidinterna
 
 			base := user.DeepCopy()
 			mergeAPIKeyStatus(user, keyStatus)
-			if err := r.Status().Patch(ctx, user, client.MergeFrom(base)); err != nil {
+			if err := common.PatchStatus(ctx, r.Client, user, base); err != nil {
 				return fmt.Errorf("update status for API key %s: %w", spec.Name, err)
 			}
 			continue
@@ -777,7 +777,7 @@ func (r *Reconciler) reconcileAPIKeys(ctx context.Context, user *pocketidinterna
 
 		base := user.DeepCopy()
 		mergeAPIKeyStatus(user, keyStatus)
-		if err := r.Status().Patch(ctx, user, client.MergeFrom(base)); err != nil {
+		if err := common.PatchStatus(ctx, r.Client, user, base); err != nil {
 			return fmt.Errorf("update status for API key %s: %w", spec.Name, err)
 		}
 	}
@@ -812,7 +812,7 @@ func (r *Reconciler) reconcileAPIKeys(ctx context.Context, user *pocketidinterna
 			}
 		}
 		user.Status.APIKeys = newKeys
-		if err := r.Status().Patch(ctx, user, client.MergeFrom(base)); err != nil {
+		if err := common.PatchStatus(ctx, r.Client, user, base); err != nil {
 			return fmt.Errorf("update status after deleting API key %s: %w", name, err)
 		}
 	}
