@@ -2,6 +2,7 @@ package usergroup
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -119,10 +120,5 @@ func TestReconcileDelete_UnreferencedGroupIsNotBlocked(t *testing.T) {
 }
 
 func containsString(values []string, target string) bool {
-	for _, v := range values {
-		if v == target {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(values, target)
 }

@@ -135,8 +135,6 @@ func TestOidcClientInput_SpecCallbackURLsTakePrecedenceOverCurrent(t *testing.T)
 
 // --- Logo URL resolution tests ---
 
-func boolPtr(b bool) *bool { return &b }
-
 // namedClient builds a bare CR whose metadata.name drives {{name}} substitution.
 func namedClient(name string) *pocketidinternalv1alpha1.PocketIDOIDCClient {
 	return &pocketidinternalv1alpha1.PocketIDOIDCClient{
@@ -151,7 +149,7 @@ func TestResolveLogoURLs_DeprecatedFieldsTakePrecedence(t *testing.T) {
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			LogoURL:     "https://explicit.example.com/logo.png",      //nolint:staticcheck // testing the deprecated field
 			DarkLogoURL: "https://explicit.example.com/logo-dark.png", //nolint:staticcheck // testing the deprecated field
-			Logo:        &pocketidinternalv1alpha1.OIDCClientLogoSpec{AutoGenerate: boolPtr(true)},
+			Logo:        &pocketidinternalv1alpha1.OIDCClientLogoSpec{AutoGenerate: new(true)},
 		},
 	}
 	logoURL, darkLogoURL := r.resolveLogoURLs(oidcClient)
@@ -178,7 +176,7 @@ func TestResolveLogoURLs_NameOverride(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "my-app", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{
-				AutoGenerate: boolPtr(true),
+				AutoGenerate: new(true),
 				NameOverride: "custom-icon",
 				LogoURL:      "https://cdn.example.com/{{name}}.png",
 			},
@@ -199,7 +197,7 @@ func TestResolveLogoURLs_EnvVarFallback(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "grafana", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{
-				AutoGenerate: boolPtr(true),
+				AutoGenerate: new(true),
 			},
 		},
 	}
@@ -218,7 +216,7 @@ func TestResolveLogoURLs_NoTemplatesConfigured(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "grafana", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{
-				AutoGenerate: boolPtr(true),
+				AutoGenerate: new(true),
 			},
 		},
 	}
@@ -245,7 +243,7 @@ func TestResolveLogoURLs_AutoGenerateFalse(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "my-app", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{
-				AutoGenerate: boolPtr(false),
+				AutoGenerate: new(false),
 			},
 		},
 	}
@@ -261,7 +259,7 @@ func TestResolveLogoURLs_ExplicitURLIgnoresAutoGenerateFalse(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "my-app", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{
-				AutoGenerate: boolPtr(false),
+				AutoGenerate: new(false),
 				LogoURL:      "https://cdn.example.com/{{name}}.png",
 			},
 		},
@@ -339,7 +337,7 @@ func TestResolveLogoURLs_ExplicitTrueOverridesEnvFalse(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "my-app", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{
-				AutoGenerate: boolPtr(true),
+				AutoGenerate: new(true),
 			},
 		},
 	}
@@ -355,7 +353,7 @@ func TestResolveLogoURLs_PerClientTemplateOverridesEnvVar(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "my-app", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{
-				AutoGenerate: boolPtr(true),
+				AutoGenerate: new(true),
 				LogoURL:      "https://custom.example.com/{{name}}.png",
 			},
 		},
@@ -394,7 +392,7 @@ func logoClient(light, appliedLight, appliedDark string) *pocketidinternalv1alph
 	return &pocketidinternalv1alpha1.PocketIDOIDCClient{
 		ObjectMeta: metav1.ObjectMeta{Name: "my-app", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{AutoGenerate: boolPtr(false), LogoURL: light},
+			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{AutoGenerate: new(false), LogoURL: light},
 		},
 		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
 			LogoURL:     appliedLight,
@@ -1134,7 +1132,7 @@ func TestPushOIDCClientState_UploadedLogoWithAutoGenerateOffMakesNoCalls(t *test
 		ObjectMeta: metav1.ObjectMeta{Name: "sync-client", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			CallbackURLs: []string{"https://example.com/cb"},
-			Logo:         &pocketidinternalv1alpha1.OIDCClientLogoSpec{AutoGenerate: boolPtr(false)},
+			Logo:         &pocketidinternalv1alpha1.OIDCClientLogoSpec{AutoGenerate: new(false)},
 		},
 		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
 			ClientID:   "sync-id",

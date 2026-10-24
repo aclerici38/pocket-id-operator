@@ -77,8 +77,7 @@ func (e *APIError) HasFieldError(fields ...string) bool {
 
 // AsAPIError returns the *APIError in err's chain, or nil if the call never got a response.
 func AsAPIError(err error) *APIError {
-	var apiErr *APIError
-	if errors.As(err, &apiErr) {
+	if apiErr, ok := errors.AsType[*APIError](err); ok {
 		return apiErr
 	}
 	return nil

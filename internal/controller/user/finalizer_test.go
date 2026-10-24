@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 	"time"
 
@@ -310,12 +311,7 @@ func TestReconcileDelete_PreservesAdoptedAPIKeySecret(t *testing.T) {
 }
 
 func containsFinalizer(finalizers []string, target string) bool {
-	for _, finalizer := range finalizers {
-		if finalizer == target {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(finalizers, target)
 }
 
 func TestReconcileDelete_SkipsPocketIDDeletionByDefault(t *testing.T) {

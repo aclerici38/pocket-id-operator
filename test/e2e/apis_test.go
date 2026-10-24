@@ -1,5 +1,4 @@
 //go:build e2e
-// +build e2e
 
 package e2e
 
@@ -377,7 +376,7 @@ var _ = Describe("PocketIDAPI CIMD Access", Ordered, func() {
 				{Key: "write:data", Name: "Write data"},
 				{Key: "sync:data", Name: "Sync data", CIMDAccess: true},
 			},
-			CIMDAccess: boolPtr(false),
+			CIMDAccess: new(false),
 		})
 		waitForReconciled("pocketidapi", apiName, userNS)
 
@@ -464,7 +463,7 @@ var _ = Describe("PocketIDAPI Scopeless Client Grant", Ordered, func() {
 			CallbackURLs: []string{"https://scopeless.e2e.example.com/callback"},
 			APIAccess: []APIAccessGrant{{
 				APIRefName:      apiName,
-				DelegatedAccess: boolPtr(true),
+				DelegatedAccess: new(true),
 			}},
 		})
 		clientID = waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
@@ -495,7 +494,7 @@ var _ = Describe("PocketIDAPI Scopeless Client Grant", Ordered, func() {
 			CallbackURLs: []string{"https://scopeless.e2e.example.com/callback"},
 			APIAccess: []APIAccessGrant{{
 				APIRefName:   apiName,
-				ClientAccess: boolPtr(true),
+				ClientAccess: new(true),
 			}},
 		})
 		waitForReconciled("pocketidoidcclient", clientName, userNS)

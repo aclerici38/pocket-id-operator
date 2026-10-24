@@ -35,7 +35,7 @@ func TestReconcileSecret_DisabledDeletesManagedSecret(t *testing.T) {
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
 		ObjectMeta: metav1.ObjectMeta{Name: "my-client", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-			Secret: &pocketidinternalv1alpha1.OIDCClientSecretSpec{Enabled: boolPtr(false)},
+			Secret: &pocketidinternalv1alpha1.OIDCClientSecretSpec{Enabled: new(false)},
 		},
 	}
 	managed := &corev1.Secret{
@@ -100,7 +100,7 @@ func TestReconcileSecret_DisabledPreservesUserOwnedSecret(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "my-client", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			Secret: &pocketidinternalv1alpha1.OIDCClientSecretSpec{
-				Enabled: boolPtr(false),
+				Enabled: new(false),
 				Name:    "user-owned-oidc",
 			},
 		},

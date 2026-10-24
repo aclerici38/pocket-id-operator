@@ -1,5 +1,4 @@
 //go:build e2e
-// +build e2e
 
 package e2e
 
@@ -133,7 +132,7 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Ordered, func() {
 			By("creating a user with instance selector")
 			createUserAndWaitReady(UserOptions{
 				Name:  selectorUser,
-				Admin: boolPtr(true),
+				Admin: new(true),
 				InstanceSelector: map[string]string{
 					"environment": "test",
 					"team":        "platform",
@@ -187,7 +186,7 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Ordered, func() {
 			By("provisioning a user with an API key against the TLS instance")
 			createUserAndWaitReady(UserOptions{
 				Name:             tlsUser,
-				Admin:            boolPtr(true),
+				Admin:            new(true),
 				InstanceSelector: tlsLabels,
 				APIKeys:          []APIKeySpec{{Name: "tls-key", Description: "over TLS"}},
 			})

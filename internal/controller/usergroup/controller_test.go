@@ -2,6 +2,7 @@ package usergroup
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -173,13 +174,7 @@ func TestReconcileDelete_BlockWhenReferencedByOIDCClient(t *testing.T) {
 	}
 
 	// The group is already deleting here, so OIDCClientUserGroupFinalizer can no longer be added.
-	hasUserGroupFinalizer := false
-	for _, f := range updatedGroup.Finalizers {
-		if f == UserGroupFinalizer {
-			hasUserGroupFinalizer = true
-			break
-		}
-	}
+	hasUserGroupFinalizer := slices.Contains(updatedGroup.Finalizers, UserGroupFinalizer)
 	if !hasUserGroupFinalizer {
 		t.Error("expected UserGroupFinalizer to be retained so deletion stays blocked")
 	}
@@ -266,13 +261,7 @@ func TestReconcileDelete_KeepFinalizerWhenAPIClientNotReady(t *testing.T) {
 		t.Fatalf("failed to get updated group: %v", err)
 	}
 
-	found := false
-	for _, f := range updated.Finalizers {
-		if f == UserGroupFinalizer {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(updated.Finalizers, UserGroupFinalizer)
 	if !found {
 		t.Error("expected UserGroupFinalizer to be kept")
 	}

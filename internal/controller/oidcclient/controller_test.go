@@ -3,6 +3,7 @@ package oidcclient
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"path"
@@ -528,9 +529,7 @@ func TestReconcileSecret_UserAnnotationLifecycleNeverAltersManaged(t *testing.T)
 	// spoofManaged returns a user annotation set that always tries to hijack the managed keys.
 	spoofManaged := func(userAnnotations map[string]string) map[string]string {
 		out := map[string]string{}
-		for k, v := range userAnnotations {
-			out[k] = v
-		}
+		maps.Copy(out, userAnnotations)
 		for k := range operatorManagedSecretAnnotations {
 			out[k] = "USER-HIJACK-ATTEMPT"
 		}
@@ -1045,7 +1044,7 @@ func TestReconcileSecret_StoreClientSecretDisabled(t *testing.T) {
 				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 					CallbackURLs: []string{"https://example.com/callback"},
 					Secret: &pocketidinternalv1alpha1.OIDCClientSecretSpec{
-						StoreClientSecret: boolPtr(false),
+						StoreClientSecret: new(false),
 					},
 				},
 				Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
@@ -1154,7 +1153,7 @@ func TestReconcileSecret_StoreClientSecretDisabledClearsRotationGauges(t *testin
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			CallbackURLs: []string{"https://example.com/callback"},
 			Secret: &pocketidinternalv1alpha1.OIDCClientSecretSpec{
-				StoreClientSecret: boolPtr(false),
+				StoreClientSecret: new(false),
 			},
 		},
 		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{ClientID: "client-gauges"},
@@ -2815,13 +2814,7 @@ func TestReconcileDelete_KeepFinalizerWhenAPIClientNotReady(t *testing.T) {
 	if err := fakeClient.Get(ctx, types.NamespacedName{Name: resource.Name, Namespace: resource.Namespace}, updated); err != nil {
 		t.Fatalf("failed to get updated resource: %v", err)
 	}
-	found := false
-	for _, f := range updated.Finalizers {
-		if f == oidcClientFinalizer {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(updated.Finalizers, oidcClientFinalizer)
 	if !found {
 		t.Error("expected finalizer to be kept")
 	}

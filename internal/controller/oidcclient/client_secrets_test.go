@@ -942,7 +942,7 @@ func TestReconcileSecret_MintsWhenAllSecretsDeleted(t *testing.T) {
 func TestReconcileSecret_StoreClientSecretDisabledNeverMintsOverDeletedSecret(t *testing.T) {
 	ctx := context.Background()
 	oidcClient := retentionClient(nil)
-	oidcClient.Spec.Secret = &pocketidinternalv1alpha1.OIDCClientSecretSpec{StoreClientSecret: boolPtr(false)}
+	oidcClient.Spec.Secret = &pocketidinternalv1alpha1.OIDCClientSecretSpec{StoreClientSecret: new(false)}
 	instance := retentionInstance()
 	r := retentionReconciler(t, oidcClient, instance, credentialsSecret())
 

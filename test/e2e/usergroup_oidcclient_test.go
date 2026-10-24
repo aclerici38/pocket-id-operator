@@ -1,5 +1,4 @@
 //go:build e2e
-// +build e2e
 
 package e2e
 
@@ -773,7 +772,7 @@ var _ = Describe("OIDC Client Secrets", Ordered, func() {
 				Name:         disabledSecretClient,
 				CallbackURLs: []string{"https://disabled.example.com/callback"},
 				Secret: &OIDCSecretConfig{
-					Enabled: boolPtr(false),
+					Enabled: new(false),
 				},
 			})
 		})

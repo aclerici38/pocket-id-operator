@@ -130,8 +130,8 @@ func assertDTOFieldsSet(t *testing.T, dto any, payload map[string]any, prefix st
 	t.Helper()
 
 	typ := reflect.TypeOf(dto)
-	for i := range typ.NumField() {
-		key, _, _ := strings.Cut(typ.Field(i).Tag.Get("json"), ",")
+	for field := range typ.Fields() {
+		key, _, _ := strings.Cut(field.Tag.Get("json"), ",")
 		if key == "" || key == "-" || slices.Contains(readOnly, key) {
 			continue
 		}

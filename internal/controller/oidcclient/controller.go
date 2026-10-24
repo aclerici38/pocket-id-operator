@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	stderrors "errors"
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 	"time"
@@ -1262,9 +1263,7 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 		if secret.Labels == nil {
 			secret.Labels = make(map[string]string, len(secretLabels))
 		}
-		for k, v := range secretLabels {
-			secret.Labels[k] = v
-		}
+		maps.Copy(secret.Labels, secretLabels)
 
 		// Add user annotations
 		reconcileSecretAnnotations(secret, secretAnnotations)
@@ -1768,9 +1767,7 @@ func (r *Reconciler) GetSecretAnnotations(oidcClient *pocketidinternalv1alpha1.P
 	}
 
 	annotations := make(map[string]string, len(oidcClient.Spec.Secret.AdditionalAnnotations))
-	for k, v := range oidcClient.Spec.Secret.AdditionalAnnotations {
-		annotations[k] = v
-	}
+	maps.Copy(annotations, oidcClient.Spec.Secret.AdditionalAnnotations)
 	return annotations
 }
 
@@ -1805,9 +1802,7 @@ func reconcileSecretAnnotations(secret *corev1.Secret, desired map[string]string
 		}
 		annotations[k] = v
 	}
-	for k, v := range preserved {
-		annotations[k] = v
-	}
+	maps.Copy(annotations, preserved)
 	secret.Annotations = annotations
 }
 

@@ -1,5 +1,4 @@
 //go:build e2e
-// +build e2e
 
 package e2e
 
@@ -68,7 +67,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 				LastName:    "Doe",
 				Email:       "john.doe@example.com",
 				DisplayName: "John Doe",
-				Admin:       boolPtr(false),
+				Admin:       new(false),
 			})
 		})
 
@@ -91,7 +90,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 		BeforeAll(func() {
 			createUserAndWaitReady(UserOptions{
 				Name:  userName,
-				Admin: boolPtr(true),
+				Admin: new(true),
 			})
 		})
 
@@ -108,7 +107,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 			createUserAndWaitReady(UserOptions{
 				Name:      userName,
 				FirstName: "Original",
-				Admin:     boolPtr(false),
+				Admin:     new(false),
 			})
 		})
 
@@ -117,7 +116,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 			createUser(UserOptions{
 				Name:      userName,
 				FirstName: "Updated",
-				Admin:     boolPtr(true),
+				Admin:     new(true),
 			})
 
 			By("verifying isAdmin becomes true")
@@ -221,7 +220,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 
 			createUserAndWaitReady(UserOptions{
 				Name:  userName,
-				Admin: boolPtr(false),
+				Admin: new(false),
 				APIKeys: []APIKeySpec{
 					{Name: apiKeyName, Description: "Test API key"},
 				},
@@ -249,7 +248,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 
 			createUserAndWaitReady(UserOptions{
 				Name:  userName,
-				Admin: boolPtr(false),
+				Admin: new(false),
 				APIKeys: []APIKeySpec{
 					{Name: apiKeyName, Description: "Owner API key"},
 				},

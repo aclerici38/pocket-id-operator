@@ -14,11 +14,11 @@ import (
 func imageVersion(t *testing.T, image string) string {
 	t.Helper()
 	ref, _, _ := strings.Cut(image, "@")
-	idx := strings.LastIndex(ref, ":")
-	if idx < 0 {
+	_, tag, ok := strings.CutLast(ref, ":")
+	if !ok {
 		t.Fatalf("image %q carries no tag", image)
 	}
-	return ref[idx+1:]
+	return tag
 }
 
 // An instance that never set spec.image runs whatever this operator release ships.

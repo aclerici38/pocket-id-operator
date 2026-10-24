@@ -1,5 +1,4 @@
 //go:build e2e
-// +build e2e
 
 package e2e
 
@@ -30,7 +29,7 @@ var _ = Describe("Logo Auto-Generation", Ordered, func() {
 			applyYAML(buildOIDCClientYAML(OIDCClientOptions{
 				Name: clientName,
 				Logo: &OIDCLogoConfig{
-					AutoGenerate: boolPtr(true),
+					AutoGenerate: new(true),
 					NameOverride: "grafana",
 				},
 			}))
@@ -56,7 +55,7 @@ var _ = Describe("Logo Auto-Generation", Ordered, func() {
 			By("disabling auto-generation on the existing client")
 			applyYAML(buildOIDCClientYAML(OIDCClientOptions{
 				Name: clientName,
-				Logo: &OIDCLogoConfig{AutoGenerate: boolPtr(false)},
+				Logo: &OIDCLogoConfig{AutoGenerate: new(false)},
 			}))
 
 			By("verifying the logo is deleted from Pocket-ID and the applied record cleared")
@@ -80,7 +79,7 @@ var _ = Describe("Logo Auto-Generation", Ordered, func() {
 			applyYAML(buildOIDCClientYAML(OIDCClientOptions{
 				Name: clientName,
 				Logo: &OIDCLogoConfig{
-					AutoGenerate: boolPtr(false),
+					AutoGenerate: new(false),
 				},
 			}))
 
@@ -108,7 +107,7 @@ var _ = Describe("Logo Auto-Generation", Ordered, func() {
 			By("creating an OIDC client with logo auto-generation disabled")
 			applyYAML(buildOIDCClientYAML(OIDCClientOptions{
 				Name: clientName,
-				Logo: &OIDCLogoConfig{AutoGenerate: boolPtr(false)},
+				Logo: &OIDCLogoConfig{AutoGenerate: new(false)},
 			}))
 			waitForReady("pocketidoidcclient", clientName, userNS)
 			oidcClientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")

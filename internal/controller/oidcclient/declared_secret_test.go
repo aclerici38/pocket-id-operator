@@ -578,7 +578,7 @@ func TestReconcileClientSecretData_DeclaredSecretIsMirrored(t *testing.T) {
 
 func TestReconcileClientSecretData_DeclaredSecretRespectsStoreClientSecret(t *testing.T) {
 	oidcClient := declaredClient("app-creds", "secret")
-	oidcClient.Spec.Secret = &pocketidinternalv1alpha1.OIDCClientSecretSpec{StoreClientSecret: boolPtr(false)}
+	oidcClient.Spec.Secret = &pocketidinternalv1alpha1.OIDCClientSecretSpec{StoreClientSecret: new(false)}
 	src := sourceSecret("app-creds", map[string][]byte{"secret": []byte(declaredSecretValue)})
 	r := declaredSecretReconciler(t, oidcClient, src)
 	keys := r.GetSecretKeys(oidcClient)

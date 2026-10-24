@@ -1,5 +1,4 @@
 //go:build e2e
-// +build e2e
 
 package e2e
 
@@ -193,7 +192,7 @@ func loggedOutUserIDs(receiver string) []string {
 	GinkgoHelper()
 
 	var subjects []string
-	for _, token := range strings.Fields(podLogs(receiver, userNS)) {
+	for token := range strings.FieldsSeq(podLogs(receiver, userNS)) {
 		parts := strings.Split(token, ".")
 		Expect(parts).To(HaveLen(3), "the receiver should only log JWTs: %q", token)
 		payload, err := base64.RawURLEncoding.DecodeString(parts[1])
