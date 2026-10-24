@@ -321,7 +321,6 @@ func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketid
 	// Preserve externally-added users, only manage CR-declared users
 	previouslyManaged := userGroup.Status.ManagedUserIDs
 	finalMembers := computeMergedMembers(desired.UserIDs, previouslyManaged, current.UserIDs)
-	sort.Strings(current.UserIDs)
 	usersChanged := !pocketid.SortedEqual(finalMembers, current.UserIDs)
 
 	updated := false

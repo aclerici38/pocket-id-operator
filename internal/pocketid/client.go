@@ -1598,6 +1598,8 @@ func groupIDsFromMinimalDTOs(groups []*models.GithubComPocketIDPocketIDBackendIn
 		}
 		groupIDs = append(groupIDs, group.ID)
 	}
+	// Pocket-ID returns relations unordered; sort so status and comparisons stay stable.
+	slices.Sort(groupIDs)
 	return groupIDs
 }
 
@@ -1722,6 +1724,9 @@ func userGroupFromDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoUse
 			clientIDs = append(clientIDs, client.ID)
 		}
 	}
+	// Pocket-ID returns relations unordered; sort so status and comparisons stay stable.
+	slices.Sort(userIds)
+	slices.Sort(clientIDs)
 	return &UserGroup{
 		ID:                   dto.ID,
 		Name:                 dto.Name,
@@ -1752,6 +1757,8 @@ func apiFromDTO(dto *models.APIAPIResponseDto) *API {
 			AllowedForCIMDClients: p.AllowedForCimdClients,
 		})
 	}
+	// Pocket-ID returns relations unordered; sort so status and comparisons stay stable.
+	slices.SortFunc(permissions, func(a, b APIPermission) int { return strings.Compare(a.Key, b.Key) })
 	return &API{
 		ID:               dto.ID,
 		Name:             dto.Name,
@@ -1797,6 +1804,8 @@ func customClaimsFromDTO(dto []*models.GithubComPocketIDPocketIDBackendInternalD
 	if len(claims) == 0 {
 		return nil
 	}
+	// Pocket-ID returns relations unordered; sort so status and comparisons stay stable.
+	slices.SortFunc(claims, func(a, b CustomClaim) int { return strings.Compare(a.Key, b.Key) })
 	return claims
 }
 
