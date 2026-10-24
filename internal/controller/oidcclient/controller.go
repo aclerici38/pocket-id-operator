@@ -35,6 +35,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -1942,6 +1943,20 @@ func oidcClientPredicate() predicate.Predicate {
 	return predicate.Or(predicate.GenerationChangedPredicate{}, predicate.AnnotationChangedPredicate{})
 }
 
+// userGroupPredicate also passes a change to status.groupID, which clients resolve group
+// references from, so a newly created group is granted access without waiting for a resync.
+// Other status updates stay filtered: a client reconcile rewrites the group's allowed clients
+// in Pocket-ID, so reacting to them would ping-pong between the two controllers (#103).
+func userGroupPredicate() predicate.Predicate {
+	return predicate.Or(predicate.GenerationChangedPredicate{}, predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldGroup, okOld := e.ObjectOld.(*pocketidinternalv1alpha1.PocketIDUserGroup)
+			newGroup, okNew := e.ObjectNew.(*pocketidinternalv1alpha1.PocketIDUserGroup)
+			return okOld && okNew && oldGroup.Status.GroupID != newGroup.Status.GroupID
+		},
+	})
+}
+
 // requestsForAPI enqueues OIDC clients whose spec.apiAccess references the given API,
 // so they re-resolve permission IDs when the API's spec changes.
 func (r *Reconciler) requestsForAPI(ctx context.Context, obj client.Object) []reconcile.Request {
@@ -2025,7 +2040,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(
 			&pocketidinternalv1alpha1.PocketIDUserGroup{},
 			handler.EnqueueRequestsFromMapFunc(r.requestsForUserGroup),
-			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
+			builder.WithPredicates(userGroupPredicate()),
 		).
 		// No GenerationChangedPredicate here: clients resolve permission keys to IDs from
 		// the API's status.permissions, which changes without a spec/generation bump (e.g.
