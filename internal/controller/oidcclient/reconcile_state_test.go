@@ -66,11 +66,19 @@ func reconcileFixture(t *testing.T, oidcClient *pocketidinternalv1alpha1.PocketI
 	}))
 	t.Cleanup(ts.Close)
 
+	return reconcilerAgainst(t, ts.URL, oidcClient), calls
+}
+
+// reconcilerAgainst builds a reconciler whose instance, API key and referenced API all
+// resolve, with the instance pointed at the given Pocket-ID URL.
+func reconcilerAgainst(t *testing.T, url string, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) *Reconciler {
+	t.Helper()
+
 	instance := &pocketidinternalv1alpha1.PocketIDInstance{
 		ObjectMeta: metav1.ObjectMeta{Name: "pid", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 			External: &pocketidinternalv1alpha1.ExternalInstanceConfig{
-				URL: ts.URL,
+				URL: url,
 				APIKeySecretRef: corev1.SecretKeySelector{
 					LocalObjectReference: corev1.LocalObjectReference{Name: "pid-api-key"},
 					Key:                  "api-key",
@@ -113,7 +121,7 @@ func reconcileFixture(t *testing.T, oidcClient *pocketidinternalv1alpha1.PocketI
 		APIReader:      c,
 		Scheme:         s,
 		BaseReconciler: common.BaseReconciler{Client: c, APIReader: c},
-	}, calls
+	}
 }
 
 // adoptedClient is already created in Pocket-ID and already finalized, so Reconcile goes

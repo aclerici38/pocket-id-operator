@@ -174,11 +174,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if oidcClient.Status.ClientID == "" {
 		requeue, err := r.createOrAdoptOIDCClient(ctx, oidcClient, apiClient)
 		if stderrors.Is(err, errAwaitingCIMD) {
-			// Normal for a metadata document whose app has not authorized yet, which can
-			// last indefinitely: resync rather than hammering the API every few seconds.
+			// The first authorization creates the client but fails any API scope granted per
+			// client, so adopt promptly to let the retry succeed.
 			log.V(1).Info("Waiting for Pocket-ID to materialize the CIMD client", "clientID", oidcClient.Spec.ClientID)
 			_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, reconcileErrorReason(err), err.Error())
-			return common.ApplyResync(ctrl.Result{}), nil
+			return ctrl.Result{RequeueAfter: common.Requeue}, nil
 		}
 		if err != nil {
 			log.Error(err, "Failed to create or adopt OIDC client")

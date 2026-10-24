@@ -11,12 +11,15 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
@@ -429,6 +432,38 @@ func TestCreateOrAdoptOIDCClient_CIMD(t *testing.T) {
 				t.Errorf("status.clientID: got %q, want %q", oidcClient.Status.ClientID, tc.wantStatusETag)
 			}
 		})
+	}
+}
+
+// Polling at the short interval lets the app's retry after its first, scope-failing
+// authorization succeed.
+func TestReconcile_AwaitingCIMDRequeuesQuickly(t *testing.T) {
+	ts := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(ts.Close)
+
+	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "metadata-app",
+			Namespace:  testNamespace,
+			Finalizers: []string{oidcClientFinalizer},
+		},
+		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{ClientID: "https://apps.example.com/client-metadata.json"},
+	}
+	r := reconcilerAgainst(t, ts.URL, oidcClient)
+
+	result, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(oidcClient)})
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if result.RequeueAfter != common.Requeue {
+		t.Errorf("RequeueAfter: got %v, want %v", result.RequeueAfter, common.Requeue)
+	}
+	var got pocketidinternalv1alpha1.PocketIDOIDCClient
+	if err := r.Get(context.Background(), client.ObjectKeyFromObject(oidcClient), &got); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if ready := meta.FindStatusCondition(got.Status.Conditions, "Ready"); ready == nil || ready.Reason != "AwaitingFirstAuthorization" {
+		t.Errorf("expected Ready reason AwaitingFirstAuthorization, got %+v", ready)
 	}
 }
 
