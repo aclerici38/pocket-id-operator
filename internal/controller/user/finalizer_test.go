@@ -463,14 +463,14 @@ func TestReconcileDelete_AttemptsPocketIDDeletionWithAnnotation(t *testing.T) {
 // deletedInPocketIDServer answers the way pocket-id does for something already gone.
 func deletedInPocketIDServer(t *testing.T, calls *int) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		*calls++
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Request-ID", "req-gone")
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte(`{"error":"User not found","code":"user_not_found","request_id":"req-gone"}`))
 	}))
-	t.Cleanup(ts.Close)
+	ts.Start()
 	return ts
 }
 

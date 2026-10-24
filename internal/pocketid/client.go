@@ -58,6 +58,13 @@ func WithTLSConfig(cfg *tls.Config) ClientOption {
 	}
 }
 
+// WithHTTPClient sends every request, including session-auth calls, through hc.
+func WithHTTPClient(hc *http.Client) ClientOption {
+	return func(c *Client) {
+		c.httpClient = hc
+	}
+}
+
 // User represents a Pocket-ID user with clean field names.
 type User struct {
 	ID            string

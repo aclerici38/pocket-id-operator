@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -103,7 +102,7 @@ func TestOIDCClientSecretsFromDTO(t *testing.T) {
 
 // Every read of a client carries its secrets, which is what lets reconcile work from one GET.
 func TestGetOIDCClient_CarriesSecrets(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
 			"id": "client-123",
@@ -113,12 +112,7 @@ func TestGetOIDCClient_CarriesSecrets(t *testing.T) {
 			]}
 		}`))
 	}))
-	defer ts.Close()
 
-	client, err := NewClient(ts.URL, "")
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
 	got, err := client.GetOIDCClient(context.Background(), "client-123")
 	if err != nil {
 		t.Fatalf("GetOIDCClient: %v", err)
@@ -130,13 +124,11 @@ func TestGetOIDCClient_CarriesSecrets(t *testing.T) {
 
 // A client with no credentials block at all must read as "no secrets", not panic.
 func TestGetOIDCClient_WithoutCredentials(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"id": "client-123", "name": "Test"}`))
 	}))
-	defer ts.Close()
 
-	client, _ := NewClient(ts.URL, "")
 	got, err := client.GetOIDCClient(context.Background(), "client-123")
 	if err != nil {
 		t.Fatalf("GetOIDCClient: %v", err)
@@ -149,16 +141,14 @@ func TestGetOIDCClient_WithoutCredentials(t *testing.T) {
 func TestCreateOIDCClientSecret(t *testing.T) {
 	t.Run("returns the created secret and its value", func(t *testing.T) {
 		var sent map[string]any
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			_ = json.NewDecoder(r.Body).Decode(&sent)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"id":"s1","prefix":"decl","secret":"declared-value-abc","isActive":true,
 				"createdAt":"2026-08-19T12:00:00Z"}`))
 		}))
-		defer ts.Close()
 
-		client, _ := NewClient(ts.URL, "")
 		created, value, err := client.CreateOIDCClientSecret(context.Background(), "client-123", "declared-value-abc")
 		if err != nil {
 			t.Fatalf("CreateOIDCClientSecret: %v", err)
@@ -177,26 +167,22 @@ func TestCreateOIDCClientSecret(t *testing.T) {
 	// The value is disclosed exactly once. A response the operator cannot read leaves a secret it
 	// can never use, so it has to fail rather than store an empty credential.
 	t.Run("rejects a response with no secret value", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"id":"s1","prefix":"abcd"}`))
 		}))
-		defer ts.Close()
 
-		client, _ := NewClient(ts.URL, "")
 		if _, _, err := client.CreateOIDCClientSecret(context.Background(), "client-123", ""); err == nil {
 			t.Fatal("expected an error when the response carries no secret value")
 		}
 	})
 
 	t.Run("propagates a rejected create", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 		}))
-		defer ts.Close()
 
-		client, _ := NewClient(ts.URL, "")
 		if _, _, err := client.CreateOIDCClientSecret(context.Background(), "client-123", ""); err == nil {
 			t.Fatal("expected the API error to propagate")
 		}
@@ -206,24 +192,20 @@ func TestCreateOIDCClientSecret(t *testing.T) {
 func TestDeleteOIDCClientSecret(t *testing.T) {
 	// Retirement is retried until it sticks, so a secret already gone is the desired end state.
 	t.Run("treats an already-deleted secret as deleted", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
 		}))
-		defer ts.Close()
 
-		client, _ := NewClient(ts.URL, "")
 		if err := client.DeleteOIDCClientSecret(context.Background(), "client-123", "gone"); err != nil {
 			t.Fatalf("expected a missing secret to count as deleted, got %v", err)
 		}
 	})
 
 	t.Run("propagates other failures", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 		}))
-		defer ts.Close()
 
-		client, _ := NewClient(ts.URL, "")
 		if err := client.DeleteOIDCClientSecret(context.Background(), "client-123", "s1"); err == nil {
 			t.Fatal("expected a server error to propagate rather than count as deleted")
 		}
@@ -233,13 +215,11 @@ func TestDeleteOIDCClientSecret(t *testing.T) {
 func TestDeleteOIDCClientLogo(t *testing.T) {
 	t.Run("targets the requested side", func(t *testing.T) {
 		var path, query string
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			path, query = r.URL.Path, r.URL.RawQuery
 			w.WriteHeader(http.StatusNoContent)
 		}))
-		defer ts.Close()
 
-		client, _ := NewClient(ts.URL, "")
 		if err := client.DeleteOIDCClientLogo(context.Background(), "client-123", false); err != nil {
 			t.Fatalf("DeleteOIDCClientLogo: %v", err)
 		}
@@ -253,24 +233,20 @@ func TestDeleteOIDCClientLogo(t *testing.T) {
 
 	// Removal is retried until it sticks, so a logo already gone is the desired end state.
 	t.Run("treats an already-deleted logo as deleted", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
 		}))
-		defer ts.Close()
 
-		client, _ := NewClient(ts.URL, "")
 		if err := client.DeleteOIDCClientLogo(context.Background(), "client-123", true); err != nil {
 			t.Fatalf("expected a missing logo to count as deleted, got %v", err)
 		}
 	})
 
 	t.Run("propagates other failures", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 		}))
-		defer ts.Close()
 
-		client, _ := NewClient(ts.URL, "")
 		if err := client.DeleteOIDCClientLogo(context.Background(), "client-123", true); err == nil {
 			t.Fatal("expected a server error to propagate rather than count as deleted")
 		}

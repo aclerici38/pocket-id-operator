@@ -37,7 +37,7 @@ type oidcClientResponse struct {
 // Pocket-ID always returns a concrete token lifetime, so the read mapping has to
 // pick it up for ToInput to compare it against the spec.
 func TestGetOIDCClient_ReadsTokenDurations(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/api/oidc/clients/test-id" {
 			http.NotFound(w, r)
 			return
@@ -51,12 +51,6 @@ func TestGetOIDCClient_ReadsTokenDurations(t *testing.T) {
 			RefreshTokenDurationMinutes: 1440,
 		})
 	}))
-	defer ts.Close()
-
-	client, err := NewClient(ts.URL, "")
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
 
 	got, err := client.GetOIDCClient(context.Background(), "test-id")
 	if err != nil {
@@ -73,7 +67,7 @@ func TestGetOIDCClient_ReadsTokenDurations(t *testing.T) {
 // clientType decides which fields the operator may push, so both read paths used for
 // adoption have to carry it through.
 func TestOIDCClientReads_CarryClientType(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.NotFound(w, r)
 			return
@@ -94,12 +88,6 @@ func TestOIDCClientReads_CarryClientType(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	}))
-	defer ts.Close()
-
-	client, err := NewClient(ts.URL, "")
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
 
 	got, err := client.GetOIDCClient(context.Background(), "test-id")
 	if err != nil {
@@ -162,7 +150,7 @@ func TestOIDCClientOperations_UseEncodedPathForMetadataDocumentIDs(t *testing.T)
 	encoded := "~" + base64.RawURLEncoding.EncodeToString([]byte(metadataURL))
 
 	seen := map[string]bool{}
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.EscapedPath()
 		w.Header().Set("Content-Type", "application/json")
 
@@ -211,12 +199,7 @@ func TestOIDCClientOperations_UseEncodedPathForMetadataDocumentIDs(t *testing.T)
 			})
 		}
 	}))
-	defer ts.Close()
 
-	client, err := NewClient(ts.URL, "")
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
 	ctx := context.Background()
 
 	if _, err := client.GetOIDCClient(ctx, metadataURL); err != nil {
@@ -273,7 +256,7 @@ func TestOIDCClientOperations_UseEncodedPathForMetadataDocumentIDs(t *testing.T)
 func TestRefreshOIDCClientMetadata_PostsToRefreshEndpoint(t *testing.T) {
 	var calls int
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/api/oidc/clients/test-id/refresh" {
 			http.NotFound(w, r)
 			return
@@ -287,12 +270,6 @@ func TestRefreshOIDCClientMetadata_PostsToRefreshEndpoint(t *testing.T) {
 			AllowedUserGroups: []any{},
 		})
 	}))
-	defer ts.Close()
-
-	client, err := NewClient(ts.URL, "")
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
 
 	if err := client.RefreshOIDCClientMetadata(context.Background(), "test-id"); err != nil {
 		t.Fatalf("RefreshOIDCClientMetadata: %v", err)
@@ -303,15 +280,9 @@ func TestRefreshOIDCClientMetadata_PostsToRefreshEndpoint(t *testing.T) {
 }
 
 func TestRefreshOIDCClientMetadata_PropagatesError(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 	}))
-	defer ts.Close()
-
-	client, err := NewClient(ts.URL, "")
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
 
 	if err := client.RefreshOIDCClientMetadata(context.Background(), "test-id"); err == nil {
 		t.Fatal("expected an error when the refresh is rejected")
@@ -321,7 +292,7 @@ func TestRefreshOIDCClientMetadata_PropagatesError(t *testing.T) {
 func TestUpdateOIDCClient_SendsCallbackURLsAsProvided(t *testing.T) {
 	var sentCallbackURLs, sentLogoutCallbackURLs []string
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodPut && r.URL.Path == "/api/oidc/clients/test-id":
 			var body map[string]any
@@ -344,14 +315,8 @@ func TestUpdateOIDCClient_SendsCallbackURLsAsProvided(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	}))
-	defer ts.Close()
 
-	client, err := NewClient(ts.URL, "")
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
-
-	_, err = client.UpdateOIDCClient(context.Background(), "test-id", OIDCClientInput{
+	_, err := client.UpdateOIDCClient(context.Background(), "test-id", OIDCClientInput{
 		Name:               "test-client",
 		CallbackURLs:       []string{"https://new.example.com/callback"},
 		LogoutCallbackURLs: []string{"https://new.example.com/logout"},
@@ -371,7 +336,7 @@ func TestUpdateOIDCClient_SendsCallbackURLsAsProvided(t *testing.T) {
 func TestUpdateOIDCClient_SendsRequiresPushedAuthorizationRequests(t *testing.T) {
 	var body map[string]any
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPut || r.URL.Path != "/api/oidc/clients/test-id" {
 			http.NotFound(w, r)
 			return
@@ -380,14 +345,8 @@ func TestUpdateOIDCClient_SendsRequiresPushedAuthorizationRequests(t *testing.T)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(oidcClientResponse{ID: "test-id", Name: "test-client", AllowedUserGroups: []any{}})
 	}))
-	defer ts.Close()
 
-	client, err := NewClient(ts.URL, "")
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
-
-	_, err = client.UpdateOIDCClient(context.Background(), "test-id", OIDCClientInput{
+	_, err := client.UpdateOIDCClient(context.Background(), "test-id", OIDCClientInput{
 		Name:                                "test-client",
 		RequiresPushedAuthorizationRequests: true,
 	})
@@ -403,7 +362,7 @@ func TestUpdateOIDCClient_SendsRequiresPushedAuthorizationRequests(t *testing.T)
 func TestUpdateOIDCClient_SendsFederatedIdentityReplayProtection(t *testing.T) {
 	var body map[string]any
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPut || r.URL.Path != "/api/oidc/clients/test-id" {
 			http.NotFound(w, r)
 			return
@@ -412,14 +371,8 @@ func TestUpdateOIDCClient_SendsFederatedIdentityReplayProtection(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(oidcClientResponse{ID: "test-id", Name: "test-client", AllowedUserGroups: []any{}})
 	}))
-	defer ts.Close()
 
-	client, err := NewClient(ts.URL, "")
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
-
-	_, err = client.UpdateOIDCClient(context.Background(), "test-id", OIDCClientInput{
+	_, err := client.UpdateOIDCClient(context.Background(), "test-id", OIDCClientInput{
 		Name: "test-client",
 		Credentials: &OIDCClientCredentials{
 			FederatedIdentities: []OIDCClientFederatedIdentity{{
@@ -440,16 +393,14 @@ func TestUpdateOIDCClient_SendsFederatedIdentityReplayProtection(t *testing.T) {
 
 // Pocket-ID returns a client's federated identities, which is what lets reconcile diff them.
 func TestGetOIDCClient_CarriesFederatedIdentities(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"id":"client-123","name":"Test","credentials":{"federatedIdentities":[
 			{"issuer":"https://issuer.example.com","subject":"sub","audience":"aud","jwks":"https://issuer.example.com/jwks","replayProtection":true},
 			{"issuer":"https://keys.example.com","publicKeys":[{"kty":"OKP","kid":"k1","crv":"Ed25519","x":"abc"}]}
 		]}}`))
 	}))
-	defer ts.Close()
 
-	client, _ := NewClient(ts.URL, "")
 	got, err := client.GetOIDCClient(context.Background(), "client-123")
 	if err != nil {
 		t.Fatalf("GetOIDCClient: %v", err)
@@ -466,7 +417,7 @@ func TestGetOIDCClient_CarriesFederatedIdentities(t *testing.T) {
 
 func TestUpdateOIDCClientAllowedGroups_RetriesOn500(t *testing.T) {
 	attempts := 0
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPut && r.URL.Path == allowedUserGroupsPath {
 			attempts++
 			if attempts < 3 {
@@ -479,12 +430,6 @@ func TestUpdateOIDCClientAllowedGroups_RetriesOn500(t *testing.T) {
 		}
 		http.NotFound(w, r)
 	}))
-	defer ts.Close()
-
-	c, err := NewClient(ts.URL, "")
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
 
 	if err := c.UpdateOIDCClientAllowedGroups(context.Background(), "test-id", []string{"group-1"}); err != nil {
 		t.Fatalf("expected success after retries, got: %v", err)
@@ -496,7 +441,7 @@ func TestUpdateOIDCClientAllowedGroups_RetriesOn500(t *testing.T) {
 
 func TestUpdateOIDCClientAllowedGroups_ReturnsErrAfterAllRetries(t *testing.T) {
 	attempts := 0
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPut && r.URL.Path == allowedUserGroupsPath {
 			attempts++
 			w.WriteHeader(http.StatusInternalServerError)
@@ -504,12 +449,6 @@ func TestUpdateOIDCClientAllowedGroups_ReturnsErrAfterAllRetries(t *testing.T) {
 		}
 		http.NotFound(w, r)
 	}))
-	defer ts.Close()
-
-	c, err := NewClient(ts.URL, "")
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
 
 	if err := c.UpdateOIDCClientAllowedGroups(context.Background(), "test-id", []string{"group-1"}); err == nil {
 		t.Fatal("expected error after exhausting all retries, got nil")
@@ -521,7 +460,7 @@ func TestUpdateOIDCClientAllowedGroups_ReturnsErrAfterAllRetries(t *testing.T) {
 
 func TestUpdateOIDCClientAllowedGroups_NoRetryOnNon500(t *testing.T) {
 	attempts := 0
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPut && r.URL.Path == allowedUserGroupsPath {
 			attempts++
 			// 400 Bad Request — should not be retried.
@@ -530,12 +469,6 @@ func TestUpdateOIDCClientAllowedGroups_NoRetryOnNon500(t *testing.T) {
 		}
 		http.NotFound(w, r)
 	}))
-	defer ts.Close()
-
-	c, err := NewClient(ts.URL, "")
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
 
 	if err := c.UpdateOIDCClientAllowedGroups(context.Background(), "test-id", []string{"group-1"}); err == nil {
 		t.Fatal("expected error for 400 response, got nil")
@@ -727,7 +660,7 @@ func TestCreateUser_SendsDeclarativeID(t *testing.T) {
 	const declaredID = "18f3c2f6-2c4b-4f26-9d1c-4b7f6e0a1b2c"
 
 	var sentBody map[string]any
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/api/users" {
 			http.NotFound(w, r)
 			return
@@ -737,12 +670,6 @@ func TestCreateUser_SendsDeclarativeID(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(w).Encode(map[string]any{"id": declaredID, "username": "alice"})
 	}))
-	defer ts.Close()
-
-	client, err := NewClient(ts.URL, "")
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
 
 	user, err := client.CreateUser(context.Background(), UserInput{ID: declaredID, Username: "alice"})
 	if err != nil {
@@ -759,7 +686,7 @@ func TestCreateUser_SendsDeclarativeID(t *testing.T) {
 
 func TestCreateUser_OmitsEmptyID(t *testing.T) {
 	var sentBody map[string]any
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/api/users" {
 			http.NotFound(w, r)
 			return
@@ -769,12 +696,6 @@ func TestCreateUser_OmitsEmptyID(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(w).Encode(map[string]any{"id": "generated-by-pocket-id", "username": "alice"})
 	}))
-	defer ts.Close()
-
-	client, err := NewClient(ts.URL, "")
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
 
 	user, err := client.CreateUser(context.Background(), UserInput{Username: "alice"})
 	if err != nil {
@@ -792,7 +713,7 @@ func TestCreateUser_OmitsEmptyID(t *testing.T) {
 
 func TestUpdateUser_NeverSendsID(t *testing.T) {
 	var sentBody map[string]any
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPut || r.URL.Path != "/api/users/uid-alice" {
 			http.NotFound(w, r)
 			return
@@ -801,12 +722,6 @@ func TestUpdateUser_NeverSendsID(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"id": "uid-alice", "username": "alice"})
 	}))
-	defer ts.Close()
-
-	client, err := NewClient(ts.URL, "")
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
 
 	// Pocket-ID takes the user ID from the URL and ignores it in the body on update.
 	input := UserInput{ID: "18f3c2f6-2c4b-4f26-9d1c-4b7f6e0a1b2c", Username: "alice"}
@@ -824,7 +739,7 @@ func TestUpdateUser_NeverSendsID(t *testing.T) {
 // Custom claims come back on the user read paths, and the controller diffs against
 // them, so dropping them would make every reconcile push the same claims again.
 func TestGetUser_ReadsCustomClaims(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/api/users/uid-alice" {
 			http.NotFound(w, r)
 			return
@@ -838,12 +753,6 @@ func TestGetUser_ReadsCustomClaims(t *testing.T) {
 			},
 		})
 	}))
-	defer ts.Close()
-
-	client, err := NewClient(ts.URL, "")
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
 
 	user, err := client.GetUser(context.Background(), "uid-alice")
 	if err != nil {
@@ -858,7 +767,7 @@ func TestGetUser_ReadsCustomClaims(t *testing.T) {
 
 func TestUpdateUserCustomClaims_PutsFullSetToUserEndpoint(t *testing.T) {
 	var sentBody []map[string]string
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPut || r.URL.Path != "/api/custom-claims/user/uid-alice" {
 			http.NotFound(w, r)
 			return
@@ -867,12 +776,6 @@ func TestUpdateUserCustomClaims_PutsFullSetToUserEndpoint(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(sentBody)
 	}))
-	defer ts.Close()
-
-	client, err := NewClient(ts.URL, "")
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
 
 	claims := []CustomClaim{{Key: "department", Value: "engineering"}, {Key: "level", Value: "3"}}
 	got, err := client.UpdateUserCustomClaims(context.Background(), "uid-alice", claims)
@@ -892,7 +795,7 @@ func TestUpdateUserCustomClaims_PutsFullSetToUserEndpoint(t *testing.T) {
 // empty JSON array rather than null.
 func TestUpdateUserCustomClaims_SendsEmptyArrayToClearClaims(t *testing.T) {
 	var rawBody string
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPut || r.URL.Path != "/api/custom-claims/user/uid-alice" {
 			http.NotFound(w, r)
 			return
@@ -902,12 +805,6 @@ func TestUpdateUserCustomClaims_SendsEmptyArrayToClearClaims(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte("[]"))
 	}))
-	defer ts.Close()
-
-	client, err := NewClient(ts.URL, "")
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
 
 	got, err := client.UpdateUserCustomClaims(context.Background(), "uid-alice", nil)
 	if err != nil {
@@ -1198,11 +1095,11 @@ func jsonStringSlice(m map[string]any, key string) []string {
 // trust store does not know, so the caller-supplied config has to reach the
 // transport that actually performs requests.
 func TestWithTLSConfig_UsesSuppliedTrustStore(t *testing.T) {
-	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"currentVersion":"2.14.0"}`))
 	}))
-	defer ts.Close()
+	ts.StartTLS()
 
 	roots := x509.NewCertPool()
 	roots.AddCert(ts.Certificate())
@@ -1221,10 +1118,10 @@ func TestWithTLSConfig_UsesSuppliedTrustStore(t *testing.T) {
 }
 
 func TestWithTLSConfig_RejectsUntrustedCertificate(t *testing.T) {
-	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"currentVersion":"2.14.0"}`))
 	}))
-	defer ts.Close()
+	ts.StartTLS()
 
 	client, err := NewClient(ts.URL, "")
 	if err != nil {
@@ -1237,11 +1134,11 @@ func TestWithTLSConfig_RejectsUntrustedCertificate(t *testing.T) {
 }
 
 func TestWithTLSConfig_NilIsNoOp(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"currentVersion":"2.14.0"}`))
 	}))
-	defer ts.Close()
+	ts.Start()
 
 	client, err := NewClient(ts.URL, "", WithTLSConfig(nil))
 	if err != nil {

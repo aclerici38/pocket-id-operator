@@ -21,11 +21,11 @@ import (
 // versionServer serves a fixed currentVersion, standing in for a running pocket-id.
 func versionServer(t *testing.T, version string) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"currentVersion":"` + version + `"}`))
 	}))
-	t.Cleanup(srv.Close)
+	srv.Start()
 	return srv
 }
 

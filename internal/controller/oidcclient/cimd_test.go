@@ -21,6 +21,7 @@ import (
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid/pocketidtest"
 )
 
 // fakeRefreshAPI records RefreshOIDCClientMetadata calls. The embedded interface leaves every
@@ -248,13 +249,11 @@ func TestPushOIDCClientState_CIMDDoesNotDrift(t *testing.T) {
 	cr := cimdClientCR(nil)
 	r := newPushStateOIDCReconciler(scheme, cr)
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		t.Errorf("unexpected %s %s: a CIMD client in sync on its writable fields must not be pushed",
 			req.Method, req.URL.Path)
 		http.Error(w, "unexpected", http.StatusInternalServerError)
 	}))
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	updated, err := r.pushOIDCClientState(ctx, cr, apiClient, cimdCurrent())
 	if err != nil {
@@ -281,7 +280,7 @@ func TestPushOIDCClientState_CIMDPushesWritableFields(t *testing.T) {
 
 	var body map[string]any
 	encodedPath := "/api/oidc/clients/~" + base64.RawURLEncoding.EncodeToString([]byte("https://apps.example.com/meta.json"))
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.Method != http.MethodPut || req.URL.EscapedPath() != encodedPath {
 			t.Errorf("unexpected %s %s", req.Method, req.URL.EscapedPath())
 			http.NotFound(w, req)
@@ -290,8 +289,6 @@ func TestPushOIDCClientState_CIMDPushesWritableFields(t *testing.T) {
 		_ = json.NewDecoder(req.Body).Decode(&body)
 		okOIDCClientResponse(w, "https://apps.example.com/meta.json", "My App")
 	}))
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	if _, err := r.pushOIDCClientState(ctx, cr, apiClient, cimdCurrent()); err != nil {
 		t.Fatalf("pushOIDCClientState returned error: %v", err)
@@ -388,7 +385,7 @@ func TestCreateOrAdoptOIDCClient_CIMD(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var createAttempted bool
-			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 				if req.Method == http.MethodPost && req.URL.Path == "/api/oidc/clients" {
 					createAttempted = true
 					http.Error(w, "must not create", http.StatusBadRequest)
@@ -405,14 +402,12 @@ func TestCreateOrAdoptOIDCClient_CIMD(t *testing.T) {
 				}
 				http.NotFound(w, req)
 			}))
-			defer ts.Close()
 
 			oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
 				ObjectMeta: metav1.ObjectMeta{Name: "metadata-app", Namespace: testNamespace},
 				Spec:       pocketidinternalv1alpha1.PocketIDOIDCClientSpec{ClientID: metadataURL},
 			}
 			r := newPushStateOIDCReconciler(scheme, oidcClient)
-			apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 			_, err := r.createOrAdoptOIDCClient(ctx, oidcClient, apiClient)
 
@@ -438,8 +433,8 @@ func TestCreateOrAdoptOIDCClient_CIMD(t *testing.T) {
 // Polling at the short interval lets the app's retry after its first, scope-failing
 // authorization succeed.
 func TestReconcile_AwaitingCIMDRequeuesQuickly(t *testing.T) {
-	ts := httptest.NewServer(http.NotFoundHandler())
-	t.Cleanup(ts.Close)
+	ts := httptest.NewTestServer(t, http.NotFoundHandler())
+	ts.Start()
 
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
 		ObjectMeta: metav1.ObjectMeta{
@@ -493,7 +488,7 @@ func TestReconcileDelete_DeletesCIMDClient(t *testing.T) {
 	wantPath := "/api/oidc/clients/~" + base64.RawURLEncoding.EncodeToString(
 		[]byte("https://apps.example.com/meta.json"))
 	var deleted bool
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	ts := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.Method != http.MethodDelete || req.URL.EscapedPath() != wantPath {
 			t.Errorf("unexpected %s %s, want DELETE %s", req.Method, req.URL.EscapedPath(), wantPath)
 			http.NotFound(w, req)
@@ -502,7 +497,7 @@ func TestReconcileDelete_DeletesCIMDClient(t *testing.T) {
 		deleted = true
 		w.WriteHeader(http.StatusNoContent)
 	}))
-	defer ts.Close()
+	ts.Start()
 
 	instance := &pocketidinternalv1alpha1.PocketIDInstance{
 		ObjectMeta: metav1.ObjectMeta{Name: "external-instance", Namespace: testNamespace},

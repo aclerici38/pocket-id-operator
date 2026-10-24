@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"path"
 	"slices"
 	"strings"
@@ -24,6 +23,7 @@ import (
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/metrics"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid/pocketidtest"
 )
 
 const storedSecretValue = "stored-secret-value"
@@ -677,9 +677,7 @@ func TestReconcileSecret_AdoptsMigratedSecretWithoutRotating(t *testing.T) {
 	r := retentionReconciler(t, oidcClient, instance, existing)
 
 	creates := 0
-	ts := clientSecretServer(t, "must-not-be-minted", &creates)
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
+	apiClient := clientSecretClient(t, "must-not-be-minted", &creates)
 
 	// The migrated secret is the one Pocket-ID carried over, so it has no prefix to match on.
 	observed := []pocketid.OIDCClientSecret{secretWithPrefix("migrated", "", 90*24*time.Hour)}
@@ -711,9 +709,7 @@ func TestReconcileSecret_MintsWhenStoredSecretNoLongerExists(t *testing.T) {
 	r := retentionReconciler(t, oidcClient, instance, credentialsSecret())
 
 	creates := 0
-	ts := clientSecretServer(t, "minted-secret", &creates)
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
+	apiClient := clientSecretClient(t, "minted-secret", &creates)
 
 	observed := []pocketid.OIDCClientSecret{secretWithPrefix("someone-elses", "zzzz", time.Hour)}
 	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient, observed); err != nil {
@@ -742,9 +738,7 @@ func TestReconcileSecret_KeepsAnAmbiguousButPresentSecret(t *testing.T) {
 	r := retentionReconciler(t, oidcClient, instance, credentialsSecret())
 
 	creates := 0
-	ts := clientSecretServer(t, "must-not-be-minted", &creates)
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
+	apiClient := clientSecretClient(t, "must-not-be-minted", &creates)
 
 	prefix := pocketid.SecretPrefix(storedSecretValue)
 	observed := []pocketid.OIDCClientSecret{secretWithPrefix("a", prefix, time.Hour), secretWithPrefix("b", prefix, 0)}
@@ -773,9 +767,7 @@ func TestReconcileSecret_MintsWhenTheStoredSecretExpired(t *testing.T) {
 	r := retentionReconciler(t, oidcClient, instance, credentialsSecret())
 
 	creates := 0
-	ts := clientSecretServer(t, "minted-secret", &creates)
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
+	apiClient := clientSecretClient(t, "minted-secret", &creates)
 
 	observed := []pocketid.OIDCClientSecret{expiredSecret(secretWithPrefix("ours", pocketid.SecretPrefix(storedSecretValue), time.Hour))}
 	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient, observed); err != nil {
@@ -794,13 +786,13 @@ func TestReconcileSecret_MintsWhenTheStoredSecretExpired(t *testing.T) {
 	}
 }
 
-// mintSequenceServer answers like Pocket-ID for a client that already holds existingID, handing out
-// mints in the given order so a test can decide which of them collide with prefix.
-func mintSequenceServer(t *testing.T, existingID, prefix string, mints []string, deleted *[]string) *httptest.Server {
+// mintSequenceClient talks to a fake Pocket-ID where the OIDC client already holds existingID,
+// handing out mints in the given order so a test can decide which of them collide with prefix.
+func mintSequenceClient(t *testing.T, existingID, prefix string, mints []string, deleted *[]string) *pocketid.Client {
 	t.Helper()
 	var mu sync.Mutex
 	ids := []string{existingID}
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
 		switch r.Method {
@@ -846,9 +838,7 @@ func TestReconcileSecret_KeepsWorkingCredentialAfterAnUnstoredMint(t *testing.T)
 	// The set a reconcile leaves behind when it mints and then fails before the Secret write: the
 	// credential the cluster still holds, plus an orphan sharing its prefix.
 	var deleted []string
-	ts := mintSequenceServer(t, "in-use", prefix, []string{"unreachable"}, &deleted)
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
+	apiClient := mintSequenceClient(t, "in-use", prefix, []string{"unreachable"}, &deleted)
 
 	observed := []pocketid.OIDCClientSecret{
 		secretWithPrefix("in-use", prefix, 24*time.Hour),
@@ -886,9 +876,7 @@ func TestReconcileSecret_RotationRetriesACollidingMint(t *testing.T) {
 
 	prefix := pocketid.SecretPrefix(storedSecretValue)
 	var deleted []string
-	ts := mintSequenceServer(t, "superseded", prefix, []string{collidingValue, distinctValue}, &deleted)
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
+	apiClient := mintSequenceClient(t, "superseded", prefix, []string{collidingValue, distinctValue}, &deleted)
 
 	observed := []pocketid.OIDCClientSecret{secretWithPrefix("superseded", prefix, time.Hour)}
 	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient, observed); err != nil {
@@ -918,9 +906,7 @@ func TestReconcileSecret_MintsWhenAllSecretsDeleted(t *testing.T) {
 	r := retentionReconciler(t, oidcClient, instance, credentialsSecret())
 
 	creates := 0
-	ts := clientSecretServer(t, "minted-secret", &creates)
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
+	apiClient := clientSecretClient(t, "minted-secret", &creates)
 
 	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient, nil); err != nil {
 		t.Fatalf("ReconcileSecret: %v", err)
@@ -947,9 +933,7 @@ func TestReconcileSecret_StoreClientSecretDisabledNeverMintsOverDeletedSecret(t 
 	r := retentionReconciler(t, oidcClient, instance, credentialsSecret())
 
 	creates := 0
-	ts := clientSecretServer(t, "must-not-be-minted", &creates)
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
+	apiClient := clientSecretClient(t, "must-not-be-minted", &creates)
 
 	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient, nil); err != nil {
 		t.Fatalf("ReconcileSecret: %v", err)
@@ -981,7 +965,7 @@ func TestReconcileSecret_RotationRetiresThePreviousSecret(t *testing.T) {
 	previous := secretWithPrefix("previous", pocketid.SecretPrefix(storedSecretValue), 24*time.Hour)
 	var deleted []string
 	held := []pocketid.OIDCClientSecret{previous}
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		switch req.Method {
 		case http.MethodPost:
 			held = append(held, secretWithPrefix("created-rotated-secret", pocketid.SecretPrefix("rotated-secret"), 0))
@@ -1000,8 +984,6 @@ func TestReconcileSecret_RotationRetiresThePreviousSecret(t *testing.T) {
 			_, _ = fmt.Fprintf(w, "[%s]", strings.Join(entries, ","))
 		}
 	}))
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient, []pocketid.OIDCClientSecret{previous}); err != nil {
 		t.Fatalf("ReconcileSecret: %v", err)

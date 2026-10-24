@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"reflect"
 	"testing"
 )
@@ -27,7 +26,7 @@ type apiPermissionResp struct {
 
 func TestCreateAPI_SendsNameAndResource(t *testing.T) {
 	var sent map[string]any
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/api/apis" {
 			http.NotFound(w, r)
 			return
@@ -37,9 +36,7 @@ func TestCreateAPI_SendsNameAndResource(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(w).Encode(apiResponse{ID: "api-1", Name: "Orders", Resource: "https://orders.example.com"})
 	}))
-	defer ts.Close()
 
-	c := mustClient(t, ts.URL)
 	api, err := c.CreateAPI(context.Background(), APIInput{Name: "Orders", Resource: "https://orders.example.com"})
 	if err != nil {
 		t.Fatalf("CreateAPI: %v", err)
@@ -54,7 +51,7 @@ func TestCreateAPI_SendsNameAndResource(t *testing.T) {
 
 func TestUpdateAPI_SendsNameOnly(t *testing.T) {
 	var sent map[string]any
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPut || r.URL.Path != "/api/apis/api-1" {
 			http.NotFound(w, r)
 			return
@@ -62,9 +59,7 @@ func TestUpdateAPI_SendsNameOnly(t *testing.T) {
 		_ = json.NewDecoder(r.Body).Decode(&sent)
 		writeJSON(w, apiResponse{ID: "api-1", Name: "Renamed", Resource: "https://orders.example.com"})
 	}))
-	defer ts.Close()
 
-	c := mustClient(t, ts.URL)
 	if _, err := c.UpdateAPI(context.Background(), "api-1", "Renamed"); err != nil {
 		t.Fatalf("UpdateAPI: %v", err)
 	}
@@ -77,7 +72,7 @@ func TestUpdateAPI_SendsNameOnly(t *testing.T) {
 }
 
 func TestGetAPI_ParsesPermissions(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/api/apis/api-1" {
 			http.NotFound(w, r)
 			return
@@ -87,9 +82,7 @@ func TestGetAPI_ParsesPermissions(t *testing.T) {
 			Permissions: []apiPermissionResp{{ID: "p1", Key: "read:orders", Name: "Read", Description: "d"}},
 		})
 	}))
-	defer ts.Close()
 
-	c := mustClient(t, ts.URL)
 	api, err := c.GetAPI(context.Background(), "api-1")
 	if err != nil {
 		t.Fatalf("GetAPI: %v", err)
@@ -103,7 +96,7 @@ func TestUpdateAPIPermissions_SendsFullList(t *testing.T) {
 	var sent struct {
 		Permissions []map[string]any `json:"permissions"`
 	}
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPut || r.URL.Path != "/api/apis/api-1/permissions" {
 			http.NotFound(w, r)
 			return
@@ -111,9 +104,7 @@ func TestUpdateAPIPermissions_SendsFullList(t *testing.T) {
 		_ = json.NewDecoder(r.Body).Decode(&sent)
 		writeJSON(w, apiResponse{ID: "api-1", Name: "Orders", Resource: "https://orders.example.com"})
 	}))
-	defer ts.Close()
 
-	c := mustClient(t, ts.URL)
 	_, err := c.UpdateAPIPermissions(context.Background(), "api-1", []APIPermissionInput{
 		{Key: "read:orders", Name: "Read"},
 		{Key: "write:orders", Name: "Write", Description: "d"},
@@ -129,7 +120,7 @@ func TestUpdateAPIPermissions_SendsFullList(t *testing.T) {
 func TestAPIClientGrants_ListSetRemove(t *testing.T) {
 	var sent map[string]any
 	removed := false
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/api-access/client-1/apis":
 			writeJSON(w, []map[string]any{
@@ -156,9 +147,7 @@ func TestAPIClientGrants_ListSetRemove(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	}))
-	defer ts.Close()
 
-	c := mustClient(t, ts.URL)
 	ctx := context.Background()
 
 	grants, err := c.ListAPIClientGrants(ctx, "client-1")
@@ -204,7 +193,7 @@ func TestAPIClientGrants_ListSetRemove(t *testing.T) {
 
 func TestDeleteAPI(t *testing.T) {
 	called := false
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodDelete && r.URL.Path == "/api/apis/api-1" {
 			called = true
 			w.WriteHeader(http.StatusNoContent)
@@ -212,24 +201,13 @@ func TestDeleteAPI(t *testing.T) {
 		}
 		http.NotFound(w, r)
 	}))
-	defer ts.Close()
 
-	c := mustClient(t, ts.URL)
 	if err := c.DeleteAPI(context.Background(), "api-1"); err != nil {
 		t.Fatalf("DeleteAPI: %v", err)
 	}
 	if !called {
 		t.Fatal("DeleteAPI did not call the endpoint")
 	}
-}
-
-func mustClient(t *testing.T, url string) *Client {
-	t.Helper()
-	c, err := NewClient(url, "")
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
-	return c
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
@@ -239,7 +217,7 @@ func writeJSON(w http.ResponseWriter, v any) {
 
 func TestSetAPICIMDAccess(t *testing.T) {
 	var sent map[string]any
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPut || r.URL.Path != "/api/apis/api-1/cimd-access" {
 			http.NotFound(w, r)
 			return
@@ -253,9 +231,8 @@ func TestSetAPICIMDAccess(t *testing.T) {
 			},
 		})
 	}))
-	defer ts.Close()
 
-	got, err := mustClient(t, ts.URL).SetAPICIMDAccess(context.Background(), "api-1", true, []string{"p-read"})
+	got, err := c.SetAPICIMDAccess(context.Background(), "api-1", true, []string{"p-read"})
 	if err != nil {
 		t.Fatalf("SetAPICIMDAccess: %v", err)
 	}
@@ -271,13 +248,12 @@ func TestSetAPICIMDAccess(t *testing.T) {
 // rather than omitted: Pocket-ID requires the field.
 func TestSetAPICIMDAccess_SendsEmptyPermissionList(t *testing.T) {
 	var raw map[string]json.RawMessage
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&raw)
 		writeJSON(w, map[string]any{"id": "api-1", "allowCimdClients": true})
 	}))
-	defer ts.Close()
 
-	if _, err := mustClient(t, ts.URL).SetAPICIMDAccess(context.Background(), "api-1", true, nil); err != nil {
+	if _, err := c.SetAPICIMDAccess(context.Background(), "api-1", true, nil); err != nil {
 		t.Fatalf("SetAPICIMDAccess: %v", err)
 	}
 	if string(raw["permissionIds"]) != "[]" {

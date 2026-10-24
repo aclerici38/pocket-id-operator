@@ -95,11 +95,11 @@ func readyCondition(t *testing.T, r *Reconciler, instance *pocketidinternalv1alp
 
 func TestReconcileExternal_Reachable(t *testing.T) {
 	ctx := context.Background()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	srv := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"currentVersion":"2.14.0"}`))
 	}))
-	defer srv.Close()
+	srv.Start()
 
 	instance := newExternalInstance(srv.URL)
 	r := newReconcilerFor(t, instance, apiKeySecret())
@@ -130,10 +130,10 @@ func TestReconcileExternal_Reachable(t *testing.T) {
 func TestReconcileExternal_Unreachable(t *testing.T) {
 	ctx := context.Background()
 	// Server is reachable but returns an error status, so GetCurrentVersion fails.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	srv := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
-	defer srv.Close()
+	srv.Start()
 
 	instance := newExternalInstance(srv.URL)
 	r := newReconcilerFor(t, instance, apiKeySecret())

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -14,6 +13,7 @@ import (
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid/pocketidtest"
 )
 
 // pocketIDUserGroupAPIResponse is the JSON shape returned by Pocket-ID user group endpoints.
@@ -200,12 +200,10 @@ func TestPushUserGroupState_SkipsWhenInSync(t *testing.T) {
 	r := newUserGroupPushReconciler(scheme, ug)
 
 	// Server that fails on any call — verifies no API calls are made.
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		t.Error("unexpected API call during in-sync pushUserGroupState")
 		http.Error(w, "unexpected", http.StatusInternalServerError)
 	}))
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	if _, err := r.pushUserGroupState(ctx, ug, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -237,7 +235,7 @@ func TestPushUserGroupState_UpdatesOnlyNameWhenNameChanged(t *testing.T) {
 	nameUpdateCalled := false
 	claimsUpdateCalled := false
 	usersUpdateCalled := false
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		switch {
 		case req.Method == http.MethodPut && req.URL.Path == "/api/user-groups/gid-name":
 			nameUpdateCalled = true
@@ -253,8 +251,6 @@ func TestPushUserGroupState_UpdatesOnlyNameWhenNameChanged(t *testing.T) {
 			http.NotFound(w, req)
 		}
 	}))
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	if _, err := r.pushUserGroupState(ctx, ug, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -297,7 +293,7 @@ func TestPushUserGroupState_ClearsClaimsWithEmptySlice(t *testing.T) {
 	r := newUserGroupPushReconciler(scheme, ug)
 
 	var receivedClaims []any
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		switch {
 		case req.Method == http.MethodPut && req.URL.Path == "/api/custom-claims/user-group/gid-clear-claims":
 			_ = json.NewDecoder(req.Body).Decode(&receivedClaims)
@@ -311,8 +307,6 @@ func TestPushUserGroupState_ClearsClaimsWithEmptySlice(t *testing.T) {
 			http.NotFound(w, req)
 		}
 	}))
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	if _, err := r.pushUserGroupState(ctx, ug, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -356,7 +350,7 @@ func TestPushUserGroupState_RemovesManagedUsersWhenSpecCleared(t *testing.T) {
 	r := newUserGroupPushReconciler(scheme, ug)
 
 	var receivedBody map[string]any
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		switch {
 		case req.Method == http.MethodPut && req.URL.Path == "/api/user-groups/gid-clear-users/users":
 			_ = json.NewDecoder(req.Body).Decode(&receivedBody)
@@ -370,8 +364,6 @@ func TestPushUserGroupState_RemovesManagedUsersWhenSpecCleared(t *testing.T) {
 			http.NotFound(w, req)
 		}
 	}))
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	if _, err := r.pushUserGroupState(ctx, ug, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -425,7 +417,7 @@ func TestPushUserGroupState_FirstReconcileIsAdditive(t *testing.T) {
 	r := newUserGroupPushReconciler(scheme, ug)
 
 	var receivedBody map[string]any
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		switch {
 		case req.Method == http.MethodPut && req.URL.Path == "/api/user-groups/gid-first/users":
 			_ = json.NewDecoder(req.Body).Decode(&receivedBody)
@@ -434,8 +426,6 @@ func TestPushUserGroupState_FirstReconcileIsAdditive(t *testing.T) {
 			http.NotFound(w, req)
 		}
 	}))
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	if _, err := r.pushUserGroupState(ctx, ug, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -488,12 +478,10 @@ func TestPushUserGroupState_PreservesExternalUsers(t *testing.T) {
 	r := newUserGroupPushReconciler(scheme, ug)
 
 	// Server that fails on any call — no API update should happen
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		t.Error("unexpected API call — external users should be preserved without update")
 		http.Error(w, "unexpected", http.StatusInternalServerError)
 	}))
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	if _, err := r.pushUserGroupState(ctx, ug, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -532,7 +520,7 @@ func TestPushUserGroupState_RemovesOnlyUnmanagedFromCR(t *testing.T) {
 	r := newUserGroupPushReconciler(scheme, ug)
 
 	var receivedBody map[string]any
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		switch {
 		case req.Method == http.MethodPut && req.URL.Path == "/api/user-groups/gid-remove-one/users":
 			_ = json.NewDecoder(req.Body).Decode(&receivedBody)
@@ -541,8 +529,6 @@ func TestPushUserGroupState_RemovesOnlyUnmanagedFromCR(t *testing.T) {
 			http.NotFound(w, req)
 		}
 	}))
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	if _, err := r.pushUserGroupState(ctx, ug, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"reflect"
 	"testing"
 
@@ -15,6 +14,7 @@ import (
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid/pocketidtest"
 )
 
 type apiJSON struct {
@@ -52,32 +52,22 @@ func newReconciler(t *testing.T, objs ...client.Object) *Reconciler {
 	return r
 }
 
-func pocketClient(t *testing.T, url string) *pocketid.Client {
-	t.Helper()
-	c, err := pocketid.NewClient(url, "")
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
-	return c
-}
-
 func TestCreateOrAdoptAPI_AdoptsByResource(t *testing.T) {
 	api := &pocketidinternalv1alpha1.PocketIDAPI{
 		ObjectMeta: metav1.ObjectMeta{Name: "orders", Namespace: "default"},
 		Spec:       pocketidinternalv1alpha1.PocketIDAPISpec{Resource: "https://orders.example.com"},
 	}
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet && r.URL.Path == "/api/apis" {
 			writeJSON(w, map[string]any{"data": []apiJSON{{ID: "existing-1", Name: "Orders", Resource: "https://orders.example.com"}}})
 			return
 		}
 		http.Error(w, "unexpected create", http.StatusInternalServerError)
 	}))
-	defer ts.Close()
 
 	r := newReconciler(t, api)
-	requeue, err := r.createOrAdoptAPI(context.Background(), api, pocketClient(t, ts.URL))
+	requeue, err := r.createOrAdoptAPI(context.Background(), api, apiClient)
 	if err != nil {
 		t.Fatalf("createOrAdoptAPI: %v", err)
 	}
@@ -106,7 +96,7 @@ func TestPushAPIState_CreatesDeclaredPermissions(t *testing.T) {
 	}
 
 	var sentPerms []map[string]any
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPut && r.URL.Path == "/api/apis/api-1/permissions" {
 			var body struct {
 				Permissions []map[string]any `json:"permissions"`
@@ -118,13 +108,12 @@ func TestPushAPIState_CreatesDeclaredPermissions(t *testing.T) {
 		}
 		http.NotFound(w, r)
 	}))
-	defer ts.Close()
 
 	r := newReconciler(t, api)
 	// current pocket-id state: name matches, no permissions yet
 	current := &pocketid.API{ID: "api-1", Name: "Orders", Resource: "https://orders.example.com"}
 
-	updated, err := r.pushAPIState(context.Background(), api, pocketClient(t, ts.URL), current)
+	updated, err := r.pushAPIState(context.Background(), api, apiClient, current)
 	if err != nil {
 		t.Fatalf("pushAPIState: %v", err)
 	}
@@ -152,7 +141,7 @@ func TestPushAPIState_GrantsCIMDAccessToPermissionCreatedInSameEdit(t *testing.T
 	}
 
 	var cimdBody map[string]any
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/apis/api-1/permissions":
 			// Pocket-ID assigns the ID here; before this call the key cannot be resolved.
@@ -165,12 +154,11 @@ func TestPushAPIState_GrantsCIMDAccessToPermissionCreatedInSameEdit(t *testing.T
 			http.NotFound(w, r)
 		}
 	}))
-	defer ts.Close()
 
 	r := newReconciler(t, api)
 	current := &pocketid.API{ID: "api-1", Name: "Orders", Resource: "https://orders.example.com"}
 
-	if _, err := r.pushAPIState(context.Background(), api, pocketClient(t, ts.URL), current); err != nil {
+	if _, err := r.pushAPIState(context.Background(), api, apiClient, current); err != nil {
 		t.Fatalf("pushAPIState: %v", err)
 	}
 	if cimdBody == nil {
@@ -193,7 +181,7 @@ func TestPushAPIState_ReplacesExternalPermissions(t *testing.T) {
 	}
 
 	var sentKeys []string
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPut && r.URL.Path == "/api/apis/api-1/permissions" {
 			var body struct {
 				Permissions []map[string]any `json:"permissions"`
@@ -207,7 +195,6 @@ func TestPushAPIState_ReplacesExternalPermissions(t *testing.T) {
 		}
 		http.NotFound(w, r)
 	}))
-	defer ts.Close()
 
 	r := newReconciler(t, api)
 	// Pocket-ID has an extra externally-added permission; sole ownership drops it.
@@ -219,7 +206,7 @@ func TestPushAPIState_ReplacesExternalPermissions(t *testing.T) {
 		},
 	}
 
-	if _, err := r.pushAPIState(context.Background(), api, pocketClient(t, ts.URL), current); err != nil {
+	if _, err := r.pushAPIState(context.Background(), api, apiClient, current); err != nil {
 		t.Fatalf("pushAPIState: %v", err)
 	}
 	if !reflect.DeepEqual(sentKeys, []string{"read:orders"}) {
@@ -238,10 +225,9 @@ func TestPushAPIState_InSyncNoUpdate(t *testing.T) {
 		Status: pocketidinternalv1alpha1.PocketIDAPIStatus{APIID: "api-1"},
 	}
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "should not be called", http.StatusInternalServerError)
 	}))
-	defer ts.Close()
 
 	r := newReconciler(t, api)
 	current := &pocketid.API{
@@ -249,7 +235,7 @@ func TestPushAPIState_InSyncNoUpdate(t *testing.T) {
 		Permissions: []pocketid.APIPermission{{ID: "p1", Key: "read:orders", Name: "Read"}},
 	}
 
-	updated, err := r.pushAPIState(context.Background(), api, pocketClient(t, ts.URL), current)
+	updated, err := r.pushAPIState(context.Background(), api, apiClient, current)
 	if err != nil {
 		t.Fatalf("pushAPIState: %v", err)
 	}

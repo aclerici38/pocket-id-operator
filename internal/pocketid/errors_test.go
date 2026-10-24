@@ -21,10 +21,24 @@ type errorEnvelope struct {
 	RequestID string         `json:"request_id"`
 }
 
-// envelopeServer answers every request with the given status and envelope.
-func envelopeServer(t *testing.T, status int, envelope errorEnvelope, headers map[string]string) *httptest.Server {
+// newTestClient returns a client whose requests are all served by handler over httptest's
+// in-memory network. It mirrors pocketidtest.NewClient, which this package can't import.
+func newTestClient(t *testing.T, handler http.Handler) *Client {
 	t.Helper()
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts := httptest.NewTestServer(t, handler)
+	// Server.URL is only populated by the first Client call.
+	hc := ts.Client()
+	client, err := NewClient(ts.URL, "", WithHTTPClient(hc))
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	return client
+}
+
+// envelopeClient returns a client whose every request is answered with the given status and envelope.
+func envelopeClient(t *testing.T, status int, envelope errorEnvelope, headers map[string]string) *Client {
+	t.Helper()
+	return newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Request-ID", envelope.RequestID)
 		for name, value := range headers {
@@ -33,30 +47,19 @@ func envelopeServer(t *testing.T, status int, envelope errorEnvelope, headers ma
 		w.WriteHeader(status)
 		_ = json.NewEncoder(w).Encode(envelope)
 	}))
-	t.Cleanup(ts.Close)
-	return ts
-}
-
-func newTestClient(t *testing.T, baseURL string) *Client {
-	t.Helper()
-	client, err := NewClient(baseURL, "")
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
-	return client
 }
 
 // Operations that declare a default response decode the envelope themselves, so the code
 // has to survive the generated response type.
 func TestAPIError_TypedDefaultResponse(t *testing.T) {
-	ts := envelopeServer(t, http.StatusConflict, errorEnvelope{
+	client := envelopeClient(t, http.StatusConflict, errorEnvelope{
 		Error:     "Email is already in use",
 		Code:      string(models.ApperrorCodeAlreadyInUse),
 		Details:   map[string]any{"property": "email"},
 		RequestID: "req-typed",
 	}, nil)
 
-	_, err := newTestClient(t, ts.URL).CreateUser(context.Background(), UserInput{Username: "someone"})
+	_, err := client.CreateUser(context.Background(), UserInput{Username: "someone"})
 	if err == nil {
 		t.Fatal("CreateUser: expected an error")
 	}
@@ -88,13 +91,13 @@ func TestAPIError_TypedDefaultResponse(t *testing.T) {
 // The /api/apis endpoints declare no default response, so the client discards the body and
 // hands back a bare status. The envelope has to come off the wire instead.
 func TestAPIError_UntypedResponse(t *testing.T) {
-	ts := envelopeServer(t, http.StatusNotFound, errorEnvelope{
+	client := envelopeClient(t, http.StatusNotFound, errorEnvelope{
 		Error:     "Resource not found",
 		Code:      string(models.ApperrorCodeNotFound),
 		RequestID: "req-untyped",
 	}, nil)
 
-	_, err := newTestClient(t, ts.URL).GetAPI(context.Background(), "missing")
+	_, err := client.GetAPI(context.Background(), "missing")
 	if err == nil {
 		t.Fatal("GetAPI: expected an error")
 	}
@@ -123,13 +126,13 @@ func TestAPIError_UntypedResponse(t *testing.T) {
 // A rejected callback URL or an out-of-range token duration is a 400; treating one as a
 // conflict would send it down the adopt path.
 func TestValidationFailureIsNotAConflict(t *testing.T) {
-	ts := envelopeServer(t, http.StatusBadRequest, errorEnvelope{
+	client := envelopeClient(t, http.StatusBadRequest, errorEnvelope{
 		Error:     "Callback URL is invalid",
 		Code:      string(models.ApperrorCodeValidationFailed),
 		RequestID: "req-validation",
 	}, nil)
 
-	_, err := newTestClient(t, ts.URL).CreateOIDCClient(context.Background(), OIDCClientInput{Name: "app"})
+	_, err := client.CreateOIDCClient(context.Background(), OIDCClientInput{Name: "app"})
 	if err == nil {
 		t.Fatal("CreateOIDCClient: expected an error")
 	}
@@ -166,13 +169,13 @@ func TestBareStatusFallback(t *testing.T) {
 
 // A 404 that is not a missing resource must not read as one.
 func TestCodeBeatsStatus(t *testing.T) {
-	ts := envelopeServer(t, http.StatusNotFound, errorEnvelope{
+	client := envelopeClient(t, http.StatusNotFound, errorEnvelope{
 		Error:     "Initial setup is not available",
 		Code:      string(models.ApperrorCodeSetupNotAvailable),
 		RequestID: "req-setup",
 	}, nil)
 
-	_, err := newTestClient(t, ts.URL).GetAPI(context.Background(), "whatever")
+	_, err := client.GetAPI(context.Background(), "whatever")
 	if err == nil {
 		t.Fatal("GetAPI: expected an error")
 	}
@@ -183,13 +186,13 @@ func TestCodeBeatsStatus(t *testing.T) {
 
 // Pocket-ID rate limits the whole /api group and says how long to wait.
 func TestRateLimited(t *testing.T) {
-	ts := envelopeServer(t, http.StatusTooManyRequests, errorEnvelope{
+	client := envelopeClient(t, http.StatusTooManyRequests, errorEnvelope{
 		Error:     "Too many requests",
 		Code:      string(models.ApperrorCodeRateLimited),
 		RequestID: "req-limited",
 	}, map[string]string{"Retry-After": "7"})
 
-	_, err := newTestClient(t, ts.URL).GetUser(context.Background(), "someone")
+	_, err := client.GetUser(context.Background(), "someone")
 	if err == nil {
 		t.Fatal("GetUser: expected an error")
 	}
@@ -203,14 +206,13 @@ func TestRateLimited(t *testing.T) {
 
 // Something other than pocket-id answering leaves no envelope to classify on.
 func TestNonEnvelopeErrorPage(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusBadGateway)
 		_, _ = w.Write([]byte("<html><body>502 Bad Gateway</body></html>"))
 	}))
-	t.Cleanup(ts.Close)
 
-	_, err := newTestClient(t, ts.URL).GetUserGroup(context.Background(), "group")
+	_, err := client.GetUserGroup(context.Background(), "group")
 	if err == nil {
 		t.Fatal("GetUserGroup: expected an error")
 	}
@@ -312,8 +314,8 @@ func TestIsLogoError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ts := envelopeServer(t, tt.status, tt.envelope, nil)
-			_, err := newTestClient(t, ts.URL).UpdateOIDCClient(context.Background(), "client-id",
+			client := envelopeClient(t, tt.status, tt.envelope, nil)
+			_, err := client.UpdateOIDCClient(context.Background(), "client-id",
 				OIDCClientInput{Name: "client", LogoURL: "https://cdn.example.com/logo.png"})
 			if err == nil {
 				t.Fatal("UpdateOIDCClient: expected an error")

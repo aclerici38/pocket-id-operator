@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
-	"net/http/httptest"
 	"path"
 	"reflect"
 	"slices"
@@ -30,6 +29,7 @@ import (
 	"github.com/aclerici38/pocket-id-operator/internal/controller/helpers"
 	"github.com/aclerici38/pocket-id-operator/internal/metrics"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid/pocketidtest"
 )
 
 const testNamespace = "default"
@@ -1091,9 +1091,7 @@ func TestReconcileSecret_StoreClientSecretDisabled(t *testing.T) {
 			var apiClient *pocketid.Client
 			regenCalls := 0
 			if tc.pendingMint {
-				ts := clientSecretServer(t, "rotated-secret", &regenCalls)
-				defer ts.Close()
-				apiClient, _ = pocketid.NewClient(ts.URL, "")
+				apiClient = clientSecretClient(t, "rotated-secret", &regenCalls)
 			}
 
 			var observed []pocketid.OIDCClientSecret
@@ -1260,9 +1258,7 @@ func TestCreateOrAdoptOIDCClient_PendingInitialMint(t *testing.T) {
 
 			r := newPushStateOIDCReconciler(scheme, oidcClient)
 
-			ts := httptest.NewServer(tc.handler)
-			defer ts.Close()
-			apiClient, _ := pocketid.NewClient(ts.URL, "")
+			apiClient := pocketidtest.NewClient(t, tc.handler)
 
 			requeue, err := r.createOrAdoptOIDCClient(ctx, oidcClient, apiClient)
 			if err != nil {
@@ -1406,20 +1402,20 @@ func TestAdvanceInstanceRotationStatus(t *testing.T) {
 	}
 }
 
-// rotationSecretServer stands in for a client's secret endpoints.
-func rotationSecretServer(t *testing.T) *httptest.Server {
+// rotationSecretClient talks to fake client-secret endpoints.
+func rotationSecretClient(t *testing.T) *pocketid.Client {
 	t.Helper()
-	return clientSecretServer(t, "rotated-secret", nil)
+	return clientSecretClient(t, "rotated-secret", nil)
 }
 
-// clientSecretServer answers the client-secret endpoints the way Pocket-ID does — creates append
-// and return the value, lists omit values, deletes remove — so retirement runs against a set that
-// actually changes. creates, when non-nil, counts the creates.
-func clientSecretServer(t *testing.T, secret string, creates *int) *httptest.Server {
+// clientSecretClient talks to client-secret endpoints that behave the way Pocket-ID does — creates
+// append and return the value, lists omit values, deletes remove — so retirement runs against a set
+// that actually changes. creates, when non-nil, counts the creates.
+func clientSecretClient(t *testing.T, secret string, creates *int) *pocketid.Client {
 	t.Helper()
 	var mu sync.Mutex
 	var ids []string
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
 		switch r.Method {
@@ -1502,9 +1498,7 @@ func TestReconcileSecret_ScheduledRotation(t *testing.T) {
 		WithStatusSubresource(oidcClient, instance).
 		Build()
 
-	ts := rotationSecretServer(t)
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
+	apiClient := rotationSecretClient(t)
 
 	reconciler := &Reconciler{Client: fakeClient, APIReader: fakeClient, Scheme: scheme}
 	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient, nil); err != nil {
@@ -1598,9 +1592,7 @@ func TestReconcileSecret_WindowDrivenRotation(t *testing.T) {
 		WithStatusSubresource(oidcClient, instance).
 		Build()
 
-	ts := rotationSecretServer(t)
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
+	apiClient := rotationSecretClient(t)
 
 	reconciler := &Reconciler{Client: fakeClient, APIReader: fakeClient, Scheme: scheme}
 	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient, nil); err != nil {
@@ -1682,9 +1674,7 @@ func TestReconcileSecret_ManualRotation(t *testing.T) {
 		WithStatusSubresource(oidcClient, instance).
 		Build()
 
-	ts := rotationSecretServer(t)
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
+	apiClient := rotationSecretClient(t)
 
 	reconciler := &Reconciler{Client: fakeClient, APIReader: fakeClient, Scheme: scheme}
 	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient, nil); err != nil {
@@ -1764,9 +1754,7 @@ func TestReconcileSecret_InitialCreationIsNotScheduled(t *testing.T) {
 		WithStatusSubresource(oidcClient, instance).
 		Build()
 
-	ts := rotationSecretServer(t)
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
+	apiClient := rotationSecretClient(t)
 
 	reconciler := &Reconciler{Client: fakeClient, APIReader: fakeClient, Scheme: scheme}
 	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient, nil); err != nil {
@@ -2216,9 +2204,7 @@ func TestReconcileSecret_InstanceStatusWriteFailureRequeues(t *testing.T) {
 		},
 	})
 
-	ts := rotationSecretServer(t)
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
+	apiClient := rotationSecretClient(t)
 
 	reconciler := &Reconciler{Client: failing, APIReader: failing, Scheme: scheme}
 	if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient, nil); err == nil {
@@ -2286,9 +2272,7 @@ func TestReconcileSecret_SelfHealsAfterLostInstanceWrite(t *testing.T) {
 
 	// Count secret regenerations to prove pass 2 does not rotate again.
 	var regenCalls int
-	ts := clientSecretServer(t, "rotated-secret", &regenCalls)
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
+	apiClient := clientSecretClient(t, "rotated-secret", &regenCalls)
 
 	reconciler := &Reconciler{Client: healing, APIReader: healing, Scheme: scheme}
 

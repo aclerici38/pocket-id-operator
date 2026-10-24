@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -13,6 +12,7 @@ import (
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid/pocketidtest"
 )
 
 // pocketIDUserAPIResponse is the JSON shape returned by Pocket-ID user endpoints.
@@ -74,12 +74,10 @@ func TestPushUserState_SkipsWhenInSync(t *testing.T) {
 	r := newUserPushReconciler(scheme)
 
 	// Server that fails on any call — verifies no UpdateUser is made.
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		t.Error("unexpected API call during in-sync pushUserState")
 		http.Error(w, "unexpected", http.StatusInternalServerError)
 	}))
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	if _, err := r.pushUserState(ctx, user, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -116,7 +114,7 @@ func TestPushUserState_UpdatesWhenFieldChanged(t *testing.T) {
 	r := newUserPushReconciler(scheme)
 
 	updateCalled := false
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.Method == http.MethodPut && req.URL.Path == "/api/users/uid-bob" {
 			updateCalled = true
 			okUserResponse(w, "uid-bob", "bob")
@@ -124,8 +122,6 @@ func TestPushUserState_UpdatesWhenFieldChanged(t *testing.T) {
 		}
 		http.NotFound(w, req)
 	}))
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	if _, err := r.pushUserState(ctx, user, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -170,12 +166,10 @@ func TestPushUserState_PreservesEmailVerified(t *testing.T) {
 		current := baseCurrent
 
 		r := newUserPushReconciler(scheme)
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			t.Error("unexpected API call: EmailVerified alone must not cause an update")
 			http.Error(w, "unexpected", http.StatusInternalServerError)
 		}))
-		defer ts.Close()
-		apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 		if _, err := r.pushUserState(ctx, userCR, apiClient, &current); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -201,7 +195,7 @@ func TestPushUserState_PreservesEmailVerified(t *testing.T) {
 		r := newUserPushReconciler(scheme)
 
 		var sentVerified *bool
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			if req.Method == http.MethodPut && req.URL.Path == "/api/users/uid-eve" {
 				var body struct {
 					EmailVerified bool `json:"emailVerified"`
@@ -214,8 +208,6 @@ func TestPushUserState_PreservesEmailVerified(t *testing.T) {
 			}
 			http.NotFound(w, req)
 		}))
-		defer ts.Close()
-		apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 		if _, err := r.pushUserState(ctx, userCR, apiClient, &current); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -353,7 +345,7 @@ func TestPushUserState_UpdatesForEachField(t *testing.T) {
 			r := newUserPushReconciler(scheme)
 
 			updateCalled := false
-			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 				if req.Method == http.MethodPut && req.URL.Path == "/api/users/"+uid {
 					updateCalled = true
 					okUserResponse(w, uid, uname)
@@ -361,8 +353,6 @@ func TestPushUserState_UpdatesForEachField(t *testing.T) {
 				}
 				http.NotFound(w, req)
 			}))
-			defer ts.Close()
-			apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 			if _, err := r.pushUserState(ctx, userCR, apiClient, &current); err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -407,12 +397,10 @@ func TestPushUserState_SkipsWhenAllFieldsMatch(t *testing.T) {
 
 	r := newUserPushReconciler(scheme)
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		t.Error("unexpected API call: all fields match, no update should occur")
 		http.Error(w, "unexpected", http.StatusInternalServerError)
 	}))
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	if _, err := r.pushUserState(ctx, user, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)

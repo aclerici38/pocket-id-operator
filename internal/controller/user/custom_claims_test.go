@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -15,6 +14,7 @@ import (
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid/pocketidtest"
 )
 
 const claimsUserID = "uid-claims"
@@ -28,9 +28,9 @@ type claimsCalls struct {
 	sentClaims     []map[string]string
 }
 
-func newClaimsServer(t *testing.T, calls *claimsCalls) *httptest.Server {
+func newClaimsClient(t *testing.T, calls *claimsCalls) *pocketid.Client {
 	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	return pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		switch {
 		case req.Method == http.MethodPut && req.URL.Path == "/api/users/"+claimsUserID:
 			calls.profileUpdates++
@@ -94,9 +94,7 @@ func newClaimsReconciler(t *testing.T) *Reconciler {
 // like a diff and retrigger an update on every resync.
 func TestPushUserState_SkipsWhenClaimsMatchInAnyOrder(t *testing.T) {
 	calls := &claimsCalls{}
-	ts := newClaimsServer(t, calls)
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
+	apiClient := newClaimsClient(t, calls)
 
 	user := claimsUserCR([]pocketidinternalv1alpha1.CustomClaim{
 		{Key: "level", Value: "3"},
@@ -123,9 +121,7 @@ func TestPushUserState_SkipsWhenClaimsMatchInAnyOrder(t *testing.T) {
 // drag an unnecessary user update along with it.
 func TestPushUserState_UpdatesOnlyClaimsWhenProfileMatches(t *testing.T) {
 	calls := &claimsCalls{}
-	ts := newClaimsServer(t, calls)
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
+	apiClient := newClaimsClient(t, calls)
 
 	user := claimsUserCR([]pocketidinternalv1alpha1.CustomClaim{{Key: "department", Value: "platform"}})
 	current := claimsCurrent([]pocketid.CustomClaim{{Key: "department", Value: "engineering"}})
@@ -152,9 +148,7 @@ func TestPushUserState_UpdatesOnlyClaimsWhenProfileMatches(t *testing.T) {
 // while the profile update goes through.
 func TestPushUserState_UpdatesOnlyProfileWhenClaimsMatch(t *testing.T) {
 	calls := &claimsCalls{}
-	ts := newClaimsServer(t, calls)
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
+	apiClient := newClaimsClient(t, calls)
 
 	user := claimsUserCR([]pocketidinternalv1alpha1.CustomClaim{{Key: "department", Value: "engineering"}})
 	user.Spec.Locale = "de"
@@ -173,9 +167,7 @@ func TestPushUserState_UpdatesOnlyProfileWhenClaimsMatch(t *testing.T) {
 
 func TestPushUserState_UpdatesBothWhenProfileAndClaimsChange(t *testing.T) {
 	calls := &claimsCalls{}
-	ts := newClaimsServer(t, calls)
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
+	apiClient := newClaimsClient(t, calls)
 
 	user := claimsUserCR([]pocketidinternalv1alpha1.CustomClaim{{Key: "department", Value: "platform"}})
 	user.Spec.Locale = "de"
@@ -193,9 +185,7 @@ func TestPushUserState_UpdatesBothWhenProfileAndClaimsChange(t *testing.T) {
 // send an empty array rather than skipping the call and leaving stale claims behind.
 func TestPushUserState_ClearsClaimsWhenSpecHasNone(t *testing.T) {
 	calls := &claimsCalls{}
-	ts := newClaimsServer(t, calls)
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
+	apiClient := newClaimsClient(t, calls)
 
 	user := claimsUserCR(nil)
 	current := claimsCurrent([]pocketid.CustomClaim{{Key: "department", Value: "engineering"}})
@@ -214,9 +204,7 @@ func TestPushUserState_ClearsClaimsWhenSpecHasNone(t *testing.T) {
 // Both sides are empty, so there is nothing to clear and no call to make.
 func TestPushUserState_SkipsWhenNeitherSideHasClaims(t *testing.T) {
 	calls := &claimsCalls{}
-	ts := newClaimsServer(t, calls)
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
+	apiClient := newClaimsClient(t, calls)
 
 	user := claimsUserCR(nil)
 	current := claimsCurrent(nil)

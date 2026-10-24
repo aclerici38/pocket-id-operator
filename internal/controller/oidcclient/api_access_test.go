@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"reflect"
 	"testing"
 
@@ -14,6 +13,7 @@ import (
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid/pocketidtest"
 )
 
 func apiAccessScheme(t *testing.T) *runtime.Scheme {
@@ -154,14 +154,12 @@ func TestReconcileAPIAccess_NoSpecNoManaged_Skips(t *testing.T) {
 	s := apiAccessScheme(t)
 	oidcClient := clientWithAccess(nil)
 	called := false
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusOK)
 	}))
-	defer ts.Close()
 
 	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(oidcClient).WithStatusSubresource(oidcClient).Build()}
-	apiClient := mustPocketClient(t, ts.URL)
 
 	if err := r.ReconcileAPIAccess(context.Background(), oidcClient, apiClient); err != nil {
 		t.Fatalf("ReconcileAPIAccess: %v", err)
@@ -183,7 +181,7 @@ func TestReconcileAPIAccess_PushesOnDrift(t *testing.T) {
 
 	var putPath string
 	var putBody grantBody
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet: // no current access
 			writeJSON(w, []any{})
@@ -195,10 +193,8 @@ func TestReconcileAPIAccess_PushesOnDrift(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	}))
-	defer ts.Close()
 
 	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(api, oidcClient).WithStatusSubresource(oidcClient).Build()}
-	apiClient := mustPocketClient(t, ts.URL)
 
 	if err := r.ReconcileAPIAccess(context.Background(), oidcClient, apiClient); err != nil {
 		t.Fatalf("ReconcileAPIAccess: %v", err)
@@ -224,7 +220,7 @@ func TestReconcileAPIAccess_RevokesDroppedAPI(t *testing.T) {
 	oidcClient.Status.ManagedAPIs = []string{"api-1"}
 
 	deleted := ""
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			writeJSON(w, []map[string]any{{
@@ -239,11 +235,10 @@ func TestReconcileAPIAccess_RevokesDroppedAPI(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	}))
-	defer ts.Close()
 
 	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(oidcClient).WithStatusSubresource(oidcClient).Build()}
 
-	if err := r.ReconcileAPIAccess(context.Background(), oidcClient, mustPocketClient(t, ts.URL)); err != nil {
+	if err := r.ReconcileAPIAccess(context.Background(), oidcClient, apiClient); err != nil {
 		t.Fatalf("ReconcileAPIAccess: %v", err)
 	}
 	if deleted != "/api/apis/api-1/clients/client-1" {
@@ -263,7 +258,7 @@ func TestReconcileAPIAccess_RevokesDroppedScopelessGrant(t *testing.T) {
 	oidcClient.Status.ManagedAPIs = []string{"api-1"}
 
 	deleted := ""
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			writeJSON(w, []map[string]any{{
@@ -277,11 +272,10 @@ func TestReconcileAPIAccess_RevokesDroppedScopelessGrant(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	}))
-	defer ts.Close()
 
 	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(oidcClient).WithStatusSubresource(oidcClient).Build()}
 
-	if err := r.ReconcileAPIAccess(context.Background(), oidcClient, mustPocketClient(t, ts.URL)); err != nil {
+	if err := r.ReconcileAPIAccess(context.Background(), oidcClient, apiClient); err != nil {
 		t.Fatalf("ReconcileAPIAccess: %v", err)
 	}
 	if deleted != "/api/apis/api-1/clients/client-1" {
@@ -300,7 +294,7 @@ func TestReconcileAPIAccess_LeavesCIMDGrantedAPIAlone(t *testing.T) {
 	oidcClient.Status.ManagedAPIPermissionIDs = []string{"p-read"}
 
 	deleted := false
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			writeJSON(w, []map[string]any{{
@@ -315,11 +309,10 @@ func TestReconcileAPIAccess_LeavesCIMDGrantedAPIAlone(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	}))
-	defer ts.Close()
 
 	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(oidcClient).WithStatusSubresource(oidcClient).Build()}
 
-	if err := r.ReconcileAPIAccess(context.Background(), oidcClient, mustPocketClient(t, ts.URL)); err != nil {
+	if err := r.ReconcileAPIAccess(context.Background(), oidcClient, apiClient); err != nil {
 		t.Fatalf("ReconcileAPIAccess: %v", err)
 	}
 	if deleted {
@@ -337,7 +330,7 @@ func TestReconcileAPIAccess_ReportsCIMDGrantWhenNothingManaged(t *testing.T) {
 	oidcClient := clientWithAccess(nil)
 	oidcClient.Status.ClientType = pocketid.ClientTypeCIMD
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			t.Errorf("unexpected %s to %s", r.Method, r.URL.Path)
 		}
@@ -346,11 +339,10 @@ func TestReconcileAPIAccess_ReportsCIMDGrantWhenNothingManaged(t *testing.T) {
 			"cimdGrantedAccess": true,
 		}})
 	}))
-	defer ts.Close()
 
 	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(oidcClient).WithStatusSubresource(oidcClient).Build()}
 
-	if err := r.ReconcileAPIAccess(context.Background(), oidcClient, mustPocketClient(t, ts.URL)); err != nil {
+	if err := r.ReconcileAPIAccess(context.Background(), oidcClient, apiClient); err != nil {
 		t.Fatalf("ReconcileAPIAccess: %v", err)
 	}
 	if !reflect.DeepEqual(oidcClient.Status.CIMDGrantedAPIs, []string{"https://orders.example.com"}) {
@@ -363,15 +355,14 @@ func TestReconcileAPIAccess_StandardClientNotFetchedWhenNothingManaged(t *testin
 	s := apiAccessScheme(t)
 	oidcClient := clientWithAccess(nil)
 	called := false
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		called = true
 		writeJSON(w, []any{})
 	}))
-	defer ts.Close()
 
 	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(oidcClient).WithStatusSubresource(oidcClient).Build()}
 
-	if err := r.ReconcileAPIAccess(context.Background(), oidcClient, mustPocketClient(t, ts.URL)); err != nil {
+	if err := r.ReconcileAPIAccess(context.Background(), oidcClient, apiClient); err != nil {
 		t.Fatalf("ReconcileAPIAccess: %v", err)
 	}
 	if called {
@@ -500,15 +491,6 @@ func TestMergeSorted(t *testing.T) {
 	if mergeSorted(nil, nil) != nil {
 		t.Fatal("mergeSorted of empties should be nil")
 	}
-}
-
-func mustPocketClient(t *testing.T, url string) *pocketid.Client {
-	t.Helper()
-	c, err := pocketid.NewClient(url, "")
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
-	return c
 }
 
 // grantBody mirrors the per-API grant DTO exchanged with Pocket-ID.

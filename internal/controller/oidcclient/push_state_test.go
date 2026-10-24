@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
@@ -21,6 +20,7 @@ import (
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid/pocketidtest"
 )
 
 const (
@@ -780,12 +780,10 @@ func TestPushOIDCClientState_SkipsWhenInSync(t *testing.T) {
 	r := newPushStateOIDCReconciler(scheme, oidcClientCR)
 
 	// Server that fails on any call — verifies no API calls are made.
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		t.Error("unexpected API call during in-sync pushOIDCClientState")
 		http.Error(w, "unexpected", http.StatusInternalServerError)
 	}))
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -817,7 +815,7 @@ func TestPushOIDCClientState_UpdatesWhenFieldsChange(t *testing.T) {
 	r := newPushStateOIDCReconciler(scheme, oidcClientCR)
 
 	updateCalled := false
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.Method == http.MethodPut && req.URL.Path == "/api/oidc/clients/update-id" {
 			updateCalled = true
 			okOIDCClientResponse(w, "update-id", "update-client")
@@ -825,8 +823,6 @@ func TestPushOIDCClientState_UpdatesWhenFieldsChange(t *testing.T) {
 		}
 		http.NotFound(w, req)
 	}))
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -891,7 +887,7 @@ func TestPushOIDCClientState_FederatedIdentities(t *testing.T) {
 			r := newPushStateOIDCReconciler(scheme, oidcClientCR)
 
 			var sent map[string]any
-			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 				if req.Method == http.MethodPut && req.URL.Path == "/api/oidc/clients/cred-id" {
 					_ = json.NewDecoder(req.Body).Decode(&sent)
 					okOIDCClientResponse(w, "cred-id", "cred-client")
@@ -899,8 +895,6 @@ func TestPushOIDCClientState_FederatedIdentities(t *testing.T) {
 				}
 				http.NotFound(w, req)
 			}))
-			defer ts.Close()
-			apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 			if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -949,14 +943,12 @@ func TestOIDCClientWrites_StopOnUnresolvablePublicKeys(t *testing.T) {
 	r.APIReader = r.Client
 
 	var writes int
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.Method != http.MethodGet {
 			writes++
 		}
 		http.NotFound(w, req)
 	}))
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	if _, err := r.createOrAdoptOIDCClient(ctx, oidcClientCR, apiClient); !errors.Is(err, errPublicKeys) {
 		t.Errorf("create: expected a public key error, got %v", err)
@@ -1034,7 +1026,7 @@ func TestPushOIDCClientState_UnrestrictsBeforeClearingGroups(t *testing.T) {
 func recordGroupPushOrder(t *testing.T, r *Reconciler, oidcClientCR *pocketidinternalv1alpha1.PocketIDOIDCClient, current *pocketid.OIDCClient) []string {
 	t.Helper()
 	var calls []string
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		switch {
 		case req.Method == http.MethodPut && req.URL.Path == "/api/oidc/clients/groups-id":
 			var body struct {
@@ -1054,8 +1046,6 @@ func recordGroupPushOrder(t *testing.T, r *Reconciler, oidcClientCR *pocketidint
 			http.NotFound(w, req)
 		}
 	}))
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	if _, err := r.pushOIDCClientState(context.Background(), oidcClientCR, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1097,7 +1087,7 @@ func TestPushOIDCClientState_IsGroupRestrictedReflectsAggregation(t *testing.T) 
 	r := newPushStateOIDCReconciler(scheme, oidcClientCR, group)
 
 	groupsUpdateSent := false
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		switch {
 		case req.Method == http.MethodPut && req.URL.Path == "/api/oidc/clients/restrict-id":
 			okOIDCClientResponse(w, "restrict-id", "restrict-client")
@@ -1108,8 +1098,6 @@ func TestPushOIDCClientState_IsGroupRestrictedReflectsAggregation(t *testing.T) 
 			http.NotFound(w, req)
 		}
 	}))
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1148,12 +1136,10 @@ func TestPushOIDCClientState_UploadedLogoWithAutoGenerateOffMakesNoCalls(t *test
 	}
 
 	r := newPushStateOIDCReconciler(scheme, oidcClientCR)
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("unexpected %s %s: an uploaded logo is not the operator's to manage", r.Method, r.URL.Path)
 		http.Error(w, "unexpected", http.StatusInternalServerError)
 	}))
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	updated, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current)
 	if err != nil {
@@ -1189,7 +1175,7 @@ func TestPushOIDCClientState_LogoErrorIsNonFatalAndNotRetried(t *testing.T) {
 
 	r := newPushStateOIDCReconciler(scheme, oidcClientCR)
 	var puts int
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.Method != http.MethodPut {
 			t.Errorf("unexpected %s %s", req.Method, req.URL.Path)
 			http.Error(w, "unexpected", http.StatusInternalServerError)
@@ -1202,8 +1188,6 @@ func TestPushOIDCClientState_LogoErrorIsNonFatalAndNotRetried(t *testing.T) {
 			"error": "Logo could not be downloaded", "code": "logo_download_failed", "request_id": "req-1",
 		})
 	}))
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
 		t.Fatalf("expected a logo failure to be non-fatal, got %v", err)
@@ -1257,7 +1241,7 @@ func TestPushOIDCClientState_DarkLogoFailureLeavesLightLogoIntact(t *testing.T) 
 
 	r := newPushStateOIDCReconciler(scheme, oidcClientCR)
 	var sent []string // darkLogoUrl of each PUT, so the two updates are distinguishable
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		var body map[string]any
 		_ = json.NewDecoder(req.Body).Decode(&body)
 		dark, _ := body["darkLogoUrl"].(string)
@@ -1273,8 +1257,6 @@ func TestPushOIDCClientState_DarkLogoFailureLeavesLightLogoIntact(t *testing.T) 
 			"error": "Logo could not be downloaded", "code": "logo_download_failed",
 		})
 	}))
-	defer ts.Close()
-	apiClient, _ := pocketid.NewClient(ts.URL, "")
 
 	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
 		t.Fatalf("expected the dark failure to be non-fatal, got %v", err)

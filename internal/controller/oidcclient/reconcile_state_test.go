@@ -41,7 +41,7 @@ func reconcileFixture(t *testing.T, oidcClient *pocketidinternalv1alpha1.PocketI
 	calls := &reconcileCalls{}
 	name := "app-before-write"
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	ts := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		calls.mu.Lock()
 		defer calls.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
@@ -64,7 +64,7 @@ func reconcileFixture(t *testing.T, oidcClient *pocketidinternalv1alpha1.PocketI
 			http.NotFound(w, req)
 		}
 	}))
-	t.Cleanup(ts.Close)
+	ts.Start()
 
 	return reconcilerAgainst(t, ts.URL, oidcClient), calls
 }
