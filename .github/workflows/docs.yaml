@@ -122,7 +122,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           # renovate: datasource=npm depName=wrangler
-          wranglerVersion: "4.152.0"
+          wranglerVersion: "4.153.0"
           command: pages deploy site --project-name=${{ env.PROJECT }} --branch=${{ env.BRANCH }} --commit-hash=${{ env.SHA }}
           # Creates a GitHub Deployment, so PRs show a "View deployment" link.
           gitHubToken: ${{ github.token }}
