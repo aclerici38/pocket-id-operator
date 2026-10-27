@@ -42,7 +42,7 @@ helm = "4.3.1"
 "go:github.com/elastic/crd-ref-docs" = "v0.3.0"
 
 # Docs site. uv installs zensical into its own venv with a private Python.
-uv = "0.13.5"
+uv = "0.13.6"
 "pypi:zensical" = { version = "0.0.73", python = "3.14" }
 
 # Git hooks
