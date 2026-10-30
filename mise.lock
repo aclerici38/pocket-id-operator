@@ -198,10 +198,10 @@ url_api = "https://api.github.com/repos/evilmartians/lefthook/releases/assets/63
 provenance = "github-attestations"
 
 [[tools."pypi:zensical"]]
-version = "0.0.73"
+version = "0.0.74"
 backend = "pypi:zensical"
-specifiers = ["0.0.73"]
-uv = { path = ".mise/locks/pypi-zensical/0.0.73~e0d36179", digest = "sha256:0ff798f8e9800dce6bfee7eccb29f15eb5594ce7b8dc3cafa065c2de85b13167" }
+specifiers = ["0.0.74"]
+uv = { path = ".mise/locks/pypi-zensical/0.0.74~e0d36179", digest = "sha256:2309b57f219223ba48ab77a26ff4dd40f822157ccf5ad984916bcfcd06b97345" }
 
 [tools."pypi:zensical".options]
 python = "3.14"
