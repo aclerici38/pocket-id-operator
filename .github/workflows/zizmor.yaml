@@ -34,7 +34,7 @@ jobs:
         uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: "2026.10.19"
+          version: "2026.10.25"
           install_args: zizmor
 
       - name: Run zizmor
