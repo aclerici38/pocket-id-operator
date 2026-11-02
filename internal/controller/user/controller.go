@@ -789,11 +789,10 @@ func (r *Reconciler) reconcileAPIKeys(ctx context.Context, user *pocketidinterna
 
 		log.Info("Deleting API key", "name", name)
 		if keyStatus.ID != "" {
-			if err := apiClient.DeleteAPIKey(ctx, keyStatus.ID); err != nil {
-				log.Error(err, "Failed to delete API key from Pocket-ID", "name", name)
-			} else {
-				metrics.APIKeyOperations.WithLabelValues(instanceNamespace, instanceName, "deleted").Inc()
+			if err := apiClient.DeleteAPIKeyForUser(ctx, user.Status.UserID, keyStatus.ID, DefaultLoginTokenExpiryMin); err != nil {
+				return fmt.Errorf("delete API key %s: %w", name, err)
 			}
+			metrics.APIKeyOperations.WithLabelValues(instanceNamespace, instanceName, "deleted").Inc()
 		}
 
 		// Delete secret

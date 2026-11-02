@@ -265,6 +265,28 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 			By("verifying the token authenticates as that user")
 			Expect(pocketIDUsernameForAPIKey(token)).To(Equal(userName))
 		})
+
+		It("should revoke an API key removed from spec", func() {
+			const userName = "test-apikey-revoke-user"
+
+			createUserAndWaitReady(UserOptions{
+				Name:    userName,
+				APIKeys: []APIKeySpec{{Name: "revoked-key", Description: "Revoked API key"}},
+			})
+
+			secretName := getField("pocketiduser", userName, userNS, ".status.apiKeys[0].secretName")
+			token := secretData(secretName, userNS, "token")
+			Expect(pocketIDUsernameForAPIKey(token)).To(Equal(userName))
+
+			By("removing the key from spec")
+			Expect(patchObject("pocketiduser", userName, userNS, `{"spec":{"apiKeys":null}}`)).To(Succeed())
+			Eventually(func(g Gomega) {
+				g.Expect(getField("pocketiduser", userName, userNS, ".status.apiKeys")).To(BeEmpty())
+			}).Should(Succeed())
+
+			By("verifying Pocket-ID no longer accepts the token")
+			Expect(pocketIDStatusForAPIKey(token)).To(Equal(http.StatusUnauthorized))
+		})
 	})
 
 	Context("One-Time Login Token", func() {
