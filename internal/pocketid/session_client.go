@@ -9,7 +9,10 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
+
+const logoutTimeout = 5 * time.Second
 
 type sessionClient struct {
 	baseURL    string
@@ -112,4 +115,19 @@ func (s *sessionClient) createAPIKeyWithCookies(ctx context.Context, cookies []*
 	}
 
 	return &apiKeyResp, nil
+}
+
+// logout is detached from ctx's cancellation so a cancelled reconcile doesn't leave the session behind.
+func (s *sessionClient) logout(ctx context.Context, cookies []*http.Cookie) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), logoutTimeout)
+	defer cancel()
+
+	status, _, respBody, err := s.doJSONRequest(ctx, http.MethodPost, "/api/webauthn/logout", nil, cookies)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent {
+		return fmt.Errorf("logout failed with status %d: %s", status, string(respBody))
+	}
+	return nil
 }
