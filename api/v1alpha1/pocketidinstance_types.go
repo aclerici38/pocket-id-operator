@@ -97,7 +97,7 @@ type S3Config struct {
 	DisableDefaultIntegrityChecks *bool `json:"disableDefaultIntegrityChecks,omitempty"`
 }
 
-// SMTPConfig configures SMTP email transport. When present, the operator sets SMTP_ENABLED=true and UI_CONFIG_DISABLED=true.
+// SMTPConfig configures SMTP email transport. When present, the operator sets UI_CONFIG_DISABLED=true.
 type SMTPConfig struct {
 	// SMTP server hostname.
 	// Sets SMTP_HOST. See https://pocket-id.org/docs/configuration/environment-variables.
@@ -663,7 +663,7 @@ type PocketIDInstanceSpec struct {
 	// +optional
 	S3 *S3Config `json:"s3,omitempty"`
 
-	// SMTP email transport. When present, the operator sets SMTP_ENABLED=true and UI_CONFIG_DISABLED=true.
+	// SMTP email transport. When present, the operator sets UI_CONFIG_DISABLED=true.
 	// +optional
 	SMTP *SMTPConfig `json:"smtp,omitempty"`
 

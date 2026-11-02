@@ -41,7 +41,7 @@ PocketIDInstanceSpec defines the desired state of PocketIDInstance.
 | `serviceTemplate` | [ServiceSpec](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#servicespec-v1-core) |  |  | ServiceTemplate is merged with the operator-built Service spec.<br />Operator-managed fields (the selector and the number, protocol, and appProtocol of the http/metrics ports) always take precedence.<br />_Schemaless: \{\}_ |
 | `fileBackend` | string |  |  | File storage backend. Automatically set to "s3" when s3 config is present.<br />Sets FILE_BACKEND. See https://pocket-id.org/docs/configuration/environment-variables. |
 | [`s3`](#pocketidinstancespecs3) | object |  |  | S3 file backend. When present, the operator sets FILE_BACKEND=s3. |
-| [`smtp`](#pocketidinstancespecsmtp) | object |  |  | SMTP email transport. When present, the operator sets SMTP_ENABLED=true and UI_CONFIG_DISABLED=true. |
+| [`smtp`](#pocketidinstancespecsmtp) | object |  |  | SMTP email transport. When present, the operator sets UI_CONFIG_DISABLED=true. |
 | [`emailNotifications`](#pocketidinstancespecemailnotifications) | object |  |  | Email notification settings. Requires smtp. The operator sets UI_CONFIG_DISABLED=true when this section is configured. |
 | [`ldap`](#pocketidinstancespecldap) | object |  |  | LDAP authentication. When present, the operator sets LDAP_ENABLED=true and UI_CONFIG_DISABLED=true. |
 | [`logging`](#pocketidinstancespeclogging) | object |  |  | Logging configuration. |
@@ -195,7 +195,7 @@ SensitiveValue holds a value that can be provided as plain text or from a Kubern
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-SMTPConfig configures SMTP email transport. When present, the operator sets SMTP_ENABLED=true and UI_CONFIG_DISABLED=true.
+SMTPConfig configures SMTP email transport. When present, the operator sets UI_CONFIG_DISABLED=true.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |

@@ -407,7 +407,6 @@ func TestBuildEnvVars_SMTP(t *testing.T) {
 	}
 
 	env := buildEnvVars(inst)
-	requireEnv(t, env, "SMTP_ENABLED", "true")
 	requireEnv(t, env, "SMTP_HOST", "smtp.example.com")
 	requireEnv(t, env, "SMTP_PORT", "587")
 	requireEnv(t, env, "SMTP_FROM", "noreply@example.com")
@@ -426,7 +425,6 @@ func TestBuildEnvVars_SMTPMinimal(t *testing.T) {
 	}
 
 	env := buildEnvVars(inst)
-	requireEnv(t, env, "SMTP_ENABLED", "true")
 	requireEnvAbsent(t, env, "SMTP_USER")
 	requireEnvAbsent(t, env, "SMTP_PASSWORD")
 	requireEnvAbsent(t, env, "SMTP_SKIP_CERT_VERIFY")

@@ -197,7 +197,6 @@ func buildSMTPEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.
 	}
 	smtp := instance.Spec.SMTP
 	env := []corev1.EnvVar{
-		{Name: "SMTP_ENABLED", Value: "true"},
 		{Name: "SMTP_HOST", Value: smtp.Host},
 		{Name: "SMTP_PORT", Value: fmt.Sprintf("%d", smtp.Port)},
 		{Name: "SMTP_FROM", Value: smtp.From},
