@@ -144,11 +144,29 @@ func pocketIDUsernameForAPIKey(apiKey string) string {
 	ctx, cancel := testCtx()
 	defer cancel()
 
+	return usernameFrom(http.DefaultClient.Do(meRequestForAPIKey(ctx, apiKey)))
+}
+
+// pocketIDStatusForAPIKey reports how /api/users/me answers the key.
+func pocketIDStatusForAPIKey(apiKey string) int {
+	GinkgoHelper()
+
+	ctx, cancel := testCtx()
+	defer cancel()
+
+	resp, err := http.DefaultClient.Do(meRequestForAPIKey(ctx, apiKey))
+	Expect(err).NotTo(HaveOccurred(), "calling /api/users/me")
+	defer func() { _ = resp.Body.Close() }()
+	return resp.StatusCode
+}
+
+func meRequestForAPIKey(ctx context.Context, apiKey string) *http.Request {
+	GinkgoHelper()
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pocketIDBaseURL()+"/api/users/me", nil)
 	Expect(err).NotTo(HaveOccurred())
 	req.Header.Set("X-API-KEY", apiKey)
-
-	return usernameFrom(http.DefaultClient.Do(req))
+	return req
 }
 
 // pocketIDUsernameForOneTimeToken redeems a one-time access token and reports who the

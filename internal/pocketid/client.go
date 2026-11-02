@@ -22,7 +22,6 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	apiclient "github.com/aclerici38/pocket-id-go-client/v2/client"
-	"github.com/aclerici38/pocket-id-go-client/v2/client/api_keys"
 	"github.com/aclerici38/pocket-id-go-client/v2/client/apis"
 	custom_claims "github.com/aclerici38/pocket-id-go-client/v2/client/custom_claims"
 	oidc "github.com/aclerici38/pocket-id-go-client/v2/client/o_id_c"
@@ -670,57 +669,62 @@ func (c *Client) DeleteUser(ctx context.Context, id string) error {
 
 // --- API Key Operations ---
 
-// CreateAPIKeyForUser creates an API key for the specified user by exchanging a one-time access token for a session.
-func (c *Client) CreateAPIKeyForUser(ctx context.Context, userID, name, expiresAt, description string, tokenTTLMinutes int) (result *APIKeyWithToken, err error) {
-	start := time.Now()
-	defer func() { recordCall("create_api_key_for_user", err, time.Since(start)) }()
-
+// withUserSession runs fn in a session for the user, the only credential that can manage keys the user owns.
+func (c *Client) withUserSession(ctx context.Context, userID string, tokenTTLMinutes int, fn func(*sessionClient, []*http.Cookie) error) error {
 	token, err := c.CreateOneTimeAccessToken(ctx, userID, tokenTTLMinutes)
 	if err != nil {
-		return nil, fmt.Errorf("create one-time access token: %w", err)
+		return fmt.Errorf("create one-time access token: %w", err)
 	}
 
 	session := newSessionClient(c.baseURL, c.httpClient)
 	cookies, err := session.exchangeOneTimeAccessToken(ctx, token.Token)
 	if err != nil {
-		return nil, fmt.Errorf("exchange one-time access token: %w", err)
+		return fmt.Errorf("exchange one-time access token: %w", err)
 	}
-	// The key's token is only returned once, so a failed logout must not fail the call.
+	// A created key's token is only returned once, so a failed logout must not fail the call.
 	defer func() {
 		if logoutErr := session.logout(ctx, cookies); logoutErr != nil {
-			logf.FromContext(ctx).Error(logoutErr, "Failed to end API key session", "userID", userID)
+			logf.FromContext(ctx).Error(logoutErr, "Failed to end user session", "userID", userID)
 		}
 	}()
 
-	apiKeyReq := CreateAPIKeyRequest{
-		Name:        name,
-		ExpiresAt:   expiresAt,
-		Description: description,
-	}
-	apiKeyResp, err := session.createAPIKeyWithCookies(ctx, cookies, apiKeyReq)
-	if err != nil {
-		return nil, fmt.Errorf("create API key: %w", err)
-	}
-
-	return &APIKeyWithToken{
-		APIKey: apiKeyFromCreateResponse(apiKeyResp),
-		Token:  apiKeyResp.Token,
-	}, nil
+	return fn(session, cookies)
 }
 
-// DeleteAPIKey deletes an API key by ID.
-func (c *Client) DeleteAPIKey(ctx context.Context, id string) error {
-	params := api_keys.NewDeleteAPIAPIKeysIDParams().
-		WithID(id)
-
+// CreateAPIKeyForUser creates an API key owned by the specified user.
+func (c *Client) CreateAPIKeyForUser(ctx context.Context, userID, name, expiresAt, description string, tokenTTLMinutes int) (result *APIKeyWithToken, err error) {
 	start := time.Now()
-	_, err := c.raw.APIKeys.DeleteAPIAPIKeysIDContext(ctx, params)
-	recordCall("delete_api_key", err, time.Since(start))
-	if err != nil {
-		return fmt.Errorf("delete API key failed: %w", err)
-	}
+	defer func() { recordCall("create_api_key_for_user", err, time.Since(start)) }()
 
-	return nil
+	err = c.withUserSession(ctx, userID, tokenTTLMinutes, func(session *sessionClient, cookies []*http.Cookie) error {
+		apiKeyResp, err := session.createAPIKeyWithCookies(ctx, cookies, CreateAPIKeyRequest{
+			Name:        name,
+			ExpiresAt:   expiresAt,
+			Description: description,
+		})
+		if err != nil {
+			return fmt.Errorf("create API key: %w", err)
+		}
+		result = &APIKeyWithToken{
+			APIKey: apiKeyFromCreateResponse(apiKeyResp),
+			Token:  apiKeyResp.Token,
+		}
+		return nil
+	})
+	return result, err
+}
+
+// DeleteAPIKeyForUser revokes an API key owned by the specified user.
+func (c *Client) DeleteAPIKeyForUser(ctx context.Context, userID, id string, tokenTTLMinutes int) (err error) {
+	start := time.Now()
+	defer func() { recordCall("delete_api_key", err, time.Since(start)) }()
+
+	return c.withUserSession(ctx, userID, tokenTTLMinutes, func(session *sessionClient, cookies []*http.Cookie) error {
+		if err := session.deleteAPIKeyWithCookies(ctx, cookies, id); err != nil {
+			return fmt.Errorf("delete API key: %w", err)
+		}
+		return nil
+	})
 }
 
 // --- OIDC Client Operations ---

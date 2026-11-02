@@ -117,6 +117,18 @@ func (s *sessionClient) createAPIKeyWithCookies(ctx context.Context, cookies []*
 	return &apiKeyResp, nil
 }
 
+// deleteAPIKeyWithCookies treats a key that's already gone as deleted.
+func (s *sessionClient) deleteAPIKeyWithCookies(ctx context.Context, cookies []*http.Cookie, id string) error {
+	status, _, respBody, err := s.doJSONRequest(ctx, http.MethodDelete, "/api/api-keys/"+url.PathEscape(id), nil, cookies)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent && status != http.StatusNotFound {
+		return fmt.Errorf("delete API key failed with status %d: %s", status, string(respBody))
+	}
+	return nil
+}
+
 // logout is detached from ctx's cancellation so a cancelled reconcile doesn't leave the session behind.
 func (s *sessionClient) logout(ctx context.Context, cookies []*http.Cookie) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), logoutTimeout)
