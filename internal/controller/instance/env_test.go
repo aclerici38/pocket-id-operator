@@ -230,6 +230,24 @@ func TestBuildEnvVars_CIMDURLAllowlist(t *testing.T) {
 		`["https://apps.example.com/*/client-metadata.json","https://quo\"ted.example.com/meta.json"]`)
 }
 
+func TestBuildEnvVars_EnabledFeatures(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.EnabledFeatures = []string{"scim", "apiKeys"}
+
+	env := buildEnvVars(inst)
+	requireEnv(t, env, "ENABLED_FEATURES", `["scim","apiKeys"]`)
+	requireEnv(t, env, "UI_CONFIG_DISABLED", "true")
+}
+
+func TestBuildEnvVars_EnabledFeaturesAbsentWhenEmpty(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.EnabledFeatures = []string{}
+
+	env := buildEnvVars(inst)
+	requireEnvAbsent(t, env, "ENABLED_FEATURES")
+	requireEnvAbsent(t, env, "UI_CONFIG_DISABLED")
+}
+
 func TestBuildEnvVars_OutboundAllowedHosts(t *testing.T) {
 	inst := minimalInstance()
 	inst.Spec.OutboundAllowedHosts = &pocketidinternalv1alpha1.OutboundAllowedHostsConfig{

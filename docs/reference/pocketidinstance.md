@@ -59,6 +59,7 @@ PocketIDInstanceSpec defines the desired state of PocketIDInstance.
 | [`trustedProxies`](#pocketidinstancespectrustedproxies) | object |  |  | TrustedProxies configures which proxies Pocket-ID trusts for X-Forwarded-* headers. When unset, the operator trusts the private/loopback ranges if spec.route.enabled is set.<br />Sets TRUST_PROXY. See https://pocket-id.org/docs/configuration/environment-variables#trust_proxy. |
 | `timezone` | string |  |  | Timezone (e.g. "America/New_York").<br />Sets TZ. |
 | `cimdUrlAllowlist` | string array |  |  | Allowed OAuth Client ID Metadata Document URLs. The operator sets UI_CONFIG_DISABLED=true when this field is set.<br />JSON-encoded into CIMD_URL_ALLOWLIST. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `enabledFeatures` | string array |  |  | Optional features to show in the admin UI. The operator sets UI_CONFIG_DISABLED=true when this field is set.<br />JSON-encoded into ENABLED_FEATURES. Requires a Pocket-ID release that supports it. See https://pocket-id.org/docs/configuration/environment-variables. |
 | [`outboundAllowedHosts`](#pocketidinstancespecoutboundallowedhosts) | object |  |  | Private or reserved destinations Pocket-ID may reach when fetching URLs, per feature. |
 | [`OIDCClientRotation`](#pocketidinstancespecoidcclientrotation) | object |  |  | OIDCClientRotation configures instance-wide throttling of OIDC client secret rotations. |
 

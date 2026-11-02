@@ -123,7 +123,8 @@ func needsUIConfigDisabled(instance *pocketidinternalv1alpha1.PocketIDInstance) 
 		instance.Spec.EmailNotifications != nil ||
 		instance.Spec.LDAP != nil ||
 		instance.Spec.WebAuthn != nil ||
-		len(instance.Spec.CIMDURLAllowlist) > 0
+		len(instance.Spec.CIMDURLAllowlist) > 0 ||
+		len(instance.Spec.EnabledFeatures) > 0
 }
 
 // buildTLSEnv points Pocket-ID at the mounted certificate. The _FILE variants are
@@ -488,6 +489,11 @@ func buildStandaloneEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []c
 	}
 	if instance.Spec.Timezone != "" {
 		env = append(env, corev1.EnvVar{Name: "TZ", Value: instance.Spec.Timezone})
+	}
+	if len(instance.Spec.EnabledFeatures) > 0 {
+		// Pocket-ID reads ENABLED_FEATURES as a JSON-encoded array of strings.
+		features, _ := json.Marshal(instance.Spec.EnabledFeatures)
+		env = append(env, corev1.EnvVar{Name: "ENABLED_FEATURES", Value: string(features)})
 	}
 	return env
 }

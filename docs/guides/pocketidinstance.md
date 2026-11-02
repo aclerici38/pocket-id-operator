@@ -61,7 +61,7 @@ When the `ldap` block is present, the operator automatically sets `LDAP_ENABLED=
 
 ## UI Configuration
 
-The operator automatically sets `UI_CONFIG_DISABLED=true` when any of the `ui`, `userManagement`, `webauthn`, `smtp`, `emailNotifications`, or `ldap` sections, or `cimdUrlAllowlist`, are configured.
+The operator automatically sets `UI_CONFIG_DISABLED=true` when any of the `ui`, `userManagement`, `webauthn`, `smtp`, `emailNotifications`, or `ldap` sections, or `cimdUrlAllowlist` or `enabledFeatures`, are configured.
 
 ## Tracing
 
@@ -191,7 +191,7 @@ See [example](../examples/pocketidinstance.md#external-instance).
   - `ENCRYPTION_KEY` (from `spec.encryptionKey`)
   - `STATIC_API_KEY` (secret reference)
 - Conditionally set from spec fields:
-  - `UI_CONFIG_DISABLED=true` (when `spec.ui`, `spec.userManagement`, `spec.webauthn`, `spec.smtp`, `spec.emailNotifications`, `spec.ldap`, or `spec.cimdUrlAllowlist` is configured)
+  - `UI_CONFIG_DISABLED=true` (when `spec.ui`, `spec.userManagement`, `spec.webauthn`, `spec.smtp`, `spec.emailNotifications`, `spec.ldap`, `spec.cimdUrlAllowlist`, or `spec.enabledFeatures` is configured)
   - `DB_CONNECTION_STRING` (from `spec.databaseUrl`)
   - `APP_URL` (from `spec.appUrl`)
   - `INTERNAL_APP_URL` (from `spec.internalAppUrl`)
@@ -208,6 +208,7 @@ See [example](../examples/pocketidinstance.md#external-instance).
   - `EMAILS_VERIFIED`, `ALLOW_OWN_ACCOUNT_EDIT`, `REQUIRE_USER_EMAIL`, `ALLOW_USER_SIGNUPS`, `SIGNUP_DEFAULT_*` (from `spec.userManagement`)
   - `WEBAUTHN_USER_VERIFICATION`, `WEBAUTHN_ALLOW_SYNCED_PASSKEYS`, `WEBAUTHN_AUTHENTICATOR_ATTACHMENT` (from `spec.webauthn`)
   - `CIMD_URL_ALLOWLIST` (JSON-encoded from `spec.cimdUrlAllowlist`)
+  - `ENABLED_FEATURES` (JSON-encoded from `spec.enabledFeatures`)
   - `OUTBOUND_ALLOWED_HOSTS_*` (comma-joined from `spec.outboundAllowedHosts`)
   - `MAXMIND_LICENSE_KEY`, `GEOLITE_DB_PATH`, `GEOLITE_DB_URL` (from `spec.geoip`)
   - `TZ` (from `spec.timezone`)

@@ -586,6 +586,16 @@
             "null"
           ]
         },
+        "enabledFeatures": {
+          "description": "Optional features to show in the admin UI. The operator sets UI_CONFIG_DISABLED=true when this field is set.\nJSON-encoded into ENABLED_FEATURES. Requires a Pocket-ID release that supports it. See https://pocket-id.org/docs/configuration/environment-variables.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "encryptionKey": {
           "additionalProperties": false,
           "description": "Encryption key. Required when deploying an instance; omit for external instances.\nSets ENCRYPTION_KEY. See https://pocket-id.org/docs/configuration/environment-variables.",

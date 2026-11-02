@@ -745,6 +745,11 @@ type PocketIDInstanceSpec struct {
 	// +optional
 	CIMDURLAllowlist []string `json:"cimdUrlAllowlist,omitempty"`
 
+	// Optional features to show in the admin UI. The operator sets UI_CONFIG_DISABLED=true when this field is set.
+	// JSON-encoded into ENABLED_FEATURES. Requires a Pocket-ID release that supports it. See https://pocket-id.org/docs/configuration/environment-variables.
+	// +optional
+	EnabledFeatures []string `json:"enabledFeatures,omitempty"`
+
 	// Private or reserved destinations Pocket-ID may reach when fetching URLs, per feature.
 	// +optional
 	OutboundAllowedHosts *OutboundAllowedHostsConfig `json:"outboundAllowedHosts,omitempty"`

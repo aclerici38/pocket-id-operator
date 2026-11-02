@@ -1028,6 +1028,11 @@ func (in *PocketIDInstanceSpec) DeepCopyInto(out *PocketIDInstanceSpec) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.EnabledFeatures != nil {
+		in, out := &in.EnabledFeatures, &out.EnabledFeatures
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.OutboundAllowedHosts != nil {
 		in, out := &in.OutboundAllowedHosts, &out.OutboundAllowedHosts
 		*out = new(OutboundAllowedHostsConfig)
