@@ -156,21 +156,23 @@ func pocketIDUsernameForAPIKey(apiKey string) string {
 func pocketIDUsernameForOneTimeToken(token string) string {
 	GinkgoHelper()
 
-	session := pocketIDSessionForOneTimeToken(token)
+	cookies := pocketIDSessionForOneTimeToken(token)
 
 	ctx, cancel := testCtx()
 	defer cancel()
 
 	me, err := http.NewRequestWithContext(ctx, http.MethodGet, pocketIDBaseURL()+"/api/users/me", nil)
 	Expect(err).NotTo(HaveOccurred())
-	me.AddCookie(session)
+	for _, c := range cookies {
+		me.AddCookie(c)
+	}
 
 	return usernameFrom(http.DefaultClient.Do(me))
 }
 
-// pocketIDSessionForOneTimeToken redeems a one-time access token for a browser session.
-// Pocket-ID answers the exchange with an access_token cookie, which is the session.
-func pocketIDSessionForOneTimeToken(token string) *http.Cookie {
+// pocketIDSessionForOneTimeToken redeems a one-time access token for a browser session,
+// returning every cookie the exchange sets, as a browser would keep them.
+func pocketIDSessionForOneTimeToken(token string) []*http.Cookie {
 	GinkgoHelper()
 
 	ctx, cancel := testCtx()
@@ -185,15 +187,9 @@ func pocketIDSessionForOneTimeToken(token string) *http.Cookie {
 	defer func() { _ = resp.Body.Close() }()
 	Expect(resp.StatusCode).To(BeNumerically("<", 300), "token exchange returned %d", resp.StatusCode)
 
-	var session *http.Cookie
-	for _, c := range resp.Cookies() {
-		if c.Name == "access_token" {
-			session = c
-			break
-		}
-	}
-	Expect(session).NotTo(BeNil(), "the exchange should set an access_token cookie")
-	return session
+	cookies := resp.Cookies()
+	Expect(cookies).NotTo(BeEmpty(), "the exchange should set session cookies")
+	return cookies
 }
 
 // usernameFrom reads the username out of a /api/users/me response.
