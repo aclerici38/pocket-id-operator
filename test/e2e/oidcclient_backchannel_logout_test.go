@@ -209,7 +209,7 @@ func loggedOutUserIDs(receiver string) []string {
 // authorizeOIDCClient records the session's user as having authorized the client, as
 // signing in to it would. The client must skip consent, so /authorize grants immediately
 // and redirects back with a code rather than to an interaction page.
-func authorizeOIDCClient(session *http.Cookie, clientID, callbackURL string) {
+func authorizeOIDCClient(cookies []*http.Cookie, clientID, callbackURL string) {
 	GinkgoHelper()
 
 	ctx, cancel := testCtx()
@@ -224,7 +224,9 @@ func authorizeOIDCClient(session *http.Cookie, clientID, callbackURL string) {
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pocketIDBaseURL()+"/authorize?"+query.Encode(), nil)
 	Expect(err).NotTo(HaveOccurred())
-	req.AddCookie(session)
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
 
 	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
