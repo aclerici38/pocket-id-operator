@@ -467,6 +467,13 @@ spec:
                     - required
                     type: string
                 type: object
+              enabledFeatures:
+                description: |-
+                  Optional features to show in the admin UI. The operator sets UI_CONFIG_DISABLED=true when this field is set.
+                  JSON-encoded into ENABLED_FEATURES. Requires a Pocket-ID release that supports it. See https://pocket-id.org/docs/configuration/environment-variables.
+                items:
+                  type: string
+                type: array
               encryptionKey:
                 description: |-
                   Encryption key. Required when deploying an instance; omit for external instances.

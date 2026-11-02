@@ -175,6 +175,7 @@ spec:
       groupName: "cn"
   cimdUrlAllowlist:
   - "%[4]s"
+  enabledFeatures: ["scim", "apiKeys"]
   outboundAllowedHosts:
     clientLogo: ["logos.example.com", "*.cdn.example.com"]
     clientMetadata: ["10.0.0.0/8"]
