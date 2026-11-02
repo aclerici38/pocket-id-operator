@@ -19,6 +19,7 @@ import (
 	"github.com/go-openapi/runtime"
 	httptransport "github.com/go-openapi/runtime/client"
 	"github.com/go-openapi/strfmt"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	apiclient "github.com/aclerici38/pocket-id-go-client/v2/client"
 	"github.com/aclerici38/pocket-id-go-client/v2/client/api_keys"
@@ -684,6 +685,12 @@ func (c *Client) CreateAPIKeyForUser(ctx context.Context, userID, name, expiresA
 	if err != nil {
 		return nil, fmt.Errorf("exchange one-time access token: %w", err)
 	}
+	// The key's token is only returned once, so a failed logout must not fail the call.
+	defer func() {
+		if logoutErr := session.logout(ctx, cookies); logoutErr != nil {
+			logf.FromContext(ctx).Error(logoutErr, "Failed to end API key session", "userID", userID)
+		}
+	}()
 
 	apiKeyReq := CreateAPIKeyRequest{
 		Name:        name,
