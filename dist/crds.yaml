@@ -2990,7 +2990,7 @@ spec:
                 x-kubernetes-preserve-unknown-fields: true
               smtp:
                 description: SMTP email transport. When present, the operator sets
-                  SMTP_ENABLED=true and UI_CONFIG_DISABLED=true.
+                  UI_CONFIG_DISABLED=true.
                 properties:
                   from:
                     description: |-

@@ -5068,7 +5068,7 @@
                           },
                           "smtp": {
                             "additionalProperties": false,
-                            "description": "SMTP email transport. When present, the operator sets SMTP_ENABLED=true and UI_CONFIG_DISABLED=true.",
+                            "description": "SMTP email transport. When present, the operator sets UI_CONFIG_DISABLED=true.",
                             "properties": {
                               "from": {
                                 "description": "Sender email address.\nSets SMTP_FROM. See https://pocket-id.org/docs/configuration/environment-variables.",
@@ -10926,7 +10926,7 @@
                       },
                       "smtp": {
                         "additionalProperties": false,
-                        "description": "SMTP email transport. When present, the operator sets SMTP_ENABLED=true and UI_CONFIG_DISABLED=true.",
+                        "description": "SMTP email transport. When present, the operator sets UI_CONFIG_DISABLED=true.",
                         "properties": {
                           "from": {
                             "description": "Sender email address.\nSets SMTP_FROM. See https://pocket-id.org/docs/configuration/environment-variables.",
