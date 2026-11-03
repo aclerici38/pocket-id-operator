@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"fmt"
+	"net/http"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -72,6 +73,37 @@ var _ = Describe("External Deletion Recovery", Ordered, func() {
 
 			By("verifying the group is ready")
 			waitForReady("pocketidusergroup", groupName, userNS)
+		})
+	})
+
+	Context("API Key External Deletion", func() {
+		const userName = "test-external-delete-apikey"
+
+		It("should recreate an API key deleted from Pocket-ID once its spec next changes", func() {
+			By("creating a user with a key that may revoke itself")
+			createUserAndWaitReady(UserOptions{
+				Name:    userName,
+				APIKeys: []APIKeySpec{{Name: "deleted-key", Scopes: []string{"account:read", "account:api-keys"}}},
+			})
+			originalKeyID := getField("pocketiduser", userName, userNS, ".status.apiKeys[0].id")
+			secretName := getField("pocketiduser", userName, userNS, ".status.apiKeys[0].secretName")
+			originalToken := secretData(secretName, userNS, "token")
+
+			By("revoking the key directly in Pocket-ID")
+			Expect(pocketIDStatusForAPIKeyRequest(http.MethodDelete, originalToken, "/api/api-keys/"+originalKeyID)).
+				To(Equal(http.StatusNoContent))
+
+			By("changing the spec, the only trigger that spends a session on the user's keys")
+			Expect(patchObject("pocketiduser", userName, userNS,
+				`{"spec":{"apiKeys":[{"name":"deleted-key","description":"changed","scopes":["account:read","account:api-keys"]}]}}`)).To(Succeed())
+
+			By("waiting for the operator to recreate the key with a new token")
+			Eventually(func(g Gomega) {
+				newKeyID := getField("pocketiduser", userName, userNS, ".status.apiKeys[0].id")
+				g.Expect(newKeyID).NotTo(BeEmpty())
+				g.Expect(newKeyID).NotTo(Equal(originalKeyID), "key should have a new ID after recreation")
+			}).Should(Succeed())
+			Expect(pocketIDStatusForAPIKey(secretData(secretName, userNS, "token"), "/api/users/me")).To(Equal(http.StatusOK))
 		})
 	})
 
