@@ -759,7 +759,8 @@ func (r *Reconciler) reconcileAPIKey(ctx context.Context, user *pocketidinternal
 			return err
 		}
 		recordOp("created")
-	case expiryDrifted(spec.ExpiresAt, key.ExpiresAt):
+	// Status records the expiry whose token was saved, so a renewal whose token never reached the Secret is retried.
+	case expiryDrifted(spec.ExpiresAt, key.ExpiresAt) || expiryDrifted(spec.ExpiresAt, status.ExpiresAt):
 		log.Info("Renewing API key", "name", spec.Name, "expiresAt", spec.ExpiresAt)
 		if issued, err = session.RenewAPIKey(ctx, key.ID, spec.ExpiresAt); err != nil {
 			return err
@@ -769,9 +770,11 @@ func (r *Reconciler) reconcileAPIKey(ctx context.Context, user *pocketidinternal
 	if issued != nil {
 		key = issued.APIKey
 		if err := ensureAPIKeySecret(ctx, r.Client, r.Scheme, user, secretName, issued.Token); err != nil {
-			// Pocket-ID never returns the token again, so revoke the key for the retry to issue a new one.
-			if revokeErr := session.DeleteAPIKey(ctx, key.ID); revokeErr != nil {
-				log.Error(revokeErr, "Failed to revoke API key whose token wasn't saved", "name", spec.Name)
+			// The retry creates another key, so revoke this one rather than leave a key nobody holds the token for.
+			if !exists {
+				if revokeErr := session.DeleteAPIKey(ctx, key.ID); revokeErr != nil {
+					log.Error(revokeErr, "Failed to revoke API key whose token wasn't saved", "name", spec.Name)
+				}
 			}
 			return fmt.Errorf("write token secret: %w", err)
 		}

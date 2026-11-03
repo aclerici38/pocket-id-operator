@@ -270,15 +270,25 @@ func TestReconcileAPIKeys(t *testing.T) {
 	}
 }
 
-func TestReconcileAPIKeys_RevokesKeyWhoseTokenWasNotSaved(t *testing.T) {
-	stored := pocketid.APIKey{ID: "key-1", Name: "key", ExpiresAt: expiresAt}
+// A token Pocket-ID issued but the Secret never received must be replaced by the retry.
+func TestReconcileAPIKeys_RetriesTokenThatWasNotSaved(t *testing.T) {
 	tests := []struct {
 		name       string
 		stored     []pocketid.APIKey
 		wantWrites []string
+		wantToken  string
 	}{
-		{name: "created", wantWrites: []string{"POST " + keysPath, "DELETE /api/api-keys/key-new"}},
-		{name: "renewed", stored: []pocketid.APIKey{stored}, wantWrites: []string{"POST " + renew1Path, "DELETE " + key1Path}},
+		{
+			name:       "revokes a created key and creates another",
+			wantWrites: []string{"POST " + keysPath, "DELETE /api/api-keys/key-new", "POST " + keysPath},
+			wantToken:  "new-token",
+		},
+		{
+			name:       "renews again although Pocket-ID already has the expiry",
+			stored:     []pocketid.APIKey{{ID: "key-1", Name: "key", ExpiresAt: expiresAt}},
+			wantWrites: []string{"POST " + renew1Path, "POST " + renew1Path},
+			wantToken:  "renewed-token",
+		},
 	}
 
 	for _, tt := range tests {
@@ -286,7 +296,7 @@ func TestReconcileAPIKeys_RevokesKeyWhoseTokenWasNotSaved(t *testing.T) {
 			user := &pocketidinternalv1alpha1.PocketIDUser{
 				ObjectMeta: metav1.ObjectMeta{Name: "user", Namespace: "default"},
 				Spec:       pocketidinternalv1alpha1.PocketIDUserSpec{APIKeys: []pocketidinternalv1alpha1.APIKeySpec{{Name: "key", ExpiresAt: renewedAt}}},
-				Status:     pocketidinternalv1alpha1.PocketIDUserStatus{UserID: "user-1", APIKeys: []pocketidinternalv1alpha1.APIKeyStatus{{Name: "key", ID: "key-1"}}},
+				Status:     pocketidinternalv1alpha1.PocketIDUserStatus{UserID: "user-1", APIKeys: []pocketidinternalv1alpha1.APIKeyStatus{{Name: "key", ID: "key-1", ExpiresAt: expiresAt}}},
 			}
 			r, fc := newAPIKeyReconciler(user)
 			r.Client = interceptor.NewClient(fc.(client.WithWatch), interceptor.Funcs{
@@ -299,11 +309,21 @@ func TestReconcileAPIKeys_RevokesKeyWhoseTokenWasNotSaved(t *testing.T) {
 			if err := r.reconcileAPIKeys(t.Context(), user, apiClient, "default", "instance"); err == nil {
 				t.Fatal("expected an error")
 			}
+			r.Client = fc
+			if err := r.reconcileAPIKeys(t.Context(), user, apiClient, "default", "instance"); err != nil {
+				t.Fatalf("retry: %v", err)
+			}
+
 			if !slices.Equal(keys.writes, tt.wantWrites) {
 				t.Errorf("writes = %v, want %v", keys.writes, tt.wantWrites)
 			}
-			if len(keys.keys) != 0 {
-				t.Errorf("keys left in Pocket-ID = %v, want none", keys.keys)
+			if len(keys.keys) != 1 {
+				t.Errorf("keys in Pocket-ID = %v, want one", keys.keys)
+			}
+			secret := &corev1.Secret{}
+			err := fc.Get(t.Context(), types.NamespacedName{Name: "user-key-key", Namespace: "default"}, secret)
+			if got := string(secret.Data[APIKeySecretKey]); err != nil || got != tt.wantToken {
+				t.Errorf("token secret = %q (err=%v), want %q", got, err, tt.wantToken)
 			}
 		})
 	}
