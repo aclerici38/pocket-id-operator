@@ -5642,42 +5642,19 @@
                                   "minLength": 3,
                                   "type": "string"
                                 },
-                                "secretRef": {
-                                  "additionalProperties": false,
-                                  "description": "SecretRef references an existing Secret containing the API key token. If set, the operator will use this secret instead of creating a new one.",
-                                  "properties": {
-                                    "key": {
-                                      "description": "The key of the secret to select from.  Must be a valid secret key.",
-                                      "type": "string"
-                                    },
-                                    "name": {
-                                      "default": "",
-                                      "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
-                                      "type": [
-                                        "string",
-                                        "null"
-                                      ]
-                                    },
-                                    "optional": {
-                                      "description": "Specify whether the Secret or its key must be defined",
-                                      "type": [
-                                        "boolean",
-                                        "null"
-                                      ]
-                                    }
+                                "scopes": {
+                                  "description": "Scopes granted to the API key, e.g. \"account:read\". Must be scopes the user holds.",
+                                  "items": {
+                                    "type": "string"
                                   },
-                                  "required": [
-                                    "key"
-                                  ],
-                                  "type": [
-                                    "object",
-                                    "null"
-                                  ],
-                                  "x-kubernetes-map-type": "atomic"
+                                  "minItems": 1,
+                                  "type": "array",
+                                  "x-kubernetes-list-type": "set"
                                 }
                               },
                               "required": [
-                                "name"
+                                "name",
+                                "scopes"
                               ],
                               "type": "object"
                             },
@@ -11510,42 +11487,19 @@
                               "minLength": 3,
                               "type": "string"
                             },
-                            "secretRef": {
-                              "additionalProperties": false,
-                              "description": "SecretRef references an existing Secret containing the API key token. If set, the operator will use this secret instead of creating a new one.",
-                              "properties": {
-                                "key": {
-                                  "description": "The key of the secret to select from.  Must be a valid secret key.",
-                                  "type": "string"
-                                },
-                                "name": {
-                                  "default": "",
-                                  "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
-                                  "type": [
-                                    "string",
-                                    "null"
-                                  ]
-                                },
-                                "optional": {
-                                  "description": "Specify whether the Secret or its key must be defined",
-                                  "type": [
-                                    "boolean",
-                                    "null"
-                                  ]
-                                }
+                            "scopes": {
+                              "description": "Scopes granted to the API key, e.g. \"account:read\". Must be scopes the user holds.",
+                              "items": {
+                                "type": "string"
                               },
-                              "required": [
-                                "key"
-                              ],
-                              "type": [
-                                "object",
-                                "null"
-                              ],
-                              "x-kubernetes-map-type": "atomic"
+                              "minItems": 1,
+                              "type": "array",
+                              "x-kubernetes-list-type": "set"
                             }
                           },
                           "required": [
-                            "name"
+                            "name",
+                            "scopes"
                           ],
                           "type": "object"
                         },

@@ -692,7 +692,7 @@ func (c *Client) withUserSession(ctx context.Context, userID string, tokenTTLMin
 }
 
 // CreateAPIKeyForUser creates an API key owned by the specified user.
-func (c *Client) CreateAPIKeyForUser(ctx context.Context, userID, name, expiresAt, description string, tokenTTLMinutes int) (result *APIKeyWithToken, err error) {
+func (c *Client) CreateAPIKeyForUser(ctx context.Context, userID, name, expiresAt, description string, scopes []string, tokenTTLMinutes int) (result *APIKeyWithToken, err error) {
 	start := time.Now()
 	defer func() { recordCall("create_api_key_for_user", err, time.Since(start)) }()
 
@@ -701,6 +701,7 @@ func (c *Client) CreateAPIKeyForUser(ctx context.Context, userID, name, expiresA
 			Name:        name,
 			ExpiresAt:   expiresAt,
 			Description: description,
+			Scopes:      scopes,
 		})
 		if err != nil {
 			return fmt.Errorf("create API key: %w", err)

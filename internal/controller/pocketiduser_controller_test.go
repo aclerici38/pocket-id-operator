@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 
@@ -180,77 +181,6 @@ var _ = Describe("PocketIDUser Controller", func() {
 			Expect(createdUser.Spec.FirstName.ValueFrom.Key).To(Equal("first-name"))
 
 			Expect(createdUser.Spec.Admin).To(BeTrue())
-		})
-	})
-
-	Context("When creating a PocketIDUser with API keys using SecretRef", func() {
-		const userName = "test-user-apikey-ref"
-		const apiKeySecretName = "existing-api-key"
-
-		var user *pocketidinternalv1alpha1.PocketIDUser
-		var apiKeySecret *corev1.Secret
-
-		BeforeEach(func() {
-			// Create secret with existing API key token
-			apiKeySecret = &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      apiKeySecretName,
-					Namespace: namespace,
-				},
-				Data: map[string][]byte{
-					"token": []byte("existing-api-key-token-value"),
-				},
-			}
-			Expect(k8sClient.Create(ctx, apiKeySecret)).To(Succeed())
-
-			user = &pocketidinternalv1alpha1.PocketIDUser{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      userName,
-					Namespace: namespace,
-				},
-				Spec: pocketidinternalv1alpha1.PocketIDUserSpec{
-					Username:  pocketidinternalv1alpha1.StringValue{Value: "apikey-user"},
-					FirstName: pocketidinternalv1alpha1.StringValue{Value: "API"},
-					LastName:  pocketidinternalv1alpha1.StringValue{Value: "Key"},
-					Admin:     false,
-					APIKeys: []pocketidinternalv1alpha1.APIKeySpec{
-						{
-							Name:        "existing-key",
-							Description: "Pre-existing API key",
-							SecretRef: &corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{Name: apiKeySecretName},
-								Key:                  "token",
-							},
-						},
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, user)).To(Succeed())
-		})
-
-		AfterEach(func() {
-			if user != nil {
-				_ = k8sClient.Delete(ctx, user)
-			}
-			if apiKeySecret != nil {
-				_ = k8sClient.Delete(ctx, apiKeySecret)
-			}
-		})
-
-		It("Should create the PocketIDUser with API key secret reference", func() {
-			createdUser := &pocketidinternalv1alpha1.PocketIDUser{}
-			Eventually(func() error {
-				return k8sClient.Get(ctx, types.NamespacedName{
-					Name:      userName,
-					Namespace: namespace,
-				}, createdUser)
-			}, timeout, interval).Should(Succeed())
-
-			Expect(createdUser.Spec.APIKeys).To(HaveLen(1))
-			Expect(createdUser.Spec.APIKeys[0].Name).To(Equal("existing-key"))
-			Expect(createdUser.Spec.APIKeys[0].SecretRef).NotTo(BeNil())
-			Expect(createdUser.Spec.APIKeys[0].SecretRef.Name).To(Equal(apiKeySecretName))
-			Expect(createdUser.Spec.APIKeys[0].SecretRef.Key).To(Equal("token"))
 		})
 	})
 
@@ -519,86 +449,6 @@ var _ = Describe("PocketIDUser Controller", func() {
 			// Secret reference
 			Expect(createdUser.Spec.Email.ValueFrom).NotTo(BeNil())
 			Expect(createdUser.Spec.Email.ValueFrom.Name).To(Equal(secretName))
-		})
-	})
-
-	Context("When creating a PocketIDUser with multiple API keys", func() {
-		const userName = "test-user-multi-keys"
-		const apiKeySecretName = "multi-api-keys"
-
-		var user *pocketidinternalv1alpha1.PocketIDUser
-		var apiKeySecret *corev1.Secret
-
-		BeforeEach(func() {
-			apiKeySecret = &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      apiKeySecretName,
-					Namespace: namespace,
-				},
-				Data: map[string][]byte{
-					"key1": []byte("api-key-token-1"),
-					"key2": []byte("api-key-token-2"),
-				},
-			}
-			Expect(k8sClient.Create(ctx, apiKeySecret)).To(Succeed())
-
-			user = &pocketidinternalv1alpha1.PocketIDUser{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      userName,
-					Namespace: namespace,
-				},
-				Spec: pocketidinternalv1alpha1.PocketIDUserSpec{
-					Username:  pocketidinternalv1alpha1.StringValue{Value: "multikey-user"},
-					FirstName: pocketidinternalv1alpha1.StringValue{Value: "Multi"},
-					Admin:     true,
-					APIKeys: []pocketidinternalv1alpha1.APIKeySpec{
-						{
-							Name:        "key-from-secret",
-							Description: "API key from existing secret",
-							SecretRef: &corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{Name: apiKeySecretName},
-								Key:                  "key1",
-							},
-						},
-						{
-							Name:        "key-to-create",
-							Description: "API key to be created by operator",
-							ExpiresAt:   "2030-01-01T00:00:00Z",
-						},
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, user)).To(Succeed())
-		})
-
-		AfterEach(func() {
-			if user != nil {
-				_ = k8sClient.Delete(ctx, user)
-			}
-			if apiKeySecret != nil {
-				_ = k8sClient.Delete(ctx, apiKeySecret)
-			}
-		})
-
-		It("Should create the PocketIDUser with multiple API key specs", func() {
-			createdUser := &pocketidinternalv1alpha1.PocketIDUser{}
-			Eventually(func() error {
-				return k8sClient.Get(ctx, types.NamespacedName{
-					Name:      userName,
-					Namespace: namespace,
-				}, createdUser)
-			}, timeout, interval).Should(Succeed())
-
-			Expect(createdUser.Spec.APIKeys).To(HaveLen(2))
-
-			// First key with secret reference
-			Expect(createdUser.Spec.APIKeys[0].Name).To(Equal("key-from-secret"))
-			Expect(createdUser.Spec.APIKeys[0].SecretRef).NotTo(BeNil())
-
-			// Second key without secret reference (to be created)
-			Expect(createdUser.Spec.APIKeys[1].Name).To(Equal("key-to-create"))
-			Expect(createdUser.Spec.APIKeys[1].SecretRef).To(BeNil())
-			Expect(createdUser.Spec.APIKeys[1].ExpiresAt).To(Equal("2030-01-01T00:00:00Z"))
 		})
 	})
 
@@ -1047,5 +897,35 @@ var _ = Describe("PocketIDUser Controller", func() {
 				u.Spec.Locale = "de"
 			})).To(Succeed())
 		})
+	})
+
+	Context("API key scopes validation", func() {
+		// Unstructured because omitempty drops an empty list from the typed object.
+		newUser := func(name string, key map[string]any) *unstructured.Unstructured {
+			key["name"] = "key"
+			obj := &unstructured.Unstructured{Object: map[string]any{
+				"metadata": map[string]any{"name": name, "namespace": namespace},
+				"spec":     map[string]any{"apiKeys": []any{key}},
+			}}
+			obj.SetGroupVersionKind(pocketidinternalv1alpha1.GroupVersion.WithKind("PocketIDUser"))
+			return obj
+		}
+
+		It("Should accept scopes", func() {
+			user := newUser("test-scopes-set", map[string]any{"scopes": []any{"account:read", "users:read"}})
+			Expect(k8sClient.Create(ctx, user)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, user) })
+		})
+
+		DescribeTable("Should reject",
+			func(key map[string]any) {
+				err := k8sClient.Create(ctx, newUser("test-scopes-invalid", key))
+				Expect(err).To(HaveOccurred())
+				Expect(errors.IsInvalid(err)).To(BeTrue())
+			},
+			Entry("missing scopes", map[string]any{}),
+			Entry("an empty list of scopes", map[string]any{"scopes": []any{}}),
+			Entry("duplicate scopes", map[string]any{"scopes": []any{"account:read", "account:read"}}),
+		)
 	})
 })

@@ -94,7 +94,7 @@ APIKeySpec defines the desired state of an API key.
 | `name` | string | yes |  | Name of the API key (3-50 characters).<br />_MaxLength: 50_<br />_MinLength: 3_ |
 | `expiresAt` | string |  |  | ExpiresAt is the expiration time in RFC3339 format (e.g., "2030-01-01T00:00:00Z").<br />Defaults to 1 year in the future. |
 | `description` | string |  | `Created by pocket-id-operator` | Description of the API key. |
-| `secretRef` | [SecretKeySelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#secretkeyselector-v1-core) |  |  | SecretRef references an existing Secret containing the API key token. If set, the operator will use this secret instead of creating a new one. |
+| `scopes` | string array | yes |  | Scopes granted to the API key, e.g. "account:read". Must be scopes the user holds.<br />_MinItems: 1_ |
 
 ## `PocketIDUser.spec.customClaims[]`
 
@@ -139,8 +139,7 @@ APIKeyStatus reflects the observed state of an API key from Pocket-ID.
 | `createdAt` | string |  |  | CreatedAt timestamp from Pocket-ID. |
 | `expiresAt` | string |  |  | ExpiresAt timestamp from Pocket-ID. |
 | `lastUsedAt` | string |  |  | LastUsedAt timestamp from Pocket-ID. |
-| `secretName` | string |  |  | SecretName where the API key token is stored. |
-| `secretKey` | string |  |  | SecretKey within the secret containing the token. |
+| `secretName` | string |  |  | SecretName of the Secret storing the API key token under the key "token". |
 
 ## `PocketIDUser.status.customClaims[]`
 

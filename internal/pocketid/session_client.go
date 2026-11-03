@@ -21,9 +21,10 @@ type sessionClient struct {
 
 // CreateAPIKeyRequest is the request body for creating an API key via session auth.
 type CreateAPIKeyRequest struct {
-	Name        string `json:"name"`
-	ExpiresAt   string `json:"expiresAt"`
-	Description string `json:"description"`
+	Name        string   `json:"name"`
+	ExpiresAt   string   `json:"expiresAt"`
+	Description string   `json:"description"`
+	Scopes      []string `json:"scopes"`
 }
 
 // CreateAPIKeyResponse is the response from creating an API key.

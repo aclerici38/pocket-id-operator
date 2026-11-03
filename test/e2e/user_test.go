@@ -222,7 +222,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 				Name:  userName,
 				Admin: new(false),
 				APIKeys: []APIKeySpec{
-					{Name: apiKeyName, Description: "Test API key"},
+					{Name: apiKeyName, Description: "Test API key", Scopes: []string{"account:read"}},
 				},
 			})
 
@@ -250,7 +250,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 				Name:  userName,
 				Admin: new(false),
 				APIKeys: []APIKeySpec{
-					{Name: apiKeyName, Description: "Owner API key"},
+					{Name: apiKeyName, Description: "Owner API key", Scopes: []string{"account:read"}},
 				},
 			})
 
@@ -271,7 +271,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 
 			createUserAndWaitReady(UserOptions{
 				Name:    userName,
-				APIKeys: []APIKeySpec{{Name: "revoked-key", Description: "Revoked API key"}},
+				APIKeys: []APIKeySpec{{Name: "revoked-key", Description: "Revoked API key", Scopes: []string{"account:read"}}},
 			})
 
 			secretName := getField("pocketiduser", userName, userNS, ".status.apiKeys[0].secretName")
@@ -285,8 +285,91 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 			}).Should(Succeed())
 
 			By("verifying Pocket-ID no longer accepts the token")
-			Expect(pocketIDStatusForAPIKey(token)).To(Equal(http.StatusUnauthorized))
+			Expect(pocketIDStatusForAPIKey(token, "/api/users/me")).To(Equal(http.StatusUnauthorized))
 		})
+
+		It("should authorize a key for its scopes and nothing else", func() {
+			const userName = "test-apikey-scoped-user"
+
+			createUserAndWaitReady(UserOptions{
+				Name:    userName,
+				Admin:   new(true),
+				APIKeys: []APIKeySpec{{Name: "scoped-key", Scopes: []string{"account:read", "users:read"}}},
+			})
+
+			token := secretData(getField("pocketiduser", userName, userNS, ".status.apiKeys[0].secretName"), userNS, "token")
+			Expect(pocketIDStatusForAPIKey(token, "/api/users/me")).To(Equal(http.StatusOK))
+			Expect(pocketIDStatusForAPIKey(token, "/api/users")).To(Equal(http.StatusOK))
+			Expect(pocketIDStatusForAPIKey(token, "/api/user-groups")).To(Equal(http.StatusForbidden))
+		})
+
+		It("should not change an existing key when its scopes change", func() {
+			const userName = "test-apikey-rescope-user"
+
+			createUserAndWaitReady(UserOptions{
+				Name:    userName,
+				Admin:   new(true),
+				APIKeys: []APIKeySpec{{Name: "fixed-key", Scopes: []string{"account:read"}}},
+			})
+			keyID := getField("pocketiduser", userName, userNS, ".status.apiKeys[0].id")
+			token := secretData(getField("pocketiduser", userName, userNS, ".status.apiKeys[0].secretName"), userNS, "token")
+
+			Expect(patchObject("pocketiduser", userName, userNS,
+				`{"spec":{"apiKeys":[{"name":"fixed-key","scopes":["account:read","users:read"]}]}}`)).To(Succeed())
+			waitForReconciled("pocketiduser", userName, userNS)
+
+			Expect(getField("pocketiduser", userName, userNS, ".status.apiKeys[0].id")).To(Equal(keyID))
+			Expect(pocketIDStatusForAPIKey(token, "/api/users")).To(Equal(http.StatusForbidden))
+		})
+
+		It("should narrow a key as soon as its owner is demoted", func() {
+			const userName = "test-apikey-demoted-user"
+
+			createUserAndWaitReady(UserOptions{
+				Name:    userName,
+				Admin:   new(true),
+				APIKeys: []APIKeySpec{{Name: "demoted-key", Scopes: []string{"account:read", "users:read"}}},
+			})
+			token := secretData(getField("pocketiduser", userName, userNS, ".status.apiKeys[0].secretName"), userNS, "token")
+			Expect(pocketIDStatusForAPIKey(token, "/api/users")).To(Equal(http.StatusOK))
+
+			Expect(patchObject("pocketiduser", userName, userNS, `{"spec":{"admin":false}}`)).To(Succeed())
+			Eventually(func() int {
+				return pocketIDStatusForAPIKey(token, "/api/users")
+			}).Should(Equal(http.StatusForbidden))
+			Expect(pocketIDStatusForAPIKey(token, "/api/users/me")).To(Equal(http.StatusOK))
+		})
+
+		DescribeTable("should report scopes Pocket-ID refuses to grant and recover once they are fixed",
+			func(userName string, admin bool, scope string) {
+				createUser(UserOptions{
+					Name:    userName,
+					Admin:   new(admin),
+					APIKeys: []APIKeySpec{{Name: "refused-key", Scopes: []string{scope}}},
+				})
+				waitForConditionReason("pocketiduser", userName, userNS, "Ready", "APIKeyError")
+				Expect(getField("pocketiduser", userName, userNS, ".status.apiKeys")).To(BeEmpty())
+				waitForSecretNotExists(userName+"-refused-key-key", userNS)
+
+				Expect(patchObject("pocketiduser", userName, userNS,
+					`{"spec":{"apiKeys":[{"name":"refused-key","scopes":["account:read"]}]}}`)).To(Succeed())
+				waitForReady("pocketiduser", userName, userNS)
+				waitForSecretKey(userName+"-refused-key-key", userNS, "token")
+			},
+			Entry("an admin scope on a non-admin", "test-apikey-refused-admin", false, "users:read"),
+			Entry("a session-only scope", "test-apikey-refused-session", true, "account:api-keys:create"),
+			Entry("an unknown scope", "test-apikey-refused-unknown", true, "not:a-scope"),
+		)
+
+		DescribeTable("should fail admission for",
+			func(userName string, key APIKeySpec) {
+				key.Name = "invalid-key"
+				err := applyYAMLErr(buildUserYAML(UserOptions{Name: userName, APIKeys: []APIKeySpec{key}}))
+				Expect(err).To(MatchError(ContainSubstring("spec.apiKeys[0]")))
+			},
+			Entry("a key without scopes", "test-apikey-no-scopes", APIKeySpec{}),
+			Entry("an empty list of scopes", "test-apikey-empty-scopes", APIKeySpec{Scopes: []string{}}),
+		)
 	})
 
 	Context("One-Time Login Token", func() {
