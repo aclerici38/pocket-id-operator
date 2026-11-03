@@ -328,10 +328,14 @@ type UIConfig struct {
 	// +optional
 	DisableAnimations *bool `json:"disableAnimations,omitempty"`
 
-	// UI accent color.
-	// Sets ACCENT_COLOR. See https://pocket-id.org/docs/configuration/environment-variables.
+	// Deprecated: use colorTheme instead.
 	// +optional
 	AccentColor string `json:"accentColor,omitempty"`
+
+	// UI color theme. Takes precedence over accentColor.
+	// Sets COLOR_THEME. See https://pocket-id.org/docs/configuration/environment-variables.
+	// +optional
+	ColorTheme string `json:"colorTheme,omitempty"`
 }
 
 // UserManagementConfig configures user registration and account settings. The operator sets UI_CONFIG_DISABLED=true when this section is configured.

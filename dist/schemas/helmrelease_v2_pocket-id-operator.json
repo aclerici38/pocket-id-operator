@@ -5412,7 +5412,7 @@
                             "description": "UI settings. The operator sets UI_CONFIG_DISABLED=true when this section is configured.",
                             "properties": {
                               "accentColor": {
-                                "description": "UI accent color.\nSets ACCENT_COLOR. See https://pocket-id.org/docs/configuration/environment-variables.",
+                                "description": "Deprecated: use colorTheme instead.",
                                 "type": [
                                   "string",
                                   "null"
@@ -5420,6 +5420,13 @@
                               },
                               "appName": {
                                 "description": "Application name.\nSets APP_NAME. See https://pocket-id.org/docs/configuration/environment-variables.",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "colorTheme": {
+                                "description": "UI color theme. Takes precedence over accentColor.\nSets COLOR_THEME. See https://pocket-id.org/docs/configuration/environment-variables.",
                                 "type": [
                                   "string",
                                   "null"
@@ -11257,7 +11264,7 @@
                         "description": "UI settings. The operator sets UI_CONFIG_DISABLED=true when this section is configured.",
                         "properties": {
                           "accentColor": {
-                            "description": "UI accent color.\nSets ACCENT_COLOR. See https://pocket-id.org/docs/configuration/environment-variables.",
+                            "description": "Deprecated: use colorTheme instead.",
                             "type": [
                               "string",
                               "null"
@@ -11265,6 +11272,13 @@
                           },
                           "appName": {
                             "description": "Application name.\nSets APP_NAME. See https://pocket-id.org/docs/configuration/environment-variables.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "colorTheme": {
+                            "description": "UI color theme. Takes precedence over accentColor.\nSets COLOR_THEME. See https://pocket-id.org/docs/configuration/environment-variables.",
                             "type": [
                               "string",
                               "null"
