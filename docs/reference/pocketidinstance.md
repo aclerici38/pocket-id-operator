@@ -319,7 +319,8 @@ UIConfig configures Pocket-ID UI settings. The operator sets UI_CONFIG_DISABLED=
 | `sessionDuration` | integer |  |  | Session duration in minutes.<br />Sets SESSION_DURATION. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `homePageUrl` | string |  |  | Post-login redirect page.<br />Sets HOME_PAGE_URL. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `disableAnimations` | boolean |  |  | Disable UI animations.<br />Sets DISABLE_ANIMATIONS. See https://pocket-id.org/docs/configuration/environment-variables. |
-| `accentColor` | string |  |  | UI accent color.<br />Sets ACCENT_COLOR. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `accentColor` | string |  |  | Deprecated: use colorTheme instead. |
+| `colorTheme` | string |  |  | UI color theme. Takes precedence over accentColor.<br />Sets COLOR_THEME. See https://pocket-id.org/docs/configuration/environment-variables. |
 
 ## `PocketIDInstance.spec.userManagement`
 

@@ -44,7 +44,7 @@ spec:
   ui:
     appName: "My SSO"
     sessionDuration: 1440
-    accentColor: "#3b82f6"
+    colorTheme: "custom:#3b82f6"
   userManagement:
     allowOwnAccountEdit: true
     allowUserSignups: "disabled"

@@ -3250,14 +3250,17 @@ spec:
                   when this section is configured.
                 properties:
                   accentColor:
-                    description: |-
-                      UI accent color.
-                      Sets ACCENT_COLOR. See https://pocket-id.org/docs/configuration/environment-variables.
+                    description: 'Deprecated: use colorTheme instead.'
                     type: string
                   appName:
                     description: |-
                       Application name.
                       Sets APP_NAME. See https://pocket-id.org/docs/configuration/environment-variables.
+                    type: string
+                  colorTheme:
+                    description: |-
+                      UI color theme. Takes precedence over accentColor.
+                      Sets COLOR_THEME. See https://pocket-id.org/docs/configuration/environment-variables.
                     type: string
                   disableAnimations:
                     description: |-

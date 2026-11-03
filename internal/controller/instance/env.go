@@ -363,8 +363,11 @@ func buildUIEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.En
 	if ui.DisableAnimations != nil {
 		env = append(env, corev1.EnvVar{Name: "DISABLE_ANIMATIONS", Value: fmt.Sprintf("%t", *ui.DisableAnimations)})
 	}
-	if ui.AccentColor != "" {
-		env = append(env, corev1.EnvVar{Name: "ACCENT_COLOR", Value: ui.AccentColor})
+	if ui.AccentColor != "" { //nolint:staticcheck // still honored until the field is removed
+		env = append(env, corev1.EnvVar{Name: "ACCENT_COLOR", Value: ui.AccentColor}) //nolint:staticcheck // still honored until the field is removed
+	}
+	if ui.ColorTheme != "" {
+		env = append(env, corev1.EnvVar{Name: "COLOR_THEME", Value: ui.ColorTheme})
 	}
 	return env
 }
