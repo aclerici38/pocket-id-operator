@@ -3,6 +3,7 @@ package pocketid
 import (
 	"cmp"
 	"context"
+	"io"
 	"net/http"
 	"reflect"
 	"testing"
@@ -112,7 +113,7 @@ func TestCreateAPIKeyForUser_EndsSession(t *testing.T) {
 				_, _ = w.Write([]byte(`{"apiKey":{"id":"key-1"},"token":"key-token"}`))
 			})
 
-			key, err := client.CreateAPIKeyForUser(ctx, "user-1", "key", "2030-01-01T00:00:00Z", "", 5)
+			key, err := client.CreateAPIKeyForUser(ctx, "user-1", "key", "2030-01-01T00:00:00Z", "", []string{"account:read"}, 5)
 			close(release)
 
 			if (err != nil) != tt.wantErr {
@@ -128,6 +129,26 @@ func TestCreateAPIKeyForUser_EndsSession(t *testing.T) {
 				t.Errorf("logout cookie = %q, want the exchange's session cookie", calls.logoutCookie)
 			}
 		})
+	}
+}
+
+func TestCreateAPIKeyForUser_SendsRequestBody(t *testing.T) {
+	var body string
+	client, _ := sessionServer(t, 0, 0, func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		body = string(raw)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"apiKey":{"id":"key-1"},"token":"key-token"}`))
+	})
+
+	scopes := []string{"account:read", "users:read"}
+	if _, err := client.CreateAPIKeyForUser(t.Context(), "user-1", "key", "2030-01-01T00:00:00Z", "desc", scopes, 5); err != nil {
+		t.Fatalf("CreateAPIKeyForUser() error = %v", err)
+	}
+
+	want := `{"name":"key","expiresAt":"2030-01-01T00:00:00Z","description":"desc","scopes":["account:read","users:read"]}`
+	if body != want {
+		t.Errorf("body = %s, want %s", body, want)
 	}
 }
 

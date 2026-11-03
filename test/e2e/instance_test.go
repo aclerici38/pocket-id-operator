@@ -188,7 +188,7 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Ordered, func() {
 				Name:             tlsUser,
 				Admin:            new(true),
 				InstanceSelector: tlsLabels,
-				APIKeys:          []APIKeySpec{{Name: "tls-key", Description: "over TLS"}},
+				APIKeys:          []APIKeySpec{{Name: "tls-key", Description: "over TLS", Scopes: []string{"account:read"}}},
 			})
 			secretName := getField("pocketiduser", tlsUser, userNS, ".status.apiKeys[0].secretName")
 			Expect(secretName).NotTo(BeEmpty())

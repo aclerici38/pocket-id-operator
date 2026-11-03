@@ -53,9 +53,10 @@ type APIKeySpec struct {
 	// +optional
 	Description string `json:"description,omitempty"`
 
-	// SecretRef references an existing Secret containing the API key token. If set, the operator will use this secret instead of creating a new one.
-	// +optional
-	SecretRef *corev1.SecretKeySelector `json:"secretRef,omitempty"`
+	// Scopes granted to the API key, e.g. "account:read". Must be scopes the user holds.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinItems=1
+	Scopes []string `json:"scopes"`
 }
 
 // APIKeyStatus reflects the observed state of an API key from Pocket-ID.
@@ -79,13 +80,9 @@ type APIKeyStatus struct {
 	// +optional
 	LastUsedAt string `json:"lastUsedAt,omitempty"`
 
-	// SecretName where the API key token is stored.
+	// SecretName of the Secret storing the API key token under the key "token".
 	// +optional
 	SecretName string `json:"secretName,omitempty"`
-
-	// SecretKey within the secret containing the token.
-	// +optional
-	SecretKey string `json:"secretKey,omitempty"`
 }
 
 // PocketIDUserSpec defines the desired state of PocketIDUser.

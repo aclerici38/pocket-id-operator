@@ -64,34 +64,16 @@ spec:
                       maxLength: 50
                       minLength: 3
                       type: string
-                    secretRef:
-                      description: SecretRef references an existing Secret containing
-                        the API key token. If set, the operator will use this secret
-                        instead of creating a new one.
-                      properties:
-                        key:
-                          description: The key of the secret to select from.  Must
-                            be a valid secret key.
-                          type: string
-                        name:
-                          default: ""
-                          description: |-
-                            Name of the referent.
-                            This field is effectively required, but due to backwards compatibility is
-                            allowed to be empty. Instances of this type with an empty value here are
-                            almost certainly wrong.
-                            More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                          type: string
-                        optional:
-                          description: Specify whether the Secret or its key must
-                            be defined
-                          type: boolean
-                      required:
-                      - key
-                      type: object
-                      x-kubernetes-map-type: atomic
+                    scopes:
+                      description: Scopes granted to the API key, e.g. "account:read".
+                        Must be scopes the user holds.
+                      items:
+                        type: string
+                      minItems: 1
+                      type: array
                   required:
                   - name
+                  - scopes
                   type: object
                 type: array
               customClaims:
@@ -380,11 +362,9 @@ spec:
                     name:
                       description: Name of the API key (matches spec).
                       type: string
-                    secretKey:
-                      description: SecretKey within the secret containing the token.
-                      type: string
                     secretName:
-                      description: SecretName where the API key token is stored.
+                      description: SecretName of the Secret storing the API key token
+                        under the key "token".
                       type: string
                   required:
                   - name

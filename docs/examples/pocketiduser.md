@@ -90,8 +90,6 @@ spec:
 
 ## API Keys
 
-### Operator-Created Keys
-
 Each key's token is written to the Secret `<user>-<key>-key` under `token`, here `ci-bot-deploy-key` and `ci-bot-ops-key`.
 
 ```yaml
@@ -107,34 +105,10 @@ spec:
   apiKeys:
     - name: deploy
       description: "CI deploy key"
+      scopes: ["oidc-clients:read", "oidc-clients:write"]
     - name: ops
       expiresAt: "2030-01-01T00:00:00Z"
-```
-
-### Pre-Existing Key Secret
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: existing-api-key
-  namespace: pocket-id
-stringData:
-  token: "pocket-id-api-key-token"
----
-apiVersion: pocketid.internal/v1alpha1
-kind: PocketIDUser
-metadata:
-  name: legacy-user
-  namespace: pocket-id
-spec:
-  email:
-    value: "legacy@example.com"
-  apiKeys:
-    - name: legacy
-      secretRef:
-        name: existing-api-key
-        key: token
+      scopes: ["users:read", "groups:read"]
 ```
 
 ## Delete From Pocket-ID With the Resource

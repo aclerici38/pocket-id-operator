@@ -170,6 +170,7 @@ type APIKeySpec struct {
 	Name        string
 	Description string
 	ExpiresAt   string
+	Scopes      []string
 }
 
 func (o UserOptions) withDefaults() UserOptions {
@@ -239,6 +240,9 @@ func buildUserYAML(opts UserOptions) string {
 			}
 			if key.ExpiresAt != "" {
 				spec.WriteString(fmt.Sprintf("    expiresAt: %s\n", key.ExpiresAt))
+			}
+			if key.Scopes != nil {
+				spec.WriteString(fmt.Sprintf("    scopes: [%s]\n", strings.Join(key.Scopes, ", ")))
 			}
 		}
 	}

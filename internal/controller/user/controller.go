@@ -711,38 +711,6 @@ func (r *Reconciler) reconcileAPIKeys(ctx context.Context, user *pocketidinterna
 			continue
 		}
 
-		// Check if using an existing secret reference
-		if spec.SecretRef != nil {
-			log.Info("Using existing secret for API key", "name", spec.Name, "secret", spec.SecretRef.Name)
-
-			reader := r.APIReader
-			if reader == nil {
-				reader = r.Client
-			}
-			secret := &corev1.Secret{}
-			if err := reader.Get(ctx, client.ObjectKey{Namespace: user.Namespace, Name: spec.SecretRef.Name}, secret); err != nil {
-				return fmt.Errorf("get secret %s for API key %s: %w", spec.SecretRef.Name, spec.Name, err)
-			}
-
-			secretKey := spec.SecretRef.Key
-			if _, ok := secret.Data[secretKey]; !ok {
-				return fmt.Errorf("secret %s missing key %s for API key %s", spec.SecretRef.Name, secretKey, spec.Name)
-			}
-
-			keyStatus := pocketidinternalv1alpha1.APIKeyStatus{
-				Name:       spec.Name,
-				SecretName: spec.SecretRef.Name,
-				SecretKey:  secretKey,
-			}
-
-			base := user.DeepCopy()
-			mergeAPIKeyStatus(user, keyStatus)
-			if err := common.PatchStatus(ctx, r.Client, user, base); err != nil {
-				return fmt.Errorf("update status for API key %s: %w", spec.Name, err)
-			}
-			continue
-		}
-
 		log.Info("Creating API key", "name", spec.Name)
 
 		if user.Status.UserID == "" {
@@ -754,7 +722,7 @@ func (r *Reconciler) reconcileAPIKeys(ctx context.Context, user *pocketidinterna
 			expiresAt = pocketid.DefaultAPIKeyExpiry().Format(time.RFC3339)
 		}
 
-		apiKey, err := apiClient.CreateAPIKeyForUser(ctx, user.Status.UserID, spec.Name, expiresAt, spec.Description, DefaultLoginTokenExpiryMin)
+		apiKey, err := apiClient.CreateAPIKeyForUser(ctx, user.Status.UserID, spec.Name, expiresAt, spec.Description, spec.Scopes, DefaultLoginTokenExpiryMin)
 		if err != nil {
 			return fmt.Errorf("create API key %s: %w", spec.Name, err)
 		}
@@ -772,7 +740,6 @@ func (r *Reconciler) reconcileAPIKeys(ctx context.Context, user *pocketidinterna
 			CreatedAt:  apiKey.CreatedAt,
 			ExpiresAt:  apiKey.ExpiresAt,
 			SecretName: secretName,
-			SecretKey:  APIKeySecretKey,
 		}
 
 		base := user.DeepCopy()

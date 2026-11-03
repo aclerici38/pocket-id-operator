@@ -153,7 +153,7 @@ Counts resources deleted from Pocket-ID **outside** the operator, e.g. in the Po
 
 **Type:** Counter · **Labels:** `instance_namespace`, `instance_name`, `operation`
 
-Counts `PocketIDUser` API keys the operator created or deleted, per `PocketIDInstance`. Keys provided through `spec.apiKeys[].secretRef` are not counted.
+Counts `PocketIDUser` API keys the operator created or deleted, per `PocketIDInstance`.
 
 | Label | Values |
 | --- | --- |

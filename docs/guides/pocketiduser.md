@@ -54,11 +54,10 @@ The first time the operator reconciles a user, whether created or adopted, it ge
 
 ## API Keys
 
-Each entry in `spec.apiKeys` creates an API key for the user in Pocket-ID and writes its token to a Secret named `<user>-<key>-key` under the key `token`. `expiresAt` defaults to one year after creation. `status.apiKeys` records each key's ID, timestamps, and the Secret holding its token. See [example](../examples/pocketiduser.md#operator-created-keys).
+Each entry in `spec.apiKeys` creates an API key for the user in Pocket-ID and writes its token to a Secret named `<user>-<key>-key` under the key `token`. `expiresAt` defaults to one year after creation. `scopes` is required and must only list scopes the user holds, so only admins can grant admin scopes such as `users:read`. `status.apiKeys` records each key's ID, timestamps, and the Secret holding its token. See [example](../examples/pocketiduser.md#api-keys).
 
-- A key is only created once. Changing `expiresAt` or `description` on an existing entry has no effect, and an expired key is not renewed. To replace a key, remove the entry and add it again.
+- A key is only created once. Changing `expiresAt`, `description`, or `scopes` on an existing entry has no effect, and an expired key is not renewed. To replace a key, remove the entry and add it again.
 - Removing an entry deletes the key from Pocket-ID along with its Secret.
-- With `secretRef` the operator records the referenced Secret key in status in place of a generated one. The Secret must exist in the user's namespace and contain the key. Removing the entry leaves both the key in Pocket-ID and the Secret in place. See [example](../examples/pocketiduser.md#pre-existing-key-secret).
 
 ## Deletion
 
