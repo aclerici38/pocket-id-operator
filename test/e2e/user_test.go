@@ -303,23 +303,46 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 			Expect(pocketIDStatusForAPIKey(token, "/api/user-groups")).To(Equal(http.StatusForbidden))
 		})
 
-		It("should not change an existing key when its scopes change", func() {
+		It("should update a key's scopes in place, keeping its token", func() {
 			const userName = "test-apikey-rescope-user"
 
 			createUserAndWaitReady(UserOptions{
 				Name:    userName,
 				Admin:   new(true),
-				APIKeys: []APIKeySpec{{Name: "fixed-key", Scopes: []string{"account:read"}}},
+				APIKeys: []APIKeySpec{{Name: "rescoped-key", Scopes: []string{"account:read"}}},
 			})
 			keyID := getField("pocketiduser", userName, userNS, ".status.apiKeys[0].id")
 			token := secretData(getField("pocketiduser", userName, userNS, ".status.apiKeys[0].secretName"), userNS, "token")
+			Expect(pocketIDStatusForAPIKey(token, "/api/users")).To(Equal(http.StatusForbidden))
 
 			Expect(patchObject("pocketiduser", userName, userNS,
-				`{"spec":{"apiKeys":[{"name":"fixed-key","scopes":["account:read","users:read"]}]}}`)).To(Succeed())
+				`{"spec":{"apiKeys":[{"name":"rescoped-key","scopes":["account:read","users:read"]}]}}`)).To(Succeed())
 			waitForReconciled("pocketiduser", userName, userNS)
 
 			Expect(getField("pocketiduser", userName, userNS, ".status.apiKeys[0].id")).To(Equal(keyID))
-			Expect(pocketIDStatusForAPIKey(token, "/api/users")).To(Equal(http.StatusForbidden))
+			Expect(pocketIDStatusForAPIKey(token, "/api/users")).To(Equal(http.StatusOK))
+		})
+
+		It("should renew a key when its expiry changes, replacing its token", func() {
+			const userName = "test-apikey-renew-user"
+
+			createUserAndWaitReady(UserOptions{
+				Name:    userName,
+				APIKeys: []APIKeySpec{{Name: "renewed-key", ExpiresAt: "2030-01-01T00:00:00Z", Scopes: []string{"account:read"}}},
+			})
+			keyID := getField("pocketiduser", userName, userNS, ".status.apiKeys[0].id")
+			secretName := getField("pocketiduser", userName, userNS, ".status.apiKeys[0].secretName")
+			token := secretData(secretName, userNS, "token")
+
+			Expect(patchObject("pocketiduser", userName, userNS,
+				`{"spec":{"apiKeys":[{"name":"renewed-key","expiresAt":"2031-01-01T00:00:00Z","scopes":["account:read"]}]}}`)).To(Succeed())
+			Eventually(func(g Gomega) {
+				g.Expect(getField("pocketiduser", userName, userNS, ".status.apiKeys[0].expiresAt")).To(HavePrefix("2031-01-01"))
+			}).Should(Succeed())
+
+			Expect(getField("pocketiduser", userName, userNS, ".status.apiKeys[0].id")).To(Equal(keyID))
+			Expect(pocketIDStatusForAPIKey(token, "/api/users/me")).To(Equal(http.StatusUnauthorized))
+			Expect(pocketIDStatusForAPIKey(secretData(secretName, userNS, "token"), "/api/users/me")).To(Equal(http.StatusOK))
 		})
 
 		It("should narrow a key as soon as its owner is demoted", func() {

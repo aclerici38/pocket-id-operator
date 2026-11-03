@@ -3,17 +3,19 @@ package pocketid
 import (
 	"cmp"
 	"context"
-	"io"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"reflect"
 	"testing"
+	"time"
 )
 
 const (
 	tokenPath    = "/api/users/user-1/one-time-access-token"
 	exchangePath = "/api/one-time-access-token/one-time-token"
-	createPath   = "/api/api-keys"
-	deletePath   = "/api/api-keys/key-1"
+	keysPath     = "/api/api-keys"
+	keyPath      = "/api/api-keys/key-1"
 	logoutPath   = "/api/webauthn/logout"
 )
 
@@ -47,43 +49,30 @@ func sessionServer(t *testing.T, exchangeStatus, logoutStatus int, keys http.Han
 			calls.logoutCookie = r.Header.Get("Cookie")
 			w.WriteHeader(cmp.Or(logoutStatus, http.StatusNoContent))
 		default:
+			if r.Header.Get("Cookie") != sessionCookie {
+				t.Errorf("%s %s sent cookie %q, want the session's", r.Method, r.URL.Path, r.Header.Get("Cookie"))
+			}
 			keys(w, r)
 		}
 	}))
 	return client, calls
 }
 
-func TestCreateAPIKeyForUser_EndsSession(t *testing.T) {
+func TestWithUserSession_EndsSession(t *testing.T) {
+	inSession := []string{tokenPath, exchangePath, keysPath, logoutPath}
 	tests := []struct {
-		name               string
-		exchangeStatus     int
-		createStatus       int
-		logoutStatus       int
-		cancelDuringCreate bool
-		wantCalls          []string
-		wantErr            bool
+		name           string
+		exchangeStatus int
+		listStatus     int
+		logoutStatus   int
+		cancelDuringFn bool
+		wantCalls      []string
+		wantErr        bool
 	}{
-		{
-			name:      "after creating the key",
-			wantCalls: []string{tokenPath, exchangePath, createPath, logoutPath},
-		},
-		{
-			name:         "when creating the key fails",
-			createStatus: http.StatusBadRequest,
-			wantCalls:    []string{tokenPath, exchangePath, createPath, logoutPath},
-			wantErr:      true,
-		},
-		{
-			name:               "when ctx is cancelled mid-call",
-			cancelDuringCreate: true,
-			wantCalls:          []string{tokenPath, exchangePath, createPath, logoutPath},
-			wantErr:            true,
-		},
-		{
-			name:         "without failing the call when logout fails",
-			logoutStatus: http.StatusInternalServerError,
-			wantCalls:    []string{tokenPath, exchangePath, createPath, logoutPath},
-		},
+		{name: "after fn returns", wantCalls: inSession},
+		{name: "when fn fails", listStatus: http.StatusBadRequest, wantCalls: inSession, wantErr: true},
+		{name: "when ctx is cancelled mid-call", cancelDuringFn: true, wantCalls: inSession, wantErr: true},
+		{name: "without failing the call when logout fails", logoutStatus: http.StatusInternalServerError, wantCalls: inSession},
 		{
 			name:           "not when no session was started",
 			exchangeStatus: http.StatusUnauthorized,
@@ -97,23 +86,22 @@ func TestCreateAPIKeyForUser_EndsSession(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 
-			// Holds the create response so the client can only see the cancellation.
+			// Holds the list response so the client can only see the cancellation.
 			release := make(chan struct{})
 			client, calls := sessionServer(t, tt.exchangeStatus, tt.logoutStatus, func(w http.ResponseWriter, _ *http.Request) {
-				if tt.cancelDuringCreate {
+				if tt.cancelDuringFn {
 					cancel()
 					<-release
 					return
 				}
-				if tt.createStatus != 0 {
-					w.WriteHeader(tt.createStatus)
-					return
-				}
-				w.WriteHeader(http.StatusCreated)
-				_, _ = w.Write([]byte(`{"apiKey":{"id":"key-1"},"token":"key-token"}`))
+				w.WriteHeader(cmp.Or(tt.listStatus, http.StatusOK))
+				_, _ = w.Write([]byte(`{"data":[],"pagination":{"totalPages":1}}`))
 			})
 
-			key, err := client.CreateAPIKeyForUser(ctx, "user-1", "key", "2030-01-01T00:00:00Z", "", []string{"account:read"}, 5)
+			err := client.WithUserSession(ctx, "user-1", 5, func(session *UserSession) error {
+				_, err := session.ListAPIKeys(ctx)
+				return err
+			})
 			close(release)
 
 			if (err != nil) != tt.wantErr {
@@ -122,86 +110,171 @@ func TestCreateAPIKeyForUser_EndsSession(t *testing.T) {
 			if !reflect.DeepEqual(calls.paths, tt.wantCalls) {
 				t.Errorf("calls = %v, want %v", calls.paths, tt.wantCalls)
 			}
-			if !tt.wantErr && key.Token != "key-token" {
-				t.Errorf("token = %q, want key-token", key.Token)
-			}
-			if len(tt.wantCalls) == 4 && calls.logoutCookie != sessionCookie {
+			if len(tt.wantCalls) == len(inSession) && calls.logoutCookie != sessionCookie {
 				t.Errorf("logout cookie = %q, want the exchange's session cookie", calls.logoutCookie)
 			}
 		})
 	}
 }
 
-func TestCreateAPIKeyForUser_SendsRequestBody(t *testing.T) {
-	var body string
-	client, _ := sessionServer(t, 0, 0, func(w http.ResponseWriter, r *http.Request) {
-		raw, _ := io.ReadAll(r.Body)
-		body = string(raw)
-		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"apiKey":{"id":"key-1"},"token":"key-token"}`))
-	})
+func TestWithUserSession_ReportsRateLimit(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == tokenPath {
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"token":"one-time-token"}`))
+			return
+		}
+		w.Header().Set("Retry-After", "7")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"error":"Too many requests","code":"rate_limited"}`))
+	}))
 
-	scopes := []string{"account:read", "users:read"}
-	if _, err := client.CreateAPIKeyForUser(t.Context(), "user-1", "key", "2030-01-01T00:00:00Z", "desc", scopes, 5); err != nil {
-		t.Fatalf("CreateAPIKeyForUser() error = %v", err)
-	}
-
-	want := `{"name":"key","expiresAt":"2030-01-01T00:00:00Z","description":"desc","scopes":["account:read","users:read"]}`
-	if body != want {
-		t.Errorf("body = %s, want %s", body, want)
+	err := client.WithUserSession(t.Context(), "user-1", 5, func(*UserSession) error { return nil })
+	if !IsRateLimitedError(err) || AsAPIError(err).RetryAfter != 7*time.Second {
+		t.Errorf("error = %v, want rate limited with Retry-After 7s", err)
 	}
 }
 
-func TestDeleteAPIKeyForUser(t *testing.T) {
+func TestListAPIKeys_ReadsEveryPage(t *testing.T) {
+	var pages []string
+	client, _ := sessionServer(t, 0, 0, func(w http.ResponseWriter, r *http.Request) {
+		page := r.URL.Query().Get("pagination[page]")
+		pages = append(pages, page)
+		_, _ = fmt.Fprintf(w, `{"data":[{"id":"key-%s","scopes":["account:read"]}],"pagination":{"totalPages":2}}`, page)
+	})
+
+	var keys []APIKey
+	err := client.WithUserSession(t.Context(), "user-1", 5, func(session *UserSession) (err error) {
+		keys, err = session.ListAPIKeys(t.Context())
+		return err
+	})
+	if err != nil {
+		t.Fatalf("ListAPIKeys() error = %v", err)
+	}
+
+	want := []APIKey{{ID: "key-1", Scopes: []string{"account:read"}}, {ID: "key-2", Scopes: []string{"account:read"}}}
+	if !reflect.DeepEqual(keys, want) {
+		t.Errorf("keys = %+v, want %+v", keys, want)
+	}
+	if !reflect.DeepEqual(pages, []string{"1", "2"}) {
+		t.Errorf("pages = %v, want [1 2]", pages)
+	}
+}
+
+func TestAPIKeyWrites(t *testing.T) {
+	scopes := []string{"account:read", "users:read"}
 	tests := []struct {
-		name           string
-		exchangeStatus int
-		deleteStatus   int
-		wantCalls      []string
-		wantErr        bool
+		name       string
+		call       func(*UserSession) (string, error)
+		status     int
+		wantMethod string
+		wantPath   string
+		wantBody   map[string]any
+		want       string
+		wantErr    bool
 	}{
 		{
-			name:         "deletes the key in the user's session",
-			deleteStatus: http.StatusNoContent,
-			wantCalls:    []string{tokenPath, exchangePath, deletePath, logoutPath},
+			name: "create sends the key and returns its token",
+			call: func(s *UserSession) (string, error) {
+				k, err := s.CreateAPIKey(t.Context(), "key", "2030-01-01T00:00:00Z", "desc", scopes)
+				if err != nil {
+					return "", err
+				}
+				return k.Token, nil
+			},
+			status:     http.StatusCreated,
+			wantMethod: http.MethodPost,
+			wantPath:   keysPath,
+			wantBody:   map[string]any{"name": "key", "expiresAt": "2030-01-01T00:00:00Z", "description": "desc", "scopes": []any{"account:read", "users:read"}},
+			want:       "key-token",
 		},
 		{
-			name:         "treats a key that's already gone as deleted",
-			deleteStatus: http.StatusNotFound,
-			wantCalls:    []string{tokenPath, exchangePath, deletePath, logoutPath},
+			name: "update sends the editable fields",
+			call: func(s *UserSession) (string, error) {
+				k, err := s.UpdateAPIKey(t.Context(), "key-1", "key", "desc", scopes)
+				if err != nil {
+					return "", err
+				}
+				return k.ID, nil
+			},
+			status:     http.StatusOK,
+			wantMethod: http.MethodPut,
+			wantPath:   keyPath,
+			wantBody:   map[string]any{"name": "key", "description": "desc", "scopes": []any{"account:read", "users:read"}},
+			want:       "key-1",
 		},
 		{
-			name:         "reports a failed delete and still ends the session",
-			deleteStatus: http.StatusBadRequest,
-			wantCalls:    []string{tokenPath, exchangePath, deletePath, logoutPath},
-			wantErr:      true,
+			name: "renew revokes the old token at once",
+			call: func(s *UserSession) (string, error) {
+				k, err := s.RenewAPIKey(t.Context(), "key-1", "2031-01-01T00:00:00Z")
+				if err != nil {
+					return "", err
+				}
+				return k.Token, nil
+			},
+			status:     http.StatusOK,
+			wantMethod: http.MethodPost,
+			wantPath:   keyPath + "/renew",
+			wantBody:   map[string]any{"expiresAt": "2031-01-01T00:00:00Z", "gracePeriodHours": float64(0)},
+			want:       "key-token",
 		},
 		{
-			name:           "reports a failed session exchange",
-			exchangeStatus: http.StatusUnauthorized,
-			wantCalls:      []string{tokenPath, exchangePath},
-			wantErr:        true,
+			name:       "delete revokes the key",
+			call:       func(s *UserSession) (string, error) { return "", s.DeleteAPIKey(t.Context(), "key-1") },
+			status:     http.StatusNoContent,
+			wantMethod: http.MethodDelete,
+			wantPath:   keyPath,
+		},
+		{
+			name:       "delete treats a key that's already gone as deleted",
+			call:       func(s *UserSession) (string, error) { return "", s.DeleteAPIKey(t.Context(), "key-1") },
+			status:     http.StatusNotFound,
+			wantMethod: http.MethodDelete,
+			wantPath:   keyPath,
+		},
+		{
+			name: "update reports a refused change",
+			call: func(s *UserSession) (string, error) {
+				_, err := s.UpdateAPIKey(t.Context(), "key-1", "key", "desc", scopes)
+				return "", err
+			},
+			status:     http.StatusBadRequest,
+			wantMethod: http.MethodPut,
+			wantPath:   keyPath,
+			wantBody:   map[string]any{"name": "key", "description": "desc", "scopes": []any{"account:read", "users:read"}},
+			wantErr:    true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var deleteCookie, deleteMethod string
-			client, calls := sessionServer(t, tt.exchangeStatus, 0, func(w http.ResponseWriter, r *http.Request) {
-				deleteMethod, deleteCookie = r.Method, r.Header.Get("Cookie")
-				w.WriteHeader(tt.deleteStatus)
+			var method, path string
+			var body map[string]any
+			client, _ := sessionServer(t, 0, 0, func(w http.ResponseWriter, r *http.Request) {
+				method, path = r.Method, r.URL.Path
+				_ = json.NewDecoder(r.Body).Decode(&body)
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(`{"id":"key-1","apiKey":{"id":"key-1"},"token":"key-token"}`))
 			})
 
-			err := client.DeleteAPIKeyForUser(t.Context(), "user-1", "key-1", 5)
+			var got string
+			err := client.WithUserSession(t.Context(), "user-1", 5, func(session *UserSession) (err error) {
+				got, err = tt.call(session)
+				return err
+			})
 
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("error = %v, wantErr %v", err, tt.wantErr)
 			}
-			if !reflect.DeepEqual(calls.paths, tt.wantCalls) {
-				t.Errorf("calls = %v, want %v", calls.paths, tt.wantCalls)
+			if method != tt.wantMethod || path != tt.wantPath {
+				t.Errorf("request = %s %s, want %s %s", method, path, tt.wantMethod, tt.wantPath)
 			}
-			if tt.deleteStatus != 0 && (deleteMethod != http.MethodDelete || deleteCookie != sessionCookie) {
-				t.Errorf("delete request = %s with cookie %q, want DELETE in the user's session", deleteMethod, deleteCookie)
+			if !reflect.DeepEqual(body, tt.wantBody) {
+				t.Errorf("body = %v, want %v", body, tt.wantBody)
+			}
+			if got != tt.want {
+				t.Errorf("result = %q, want %q", got, tt.want)
 			}
 		})
 	}

@@ -117,7 +117,7 @@ Counts changes the operator made in Pocket-ID. An increment means the operator a
 
 | Label | Values |
 | --- | --- |
-| `kind` | `PocketIDUser`, `PocketIDUserGroup`, `PocketIDOIDCClient`, `PocketIDAPI` |
+| `kind` | `PocketIDUser`, `PocketIDUserGroup`, `PocketIDOIDCClient`, `PocketIDAPI`, `APIKey` |
 | `operation` | `created`, `adopted`, `updated`, `deleted` |
 
 - **`created`**: the resource did not exist in Pocket-ID and was created.
@@ -153,13 +153,13 @@ Counts resources deleted from Pocket-ID **outside** the operator, e.g. in the Po
 
 **Type:** Counter · **Labels:** `instance_namespace`, `instance_name`, `operation`
 
-Counts `PocketIDUser` API keys the operator created or deleted, per `PocketIDInstance`.
+Counts `PocketIDUser` API keys the operator created, updated, renewed or deleted, per `PocketIDInstance`.
 
 | Label | Values |
 | --- | --- |
 | `instance_namespace` | Namespace of the user's `PocketIDInstance` |
 | `instance_name` | Name of the user's `PocketIDInstance` |
-| `operation` | `created` or `deleted` |
+| `operation` | `created`, `updated`, `renewed` or `deleted` |
 
 ### Instance
 

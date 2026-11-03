@@ -144,26 +144,31 @@ func pocketIDUsernameForAPIKey(apiKey string) string {
 	ctx, cancel := testCtx()
 	defer cancel()
 
-	return usernameFrom(http.DefaultClient.Do(apiKeyRequest(ctx, apiKey, "/api/users/me")))
+	return usernameFrom(http.DefaultClient.Do(apiKeyRequest(ctx, http.MethodGet, apiKey, "/api/users/me")))
 }
 
 // pocketIDStatusForAPIKey reports how a GET of apiPath answers the key.
 func pocketIDStatusForAPIKey(apiKey, apiPath string) int {
 	GinkgoHelper()
+	return pocketIDStatusForAPIKeyRequest(http.MethodGet, apiKey, apiPath)
+}
+
+func pocketIDStatusForAPIKeyRequest(method, apiKey, apiPath string) int {
+	GinkgoHelper()
 
 	ctx, cancel := testCtx()
 	defer cancel()
 
-	resp, err := http.DefaultClient.Do(apiKeyRequest(ctx, apiKey, apiPath))
-	Expect(err).NotTo(HaveOccurred(), "calling %s", apiPath)
+	resp, err := http.DefaultClient.Do(apiKeyRequest(ctx, method, apiKey, apiPath))
+	Expect(err).NotTo(HaveOccurred(), "calling %s %s", method, apiPath)
 	defer func() { _ = resp.Body.Close() }()
 	return resp.StatusCode
 }
 
-func apiKeyRequest(ctx context.Context, apiKey, apiPath string) *http.Request {
+func apiKeyRequest(ctx context.Context, method, apiKey, apiPath string) *http.Request {
 	GinkgoHelper()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pocketIDBaseURL()+apiPath, nil)
+	req, err := http.NewRequestWithContext(ctx, method, pocketIDBaseURL()+apiPath, nil)
 	Expect(err).NotTo(HaveOccurred())
 	req.Header.Set("X-API-KEY", apiKey)
 	return req
