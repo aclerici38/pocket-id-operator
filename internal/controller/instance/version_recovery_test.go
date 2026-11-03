@@ -93,10 +93,10 @@ func managedInstance(image string) *pocketidinternalv1alpha1.PocketIDInstance {
 // with no way out through the CR.
 func TestReconcile_AppliesImageBeforeHaltingOnOldVersion(t *testing.T) {
 	ctx := context.Background()
-	const newImage = "ghcr.io/pocket-id/pocket-id:v2.19.2-distroless"
+	const newImage = "ghcr.io/pocket-id/pocket-id:v3.0.0-distroless"
 
 	inst := managedInstance(newImage)
-	r := newManagedReconciler(t, inst, "2.13.0")
+	r := newManagedReconciler(t, inst, "2.19.2")
 
 	if !runReconcile(t, r, inst) {
 		t.Error("expected the operator to halt on an unsupported version")
@@ -117,8 +117,8 @@ func TestReconcile_AppliesImageBeforeHaltingOnOldVersion(t *testing.T) {
 func TestReconcile_NoHaltOnceVersionIsSupported(t *testing.T) {
 	ctx := context.Background()
 
-	inst := managedInstance("ghcr.io/pocket-id/pocket-id:v2.19.2-distroless")
-	r := newManagedReconciler(t, inst, "2.14.0")
+	inst := managedInstance("ghcr.io/pocket-id/pocket-id:v3.0.0-distroless")
+	r := newManagedReconciler(t, inst, "3.0.0")
 
 	if runReconcile(t, r, inst) {
 		t.Error("a supported version must not halt")
@@ -128,8 +128,8 @@ func TestReconcile_NoHaltOnceVersionIsSupported(t *testing.T) {
 	if err := r.Get(ctx, client.ObjectKeyFromObject(inst), got); err != nil {
 		t.Fatalf("get instance: %v", err)
 	}
-	if got.Status.Version != "2.14.0" {
-		t.Errorf("status.version = %q, want %q", got.Status.Version, "2.14.0")
+	if got.Status.Version != "3.0.0" {
+		t.Errorf("status.version = %q, want %q", got.Status.Version, "3.0.0")
 	}
 }
 
@@ -137,7 +137,7 @@ func TestReconcile_NoHaltOnceVersionIsSupported(t *testing.T) {
 // the user must upgrade pocket-id out of band. Recorded so the asymmetry is deliberate.
 func TestReconcileExternal_HaltsOnOldVersionWithNoWorkloadToPatch(t *testing.T) {
 	ctx := context.Background()
-	srv := versionServer(t, "2.13.0")
+	srv := versionServer(t, "2.19.2")
 
 	halted := 0
 	inst := newExternalInstance(srv.URL)
@@ -157,7 +157,7 @@ func TestReconcileExternal_HaltsOnOldVersionWithNoWorkloadToPatch(t *testing.T) 
 	if err := r.Get(ctx, client.ObjectKeyFromObject(inst), got); err != nil {
 		t.Fatalf("get instance: %v", err)
 	}
-	if got.Status.Version != "2.13.0" {
-		t.Errorf("status.version = %q, want %q", got.Status.Version, "2.13.0")
+	if got.Status.Version != "2.19.2" {
+		t.Errorf("status.version = %q, want %q", got.Status.Version, "2.19.2")
 	}
 }
