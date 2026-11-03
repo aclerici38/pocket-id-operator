@@ -769,6 +769,10 @@ func (r *Reconciler) reconcileAPIKey(ctx context.Context, user *pocketidinternal
 	if issued != nil {
 		key = issued.APIKey
 		if err := ensureAPIKeySecret(ctx, r.Client, r.Scheme, user, secretName, issued.Token); err != nil {
+			// Pocket-ID never returns the token again, so revoke the key for the retry to issue a new one.
+			if revokeErr := session.DeleteAPIKey(ctx, key.ID); revokeErr != nil {
+				log.Error(revokeErr, "Failed to revoke API key whose token wasn't saved", "name", spec.Name)
+			}
 			return fmt.Errorf("write token secret: %w", err)
 		}
 	}

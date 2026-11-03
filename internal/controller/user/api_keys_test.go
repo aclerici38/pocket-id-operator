@@ -1,7 +1,9 @@
 package user
 
 import (
+	"context"
 	"encoding/json"
+	stderrors "errors"
 	"maps"
 	"net/http"
 	"reflect"
@@ -15,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
@@ -262,6 +265,45 @@ func TestReconcileAPIKeys(t *testing.T) {
 			}
 			if got := string(secret.Data[APIKeySecretKey]); err != nil || got != tt.wantToken {
 				t.Errorf("token secret = %q (err=%v), want %q", got, err, tt.wantToken)
+			}
+		})
+	}
+}
+
+func TestReconcileAPIKeys_RevokesKeyWhoseTokenWasNotSaved(t *testing.T) {
+	stored := pocketid.APIKey{ID: "key-1", Name: "key", ExpiresAt: expiresAt}
+	tests := []struct {
+		name       string
+		stored     []pocketid.APIKey
+		wantWrites []string
+	}{
+		{name: "created", wantWrites: []string{"POST " + keysPath, "DELETE /api/api-keys/key-new"}},
+		{name: "renewed", stored: []pocketid.APIKey{stored}, wantWrites: []string{"POST " + renew1Path, "DELETE " + key1Path}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			user := &pocketidinternalv1alpha1.PocketIDUser{
+				ObjectMeta: metav1.ObjectMeta{Name: "user", Namespace: "default"},
+				Spec:       pocketidinternalv1alpha1.PocketIDUserSpec{APIKeys: []pocketidinternalv1alpha1.APIKeySpec{{Name: "key", ExpiresAt: renewedAt}}},
+				Status:     pocketidinternalv1alpha1.PocketIDUserStatus{UserID: "user-1", APIKeys: []pocketidinternalv1alpha1.APIKeyStatus{{Name: "key", ID: "key-1"}}},
+			}
+			r, fc := newAPIKeyReconciler(user)
+			r.Client = interceptor.NewClient(fc.(client.WithWatch), interceptor.Funcs{
+				Apply: func(context.Context, client.WithWatch, runtime.ApplyConfiguration, ...client.ApplyOption) error {
+					return stderrors.New("apply refused")
+				},
+			})
+			apiClient, keys := newFakeKeys(t, 0, tt.stored...)
+
+			if err := r.reconcileAPIKeys(t.Context(), user, apiClient, "default", "instance"); err == nil {
+				t.Fatal("expected an error")
+			}
+			if !slices.Equal(keys.writes, tt.wantWrites) {
+				t.Errorf("writes = %v, want %v", keys.writes, tt.wantWrites)
+			}
+			if len(keys.keys) != 0 {
+				t.Errorf("keys left in Pocket-ID = %v, want none", keys.keys)
 			}
 		})
 	}
