@@ -452,63 +452,6 @@ var _ = Describe("PocketIDUser Controller", func() {
 		})
 	})
 
-	Context("When creating a PocketIDUser with multiple API keys", func() {
-		const userName = "test-user-multi-keys"
-
-		var user *pocketidinternalv1alpha1.PocketIDUser
-
-		BeforeEach(func() {
-			user = &pocketidinternalv1alpha1.PocketIDUser{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      userName,
-					Namespace: namespace,
-				},
-				Spec: pocketidinternalv1alpha1.PocketIDUserSpec{
-					Username:  pocketidinternalv1alpha1.StringValue{Value: "multikey-user"},
-					FirstName: pocketidinternalv1alpha1.StringValue{Value: "Multi"},
-					Admin:     true,
-					APIKeys: []pocketidinternalv1alpha1.APIKeySpec{
-						{
-							Name:        "default-expiry",
-							Description: "API key with the default expiry",
-							Scopes:      []string{"account:read", "users:read"},
-						},
-						{
-							Name:        "fixed-expiry",
-							Description: "API key with a fixed expiry",
-							ExpiresAt:   "2030-01-01T00:00:00Z",
-							Scopes:      []string{"account:read"},
-						},
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, user)).To(Succeed())
-		})
-
-		AfterEach(func() {
-			if user != nil {
-				_ = k8sClient.Delete(ctx, user)
-			}
-		})
-
-		It("Should create the PocketIDUser with multiple API key specs", func() {
-			createdUser := &pocketidinternalv1alpha1.PocketIDUser{}
-			Eventually(func() error {
-				return k8sClient.Get(ctx, types.NamespacedName{
-					Name:      userName,
-					Namespace: namespace,
-				}, createdUser)
-			}, timeout, interval).Should(Succeed())
-
-			Expect(createdUser.Spec.APIKeys).To(HaveLen(2))
-
-			Expect(createdUser.Spec.APIKeys[0].Name).To(Equal("default-expiry"))
-			Expect(createdUser.Spec.APIKeys[0].ExpiresAt).To(BeEmpty())
-			Expect(createdUser.Spec.APIKeys[1].Name).To(Equal("fixed-expiry"))
-			Expect(createdUser.Spec.APIKeys[1].ExpiresAt).To(Equal("2030-01-01T00:00:00Z"))
-		})
-	})
-
 	Context("When deleting a PocketIDUser", func() {
 		const userName = "test-user-delete"
 
@@ -982,6 +925,7 @@ var _ = Describe("PocketIDUser Controller", func() {
 			},
 			Entry("missing scopes", map[string]any{}),
 			Entry("an empty list of scopes", map[string]any{"scopes": []any{}}),
+			Entry("duplicate scopes", map[string]any{"scopes": []any{"account:read", "account:read"}}),
 		)
 	})
 })

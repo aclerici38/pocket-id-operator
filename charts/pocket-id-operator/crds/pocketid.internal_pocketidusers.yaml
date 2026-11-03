@@ -71,6 +71,7 @@ spec:
                         type: string
                       minItems: 1
                       type: array
+                      x-kubernetes-list-type: set
                   required:
                   - name
                   - scopes

@@ -56,6 +56,7 @@ type APIKeySpec struct {
 	// Scopes granted to the API key, e.g. "account:read". Must be scopes the user holds.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
+	// +listType=set
 	Scopes []string `json:"scopes"`
 }
 

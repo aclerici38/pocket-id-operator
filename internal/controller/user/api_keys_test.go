@@ -127,6 +127,40 @@ func TestReconcileAPIKeys_ExistingKey(t *testing.T) {
 	}
 }
 
+// A key recorded without an ID, as v2 secretRef keys were, was never created by the operator and has nothing to revoke.
+func TestReconcileAPIKeys_RemovedKeyWithoutID(t *testing.T) {
+	ctx := t.Context()
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	user := &pocketidinternalv1alpha1.PocketIDUser{
+		ObjectMeta: metav1.ObjectMeta{Name: "user", Namespace: "default"},
+		Status: pocketidinternalv1alpha1.PocketIDUserStatus{
+			UserID:  "user-1",
+			APIKeys: []pocketidinternalv1alpha1.APIKeyStatus{{Name: "legacy", SecretName: "user-owned"}},
+		},
+	}
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "user-owned", Namespace: "default"}}
+	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(user, secret).WithStatusSubresource(user).Build()
+	r := &Reconciler{Client: fc, APIReader: fc, Scheme: scheme}
+	r.EnsureClient(fc)
+
+	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(_ http.ResponseWriter, req *http.Request) {
+		t.Errorf("unexpected request to %s", req.URL.Path)
+	}))
+
+	if err := r.reconcileAPIKeys(ctx, user, apiClient, "default", "instance"); err != nil {
+		t.Fatalf("reconcileAPIKeys() error = %v", err)
+	}
+	if len(user.Status.APIKeys) != 0 {
+		t.Errorf("status.apiKeys = %v, want none", user.Status.APIKeys)
+	}
+	if err := fc.Get(ctx, types.NamespacedName{Name: "user-owned", Namespace: "default"}, &corev1.Secret{}); err != nil {
+		t.Errorf("expected the unmanaged secret to be kept, got err=%v", err)
+	}
+}
+
 // serveSession answers the session flow around an API key request.
 func serveSession(w http.ResponseWriter, r *http.Request) bool {
 	switch r.URL.Path {

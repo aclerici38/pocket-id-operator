@@ -5642,7 +5642,8 @@
                                 "type": "string"
                               },
                               "minItems": 1,
-                              "type": "array"
+                              "type": "array",
+                              "x-kubernetes-list-type": "set"
                             }
                           },
                           "required": [
