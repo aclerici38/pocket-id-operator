@@ -68,9 +68,9 @@ backend = "go:github.com/elastic/crd-ref-docs"
 specifiers = ["v0.3.0"]
 
 [[tools."go:github.com/onsi/ginkgo/v2/ginkgo"]]
-version = "2.33.1"
+version = "2.34.0"
 backend = "go:github.com/onsi/ginkgo/v2/ginkgo"
-specifiers = ["v2.33.1"]
+specifiers = ["v2.34.0"]
 
 [[tools."go:sigs.k8s.io/controller-tools/cmd/controller-gen"]]
 version = "0.23.0"
