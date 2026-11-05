@@ -36,7 +36,7 @@ kubectl = "1.37.2"
 helm = "4.3.1"
 
 # CRD → JSON schema conversion
-"aqua:sholdee/crd-schema-publisher" = "2026.1102.63220"
+"aqua:sholdee/crd-schema-publisher" = "2026.1104.230219"
 
 # API types → CRD reference docs (docs/reference/)
 "go:github.com/elastic/crd-ref-docs" = "v0.3.0"
