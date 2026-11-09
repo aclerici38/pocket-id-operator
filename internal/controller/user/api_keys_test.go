@@ -106,7 +106,7 @@ func serveSession(w http.ResponseWriter, r *http.Request) bool {
 	case "/api/users/user-1/one-time-access-token":
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{"token":"one-time-token"}`))
-	case "/api/one-time-access-token/one-time-token":
+	case "/api/one-time-access-token":
 		http.SetCookie(w, &http.Cookie{Name: "session_token", Value: "session-value"})
 	case "/api/webauthn/logout":
 		w.WriteHeader(http.StatusNoContent)
