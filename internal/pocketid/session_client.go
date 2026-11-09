@@ -91,8 +91,8 @@ func (s *UserSession) do(ctx context.Context, operation, method, path string, re
 }
 
 func (s *UserSession) exchangeOneTimeAccessToken(ctx context.Context, token string) error {
-	path := "/api/one-time-access-token/" + url.PathEscape(token)
-	resp, _, err := s.doJSONRequest(ctx, "PostAPIOneTimeAccessTokenToken", http.MethodPost, path, nil, http.StatusOK)
+	body := map[string]string{"token": token}
+	resp, _, err := s.doJSONRequest(ctx, "PostAPIOneTimeAccessToken", http.MethodPost, "/api/one-time-access-token", body, http.StatusOK)
 	if err != nil {
 		return err
 	}

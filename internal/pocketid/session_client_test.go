@@ -13,7 +13,7 @@ import (
 
 const (
 	tokenPath    = "/api/users/user-1/one-time-access-token"
-	exchangePath = "/api/one-time-access-token/one-time-token"
+	exchangePath = "/api/one-time-access-token"
 	keysPath     = "/api/api-keys"
 	keyPath      = "/api/api-keys/key-1"
 	logoutPath   = "/api/webauthn/logout"
@@ -40,6 +40,11 @@ func sessionServer(t *testing.T, exchangeStatus, logoutStatus int, keys http.Han
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"token":"one-time-token"}`))
 		case exchangePath:
+			var body map[string]string
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if body["token"] != "one-time-token" {
+				t.Errorf("exchange body token = %q, want the one-time token", body["token"])
+			}
 			if exchangeStatus != 0 {
 				w.WriteHeader(exchangeStatus)
 				return

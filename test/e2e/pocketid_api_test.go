@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -201,9 +202,13 @@ func pocketIDSessionForOneTimeToken(token string) []*http.Cookie {
 	ctx, cancel := testCtx()
 	defer cancel()
 
-	exchange, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		pocketIDBaseURL()+"/api/one-time-access-token/"+token, nil)
+	body, err := json.Marshal(map[string]string{"token": token})
 	Expect(err).NotTo(HaveOccurred())
+
+	exchange, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		pocketIDBaseURL()+"/api/one-time-access-token", bytes.NewReader(body))
+	Expect(err).NotTo(HaveOccurred())
+	exchange.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(exchange)
 	Expect(err).NotTo(HaveOccurred(), "redeeming the one-time access token")
