@@ -70,7 +70,7 @@ jobs:
         uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: "2026.10.25"
+          version: "2026.11.5"
           install_args: "go go:sigs.k8s.io/controller-tools/cmd/controller-gen kustomize aqua:sholdee/crd-schema-publisher go:github.com/elastic/crd-ref-docs yq"
 
       - name: Regenerate manifests
