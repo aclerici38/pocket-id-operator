@@ -1,6 +1,6 @@
 module github.com/aclerici38/pocket-id-operator
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/aclerici38/pocket-id-go-client/v2 v2.19.2

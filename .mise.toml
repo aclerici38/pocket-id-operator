@@ -11,7 +11,7 @@ lockfile_platforms = ["linux-x64", "linux-arm64", "macos-arm64"]
 minimum_release_age = "0s"
 
 [tools]
-go = "1.27.3"
+go = "1.27.4"
 
 # Kubernetes manifest tooling
 kustomize = "5.8.3"
