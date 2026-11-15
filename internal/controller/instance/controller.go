@@ -61,7 +61,7 @@ import (
 const (
 	// latestTestedPocketIDVersion is the most recent pocket-id upstream version tested.
 	// renovate: datasource=docker depName=ghcr.io/pocket-id/pocket-id
-	latestTestedPocketIDVersion = "v2.19.2"
+	latestTestedPocketIDVersion = "v2.19.3"
 
 	// minimumSupportedPocketIDVersion is the oldest pocket-id version this operator can manage. Detecting anything older on an instance crashloops the operator to prevent unwanted changes via an incompatible api.
 	minimumSupportedPocketIDVersion = "v2.14.0"
@@ -72,7 +72,7 @@ const (
 	firstUnsupportedPocketIDVersion = "v3.0.0"
 
 	// DefaultPocketIDImage is the image used when spec.image is empty.
-	DefaultPocketIDImage = "ghcr.io/pocket-id/pocket-id:v2.19.2-distroless@sha256:a21166a4eb513d2ffcbf815398480998d996a9e719cfba029395517658626f9e"
+	DefaultPocketIDImage = "ghcr.io/pocket-id/pocket-id:v2.19.3-distroless@sha256:6a0045a89b80fa6624c091786e7be132a4dde880ca64727a6b019c056b091982"
 
 	// Environment variable mapping
 	envEncryptionKey      = "ENCRYPTION_KEY"
