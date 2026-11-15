@@ -319,14 +319,14 @@ spec:
         - matches:
             - path:
                 type: PathPrefix
-                value: /healthz
+                value: /readyz
           filters:
             - type: RequestRedirect
               requestRedirect:
                 statusCode: 302
                 path:
                   type: ReplaceFullPath
-                  replaceFullPath: /readyz
+                  replaceFullPath: /healthz
 ```
 
 ## TLS With cert-manager
