@@ -375,6 +375,21 @@ func TestBuildPodTemplate_TmpSkippedWhenUserMountsTmp(t *testing.T) {
 	}
 }
 
+func TestBuildPodTemplate_TmpSkippedWhenDataAtTmp(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.Persistence.Path = "/tmp"
+
+	pt := (&Reconciler{}).buildPodTemplate(inst, "")
+
+	if findVolume(pt.Spec.Volumes, "tmpfs") != nil {
+		t.Error("operator tmpfs volume should not be added when the data volume is at /tmp")
+	}
+	mounts := pt.Spec.Containers[0].VolumeMounts
+	if len(mounts) != 1 || mounts[0].Name != "data" || mounts[0].MountPath != "/tmp" {
+		t.Errorf("expected only the data mount at /tmp, got %+v", mounts)
+	}
+}
+
 func findVolume(volumes []corev1.Volume, name string) *corev1.Volume {
 	for i := range volumes {
 		if volumes[i].Name == name {

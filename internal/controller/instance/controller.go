@@ -404,8 +404,8 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 	if instance.Spec.TLS != nil {
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{Name: tlsVolumeName, MountPath: tlsMountPath, ReadOnly: true})
 	}
-	// Respect a user-provided /tmp mount rather than creating a duplicate mountPath.
-	addTmp := !slices.ContainsFunc(instance.Spec.Persistence.ExtraVolumeMounts, func(m corev1.VolumeMount) bool {
+	// Respect an existing /tmp mount (data or extra) rather than creating a duplicate mountPath.
+	addTmp := !slices.ContainsFunc(volumeMounts, func(m corev1.VolumeMount) bool {
 		return path.Clean(m.MountPath) == tmpMountPath
 	})
 	if addTmp {
