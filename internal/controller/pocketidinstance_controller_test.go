@@ -571,14 +571,14 @@ var _ = Describe("PocketIDInstance Controller", func() {
 
 			// Check volume is defined
 			volumes := deployment.Spec.Template.Spec.Volumes
-			Expect(volumes).To(HaveLen(1))
+			Expect(volumes).To(HaveLen(2)) // + tmpfs
 			Expect(volumes[0].Name).To(Equal("data"))
 			Expect(volumes[0].VolumeSource.PersistentVolumeClaim).NotTo(BeNil())
 			Expect(volumes[0].VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(instanceName + "-data"))
 
 			// Check volume mount
 			volumeMounts := deployment.Spec.Template.Spec.Containers[0].VolumeMounts
-			Expect(volumeMounts).To(HaveLen(1))
+			Expect(volumeMounts).To(HaveLen(2)) // + tmpfs
 			Expect(volumeMounts[0].Name).To(Equal("data"))
 			Expect(volumeMounts[0].MountPath).To(Equal("/app/data"))
 		})
@@ -655,12 +655,12 @@ var _ = Describe("PocketIDInstance Controller", func() {
 			}, timeout, interval).Should(Succeed())
 
 			volumes := deployment.Spec.Template.Spec.Volumes
-			Expect(volumes).To(HaveLen(1))
+			Expect(volumes).To(HaveLen(2)) // + tmpfs
 			Expect(volumes[0].Name).To(Equal("data"))
 			Expect(volumes[0].VolumeSource.EmptyDir).NotTo(BeNil())
 
 			volumeMounts := deployment.Spec.Template.Spec.Containers[0].VolumeMounts
-			Expect(volumeMounts).To(HaveLen(1))
+			Expect(volumeMounts).To(HaveLen(2)) // + tmpfs
 			Expect(volumeMounts[0].MountPath).To(Equal("/app/data"))
 		})
 	})
@@ -764,7 +764,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 			}, timeout, interval).Should(Succeed())
 
 			volumes := deployment.Spec.Template.Spec.Volumes
-			Expect(volumes).To(HaveLen(1))
+			Expect(volumes).To(HaveLen(2)) // + tmpfs
 			Expect(volumes[0].VolumeSource.PersistentVolumeClaim).NotTo(BeNil())
 			Expect(volumes[0].VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(existingPVCName))
 		})
@@ -1138,13 +1138,14 @@ var _ = Describe("PocketIDInstance Controller", func() {
 
 			// Verify volume mount is configured
 			volumeMounts := sts.Spec.Template.Spec.Containers[0].VolumeMounts
-			Expect(volumeMounts).To(HaveLen(1))
+			Expect(volumeMounts).To(HaveLen(2)) // + tmpfs
 			Expect(volumeMounts[0].Name).To(Equal("data"))
 			Expect(volumeMounts[0].MountPath).To(Equal("/app/data"))
 
-			// Verify NO volumes in pod template (because volumeClaimTemplates handles it)
+			// Verify no data volume in pod template (because volumeClaimTemplates handles it); only tmpfs remains
 			volumes := sts.Spec.Template.Spec.Volumes
-			Expect(volumes).To(BeEmpty())
+			Expect(volumes).To(HaveLen(1))
+			Expect(volumes[0].Name).To(Equal("tmpfs"))
 		})
 
 		It("Should NOT create a separate PersistentVolumeClaim", func() {
@@ -1245,7 +1246,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 			Expect(sts.Spec.VolumeClaimTemplates).To(BeEmpty())
 
 			volumes := sts.Spec.Template.Spec.Volumes
-			Expect(volumes).To(HaveLen(1))
+			Expect(volumes).To(HaveLen(2)) // + tmpfs
 			Expect(volumes[0].VolumeSource.PersistentVolumeClaim).NotTo(BeNil())
 			Expect(volumes[0].VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(existingPVC.Name))
 		})
@@ -1324,13 +1325,13 @@ var _ = Describe("PocketIDInstance Controller", func() {
 
 			// Verify emptyDir volume is configured
 			volumes := sts.Spec.Template.Spec.Volumes
-			Expect(volumes).To(HaveLen(1))
+			Expect(volumes).To(HaveLen(2)) // + tmpfs
 			Expect(volumes[0].Name).To(Equal("data"))
 			Expect(volumes[0].VolumeSource.EmptyDir).NotTo(BeNil())
 
 			// Verify volume mount
 			volumeMounts := sts.Spec.Template.Spec.Containers[0].VolumeMounts
-			Expect(volumeMounts).To(HaveLen(1))
+			Expect(volumeMounts).To(HaveLen(2)) // + tmpfs
 			Expect(volumeMounts[0].Name).To(Equal("data"))
 			Expect(volumeMounts[0].MountPath).To(Equal("/app/data"))
 
@@ -2832,9 +2833,9 @@ var _ = Describe("PocketIDInstance Controller", func() {
 				}, deployment)
 			}, timeout, interval).Should(Succeed())
 
-			// Verify the pocket-id container has both volume mounts
+			// Verify the pocket-id container has data, extra, and tmpfs mounts
 			volumeMounts := deployment.Spec.Template.Spec.Containers[0].VolumeMounts
-			Expect(volumeMounts).To(HaveLen(2))
+			Expect(volumeMounts).To(HaveLen(3)) // + tmpfs
 
 			// Data mount with custom path and subPath
 			Expect(volumeMounts[0].Name).To(Equal("data"))

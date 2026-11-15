@@ -212,8 +212,8 @@ func TestBuildPodTemplate_PersistencePathDefault(t *testing.T) {
 	pt := (&Reconciler{}).buildPodTemplate(inst, "")
 
 	mounts := pt.Spec.Containers[0].VolumeMounts
-	if len(mounts) != 1 {
-		t.Fatalf("expected 1 volume mount, got %d", len(mounts))
+	if len(mounts) != 2 {
+		t.Fatalf("expected data + tmp volume mounts, got %d", len(mounts))
 	}
 	if mounts[0].MountPath != "/app/data" {
 		t.Errorf("default mount path: got %q, want %q", mounts[0].MountPath, "/app/data")
@@ -278,14 +278,115 @@ func TestBuildPodTemplate_ExtraVolumeMounts(t *testing.T) {
 	pt := (&Reconciler{}).buildPodTemplate(inst, "")
 
 	mounts := pt.Spec.Containers[0].VolumeMounts
-	if len(mounts) != 2 {
-		t.Fatalf("expected 2 volume mounts, got %d", len(mounts))
+	if len(mounts) != 3 {
+		t.Fatalf("expected 3 volume mounts, got %d", len(mounts))
 	}
 	if mounts[0].Name != "data" || mounts[0].MountPath != "/app/data" {
 		t.Errorf("first mount should be data at /app/data, got %s at %s", mounts[0].Name, mounts[0].MountPath)
 	}
 	if mounts[1].Name != "geoip-db" || mounts[1].MountPath != "/geoip" || !mounts[1].ReadOnly {
 		t.Errorf("second mount: got name=%s path=%s readOnly=%v", mounts[1].Name, mounts[1].MountPath, mounts[1].ReadOnly)
+	}
+}
+
+func TestBuildPodTemplate_StartupProbeDefault(t *testing.T) {
+	pt := (&Reconciler{}).buildPodTemplate(minimalInstance(), "")
+
+	probe := pt.Spec.Containers[0].StartupProbe
+	if probe == nil || probe.HTTPGet == nil {
+		t.Fatalf("expected default HTTP startup probe, got %+v", probe)
+	}
+	if probe.HTTPGet.Path != "/healthz" || probe.HTTPGet.Port.IntValue() != 1411 {
+		t.Errorf("startup probe target: got %s on %s", probe.HTTPGet.Path, probe.HTTPGet.Port.String())
+	}
+	if budget := probe.PeriodSeconds * probe.FailureThreshold; budget != 300 {
+		t.Errorf("startup probe budget: got %ds, want 300s", budget)
+	}
+}
+
+func TestBuildPodTemplate_StartupProbeOverride(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.StartupProbe = &corev1.Probe{
+		ProbeHandler: corev1.ProbeHandler{
+			TCPSocket: &corev1.TCPSocketAction{Port: intstr.FromInt(1411)},
+		},
+		FailureThreshold: 120,
+	}
+
+	pt := (&Reconciler{}).buildPodTemplate(inst, "")
+
+	probe := pt.Spec.Containers[0].StartupProbe
+	if probe.TCPSocket == nil || probe.HTTPGet != nil || probe.FailureThreshold != 120 {
+		t.Errorf("user-provided startup probe should be used as-is, got %+v", probe)
+	}
+}
+
+func TestBuildPodTemplate_TmpEmptyDir(t *testing.T) {
+	for _, deploymentType := range []string{"Deployment", "StatefulSet"} {
+		t.Run(deploymentType, func(t *testing.T) {
+			inst := minimalInstance()
+			inst.Spec.DeploymentType = deploymentType
+			inst.Spec.Persistence.Enabled = true
+
+			pt := (&Reconciler{}).buildPodTemplate(inst, "")
+
+			vol := findVolume(pt.Spec.Volumes, "tmpfs")
+			if vol == nil || vol.EmptyDir == nil {
+				t.Fatalf("expected tmpfs emptyDir volume, got %+v", vol)
+			}
+			var found bool
+			for _, m := range pt.Spec.Containers[0].VolumeMounts {
+				if m.Name == "tmpfs" {
+					found = true
+					if m.MountPath != "/tmp" || m.SubPath != "tmp" || m.ReadOnly {
+						t.Errorf("tmp mount: got %+v", m)
+					}
+				}
+			}
+			if !found {
+				t.Error("expected tmpfs volume mounted in pocket-id container")
+			}
+		})
+	}
+}
+
+func TestBuildPodTemplate_TmpSkippedWhenUserMountsTmp(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.Persistence.ExtraVolumeMounts = []corev1.VolumeMount{
+		{Name: "my-tmp", MountPath: "/tmp/"},
+	}
+	inst.Spec.PodTemplate = &corev1.PodTemplateSpec{
+		Spec: corev1.PodSpec{
+			Volumes: []corev1.Volume{
+				{Name: "my-tmp", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+			},
+		},
+	}
+
+	pt := (&Reconciler{}).buildPodTemplate(inst, "")
+
+	if findVolume(pt.Spec.Volumes, "tmpfs") != nil {
+		t.Error("operator tmpfs volume should not be added when user mounts /tmp")
+	}
+	for _, m := range pt.Spec.Containers[0].VolumeMounts {
+		if m.Name == "tmpfs" {
+			t.Errorf("unexpected operator tmp mount: %+v", m)
+		}
+	}
+}
+
+func TestBuildPodTemplate_TmpSkippedWhenDataAtTmp(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.Persistence.Path = "/tmp"
+
+	pt := (&Reconciler{}).buildPodTemplate(inst, "")
+
+	if findVolume(pt.Spec.Volumes, "tmpfs") != nil {
+		t.Error("operator tmpfs volume should not be added when the data volume is at /tmp")
+	}
+	mounts := pt.Spec.Containers[0].VolumeMounts
+	if len(mounts) != 1 || mounts[0].Name != "data" || mounts[0].MountPath != "/tmp" {
+		t.Errorf("expected only the data mount at /tmp, got %+v", mounts)
 	}
 }
 
@@ -311,8 +412,8 @@ func TestBuildPodTemplate_TLSSecretMounted(t *testing.T) {
 		t.Fatalf("expected tls volume from secret pocket-id-tls, got %+v", vol)
 	}
 	mounts := pt.Spec.Containers[0].VolumeMounts
-	if len(mounts) != 2 {
-		t.Fatalf("expected data + tls mounts, got %d", len(mounts))
+	if len(mounts) != 3 {
+		t.Fatalf("expected data + tls + tmp mounts, got %d", len(mounts))
 	}
 	if mounts[1].Name != "tls" || mounts[1].MountPath != "/etc/pocket-id/tls" || !mounts[1].ReadOnly {
 		t.Errorf("tls mount: got %+v", mounts[1])
@@ -334,6 +435,9 @@ func TestBuildPodTemplate_TLSSwitchesProbeScheme(t *testing.T) {
 	if got := container.LivenessProbe.HTTPGet.Scheme; got != corev1.URISchemeHTTPS {
 		t.Errorf("liveness probe scheme: got %q, want HTTPS", got)
 	}
+	if got := container.StartupProbe.HTTPGet.Scheme; got != corev1.URISchemeHTTPS {
+		t.Errorf("startup probe scheme: got %q, want HTTPS", got)
+	}
 }
 
 func TestBuildPodTemplate_ProbeSchemeDefaultsToHTTP(t *testing.T) {
@@ -345,6 +449,9 @@ func TestBuildPodTemplate_ProbeSchemeDefaultsToHTTP(t *testing.T) {
 	}
 	if got := container.LivenessProbe.HTTPGet.Scheme; got != corev1.URISchemeHTTP {
 		t.Errorf("liveness probe scheme: got %q, want HTTP", got)
+	}
+	if got := container.StartupProbe.HTTPGet.Scheme; got != corev1.URISchemeHTTP {
+		t.Errorf("startup probe scheme: got %q, want HTTP", got)
 	}
 	if findVolume(pt.Spec.Volumes, "tls") != nil {
 		t.Error("tls volume should be absent when spec.tls is unset")
@@ -382,8 +489,8 @@ func TestBuildPodTemplate_AllPersistenceFieldsCombined(t *testing.T) {
 	pt := (&Reconciler{}).buildPodTemplate(inst, "")
 
 	mounts := pt.Spec.Containers[0].VolumeMounts
-	if len(mounts) != 2 {
-		t.Fatalf("expected 2 volume mounts, got %d", len(mounts))
+	if len(mounts) != 3 {
+		t.Fatalf("expected 3 volume mounts, got %d", len(mounts))
 	}
 	if mounts[0].MountPath != "/custom/data" {
 		t.Errorf("data mount path: got %q, want %q", mounts[0].MountPath, "/custom/data")

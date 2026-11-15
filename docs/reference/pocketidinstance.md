@@ -34,6 +34,7 @@ PocketIDInstanceSpec defines the desired state of PocketIDInstance.
 | `podTemplate` | [PodTemplateSpec](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#podtemplatespec-v1-core) |  |  | Pod template to merge with the operator-built pod spec. Operator-managed fields including the pocket-id container always take precedence.<br />_Schemaless: \{\}_ |
 | `readinessProbe` | [Probe](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#probe-v1-core) |  |  | Readiness probe configuration. |
 | `livenessProbe` | [Probe](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#probe-v1-core) |  |  | Liveness probe configuration. |
+| `startupProbe` | [Probe](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#probe-v1-core) |  |  | Startup probe configuration. |
 | `resources` | [ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#resourcerequirements-v1-core) |  |  | Resource requests and limits for the container. |
 | [`metrics`](#pocketidinstancespecmetrics) | object |  |  | Prometheus metrics configuration. When enabled, the operator injects the required OTEL environment variables and exposes a metrics port on the Service. |
 | [`route`](#pocketidinstancespecroute) | object |  |  | Configures an HTTPRoute when enabled. Requires Gateway API CRDs to be installed. |
