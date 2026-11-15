@@ -334,7 +334,7 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 		readinessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
-					Path:   "/readyz",
+					Path:   "/healthz",
 					Port:   intstr.FromInt(1411),
 					Scheme: probeScheme,
 				},
@@ -352,7 +352,7 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 		livenessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
-					Path:   "/readyz",
+					Path:   "/healthz",
 					Port:   intstr.FromInt(1411),
 					Scheme: probeScheme,
 				},
