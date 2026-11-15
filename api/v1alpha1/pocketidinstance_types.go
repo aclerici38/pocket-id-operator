@@ -635,6 +635,10 @@ type PocketIDInstanceSpec struct {
 	// +optional
 	LivenessProbe *corev1.Probe `json:"livenessProbe,omitempty"`
 
+	// Startup probe configuration.
+	// +optional
+	StartupProbe *corev1.Probe `json:"startupProbe,omitempty"`
+
 	// Resource requests and limits for the container.
 	// +optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`

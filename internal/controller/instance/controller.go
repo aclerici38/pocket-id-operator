@@ -27,7 +27,9 @@ import (
 	"maps"
 	"net/url"
 	"os"
+	"path"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -88,6 +90,11 @@ const (
 	// tlsVolumeName/tlsMountPath locate the mounted spec.tls certificate Secret.
 	tlsVolumeName = "tls"
 	tlsMountPath  = "/etc/pocket-id/tls"
+
+	// tmpfsVolumeName is mounted at /tmp, needed for the v3 upgrade tool.
+	tmpfsVolumeName = "tmpfs"
+	tmpSubPath      = "tmp"
+	tmpMountPath    = "/tmp"
 )
 
 // APIClientFactory builds the Pocket-ID API client used to talk to an instance.
@@ -365,6 +372,26 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 		}
 	}
 
+	// Liveness and readiness probes wait until this passes. Pocket-ID only starts
+	// serving once the database is ready, so a slow first-start database upgrade
+	// needs this headroom: 60 failures x 5s = 5 minutes.
+	startupProbe := instance.Spec.StartupProbe
+	if startupProbe == nil {
+		startupProbe = &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Path:   "/healthz",
+					Port:   intstr.FromInt(1411),
+					Scheme: probeScheme,
+				},
+			},
+			PeriodSeconds:    5,
+			TimeoutSeconds:   5,
+			SuccessThreshold: 1,
+			FailureThreshold: 60,
+		}
+	}
+
 	mountPath := instance.Spec.Persistence.Path
 	if mountPath == "" {
 		mountPath = defaultMountPath
@@ -377,6 +404,13 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 	if instance.Spec.TLS != nil {
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{Name: tlsVolumeName, MountPath: tlsMountPath, ReadOnly: true})
 	}
+	// Respect a user-provided /tmp mount rather than creating a duplicate mountPath.
+	addTmp := !slices.ContainsFunc(instance.Spec.Persistence.ExtraVolumeMounts, func(m corev1.VolumeMount) bool {
+		return path.Clean(m.MountPath) == tmpMountPath
+	})
+	if addTmp {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{Name: tmpfsVolumeName, MountPath: tmpMountPath, SubPath: tmpSubPath})
+	}
 
 	container := corev1.Container{
 		Name:            appName,
@@ -386,6 +420,7 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 		Env:             buildEnvVars(instance),
 		ReadinessProbe:  readinessProbe,
 		LivenessProbe:   livenessProbe,
+		StartupProbe:    startupProbe,
 		VolumeMounts:    volumeMounts,
 	}
 	pt.Spec.Containers = append([]corev1.Container{container}, pt.Spec.Containers...)
@@ -417,6 +452,15 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 			Name: tlsVolumeName,
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{SecretName: instance.Spec.TLS.SecretRef.Name},
+			},
+		})
+	}
+
+	if addTmp {
+		setVolume(&pt.Spec.Volumes, corev1.Volume{
+			Name: tmpfsVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
 			},
 		})
 	}
