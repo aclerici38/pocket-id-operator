@@ -50,6 +50,11 @@ func Run(cmd *exec.Cmd) (string, error) {
 	return string(output), nil
 }
 
+// ImageExistsLocally reports whether the image is present in the local docker daemon.
+func ImageExistsLocally(name string) bool {
+	return exec.Command("docker", "image", "inspect", name).Run() == nil
+}
+
 // LoadImageToKindClusterWithName loads a local docker image to the kind cluster
 func LoadImageToKindClusterWithName(name string) error {
 	cluster := defaultKindCluster

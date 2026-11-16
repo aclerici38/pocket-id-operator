@@ -131,9 +131,16 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 		By("skipping build because IMG is set")
 	}
 
-	By("loading the operator image into Kind")
-	err := utils.LoadImageToKindClusterWithName(projectImage)
-	Expect(err).NotTo(HaveOccurred(), "Failed to load operator image into Kind")
+	// Images that only exist in a registry are pulled by the cluster itself. That avoids
+	// `kind load` on Docker's containerd image store, where a pulled multi-arch image keeps
+	// index entries for platforms that were never downloaded and the import fails.
+	if utils.ImageExistsLocally(projectImage) {
+		By("loading the operator image into Kind")
+		err := utils.LoadImageToKindClusterWithName(projectImage)
+		Expect(err).NotTo(HaveOccurred(), "Failed to load operator image into Kind")
+	} else {
+		By(fmt.Sprintf("image %s is not local; the cluster will pull it", projectImage))
+	}
 
 	By("building the Kubernetes client")
 	var kErr error
@@ -147,7 +154,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 
 	By("installing CRDs")
 	cmd := exec.Command("mise", "run", "install")
-	_, err = utils.Run(cmd)
+	_, err := utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
 
 	By("deploying the operator with e2e config (faster resync)")

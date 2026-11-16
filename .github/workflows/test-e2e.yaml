@@ -106,12 +106,6 @@ jobs:
           docker load -i "/tmp/operator-image-${IMAGE_TAG}.tar"
           docker tag "${IMAGE_REPO}:${IMAGE_TAG}" pocket-id-operator:local-test
 
-      - name: Pull release image
-        if: inputs.latest_release
-        env:
-          RELEASE_IMAGE: ${{ steps.release.outputs.image }}
-        run: docker pull "${RELEASE_IMAGE}"
-
       - name: Create kind cluster
         run: mise run setup-test-e2e
 
