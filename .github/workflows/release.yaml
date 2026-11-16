@@ -68,7 +68,7 @@ jobs:
         uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: "2026.11.5"
+          version: "2026.11.9"
           install_args: "yq"
 
       - name: Setup Docker Buildx
@@ -248,7 +248,7 @@ jobs:
         uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: "2026.11.5"
+          version: "2026.11.9"
           install_args: "sd yq"
 
       - name: Generate GitHub App token
@@ -347,7 +347,7 @@ jobs:
         uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: "2026.11.5"
+          version: "2026.11.9"
           install_args: "aqua:orhun/git-cliff"
 
       # On a promotion the release tag already sits on this commit, so its history
@@ -465,7 +465,7 @@ jobs:
         uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: "2026.11.5"
+          version: "2026.11.9"
           install_args: "aqua:orhun/git-cliff"
 
       # cliff.toml declares [remote.github] and templates commit.remote.username,
