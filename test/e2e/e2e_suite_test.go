@@ -28,6 +28,8 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
@@ -103,6 +105,8 @@ func newK8sClient() (client.Client, error) {
 
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
+	// Silences controller-runtime's "SetLogger was never called" warning.
+	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 	// One place to tune the suite's timing. Specs no longer pass their own timeout and
 	// interval: 2 minutes matches what the overwhelming majority used, and polling at
 	// 250ms costs one extra API GET per tick against a local apiserver while removing
