@@ -58,9 +58,10 @@ Each entry in `spec.apiKeys` creates an API key for the user in Pocket-ID and wr
 
 `scopes` is required and is passed to Pocket-ID as-is. The operator doesn't define or check scope names. Pocket-ID decides which scopes exist and which a key may hold, and its [scope catalog](https://github.com/pocket-id/pocket-id/blob/main/backend/internal/authz/scope.go) is the list to choose from. In short, `account:*` scopes cover the user's own account and are held by every user, and the remaining scopes, such as `users:read`, are admin-only. Session-only scopes such as `account:api-keys:create` can never be granted to a key.
 
-- If Pocket-ID refuses a scope, because it's unknown, session-only, or one the user doesn't hold, the key isn't created and the user reports `Ready=False` with reason `APIKeyError` until the entry is fixed.
+- If Pocket-ID refuses a scope, because it's unknown, session-only, or one the user doesn't hold, the key isn't created or changed and the user reports `Ready=False` with reason `APIKeyError` until the entry is fixed.
 - Pocket-ID checks a key's scopes against its owner's current role on every request. Setting `admin: false` immediately stops the user's keys from using admin scopes, without changing the keys themselves.
-- A key is only created once. Changing `expiresAt`, `description`, or `scopes` on an existing entry has no effect, and an expired key is not renewed. To replace a key, remove the entry and add it again.
+- Changing `description` or `scopes` updates the key in place, keeping its token. Changing an explicit `expiresAt` renews the key, which replaces the token in its Secret and revokes the old one immediately. An unset `expiresAt` is never renewed, so a key without one expires a year after creation.
+- Keys can only be managed in a session as their owner, and Pocket-ID rate-limits starting sessions per client IP, so the operator only checks a user's keys in Pocket-ID when it starts, after the `PocketIDUser` spec changes, or after a reconcile fails. A key deleted or edited outside the operator, e.g. in the Pocket-ID UI, is recreated or reverted then, a deleted key with a new token. To replace a key yourself, remove the entry and add it again.
 - Removing an entry deletes the key from Pocket-ID along with its Secret.
 
 ## Deletion

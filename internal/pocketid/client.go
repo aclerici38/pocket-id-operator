@@ -82,18 +82,19 @@ type User struct {
 
 // APIKey represents a Pocket-ID API key.
 type APIKey struct {
-	ID          string
-	Name        string
-	Description string
-	CreatedAt   string
-	ExpiresAt   string
-	LastUsedAt  string
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	CreatedAt   string   `json:"createdAt"`
+	ExpiresAt   string   `json:"expiresAt"`
+	LastUsedAt  string   `json:"lastUsedAt"`
+	Scopes      []string `json:"scopes"`
 }
 
-// APIKeyWithToken is returned when creating an API key. The token is a one-time token.
+// APIKeyWithToken is returned when creating or renewing an API key. The token is a one-time token.
 type APIKeyWithToken struct {
-	APIKey
-	Token string
+	APIKey `json:"apiKey"`
+	Token  string `json:"token"`
 }
 
 // OIDCClient represents an OIDC client with key configuration.
@@ -669,63 +670,25 @@ func (c *Client) DeleteUser(ctx context.Context, id string) error {
 
 // --- API Key Operations ---
 
-// withUserSession runs fn in a session for the user, the only credential that can manage keys the user owns.
-func (c *Client) withUserSession(ctx context.Context, userID string, tokenTTLMinutes int, fn func(*sessionClient, []*http.Cookie) error) error {
+// WithUserSession runs fn in a session for the user, ending the session once fn returns.
+func (c *Client) WithUserSession(ctx context.Context, userID string, tokenTTLMinutes int, fn func(*UserSession) error) error {
 	token, err := c.CreateOneTimeAccessToken(ctx, userID, tokenTTLMinutes)
 	if err != nil {
 		return fmt.Errorf("create one-time access token: %w", err)
 	}
 
-	session := newSessionClient(c.baseURL, c.httpClient)
-	cookies, err := session.exchangeOneTimeAccessToken(ctx, token.Token)
-	if err != nil {
+	session := newUserSession(c.baseURL, c.httpClient)
+	if err := session.exchangeOneTimeAccessToken(ctx, token.Token); err != nil {
 		return fmt.Errorf("exchange one-time access token: %w", err)
 	}
 	// A created key's token is only returned once, so a failed logout must not fail the call.
 	defer func() {
-		if logoutErr := session.logout(ctx, cookies); logoutErr != nil {
+		if logoutErr := session.logout(ctx); logoutErr != nil {
 			logf.FromContext(ctx).Error(logoutErr, "Failed to end user session", "userID", userID)
 		}
 	}()
 
-	return fn(session, cookies)
-}
-
-// CreateAPIKeyForUser creates an API key owned by the specified user.
-func (c *Client) CreateAPIKeyForUser(ctx context.Context, userID, name, expiresAt, description string, scopes []string, tokenTTLMinutes int) (result *APIKeyWithToken, err error) {
-	start := time.Now()
-	defer func() { recordCall("create_api_key_for_user", err, time.Since(start)) }()
-
-	err = c.withUserSession(ctx, userID, tokenTTLMinutes, func(session *sessionClient, cookies []*http.Cookie) error {
-		apiKeyResp, err := session.createAPIKeyWithCookies(ctx, cookies, CreateAPIKeyRequest{
-			Name:        name,
-			ExpiresAt:   expiresAt,
-			Description: description,
-			Scopes:      scopes,
-		})
-		if err != nil {
-			return fmt.Errorf("create API key: %w", err)
-		}
-		result = &APIKeyWithToken{
-			APIKey: apiKeyFromCreateResponse(apiKeyResp),
-			Token:  apiKeyResp.Token,
-		}
-		return nil
-	})
-	return result, err
-}
-
-// DeleteAPIKeyForUser revokes an API key owned by the specified user.
-func (c *Client) DeleteAPIKeyForUser(ctx context.Context, userID, id string, tokenTTLMinutes int) (err error) {
-	start := time.Now()
-	defer func() { recordCall("delete_api_key", err, time.Since(start)) }()
-
-	return c.withUserSession(ctx, userID, tokenTTLMinutes, func(session *sessionClient, cookies []*http.Cookie) error {
-		if err := session.deleteAPIKeyWithCookies(ctx, cookies, id); err != nil {
-			return fmt.Errorf("delete API key: %w", err)
-		}
-		return nil
-	})
+	return fn(session)
 }
 
 // --- OIDC Client Operations ---
@@ -1482,19 +1445,6 @@ func userFromDTO(dto *models.GithubComPocketIDPocketIDBackendInternalDtoUserDto)
 		Locale:        dto.Locale,
 		EmailVerified: dto.EmailVerified,
 		CustomClaims:  customClaimsFromDTO(dto.CustomClaims),
-	}
-}
-
-func apiKeyFromCreateResponse(resp *CreateAPIKeyResponse) APIKey {
-	if resp == nil {
-		return APIKey{}
-	}
-	return APIKey{
-		ID:          resp.APIKey.ID,
-		Name:        resp.APIKey.Name,
-		Description: resp.APIKey.Description,
-		CreatedAt:   resp.APIKey.CreatedAt,
-		ExpiresAt:   resp.APIKey.ExpiresAt,
 	}
 }
 

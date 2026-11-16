@@ -7,7 +7,7 @@ operator:
 
   image:
     repository: ghcr.io/aclerici38/pocket-id-operator
-    tag: "v0.16.2@sha256:a71a697531763d8410b37282da2e4b5ca58c9136f101255c73b11036bd8c479e" # Pinned by the release; empty falls back to Chart.appVersion
+    tag: "v0.16.3@sha256:06f99af4fdbdb689227c86db25f6befd8fb116b2fb5791b4d43de14715a391de" # Pinned by the release; empty falls back to Chart.appVersion
     pullPolicy: IfNotPresent
 
   args:

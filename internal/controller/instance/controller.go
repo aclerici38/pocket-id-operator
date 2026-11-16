@@ -27,7 +27,9 @@ import (
 	"maps"
 	"net/url"
 	"os"
+	"path"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -61,7 +63,7 @@ import (
 const (
 	// latestTestedPocketIDVersion is the most recent pocket-id upstream version tested.
 	// renovate: datasource=docker depName=ghcr.io/pocket-id/pocket-id
-	latestTestedPocketIDVersion = "v2.19.2"
+	latestTestedPocketIDVersion = "v2.19.3"
 
 	// minimumSupportedPocketIDVersion is the oldest pocket-id version this operator can manage. Detecting anything older on an instance crashloops the operator to prevent unwanted changes via an incompatible api.
 	minimumSupportedPocketIDVersion = "v3.0.0"
@@ -72,7 +74,7 @@ const (
 	firstUnsupportedPocketIDVersion = "v4.0.0"
 
 	// DefaultPocketIDImage is the image used when spec.image is empty.
-	DefaultPocketIDImage = "ghcr.io/pocket-id/pocket-id:v2.19.2-distroless@sha256:a21166a4eb513d2ffcbf815398480998d996a9e719cfba029395517658626f9e"
+	DefaultPocketIDImage = "ghcr.io/pocket-id/pocket-id:v2.19.3-distroless@sha256:6a0045a89b80fa6624c091786e7be132a4dde880ca64727a6b019c056b091982"
 
 	// Environment variable mapping
 	envEncryptionKey      = "ENCRYPTION_KEY"
@@ -88,6 +90,11 @@ const (
 	// tlsVolumeName/tlsMountPath locate the mounted spec.tls certificate Secret.
 	tlsVolumeName = "tls"
 	tlsMountPath  = "/etc/pocket-id/tls"
+
+	// tmpfsVolumeName is mounted at /tmp, needed for the v3 upgrade tool.
+	tmpfsVolumeName = "tmpfs"
+	tmpSubPath      = "tmp"
+	tmpMountPath    = "/tmp"
 )
 
 // APIClientFactory builds the Pocket-ID API client used to talk to an instance.
@@ -334,7 +341,7 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 		readinessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
-					Path:   "/readyz",
+					Path:   "/healthz",
 					Port:   intstr.FromInt(1411),
 					Scheme: probeScheme,
 				},
@@ -352,7 +359,7 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 		livenessProbe = &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
-					Path:   "/readyz",
+					Path:   "/healthz",
 					Port:   intstr.FromInt(1411),
 					Scheme: probeScheme,
 				},
@@ -362,6 +369,26 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 			TimeoutSeconds:      10,
 			SuccessThreshold:    1,
 			FailureThreshold:    5,
+		}
+	}
+
+	// Liveness and readiness probes wait until this passes. Pocket-ID only starts
+	// serving once the database is ready, so a slow first-start database upgrade
+	// needs this headroom: 60 failures x 5s = 5 minutes.
+	startupProbe := instance.Spec.StartupProbe
+	if startupProbe == nil {
+		startupProbe = &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Path:   "/healthz",
+					Port:   intstr.FromInt(1411),
+					Scheme: probeScheme,
+				},
+			},
+			PeriodSeconds:    5,
+			TimeoutSeconds:   5,
+			SuccessThreshold: 1,
+			FailureThreshold: 60,
 		}
 	}
 
@@ -377,6 +404,13 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 	if instance.Spec.TLS != nil {
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{Name: tlsVolumeName, MountPath: tlsMountPath, ReadOnly: true})
 	}
+	// Respect an existing /tmp mount (data or extra) rather than creating a duplicate mountPath.
+	addTmp := !slices.ContainsFunc(volumeMounts, func(m corev1.VolumeMount) bool {
+		return path.Clean(m.MountPath) == tmpMountPath
+	})
+	if addTmp {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{Name: tmpfsVolumeName, MountPath: tmpMountPath, SubPath: tmpSubPath})
+	}
 
 	container := corev1.Container{
 		Name:            appName,
@@ -386,6 +420,7 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 		Env:             buildEnvVars(instance),
 		ReadinessProbe:  readinessProbe,
 		LivenessProbe:   livenessProbe,
+		StartupProbe:    startupProbe,
 		VolumeMounts:    volumeMounts,
 	}
 	pt.Spec.Containers = append([]corev1.Container{container}, pt.Spec.Containers...)
@@ -417,6 +452,15 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 			Name: tlsVolumeName,
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{SecretName: instance.Spec.TLS.SecretRef.Name},
+			},
+		})
+	}
+
+	if addTmp {
+		setVolume(&pt.Spec.Volumes, corev1.Volume{
+			Name: tmpfsVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
 			},
 		})
 	}

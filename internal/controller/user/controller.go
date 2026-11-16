@@ -17,12 +17,16 @@ limitations under the License.
 package user
 
 import (
+	"cmp"
 	"context"
 	stderrors "errors"
 	"fmt"
+	"slices"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/retry"
@@ -63,6 +67,10 @@ type Reconciler struct {
 	// to avoid cache delays when secrets are created externally.
 	APIReader client.Reader
 	Scheme    *runtime.Scheme
+
+	// apiKeysChecked holds the UIDs of users whose keys this process has compared with Pocket-ID,
+	// so a restart or rollout checks every user's keys once.
+	apiKeysChecked sync.Map
 }
 
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidusers,verbs=get;list;watch;create;update;patch;delete
@@ -248,6 +256,7 @@ func userGroupHasUserRef(group *pocketidinternalv1alpha1.PocketIDUserGroup, user
 func (r *Reconciler) ReconcileDelete(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	r.EnsureClient(r.Client)
+	r.apiKeysChecked.Delete(user.UID)
 
 	// Check if user is referenced by user groups
 	referencedByUserGroup, err := r.isUserReferencedByUserGroup(ctx, user.Name, user.Namespace)
@@ -584,6 +593,7 @@ func (r *Reconciler) setUserID(ctx context.Context, user *pocketidinternalv1alph
 func (r *Reconciler) clearUserStatus(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser) error {
 	return r.ClearStatusField(ctx, user, func() {
 		user.Status.UserID = ""
+		user.Status.APIKeys = nil
 	})
 }
 
@@ -691,75 +701,128 @@ func (r *Reconciler) clearOneTimeLoginStatus(ctx context.Context, user *pocketid
 	return ctrl.Result{}, nil
 }
 
-// reconcileAPIKeys ensures API keys exist in Pocket-ID and secrets are created
+// reconcileAPIKeys converges the user's API keys in Pocket-ID, and the Secrets holding their tokens, onto the spec.
+// Keys are only managed in a session as their owner, and Pocket-ID rate-limits starting sessions per client IP,
+// so it is skipped once this process has checked them and a reconcile of the current spec has converged them.
 func (r *Reconciler) reconcileAPIKeys(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client, instanceNamespace, instanceName string) error {
+	if len(user.Spec.APIKeys) == 0 && len(user.Status.APIKeys) == 0 {
+		return nil
+	}
+	if _, checked := r.apiKeysChecked.Load(user.UID); checked && apiKeysConverged(user) {
+		return nil
+	}
+	err := apiClient.WithUserSession(ctx, user.Status.UserID, DefaultLoginTokenExpiryMin, func(session *pocketid.UserSession) error {
+		keys, err := session.ListAPIKeys(ctx)
+		if err != nil {
+			return err
+		}
+		current := make(map[string]pocketid.APIKey, len(keys))
+		for _, key := range keys {
+			current[key.ID] = key
+		}
+
+		recordOp := func(operation string) {
+			metrics.APIKeyOperations.WithLabelValues(instanceNamespace, instanceName, operation).Inc()
+		}
+		for _, spec := range user.Spec.APIKeys {
+			if err := r.reconcileAPIKey(ctx, user, session, spec, current, recordOp); err != nil {
+				return fmt.Errorf("API key %s: %w", spec.Name, err)
+			}
+		}
+		return r.pruneAPIKeys(ctx, user, session, recordOp)
+	})
+	if err == nil {
+		r.apiKeysChecked.Store(user.UID, struct{}{})
+	}
+	return err
+}
+
+// reconcileAPIKey creates the key if Pocket-ID doesn't have it, then pushes any drift from the spec.
+func (r *Reconciler) reconcileAPIKey(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, session *pocketid.UserSession, spec pocketidinternalv1alpha1.APIKeySpec, current map[string]pocketid.APIKey, recordOp func(string)) error {
 	log := logf.FromContext(ctx)
 
-	existingKeys := make(map[string]*pocketidinternalv1alpha1.APIKeyStatus)
-	for i := range user.Status.APIKeys {
-		existingKeys[user.Status.APIKeys[i].Name] = &user.Status.APIKeys[i]
+	status := apiKeyStatus(user, spec.Name)
+	secretName := fmt.Sprintf("%s-%s-key", user.Name, spec.Name)
+	key, exists := current[status.ID]
+
+	var issued *pocketid.APIKeyWithToken
+	var err error
+	switch {
+	case !exists:
+		if status.ID != "" {
+			log.Info("API key was deleted externally, will recreate", "name", spec.Name, "id", status.ID)
+			metrics.ExternalDeletions.WithLabelValues("APIKey").Inc()
+		}
+		log.Info("Creating API key", "name", spec.Name)
+		expiresAt := cmp.Or(spec.ExpiresAt, pocketid.DefaultAPIKeyExpiry().Format(time.RFC3339))
+		if issued, err = session.CreateAPIKey(ctx, spec.Name, expiresAt, spec.Description, spec.Scopes); err != nil {
+			return err
+		}
+		recordOp("created")
+	// Status records the expiry whose token was saved, so a renewal whose token never reached the Secret is retried.
+	case expiryDrifted(spec.ExpiresAt, key.ExpiresAt) || expiryDrifted(spec.ExpiresAt, status.ExpiresAt):
+		log.Info("Renewing API key", "name", spec.Name, "expiresAt", spec.ExpiresAt)
+		if issued, err = session.RenewAPIKey(ctx, key.ID, spec.ExpiresAt); err != nil {
+			return err
+		}
+		recordOp("renewed")
+	}
+	if issued != nil {
+		key = issued.APIKey
+		if err := ensureAPIKeySecret(ctx, r.Client, r.Scheme, user, secretName, issued.Token); err != nil {
+			// The retry creates another key, so revoke this one rather than leave a key nobody holds the token for.
+			if !exists {
+				if revokeErr := session.DeleteAPIKey(ctx, key.ID); revokeErr != nil {
+					log.Error(revokeErr, "Failed to revoke API key whose token wasn't saved", "name", spec.Name)
+				}
+			}
+			return fmt.Errorf("write token secret: %w", err)
+		}
 	}
 
-	// Track which keys we want
-	wantedKeys := make(map[string]bool)
+	if key.Name != spec.Name || key.Description != spec.Description || !scopesEqual(key.Scopes, spec.Scopes) {
+		log.Info("Updating API key", "name", spec.Name)
+		updated, err := session.UpdateAPIKey(ctx, key.ID, spec.Name, spec.Description, spec.Scopes)
+		if err != nil {
+			return err
+		}
+		key = *updated
+		recordOp("updated")
+	}
+
+	base := user.DeepCopy()
+	mergeAPIKeyStatus(user, pocketidinternalv1alpha1.APIKeyStatus{
+		Name:       spec.Name,
+		ID:         key.ID,
+		CreatedAt:  key.CreatedAt,
+		ExpiresAt:  key.ExpiresAt,
+		LastUsedAt: key.LastUsedAt,
+		SecretName: secretName,
+	})
+	return common.PatchStatus(ctx, r.Client, user, base)
+}
+
+// pruneAPIKeys revokes the keys recorded in status that are no longer in the spec.
+func (r *Reconciler) pruneAPIKeys(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, session *pocketid.UserSession, recordOp func(string)) error {
+	log := logf.FromContext(ctx)
+
+	wantedKeys := make(map[string]bool, len(user.Spec.APIKeys))
 	for _, spec := range user.Spec.APIKeys {
 		wantedKeys[spec.Name] = true
 	}
 
-	for _, spec := range user.Spec.APIKeys {
-		if _, exists := existingKeys[spec.Name]; exists {
-			continue
-		}
-
-		log.Info("Creating API key", "name", spec.Name)
-
-		if user.Status.UserID == "" {
-			return fmt.Errorf("user ID not set for API key %s", spec.Name)
-		}
-
-		expiresAt := spec.ExpiresAt
-		if expiresAt == "" {
-			expiresAt = pocketid.DefaultAPIKeyExpiry().Format(time.RFC3339)
-		}
-
-		apiKey, err := apiClient.CreateAPIKeyForUser(ctx, user.Status.UserID, spec.Name, expiresAt, spec.Description, spec.Scopes, DefaultLoginTokenExpiryMin)
-		if err != nil {
-			return fmt.Errorf("create API key %s: %w", spec.Name, err)
-		}
-		metrics.APIKeyOperations.WithLabelValues(instanceNamespace, instanceName, "created").Inc()
-
-		// Create secret for the token: {username}-{apikeyname}-key
-		secretName := fmt.Sprintf("%s-%s-key", user.Name, spec.Name)
-		if err := ensureAPIKeySecret(ctx, r.Client, r.Scheme, user, secretName, apiKey.Token); err != nil {
-			return fmt.Errorf("create secret for API key %s: %w", spec.Name, err)
-		}
-
-		keyStatus := pocketidinternalv1alpha1.APIKeyStatus{
-			Name:       spec.Name,
-			ID:         apiKey.ID,
-			CreatedAt:  apiKey.CreatedAt,
-			ExpiresAt:  apiKey.ExpiresAt,
-			SecretName: secretName,
-		}
-
-		base := user.DeepCopy()
-		mergeAPIKeyStatus(user, keyStatus)
-		if err := common.PatchStatus(ctx, r.Client, user, base); err != nil {
-			return fmt.Errorf("update status for API key %s: %w", spec.Name, err)
-		}
-	}
-
-	for name, keyStatus := range existingKeys {
+	for _, keyStatus := range slices.Clone(user.Status.APIKeys) {
+		name := keyStatus.Name
 		if wantedKeys[name] {
 			continue
 		}
 
 		log.Info("Deleting API key", "name", name)
 		if keyStatus.ID != "" {
-			if err := apiClient.DeleteAPIKeyForUser(ctx, user.Status.UserID, keyStatus.ID, DefaultLoginTokenExpiryMin); err != nil {
+			if err := session.DeleteAPIKey(ctx, keyStatus.ID); err != nil {
 				return fmt.Errorf("delete API key %s: %w", name, err)
 			}
-			metrics.APIKeyOperations.WithLabelValues(instanceNamespace, instanceName, "deleted").Inc()
+			recordOp("deleted")
 		}
 
 		// Delete secret
@@ -769,21 +832,55 @@ func (r *Reconciler) reconcileAPIKeys(ctx context.Context, user *pocketidinterna
 			}
 		}
 
-		// Remove from status
 		base := user.DeepCopy()
-		newKeys := make([]pocketidinternalv1alpha1.APIKeyStatus, 0)
-		for _, k := range user.Status.APIKeys {
-			if k.Name != name {
-				newKeys = append(newKeys, k)
-			}
-		}
-		user.Status.APIKeys = newKeys
+		user.Status.APIKeys = slices.DeleteFunc(user.Status.APIKeys, func(k pocketidinternalv1alpha1.APIKeyStatus) bool {
+			return k.Name == name
+		})
 		if err := common.PatchStatus(ctx, r.Client, user, base); err != nil {
 			return fmt.Errorf("update status after deleting API key %s: %w", name, err)
 		}
 	}
 
 	return nil
+}
+
+// apiKeysConverged reports whether every key in the spec has been created, and Ready says the current spec was reconciled.
+func apiKeysConverged(user *pocketidinternalv1alpha1.PocketIDUser) bool {
+	if len(user.Spec.APIKeys) != len(user.Status.APIKeys) {
+		return false
+	}
+	for _, spec := range user.Spec.APIKeys {
+		if apiKeyStatus(user, spec.Name).ID == "" {
+			return false
+		}
+	}
+	ready := meta.FindStatusCondition(user.Status.Conditions, "Ready")
+	return ready != nil && ready.Status == metav1.ConditionTrue && ready.ObservedGeneration == user.Generation
+}
+
+func apiKeyStatus(user *pocketidinternalv1alpha1.PocketIDUser, name string) pocketidinternalv1alpha1.APIKeyStatus {
+	for _, status := range user.Status.APIKeys {
+		if status.Name == name {
+			return status
+		}
+	}
+	return pocketidinternalv1alpha1.APIKeyStatus{}
+}
+
+// expiryDrifted reports whether an explicit expiry in the spec differs from the key's.
+// An unparsable one counts as drift so Pocket-ID's rejection of it surfaces. Sqlite stores whole seconds.
+func expiryDrifted(desired, actual string) bool {
+	if desired == "" {
+		return false
+	}
+	want, wantErr := time.Parse(time.RFC3339, desired)
+	got, gotErr := time.Parse(time.RFC3339, actual)
+	return wantErr != nil || gotErr != nil || !want.Truncate(time.Second).Equal(got.Truncate(time.Second))
+}
+
+// scopesEqual compares scopes as sets, since Pocket-ID sorts and dedupes the scopes it stores.
+func scopesEqual(a, b []string) bool {
+	return slices.Equal(slices.Compact(slices.Sorted(slices.Values(a))), slices.Compact(slices.Sorted(slices.Values(b))))
 }
 
 func (r *Reconciler) requestsForUserGroup(ctx context.Context, obj client.Object) []reconcile.Request {

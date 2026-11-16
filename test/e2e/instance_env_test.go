@@ -121,6 +121,7 @@ spec:
     homePageUrl: "/settings/account"
     disableAnimations: true
     accentColor: "default"
+    colorTheme: "mist"
   userManagement:
     emailsVerified: true
     allowOwnAccountEdit: false

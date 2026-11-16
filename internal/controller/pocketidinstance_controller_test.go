@@ -87,7 +87,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 					DeploymentType: "Deployment",
-					Image:          "ghcr.io/pocket-id/pocket-id:v2.19.2-distroless@sha256:a21166a4eb513d2ffcbf815398480998d996a9e719cfba029395517658626f9e",
+					Image:          "ghcr.io/pocket-id/pocket-id:v2.19.3-distroless@sha256:6a0045a89b80fa6624c091786e7be132a4dde880ca64727a6b019c056b091982",
 					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
@@ -125,7 +125,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 			}, timeout, interval).Should(Succeed())
 
 			Expect(deployment.Spec.Template.Spec.Containers).To(HaveLen(1))
-			Expect(deployment.Spec.Template.Spec.Containers[0].Image).To(Equal("ghcr.io/pocket-id/pocket-id:v2.19.2-distroless@sha256:a21166a4eb513d2ffcbf815398480998d996a9e719cfba029395517658626f9e"))
+			Expect(deployment.Spec.Template.Spec.Containers[0].Image).To(Equal("ghcr.io/pocket-id/pocket-id:v2.19.3-distroless@sha256:6a0045a89b80fa6624c091786e7be132a4dde880ca64727a6b019c056b091982"))
 			Expect(deployment.Spec.Template.Spec.Containers[0].Name).To(Equal("pocket-id"))
 
 			// Verify owner reference is set
@@ -571,14 +571,14 @@ var _ = Describe("PocketIDInstance Controller", func() {
 
 			// Check volume is defined
 			volumes := deployment.Spec.Template.Spec.Volumes
-			Expect(volumes).To(HaveLen(1))
+			Expect(volumes).To(HaveLen(2)) // + tmpfs
 			Expect(volumes[0].Name).To(Equal("data"))
 			Expect(volumes[0].VolumeSource.PersistentVolumeClaim).NotTo(BeNil())
 			Expect(volumes[0].VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(instanceName + "-data"))
 
 			// Check volume mount
 			volumeMounts := deployment.Spec.Template.Spec.Containers[0].VolumeMounts
-			Expect(volumeMounts).To(HaveLen(1))
+			Expect(volumeMounts).To(HaveLen(2)) // + tmpfs
 			Expect(volumeMounts[0].Name).To(Equal("data"))
 			Expect(volumeMounts[0].MountPath).To(Equal("/app/data"))
 		})
@@ -655,12 +655,12 @@ var _ = Describe("PocketIDInstance Controller", func() {
 			}, timeout, interval).Should(Succeed())
 
 			volumes := deployment.Spec.Template.Spec.Volumes
-			Expect(volumes).To(HaveLen(1))
+			Expect(volumes).To(HaveLen(2)) // + tmpfs
 			Expect(volumes[0].Name).To(Equal("data"))
 			Expect(volumes[0].VolumeSource.EmptyDir).NotTo(BeNil())
 
 			volumeMounts := deployment.Spec.Template.Spec.Containers[0].VolumeMounts
-			Expect(volumeMounts).To(HaveLen(1))
+			Expect(volumeMounts).To(HaveLen(2)) // + tmpfs
 			Expect(volumeMounts[0].MountPath).To(Equal("/app/data"))
 		})
 	})
@@ -764,7 +764,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 			}, timeout, interval).Should(Succeed())
 
 			volumes := deployment.Spec.Template.Spec.Volumes
-			Expect(volumes).To(HaveLen(1))
+			Expect(volumes).To(HaveLen(2)) // + tmpfs
 			Expect(volumes[0].VolumeSource.PersistentVolumeClaim).NotTo(BeNil())
 			Expect(volumes[0].VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(existingPVCName))
 		})
@@ -1138,13 +1138,14 @@ var _ = Describe("PocketIDInstance Controller", func() {
 
 			// Verify volume mount is configured
 			volumeMounts := sts.Spec.Template.Spec.Containers[0].VolumeMounts
-			Expect(volumeMounts).To(HaveLen(1))
+			Expect(volumeMounts).To(HaveLen(2)) // + tmpfs
 			Expect(volumeMounts[0].Name).To(Equal("data"))
 			Expect(volumeMounts[0].MountPath).To(Equal("/app/data"))
 
-			// Verify NO volumes in pod template (because volumeClaimTemplates handles it)
+			// Verify no data volume in pod template (because volumeClaimTemplates handles it); only tmpfs remains
 			volumes := sts.Spec.Template.Spec.Volumes
-			Expect(volumes).To(BeEmpty())
+			Expect(volumes).To(HaveLen(1))
+			Expect(volumes[0].Name).To(Equal("tmpfs"))
 		})
 
 		It("Should NOT create a separate PersistentVolumeClaim", func() {
@@ -1245,7 +1246,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 			Expect(sts.Spec.VolumeClaimTemplates).To(BeEmpty())
 
 			volumes := sts.Spec.Template.Spec.Volumes
-			Expect(volumes).To(HaveLen(1))
+			Expect(volumes).To(HaveLen(2)) // + tmpfs
 			Expect(volumes[0].VolumeSource.PersistentVolumeClaim).NotTo(BeNil())
 			Expect(volumes[0].VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(existingPVC.Name))
 		})
@@ -1324,13 +1325,13 @@ var _ = Describe("PocketIDInstance Controller", func() {
 
 			// Verify emptyDir volume is configured
 			volumes := sts.Spec.Template.Spec.Volumes
-			Expect(volumes).To(HaveLen(1))
+			Expect(volumes).To(HaveLen(2)) // + tmpfs
 			Expect(volumes[0].Name).To(Equal("data"))
 			Expect(volumes[0].VolumeSource.EmptyDir).NotTo(BeNil())
 
 			// Verify volume mount
 			volumeMounts := sts.Spec.Template.Spec.Containers[0].VolumeMounts
-			Expect(volumeMounts).To(HaveLen(1))
+			Expect(volumeMounts).To(HaveLen(2)) // + tmpfs
 			Expect(volumeMounts[0].Name).To(Equal("data"))
 			Expect(volumeMounts[0].MountPath).To(Equal("/app/data"))
 
@@ -1545,7 +1546,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
-					Image: "ghcr.io/pocket-id/pocket-id:v2.19.2-distroless@sha256:a21166a4eb513d2ffcbf815398480998d996a9e719cfba029395517658626f9e",
+					Image: "ghcr.io/pocket-id/pocket-id:v2.19.3-distroless@sha256:6a0045a89b80fa6624c091786e7be132a4dde880ca64727a6b019c056b091982",
 					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
@@ -1585,7 +1586,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 				if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(instance), instance); err != nil {
 					return err
 				}
-				instance.Spec.Image = "ghcr.io/pocket-id/pocket-id:v2.19.2-distroless@sha256:a21166a4eb513d2ffcbf815398480998d996a9e719cfba029395517658626f9e"
+				instance.Spec.Image = "ghcr.io/pocket-id/pocket-id:v2.19.3-distroless@sha256:6a0045a89b80fa6624c091786e7be132a4dde880ca64727a6b019c056b091982"
 				return k8sClient.Update(ctx, instance)
 			}, timeout, interval).Should(Succeed())
 
@@ -1599,7 +1600,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					return ""
 				}
 				return deployment.Spec.Template.Spec.Containers[0].Image
-			}, timeout, interval).Should(Equal("ghcr.io/pocket-id/pocket-id:v2.19.2-distroless@sha256:a21166a4eb513d2ffcbf815398480998d996a9e719cfba029395517658626f9e"))
+			}, timeout, interval).Should(Equal("ghcr.io/pocket-id/pocket-id:v2.19.3-distroless@sha256:6a0045a89b80fa6624c091786e7be132a4dde880ca64727a6b019c056b091982"))
 		})
 
 		It("Should reject changes to deploymentType", func() {
@@ -2832,9 +2833,9 @@ var _ = Describe("PocketIDInstance Controller", func() {
 				}, deployment)
 			}, timeout, interval).Should(Succeed())
 
-			// Verify the pocket-id container has both volume mounts
+			// Verify the pocket-id container has data, extra, and tmpfs mounts
 			volumeMounts := deployment.Spec.Template.Spec.Containers[0].VolumeMounts
-			Expect(volumeMounts).To(HaveLen(2))
+			Expect(volumeMounts).To(HaveLen(3)) // + tmpfs
 
 			// Data mount with custom path and subPath
 			Expect(volumeMounts[0].Name).To(Equal("data"))
@@ -2946,7 +2947,7 @@ var _ = Describe("PocketIDInstance image defaulting", func() {
 	})
 
 	Context("When creating a PocketIDInstance that pins spec.image", func() {
-		const pinned = "ghcr.io/pocket-id/pocket-id:v2.19.2-distroless"
+		const pinned = "ghcr.io/pocket-id/pocket-id:v2.19.3-distroless"
 
 		BeforeEach(func() {
 			inst = newInstance("test-pinned-image-instance", pinned)

@@ -2,6 +2,7 @@ package pocketid
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"io"
@@ -78,23 +79,23 @@ func (t *classifyingTransport) SubmitContext(ctx context.Context, operation *run
 		return result, err
 	}
 
+	return result, newAPIError(operation.ID, capture.statusCode, capture.header, capture.body, err)
+}
+
+// newAPIError classifies a failed response from its status, headers and body.
+func newAPIError(operation string, statusCode int, header http.Header, body []byte, err error) *APIError {
 	// A body that is not the envelope leaves every field zero.
 	var envelope models.GithubComPocketIDPocketIDBackendInternalDtoErrorDto
-	_ = json.Unmarshal(capture.body, &envelope)
+	_ = json.Unmarshal(body, &envelope)
 
-	requestID := envelope.RequestID
-	if requestID == "" {
-		requestID = capture.header.Get("X-Request-ID")
-	}
-
-	return result, &APIError{
-		Operation:  operation.ID,
-		StatusCode: capture.statusCode,
+	return &APIError{
+		Operation:  operation,
+		StatusCode: statusCode,
 		Code:       envelope.Code,
 		Message:    envelope.Error,
-		RequestID:  requestID,
+		RequestID:  cmp.Or(envelope.RequestID, header.Get("X-Request-ID")),
 		Details:    envelope.Details,
-		RetryAfter: parseRetryAfter(capture.header.Get("Retry-After")),
+		RetryAfter: parseRetryAfter(header.Get("Retry-After")),
 		err:        err,
 	}
 }

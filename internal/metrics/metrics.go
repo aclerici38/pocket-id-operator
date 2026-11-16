@@ -68,11 +68,11 @@ var (
 	//
 	//	instance_namespace - namespace of the PocketIDInstance
 	//	instance_name      - name of the PocketIDInstance
-	//	operation          - "created" or "deleted"
+	//	operation          - "created", "updated", "renewed" or "deleted"
 	APIKeyOperations = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "pocketid_operator_api_key_operations_total",
-			Help: "Total number of API key create/delete operations performed for PocketIDUser resources.",
+			Help: "Total number of API key create/update/renew/delete operations performed for PocketIDUser resources.",
 		},
 		[]string{"instance_namespace", "instance_name", "operation"},
 	)
@@ -82,7 +82,7 @@ var (
 	// resource that should exist). The operator will recreate the resource.
 	// Labels:
 	//
-	//	kind - "PocketIDUser", "PocketIDUserGroup", "PocketIDOIDCClient"
+	//	kind - "PocketIDUser", "PocketIDUserGroup", "PocketIDOIDCClient", "APIKey"
 	ExternalDeletions = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "pocketid_operator_external_deletions_total",

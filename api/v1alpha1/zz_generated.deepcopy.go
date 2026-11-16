@@ -927,6 +927,11 @@ func (in *PocketIDInstanceSpec) DeepCopyInto(out *PocketIDInstanceSpec) {
 		*out = new(corev1.Probe)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.StartupProbe != nil {
+		in, out := &in.StartupProbe, &out.StartupProbe
+		*out = new(corev1.Probe)
+		(*in).DeepCopyInto(*out)
+	}
 	in.Resources.DeepCopyInto(&out.Resources)
 	if in.Metrics != nil {
 		in, out := &in.Metrics, &out.Metrics

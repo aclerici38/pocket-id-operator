@@ -632,15 +632,27 @@ func TestBuildEnvVars_UI(t *testing.T) {
 		SessionDuration:   &sessionDuration,
 		HomePageURL:       "/dashboard",
 		DisableAnimations: new(true),
-		AccentColor:       "#3b82f6",
+		AccentColor:       "#3b82f6", //nolint:staticcheck // testing the deprecated field
+		ColorTheme:        "custom:#3b82f6:dark",
 	}
 
+	// The deprecated field and its replacement pass through untouched; Pocket-ID resolves precedence
 	env := buildEnvVars(inst)
 	requireEnv(t, env, "APP_NAME", "My SSO")
 	requireEnv(t, env, "SESSION_DURATION", "1440")
 	requireEnv(t, env, "HOME_PAGE_URL", "/dashboard")
 	requireEnv(t, env, "DISABLE_ANIMATIONS", "true")
 	requireEnv(t, env, "ACCENT_COLOR", "#3b82f6")
+	requireEnv(t, env, "COLOR_THEME", "custom:#3b82f6:dark")
+}
+
+func TestBuildEnvVars_UIEmpty(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.UI = &pocketidinternalv1alpha1.UIConfig{}
+
+	env := buildEnvVars(inst)
+	requireEnvAbsent(t, env, "ACCENT_COLOR")
+	requireEnvAbsent(t, env, "COLOR_THEME")
 }
 
 func TestBuildEnvVars_UserManagement(t *testing.T) {

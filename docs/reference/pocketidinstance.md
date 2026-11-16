@@ -34,6 +34,7 @@ PocketIDInstanceSpec defines the desired state of PocketIDInstance.
 | `podTemplate` | [PodTemplateSpec](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#podtemplatespec-v1-core) |  |  | Pod template to merge with the operator-built pod spec. Operator-managed fields including the pocket-id container always take precedence.<br />_Schemaless: \{\}_ |
 | `readinessProbe` | [Probe](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#probe-v1-core) |  |  | Readiness probe configuration. |
 | `livenessProbe` | [Probe](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#probe-v1-core) |  |  | Liveness probe configuration. |
+| `startupProbe` | [Probe](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#probe-v1-core) |  |  | Startup probe configuration. |
 | `resources` | [ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#resourcerequirements-v1-core) |  |  | Resource requests and limits for the container. |
 | [`metrics`](#pocketidinstancespecmetrics) | object |  |  | Prometheus metrics configuration. When enabled, the operator injects the required OTEL environment variables and exposes a metrics port on the Service. |
 | [`route`](#pocketidinstancespecroute) | object |  |  | Configures an HTTPRoute when enabled. Requires Gateway API CRDs to be installed. |
@@ -319,7 +320,8 @@ UIConfig configures Pocket-ID UI settings. The operator sets UI_CONFIG_DISABLED=
 | `sessionDuration` | integer |  |  | Session duration in minutes.<br />Sets SESSION_DURATION. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `homePageUrl` | string |  |  | Post-login redirect page.<br />Sets HOME_PAGE_URL. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `disableAnimations` | boolean |  |  | Disable UI animations.<br />Sets DISABLE_ANIMATIONS. See https://pocket-id.org/docs/configuration/environment-variables. |
-| `accentColor` | string |  |  | UI accent color.<br />Sets ACCENT_COLOR. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `accentColor` | string |  |  | Deprecated: use colorTheme instead. |
+| `colorTheme` | string |  |  | UI color theme. Takes precedence over accentColor.<br />Sets COLOR_THEME. See https://pocket-id.org/docs/configuration/environment-variables. |
 
 ## `PocketIDInstance.spec.userManagement`
 
