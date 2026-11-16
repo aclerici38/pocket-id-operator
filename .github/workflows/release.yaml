@@ -7,8 +7,13 @@ on:
         description: "Release version (e.g., v1.0.0)"
         required: true
         type: string
+      ref:
+        description: "Branch to cut the release from. The bump commit lands on it, and also on main when releasing from another branch."
+        required: false
+        type: string
+        default: main
       prerelease:
-        description: "Create a prerelease to inspect/edit first (still bumps main; skips image retag & chart publish). Re-run with this unchecked to promote it."
+        description: "Create a prerelease to inspect/edit first (still bumps the branches; skips image retag & chart publish). Re-run with this unchecked to promote it."
         required: false
         type: boolean
         default: false
@@ -23,17 +28,16 @@ env:
   MISE_TASK_RUN_AUTO_INSTALL: "false"
   BUMP_SUBJECT: "chore(release): ${{ inputs.version }} [skip ci]"
 
-# Serialize releases: two runs bumping main at once would race on the push.
+# Serialize releases: two runs bumping a branch at once would race on the push.
 concurrency:
   group: release
   cancel-in-progress: false
 
 jobs:
-  # Bumps first so everything downstream is cut from `sha`, a commit whose
-  # charts, manifests and docs already name this version. The packaged subchart,
-  # the chart annotations and the release assets therefore all agree.
-  prepare:
-    name: Bump version on main
+  # Resolves what to release: the commit to cut from, the image it ships and
+  # which branches need a version bump. Nothing is written here.
+  plan:
+    name: Plan release
     permissions:
       contents: read
       packages: read
@@ -41,17 +45,22 @@ jobs:
     outputs:
       version: ${{ steps.plan.outputs.version }}
       image_repo: ${{ steps.plan.outputs.image_repo }}
-      # Digest the release version tag will point at
+      # Empty when the image still has to be built (see build-image)
       image_digest: ${{ steps.plan.outputs.image_digest }}
-      # "true" when an existing prerelease is promoted rather than created
+      image_tag: ${{ steps.plan.outputs.image_tag }}
+      needs_build: ${{ steps.plan.outputs.needs_build }}
+      needs_bump: ${{ steps.plan.outputs.needs_bump }}
+      bump_main: ${{ steps.plan.outputs.bump_main }}
+      latest: ${{ steps.plan.outputs.latest }}
       promote: ${{ steps.plan.outputs.promote }}
-      # The bump commit, or on a promotion the commit the prerelease was cut from
-      sha: ${{ steps.bump.outputs.sha || steps.plan.outputs.sha }}
+      # Head of `ref`, the existing bump commit on a retry, or on a promotion the
+      # commit the prerelease was cut from
+      sha: ${{ steps.plan.outputs.sha }}
     steps:
-      - name: Checkout main
+      - name: Checkout release branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: main
+          ref: ${{ inputs.ref }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -60,7 +69,7 @@ jobs:
         with:
           # renovate: datasource=github-releases depName=jdx/mise
           version: "2026.11.5"
-          install_args: "sd yq"
+          install_args: "yq"
 
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -77,6 +86,7 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
           PRERELEASE: ${{ inputs.prerelease }}
+          REF: ${{ inputs.ref }}
           REPO_OWNER: ${{ github.repository_owner }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -84,6 +94,12 @@ jobs:
           # version is rejected here rather than mid-release.
           if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::Version must be exactly v0.0.0 (no suffixes)"
+            exit 1
+          fi
+
+          # The bump commit is pushed back to `ref`, so it has to be a branch.
+          if ! git rev-parse --verify --quiet "refs/remotes/origin/${REF}" >/dev/null; then
+            echo "::error::ref '${REF}' is not a branch of this repository."
             exit 1
           fi
 
@@ -98,86 +114,221 @@ jobs:
             false/false) echo "::error::Release ${VERSION} is already published."; exit 1 ;;
           esac
 
+          NEEDS_BUMP=false
           if [ "$PROMOTE" = "true" ]; then
-            # main was bumped by the run that created the prerelease.
+            # The branches were bumped by the run that created the prerelease.
             SHA=$(git rev-parse "${VERSION}^{commit}")
           else
             # A failed attempt may already have landed the bump. Cut from that
-            # commit, never from main's current head: work merged since is not in
-            # the image this version tags.
+            # commit, never from the branch's current head: work merged since is
+            # not in the image this version tags.
             SHA=$(git log -1 --format=%H -F --grep="${BUMP_SUBJECT}" HEAD)
             if [ -z "$SHA" ]; then
               SHA=$(git rev-parse HEAD)
-              echo "needs_bump=true" >> "$GITHUB_OUTPUT"
+              NEEDS_BUMP=true
             fi
           fi
 
+          # main's pinned version is the latest release so far. A release older
+          # than that (a backport) neither bumps main nor becomes "latest".
+          MAIN_VERSION=$(git show "refs/remotes/origin/main:config/manager/kustomization.yaml" | yq '.images[0].newTag')
+          MAIN_VERSION="${MAIN_VERSION%@*}"
+          NEWEST=$(printf '%s\n%s\n' "$MAIN_VERSION" "$VERSION" | sort -V | tail -n1)
+          LATEST=false
+          [ "$NEWEST" = "$VERSION" ] && LATEST=true
+          BUMP_MAIN=false
+          if [ "$REF" != "main" ] && [ "$PROMOTE" = "false" ] && [ "$LATEST" = "true" ] && [ "$MAIN_VERSION" != "$VERSION" ]; then
+            BUMP_MAIN=true
+          fi
+
           # The bump pins the digest in the tree, and that commit is [skip ci] so
-          # it has no image of its own to look up. Only a first attempt asks the
-          # registry what CI built for main's head.
+          # it has no image of its own to look up. Only a first attempt needs the
+          # image of the commit being released: CI publishes <sha>-main for main;
+          # any other branch gets one built by this workflow, reused on a retry.
+          SHORT_SHA=$(git rev-parse --short "$SHA")
+          IMAGE_TAG="${SHORT_SHA}-${REF//\//-}"
+          NEEDS_BUILD=false
+          DIGEST=""
           PINNED=$(git show "${SHA}:config/manager/kustomization.yaml" | yq '.images[0].newTag')
           if [[ "$PINNED" == "${VERSION}@"* ]]; then
             DIGEST="${PINNED#*@}"
-          else
-            DIGEST=$(docker buildx imagetools inspect \
-              "${IMAGE_REPO}:$(git rev-parse --short "$SHA")-main" \
+          elif [ "$REF" = "main" ]; then
+            DIGEST=$(docker buildx imagetools inspect "${IMAGE_REPO}:${IMAGE_TAG}" \
               --format '{{ .Manifest.Digest }}')
+          elif ! DIGEST=$(docker buildx imagetools inspect "${IMAGE_REPO}:${IMAGE_TAG}" \
+              --format '{{ .Manifest.Digest }}' 2>/dev/null); then
+            DIGEST=""
+            NEEDS_BUILD=true
           fi
 
           {
             echo "version=${VERSION}"
             echo "image_repo=${IMAGE_REPO}"
             echo "image_digest=${DIGEST}"
+            echo "image_tag=${IMAGE_TAG}"
+            echo "needs_build=${NEEDS_BUILD}"
+            echo "needs_bump=${NEEDS_BUMP}"
+            echo "bump_main=${BUMP_MAIN}"
+            echo "latest=${LATEST}"
             echo "promote=${PROMOTE}"
             echo "sha=${SHA}"
           } >> "$GITHUB_OUTPUT"
 
+  # Only branches other than main: CI publishes images for main pushes alone, so
+  # the release image is built here from exactly the commit being released.
+  build-image:
+    name: Build release image
+    needs: plan
+    if: ${{ needs.plan.outputs.needs_build == 'true' }}
+    permissions:
+      actions: write
+      attestations: write
+      contents: read
+      id-token: write
+      packages: write
+    uses: $/.github/workflows/build-push-image.yaml
+    with:
+      image_repo: ${{ needs.plan.outputs.image_repo }}
+      image_tag: ${{ needs.plan.outputs.image_tag }}
+      ref: ${{ needs.plan.outputs.sha }}
+      push: true
+      attest: true
+
+  # Bumps first so everything downstream is cut from `sha`, a commit whose
+  # charts, manifests and docs already name this version. The packaged subchart,
+  # the chart annotations and the release assets therefore all agree.
+  prepare:
+    name: Bump version
+    needs:
+      - plan
+      - build-image
+    # build-image is skipped for main and on retries
+    if: >-
+      ${{ !cancelled()
+          && needs.plan.result == 'success'
+          && (needs.build-image.result == 'success' || needs.build-image.result == 'skipped') }}
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ needs.plan.outputs.version }}
+      image_repo: ${{ needs.plan.outputs.image_repo }}
+      # Digest the release version tag will point at
+      image_digest: ${{ steps.digest.outputs.digest }}
+      latest: ${{ needs.plan.outputs.latest }}
+      # "true" when an existing prerelease is promoted rather than created
+      promote: ${{ needs.plan.outputs.promote }}
+      # The bump commit, or the commit planned when no bump was needed
+      sha: ${{ steps.bump.outputs.sha || needs.plan.outputs.sha }}
+    steps:
+      - name: Resolve image digest
+        id: digest
+        env:
+          PLANNED: ${{ needs.plan.outputs.image_digest }}
+          BUILT: ${{ needs.build-image.outputs.digest }}
+        run: |
+          DIGEST="${PLANNED:-$BUILT}"
+          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::No usable image digest was resolved (got '${DIGEST}')."
+            exit 1
+          fi
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      # The planned commit exactly, not the branch head, so the bump sits on the
+      # commit the digest was resolved for.
+      - name: Checkout planned commit
+        if: ${{ needs.plan.outputs.needs_bump == 'true' || needs.plan.outputs.bump_main == 'true' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+
+      - name: Setup mise
+        if: ${{ needs.plan.outputs.needs_bump == 'true' || needs.plan.outputs.bump_main == 'true' }}
+        uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        with:
+          # renovate: datasource=github-releases depName=jdx/mise
+          version: "2026.11.5"
+          install_args: "sd yq"
+
       - name: Generate GitHub App token
         id: app-token
-        if: ${{ steps.plan.outputs.needs_bump == 'true' }}
+        if: ${{ needs.plan.outputs.needs_bump == 'true' || needs.plan.outputs.bump_main == 'true' }}
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           client-id: ${{ secrets.APP_CLIENT_ID }}
           private-key: ${{ secrets.APP_KEY }}
           permission-contents: write
 
+      - name: Configure git
+        if: ${{ needs.plan.outputs.needs_bump == 'true' || needs.plan.outputs.bump_main == 'true' }}
+        env:
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "200541989+${APP_SLUG}[bot]@users.noreply.github.com"
+
       # Nothing is published yet, so failing here is safe. CI is skipped on the
       # commit: it only rewrites version strings, and the image it pins was built
       # and tested from the parent commit.
-      - name: Bump version references and push to main
+      - name: Bump version references and push to the release branch
         id: bump
-        if: ${{ steps.plan.outputs.needs_bump == 'true' }}
+        if: ${{ needs.plan.outputs.needs_bump == 'true' }}
         env:
-          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}
-          VERSION: ${{ steps.plan.outputs.version }}
-          DIGEST: ${{ steps.plan.outputs.image_digest }}
+          REF: ${{ inputs.ref }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          DIGEST: ${{ steps.digest.outputs.digest }}
         run: |
           mise run set-version "$VERSION" "$DIGEST"
 
-          git config user.name "${APP_SLUG}[bot]"
-          git config user.email "200541989+${APP_SLUG}[bot]@users.noreply.github.com"
           if git diff --quiet; then
-            echo "Version references on main are already up to date."
+            echo "Version references on ${REF} are already up to date."
           else
             git commit -am "${BUMP_SUBJECT}"
-            # Rejected as a non-fast-forward if main moved since the checkout above.
-            # Deliberately not rebased: the digest resolved above belongs to the
-            # commit this one is based on, so retargeting would tag an image that
-            # does not contain the newer code.
-            if ! git push "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "HEAD:main"; then
-              echo "::error::main moved while ${VERSION} was being prepared. Nothing has been published; re-run this workflow to release from main's new head."
+            # Rejected as a non-fast-forward if the branch moved since it was
+            # planned. Deliberately not rebased: the digest resolved above belongs
+            # to the commit this one is based on, so retargeting would tag an
+            # image that does not contain the newer code.
+            if ! git push "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "HEAD:refs/heads/${REF}"; then
+              echo "::error::${REF} moved while ${VERSION} was being prepared. Nothing has been published; re-run this workflow to release from its new head."
               exit 1
             fi
           fi
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      # Releasing from another branch: main still names the latest release, so it
+      # gets the same version bump on top of its own head. Nothing is cut from it.
+      - name: Bump version references on main
+        if: ${{ needs.plan.outputs.bump_main == 'true' }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          DIGEST: ${{ steps.digest.outputs.digest }}
+        run: |
+          REMOTE="https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+          git fetch --depth 1 "$REMOTE" main
+          git switch --detach FETCH_HEAD
+
+          mise run set-version "$VERSION" "$DIGEST"
+
+          if git diff --quiet; then
+            echo "Version references on main are already up to date."
+          else
+            git commit -am "${BUMP_SUBJECT}"
+            if ! git push "$REMOTE" "HEAD:refs/heads/main"; then
+              echo "::error::main moved while its version references were being bumped. Re-run this workflow; the release branch bump is reused."
+              exit 1
+            fi
+          fi
+
   # Registry-publishing jobs (changelog, retag-image, publish-chart) are skipped
   # for a prerelease.
   changelog:
     name: Generate Artifact Hub changelog
-    if: ${{ !inputs.prerelease }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && !inputs.prerelease }}
     permissions:
       contents: read
     needs: prepare
@@ -217,7 +368,7 @@ jobs:
 
   retag-image:
     name: Retag Docker image
-    if: ${{ !inputs.prerelease }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && !inputs.prerelease }}
     permissions:
       packages: write
     needs: prepare
@@ -247,7 +398,11 @@ jobs:
 
   publish-chart:
     name: Publish Helm chart
-    if: ${{ !inputs.prerelease }}
+    if: >-
+      ${{ !cancelled()
+          && needs.prepare.result == 'success'
+          && needs.changelog.result == 'success'
+          && !inputs.prerelease }}
     permissions:
       actions: write
       contents: read
@@ -294,11 +449,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.prepare.outputs.version }}
+          LATEST: ${{ needs.prepare.outputs.latest }}
         run: |
           gh release edit "${VERSION}" \
             --draft=false \
             --prerelease=false \
-            --latest
+            "--latest=${LATEST}"
 
       # --- Create path: build notes + assets and create the release. Used for a
       #     new prerelease and for a fresh full release without a prior one.
@@ -342,8 +498,9 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
           TARGET_SHA: ${{ needs.prepare.outputs.sha }}
           PRERELEASE: ${{ inputs.prerelease }}
+          LATEST: ${{ needs.prepare.outputs.latest }}
         run: |
-          RELEASE_FLAG="--latest"
+          RELEASE_FLAG="--latest=${LATEST}"
           if [ "${PRERELEASE}" = "true" ]; then
             RELEASE_FLAG="--prerelease"
           fi
@@ -366,10 +523,15 @@ jobs:
             dist/schemas/*.json \
             /tmp/release-assets/*.values.schema.json
 
-  # Production docs (<project>.pages.dev) track the latest full release.
+  # Production docs (<project>.pages.dev) track the latest full release, so a
+  # backport of an older version leaves them alone.
   docs:
     name: Deploy release docs
-    if: ${{ !inputs.prerelease && needs.release.result == 'success' }}
+    if: >-
+      ${{ !cancelled()
+          && !inputs.prerelease
+          && needs.release.result == 'success'
+          && needs.prepare.outputs.latest == 'true' }}
     permissions:
       contents: read
       deployments: write

@@ -26,6 +26,15 @@ on:
         required: false
         type: boolean
         default: false
+      ref:
+        description: Git ref/SHA to build from. Empty uses the triggering ref.
+        required: false
+        type: string
+        default: ""
+    outputs:
+      digest:
+        description: Digest of the multi-arch manifest (empty when push is false).
+        value: ${{ jobs.manifest.outputs.digest }}
   workflow_dispatch:
     inputs:
       image_repo:
@@ -51,6 +60,11 @@ on:
         required: false
         type: boolean
         default: false
+      ref:
+        description: Git ref/SHA to build from. Empty uses the triggering ref.
+        required: false
+        type: string
+        default: ""
 
 jobs:
   build-amd64:
@@ -66,6 +80,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.ref }}
           persist-credentials: false
 
       - name: Set up Docker Buildx
@@ -125,6 +140,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.ref }}
           persist-credentials: false
 
       - name: Set up Docker Buildx
