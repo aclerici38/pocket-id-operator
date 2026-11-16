@@ -59,7 +59,7 @@ postinstall = "command -v lefthook >/dev/null 2>&1 && lefthook install || true"
 [env]
 # Default image for the docker/deploy tasks. Override with `IMG=… mise run …`.
 # Kept separate from IMG so it never leaks into the e2e suite's image logic.
-DEFAULT_IMG = "ghcr.io/aclerici38/pocket-id-operator:v0.16.2@sha256:a71a697531763d8410b37282da2e4b5ca58c9136f101255c73b11036bd8c479e"
+DEFAULT_IMG = "ghcr.io/aclerici38/pocket-id-operator:v0.16.3@sha256:06f99af4fdbdb689227c86db25f6befd8fb116b2fb5791b4d43de14715a391de"
 KIND_CLUSTER = "pocket-id-operator-test-e2e"
 # Host port the shared e2e Pocket-ID instance is published on, in the NodePort range (30000-32767).
 POCKET_ID_NODE_PORT = "31411"
