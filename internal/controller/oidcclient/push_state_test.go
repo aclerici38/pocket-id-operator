@@ -896,9 +896,9 @@ func TestOIDCClientWrites_StopOnUnresolvablePublicKeys(t *testing.T) {
 	}
 }
 
-// Pocket-ID back-channel logs out users outside the allowed groups whenever a restricted
-// client's groups or restriction change, so the groups must land before restriction is turned
-// on, and restriction must be off before the groups are cleared.
+// Pocket-ID back-channel logs out a restricted client's users outside its groups on every
+// groups write, so the groups are written only when they differ, and before restriction is
+// turned on.
 func TestPushOIDCClientState_AllowedGroupsOrdering(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
@@ -916,18 +916,30 @@ func TestPushOIDCClientState_AllowedGroupsOrdering(t *testing.T) {
 		Status: pocketidinternalv1alpha1.PocketIDUserGroupStatus{GroupID: "gid-reverse", Conditions: readyCondition()},
 	}
 
+	groupARef := []pocketidinternalv1alpha1.NamespacedUserGroupReference{{Name: "group-a"}}
 	for _, tc := range []struct {
 		name, clientName string
 		groups           []pocketidinternalv1alpha1.NamespacedUserGroupReference
-		wantCalls        []string
-		wantRestricted   bool
-		wantGroups       int
+		// The client's state in Pocket-ID before the push.
+		restricted bool
+		stored     []string
+		// sentRestriction is the spec write's isGroupRestricted, nil when left out.
+		sentRestriction any
+		wantCalls       []string
+		wantGroups      int
 	}{
-		{name: "restricting", clientName: "groups-client", groups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{{Name: "group-a"}},
-			wantCalls: []string{"groups [gid-a]", "PATCH"}, wantRestricted: true, wantGroups: 1},
+		{name: "steady restricted", clientName: "groups-client", groups: groupARef, restricted: true, stored: []string{"gid-a"},
+			wantCalls: []string{"PATCH"}, wantGroups: 1},
+		{name: "steady unrestricted", clientName: "groups-client", sentRestriction: false,
+			wantCalls: []string{"PATCH"}},
+		{name: "restricting", clientName: "groups-client", groups: groupARef,
+			wantCalls: []string{"PATCH", "groups [gid-a]", "PATCH"}, wantGroups: 1},
 		{name: "reverse reference restricts", clientName: "reverse-client",
-			wantCalls: []string{"groups [gid-reverse]", "PATCH"}, wantRestricted: true, wantGroups: 1},
-		{name: "unrestricting", clientName: "groups-client", wantCalls: []string{"PATCH", "groups []"}},
+			wantCalls: []string{"PATCH", "groups [gid-reverse]", "PATCH"}, wantGroups: 1},
+		{name: "changing groups", clientName: "groups-client", groups: groupARef, restricted: true, stored: []string{"gid-old"},
+			wantCalls: []string{"PATCH", "groups [gid-a]", "PATCH"}, wantGroups: 1},
+		{name: "unrestricting", clientName: "groups-client", restricted: true, stored: []string{"gid-old"}, sentRestriction: false,
+			wantCalls: []string{"PATCH"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			oidcClientCR := &pocketidinternalv1alpha1.PocketIDOIDCClient{
@@ -937,8 +949,10 @@ func TestPushOIDCClientState_AllowedGroupsOrdering(t *testing.T) {
 			}
 			r := newPushStateOIDCReconciler(scheme, oidcClientCR, groupA, reverseGroup)
 			f := newFakeOIDCClient(t, "groups-id", tc.clientName)
-			f.client.IsGroupRestricted = !tc.wantRestricted
-			f.client.AllowedUserGroups = []pid.UserGroupMinimalDto{{ID: "gid-old"}}
+			f.client.IsGroupRestricted = tc.restricted
+			for _, id := range tc.stored {
+				f.client.AllowedUserGroups = append(f.client.AllowedUserGroups, pid.UserGroupMinimalDto{ID: id})
+			}
 
 			current, err := r.pushOIDCClientState(context.Background(), oidcClientCR, f.api())
 			if err != nil {
@@ -947,9 +961,12 @@ func TestPushOIDCClientState_AllowedGroupsOrdering(t *testing.T) {
 			if !slices.Equal(f.calls, tc.wantCalls) {
 				t.Errorf("calls = %v, want %v", f.calls, tc.wantCalls)
 			}
-			if current.IsGroupRestricted != tc.wantRestricted || len(current.AllowedUserGroups) != tc.wantGroups {
+			if got := f.patches[0]["isGroupRestricted"]; got != tc.sentRestriction {
+				t.Errorf("spec write isGroupRestricted = %v, want %v", got, tc.sentRestriction)
+			}
+			if wantRestricted := tc.wantGroups > 0; current.IsGroupRestricted != wantRestricted || len(current.AllowedUserGroups) != tc.wantGroups {
 				t.Errorf("returned restricted=%v groups=%v, want %v and %d groups",
-					current.IsGroupRestricted, current.AllowedUserGroups, tc.wantRestricted, tc.wantGroups)
+					current.IsGroupRestricted, current.AllowedUserGroups, wantRestricted, tc.wantGroups)
 			}
 		})
 	}
@@ -1011,7 +1028,7 @@ func TestPushOIDCClientState_UploadedLogoWithAutoGenerateOffIsLeftAlone(t *testi
 	if _, err := r.pushOIDCClientState(context.Background(), oidcClientCR, f.api()); err != nil {
 		t.Fatalf("pushOIDCClientState: %v", err)
 	}
-	if !slices.Equal(f.calls, []string{"PATCH", "groups []"}) || len(f.logoPatches()) != 0 {
+	if !slices.Equal(f.calls, []string{"PATCH"}) || len(f.logoPatches()) != 0 {
 		t.Errorf("an uploaded logo is not the operator's to manage, got calls %v", f.calls)
 	}
 	if oidcClientCR.Status.LogoURL != "" || oidcClientCR.Status.DarkLogoURL != "" {

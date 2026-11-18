@@ -478,32 +478,43 @@ func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocket
 		return pid.OIDCClientWithAllowedUserGroupsDto{}, err
 	}
 
-	// Pocket-ID sends back-channel logouts to users outside the allowed groups whenever a
-	// restricted client's groups or restriction change, so the groups must be in place before
-	// restriction is turned on, and restriction off before the groups are cleared.
+	// Pocket-ID clears groups when a PATCH leaves the client unrestricted. Write the
+	// desired groups before enabling restriction so allowed users stay signed in.
+	// For an already restricted client, skip a matching groups write because even
+	// an unchanged write logs out users outside the allowed groups.
 	id := pid.OIDCClientID(oidcClient.Status.ClientID)
 	restricted := len(groupIDs) > 0
+	patch := oidcClientPatch(oidcClient, restricted, identities)
 	if restricted {
-		if err := updateAllowedGroups(ctx, apiClient, id, groupIDs); err != nil {
-			return pid.OIDCClientWithAllowedUserGroupsDto{}, err
-		}
+		patch.IsGroupRestricted = nil
 	}
-
-	current, err := pid.Decode[pid.OIDCClientWithAllowedUserGroupsDto](apiClient.PatchOIDCClient(ctx, id,
-		oidcClientPatch(oidcClient, restricted, identities)))
+	current, err := pid.Decode[pid.OIDCClientWithAllowedUserGroupsDto](apiClient.PatchOIDCClient(ctx, id, patch))
 	if err != nil {
 		return current, fmt.Errorf("update OIDC client: %w", err)
 	}
 
-	if !restricted {
-		if err := updateAllowedGroups(ctx, apiClient, id, []string{}); err != nil {
+	if restricted && (!current.IsGroupRestricted || !hasAllowedGroups(current, groupIDs)) {
+		if err := updateAllowedGroups(ctx, apiClient, id, groupIDs); err != nil {
 			return current, err
 		}
-		// The groups write doesn't answer with them.
-		current.AllowedUserGroups = nil
+		// The groups write doesn't answer with the groups; restricting afterwards does.
+		current, err = pid.Decode[pid.OIDCClientWithAllowedUserGroupsDto](apiClient.PatchOIDCClient(ctx, id,
+			pid.PatchOIDCClientJSONRequestBody{IsGroupRestricted: new(true)}))
+		if err != nil {
+			return current, fmt.Errorf("restrict OIDC client: %w", err)
+		}
 	}
 
 	return r.reconcileLogos(ctx, oidcClient, apiClient, current)
+}
+
+// hasAllowedGroups reports whether the client allows exactly groupIDs, which must be sorted and
+// unique, as aggregateAllowedUserGroupIDs returns them.
+func hasAllowedGroups(c pid.OIDCClientWithAllowedUserGroupsDto, groupIDs []string) bool {
+	return len(c.AllowedUserGroups) == len(groupIDs) && !slices.ContainsFunc(c.AllowedUserGroups, func(g pid.UserGroupMinimalDto) bool {
+		_, found := slices.BinarySearch(groupIDs, g.ID)
+		return !found
+	})
 }
 
 // updateAllowedGroups replaces the client's allowed groups, retrying a 500, which is usually

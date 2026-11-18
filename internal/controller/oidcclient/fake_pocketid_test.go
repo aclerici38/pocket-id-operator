@@ -107,7 +107,9 @@ func (f *fakeOIDCClient) routes() map[string]http.HandlerFunc {
 			for _, id := range ids {
 				f.client.AllowedUserGroups = append(f.client.AllowedUserGroups, pid.UserGroupMinimalDto{ID: id.(string)})
 			}
-			writeJSON(w, f.client)
+			resp := f.client
+			resp.AllowedUserGroups = nil
+			writeJSON(w, resp)
 		}),
 		"DELETE " + path + "/logo": serve(func(w http.ResponseWriter, r *http.Request, _ map[string]any) {
 			light := r.URL.Query().Get("light") == "true"
@@ -124,7 +126,8 @@ func (f *fakeOIDCClient) routes() map[string]http.HandlerFunc {
 
 func (f *fakeOIDCClient) api() *pocketid.Client { return fakeAPI(f.t, f.routes()) }
 
-// merge applies a PATCH body. A logo URL stands for Pocket-ID downloading the logo.
+// merge applies a PATCH body. A logo URL stands for Pocket-ID downloading the logo, and a
+// client left unrestricted loses its groups.
 func (f *fakeOIDCClient) merge(body map[string]any) {
 	var stored map[string]any
 	raw, _ := json.Marshal(f.client)
@@ -147,6 +150,9 @@ func (f *fakeOIDCClient) merge(body map[string]any) {
 	raw, _ = json.Marshal(stored)
 	f.client = pid.OIDCClientWithAllowedUserGroupsDto{}
 	_ = json.Unmarshal(raw, &f.client)
+	if !f.client.IsGroupRestricted {
+		f.client.AllowedUserGroups = nil
+	}
 }
 
 // logoPatches returns the logo URL each logo PATCH carried, keyed "light" or "dark".
