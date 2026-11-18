@@ -132,6 +132,7 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Ordered, func() {
 			By("creating a user with instance selector")
 			createUserAndWaitReady(UserOptions{
 				Name:  selectorUser,
+				Email: selectorUser + "@example.com",
 				Admin: new(true),
 				InstanceSelector: map[string]string{
 					"environment": "test",

@@ -3,7 +3,7 @@ module github.com/aclerici38/pocket-id-operator
 go 1.27.4
 
 require (
-	github.com/aclerici38/pocket-id-go-client/v3 v3.0.0-20261118060056-de6b046b6af5
+	github.com/aclerici38/pocket-id-go-client/v3 v3.0.0-20261118203622-66cc25e935ed
 	github.com/go-logr/logr v1.4.4
 	github.com/oapi-codegen/nullable v1.2.0
 	github.com/onsi/ginkgo/v2 v2.34.0

@@ -1,8 +1,8 @@
 github.com/Masterminds/semver/v3 v3.5.0 h1:kQceYJfbupGfZOKZQg0kou0DgAKhzDg2NZPAwZ/2OOE=
 github.com/Masterminds/semver/v3 v3.5.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/RaveNoX/go-jsoncommentstrip v1.0.0/go.mod h1:78ihd09MekBnJnxpICcwzCMzGrKSKYe4AqU6PDYYpjk=
-github.com/aclerici38/pocket-id-go-client/v3 v3.0.0-20261118060056-de6b046b6af5 h1:uYrUo2XjSlhyN8otaEG/NQkb4pQNOdDqar2p1wy3ZpA=
-github.com/aclerici38/pocket-id-go-client/v3 v3.0.0-20261118060056-de6b046b6af5/go.mod h1:AP3WQ8yuJP2ognzn32YcJZEObBO7l6mdH1k4F3VJerc=
+github.com/aclerici38/pocket-id-go-client/v3 v3.0.0-20261118203622-66cc25e935ed h1:Isq8rtWJ757QWUxSZemVyY1JtMYLnfew8eeXHGGq7h4=
+github.com/aclerici38/pocket-id-go-client/v3 v3.0.0-20261118203622-66cc25e935ed/go.mod h1:AP3WQ8yuJP2ognzn32YcJZEObBO7l6mdH1k4F3VJerc=
 github.com/apapsch/go-jsonmerge/v2 v2.0.0 h1:axGnT1gRIfimI7gJifB699GoE/oq+F2MU7Dml6nw9rQ=
 github.com/apapsch/go-jsonmerge/v2 v2.0.0/go.mod h1:lvDnEdqiQrp0O42VQGgmlKpxL1AP2+08jFMw88y4klk=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=

@@ -98,7 +98,7 @@ var _ = Describe("Client ID Metadata Documents", Ordered, func() {
 			body := getOIDCClientFromPocketID(encodeCIMDClientID(cimdMetadataURL))
 
 			By("verifying the fields Pocket-ID persists for a CIMD client were applied")
-			Expect(body).To(ContainSubstring(`"description":"managed by e2e"`))
+			Expect(body).To(ContainSubstring(`"notes":"managed by e2e"`))
 			Expect(body).To(ContainSubstring(`"skipConsent":true`))
 			Expect(body).To(ContainSubstring(`"accessTokenDurationMinutes":15`))
 
