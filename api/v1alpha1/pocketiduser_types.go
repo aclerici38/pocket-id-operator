@@ -112,7 +112,8 @@ type PocketIDUserSpec struct {
 	// +optional
 	LastName StringValue `json:"lastName,omitempty"`
 
-	// Email of the user. Defaults to "<username>@placeholder.local". Can be a plain value or reference a secret.
+	// Email of the user. Can be a plain value or reference a secret.
+	// Leave it unset only if the instance sets userManagement.requireUserEmail to false.
 	// +optional
 	Email StringValue `json:"email,omitempty"`
 

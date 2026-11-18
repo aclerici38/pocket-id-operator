@@ -20,6 +20,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/metrics"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
@@ -28,8 +30,8 @@ import (
 
 const storedSecretValue = "stored-secret-value"
 
-func secretWithPrefix(id, prefix string, age time.Duration) pocketid.OIDCClientSecret {
-	return pocketid.OIDCClientSecret{
+func secretWithPrefix(id, prefix string, age time.Duration) pid.OIDCClientSecretDto {
+	return pid.OIDCClientSecretDto{
 		ID:        id,
 		Prefix:    prefix,
 		CreatedAt: time.Now().Add(-age),
@@ -39,15 +41,15 @@ func secretWithPrefix(id, prefix string, age time.Duration) pocketid.OIDCClientS
 
 // expiredSecret marks a secret Pocket-ID no longer accepts. The operator never asks for an expiry,
 // so this only happens when one is set out of band.
-func expiredSecret(secret pocketid.OIDCClientSecret) pocketid.OIDCClientSecret {
+func expiredSecret(secret pid.OIDCClientSecretDto) pid.OIDCClientSecretDto {
 	secret.IsActive = false
 	return secret
 }
 
 // observedSecretFor returns the steady-state secret set for a client whose stored credential is
 // value: present, with nothing to retire.
-func observedSecretFor(value string) []pocketid.OIDCClientSecret {
-	return []pocketid.OIDCClientSecret{{
+func observedSecretFor(value string) []pid.OIDCClientSecretDto {
+	return []pid.OIDCClientSecretDto{{
 		ID:        "existing-" + value,
 		Prefix:    pocketid.SecretPrefix(value),
 		CreatedAt: time.Now().Add(-24 * time.Hour),
@@ -64,54 +66,54 @@ func TestResolveClientSecret(t *testing.T) {
 	tests := []struct {
 		name    string
 		stored  string
-		secrets []pocketid.OIDCClientSecret
+		secrets []pid.OIDCClientSecretDto
 		wantID  string
 	}{
 		{
 			name:    "matches the secret carrying the stored value's prefix",
 			stored:  storedSecretValue,
-			secrets: []pocketid.OIDCClientSecret{secretWithPrefix("other", "abcd", 0), secretWithPrefix("ours", prefix, 0)},
+			secrets: []pid.OIDCClientSecretDto{secretWithPrefix("other", "abcd", 0), secretWithPrefix("ours", prefix, 0)},
 			wantID:  "ours",
 		},
 		{
 			name:    "adopts the lone prefixless secret left by the upgrade",
 			stored:  storedSecretValue,
-			secrets: []pocketid.OIDCClientSecret{secretWithPrefix("migrated", "", time.Hour)},
+			secrets: []pid.OIDCClientSecretDto{secretWithPrefix("migrated", "", time.Hour)},
 			wantID:  "migrated",
 		},
 		{
 			name:    "adopts the migrated secret even beside one an admin added",
 			stored:  storedSecretValue,
-			secrets: []pocketid.OIDCClientSecret{secretWithPrefix("migrated", "", time.Hour), secretWithPrefix("admin", "zzzz", 0)},
+			secrets: []pid.OIDCClientSecretDto{secretWithPrefix("migrated", "", time.Hour), secretWithPrefix("admin", "zzzz", 0)},
 			wantID:  "migrated",
 		},
 		{
 			name:    "refuses to guess between colliding prefixes",
 			stored:  storedSecretValue,
-			secrets: []pocketid.OIDCClientSecret{secretWithPrefix("a", prefix, 0), secretWithPrefix("b", prefix, 0)},
+			secrets: []pid.OIDCClientSecretDto{secretWithPrefix("a", prefix, 0), secretWithPrefix("b", prefix, 0)},
 			wantID:  "",
 		},
 		{
 			name:    "ignores an expired secret that shares the prefix",
 			stored:  storedSecretValue,
-			secrets: []pocketid.OIDCClientSecret{expiredSecret(secretWithPrefix("stale", prefix, time.Hour)), secretWithPrefix("ours", prefix, 0)},
+			secrets: []pid.OIDCClientSecretDto{expiredSecret(secretWithPrefix("stale", prefix, time.Hour)), secretWithPrefix("ours", prefix, 0)},
 			wantID:  "ours",
 		},
 		{
 			name:    "reports nothing when the only match expired",
 			stored:  storedSecretValue,
-			secrets: []pocketid.OIDCClientSecret{expiredSecret(secretWithPrefix("ours", prefix, time.Hour))},
+			secrets: []pid.OIDCClientSecretDto{expiredSecret(secretWithPrefix("ours", prefix, time.Hour))},
 			wantID:  "",
 		},
 		{
 			name:    "reports nothing when the stored value matches none",
 			stored:  storedSecretValue,
-			secrets: []pocketid.OIDCClientSecret{secretWithPrefix("other", "abcd", 0)},
+			secrets: []pid.OIDCClientSecretDto{secretWithPrefix("other", "abcd", 0)},
 			wantID:  "",
 		},
 		{
 			name:    "reports nothing without a stored value",
-			secrets: []pocketid.OIDCClientSecret{secretWithPrefix("other", "abcd", 0)},
+			secrets: []pid.OIDCClientSecretDto{secretWithPrefix("other", "abcd", 0)},
 			wantID:  "",
 		},
 	}
@@ -139,32 +141,32 @@ func TestClientSecretPresent(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		secrets []pocketid.OIDCClientSecret
+		secrets []pid.OIDCClientSecretDto
 		want    bool
 	}{
 		{
 			name:    "present when a secret carries the prefix",
-			secrets: []pocketid.OIDCClientSecret{secretWithPrefix("other", "abcd", 0), secretWithPrefix("ours", prefix, 0)},
+			secrets: []pid.OIDCClientSecretDto{secretWithPrefix("other", "abcd", 0), secretWithPrefix("ours", prefix, 0)},
 			want:    true,
 		},
 		{
 			name:    "present when secrets share the prefix and none can be singled out",
-			secrets: []pocketid.OIDCClientSecret{secretWithPrefix("a", prefix, 0), secretWithPrefix("b", prefix, 0)},
+			secrets: []pid.OIDCClientSecretDto{secretWithPrefix("a", prefix, 0), secretWithPrefix("b", prefix, 0)},
 			want:    true,
 		},
 		{
 			name:    "present when a prefixless secret could still be it",
-			secrets: []pocketid.OIDCClientSecret{secretWithPrefix("migrated", "", time.Hour)},
+			secrets: []pid.OIDCClientSecretDto{secretWithPrefix("migrated", "", time.Hour)},
 			want:    true,
 		},
 		{
 			name:    "absent once the matching secret expires",
-			secrets: []pocketid.OIDCClientSecret{expiredSecret(secretWithPrefix("ours", prefix, time.Hour))},
+			secrets: []pid.OIDCClientSecretDto{expiredSecret(secretWithPrefix("ours", prefix, time.Hour))},
 			want:    false,
 		},
 		{
 			name:    "absent when nothing matches",
-			secrets: []pocketid.OIDCClientSecret{secretWithPrefix("other", "abcd", 0)},
+			secrets: []pid.OIDCClientSecretDto{secretWithPrefix("other", "abcd", 0)},
 			want:    false,
 		},
 		{
@@ -215,13 +217,13 @@ func TestReconcileClientSecretRetention_RetiresEverythingElse(t *testing.T) {
 	oidcClient := retentionClient(nil)
 	r := retentionReconciler(t, oidcClient)
 	prefix := pocketid.SecretPrefix(storedSecretValue)
-	api := &fakeClientSecretAPI{secrets: []pocketid.OIDCClientSecret{
+	api := &fakeSecretServer{secrets: []pid.OIDCClientSecretDto{
 		secretWithPrefix("old", "aaaa", 30*24*time.Hour),
 		secretWithPrefix("older", "bbbb", 60*24*time.Hour),
 		secretWithPrefix("ours", prefix, 0),
 	}}
 
-	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api, api.secrets, nil, storedSecretValue); err != nil {
+	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api.serve(t), api.secrets, nil, storedSecretValue); err != nil {
 		t.Fatalf("reconcileClientSecretRetention: %v", err)
 	}
 
@@ -236,12 +238,12 @@ func TestReconcileClientSecretRetention_HoldsSupersededSecretForOverlap(t *testi
 	r := retentionReconciler(t, oidcClient)
 	prefix := pocketid.SecretPrefix(storedSecretValue)
 	// The replacement is 10 minutes old, so the hour of overlap has not run out.
-	api := &fakeClientSecretAPI{secrets: []pocketid.OIDCClientSecret{
+	api := &fakeSecretServer{secrets: []pid.OIDCClientSecretDto{
 		secretWithPrefix("superseded", "aaaa", 30*24*time.Hour),
 		secretWithPrefix("ours", prefix, 10*time.Minute),
 	}}
 
-	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api, api.secrets, nil, storedSecretValue); err != nil {
+	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api.serve(t), api.secrets, nil, storedSecretValue); err != nil {
 		t.Fatalf("reconcileClientSecretRetention: %v", err)
 	}
 	if len(api.deleted) != 0 {
@@ -250,7 +252,7 @@ func TestReconcileClientSecretRetention_HoldsSupersededSecretForOverlap(t *testi
 
 	// Once the replacement is older than the overlap, the secret it superseded goes.
 	api.secrets[1] = secretWithPrefix("ours", prefix, 90*time.Minute)
-	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api, api.secrets, nil, storedSecretValue); err != nil {
+	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api.serve(t), api.secrets, nil, storedSecretValue); err != nil {
 		t.Fatalf("reconcileClientSecretRetention after overlap: %v", err)
 	}
 	if len(api.deleted) != 1 || api.deleted[0] != "superseded" {
@@ -264,12 +266,12 @@ func TestReconcileClientSecretRetention_OverlapMeasuredFromReplacement(t *testin
 	oidcClient := retentionClient(&metav1.Duration{Duration: time.Hour})
 	r := retentionReconciler(t, oidcClient)
 	prefix := pocketid.SecretPrefix(storedSecretValue)
-	api := &fakeClientSecretAPI{secrets: []pocketid.OIDCClientSecret{
+	api := &fakeSecretServer{secrets: []pid.OIDCClientSecretDto{
 		secretWithPrefix("superseded", "aaaa", 30*24*time.Hour),
 		secretWithPrefix("ours", prefix, time.Minute),
 	}}
 
-	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api, api.secrets, nil, storedSecretValue); err != nil {
+	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api.serve(t), api.secrets, nil, storedSecretValue); err != nil {
 		t.Fatalf("reconcileClientSecretRetention: %v", err)
 	}
 	if len(api.deleted) != 0 {
@@ -280,12 +282,12 @@ func TestReconcileClientSecretRetention_OverlapMeasuredFromReplacement(t *testin
 func TestReconcileClientSecretRetention_LeavesSecretsAloneWhenUnidentifiable(t *testing.T) {
 	oidcClient := retentionClient(nil)
 	r := retentionReconciler(t, oidcClient)
-	api := &fakeClientSecretAPI{secrets: []pocketid.OIDCClientSecret{
+	api := &fakeSecretServer{secrets: []pid.OIDCClientSecretDto{
 		secretWithPrefix("a", "aaaa", time.Hour),
 		secretWithPrefix("b", "bbbb", time.Hour),
 	}}
 
-	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api, api.secrets, nil, storedSecretValue); err != nil {
+	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api.serve(t), api.secrets, nil, storedSecretValue); err != nil {
 		t.Fatalf("reconcileClientSecretRetention: %v", err)
 	}
 	if len(api.deleted) != 0 {
@@ -298,9 +300,9 @@ func TestReconcileClientSecretRetention_LeavesSecretsAloneWhenUnidentifiable(t *
 func TestReconcileClientSecretRetention_NoStoredValueRetiresNothing(t *testing.T) {
 	oidcClient := retentionClient(nil)
 	r := retentionReconciler(t, oidcClient)
-	api := &fakeClientSecretAPI{secrets: []pocketid.OIDCClientSecret{secretWithPrefix("external", "aaaa", time.Hour)}}
+	api := &fakeSecretServer{secrets: []pid.OIDCClientSecretDto{secretWithPrefix("external", "aaaa", time.Hour)}}
 
-	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api, api.secrets, nil, ""); err != nil {
+	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api.serve(t), api.secrets, nil, ""); err != nil {
 		t.Fatalf("reconcileClientSecretRetention: %v", err)
 	}
 	if len(api.deleted) != 0 || len(api.calls) != 0 {
@@ -315,11 +317,11 @@ func TestReconcileClientSecretRetention_TrustsTheMintedSecret(t *testing.T) {
 	oidcClient := retentionClient(nil)
 	r := retentionReconciler(t, oidcClient)
 	prefix := pocketid.SecretPrefix(storedSecretValue)
-	observed := []pocketid.OIDCClientSecret{secretWithPrefix("superseded", prefix, time.Hour)}
+	observed := []pid.OIDCClientSecretDto{secretWithPrefix("superseded", prefix, time.Hour)}
 	minted := secretWithPrefix("replacement", prefix, 0)
-	api := &fakeClientSecretAPI{secrets: append(slices.Clone(observed), minted)}
+	api := &fakeSecretServer{secrets: append(slices.Clone(observed), minted)}
 
-	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api, observed, &minted, storedSecretValue); err != nil {
+	if err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api.serve(t), observed, &minted, storedSecretValue); err != nil {
 		t.Fatalf("reconcileClientSecretRetention: %v", err)
 	}
 	if len(api.deleted) != 1 || api.deleted[0] != "superseded" {
@@ -336,9 +338,9 @@ func TestMintClientSecret(t *testing.T) {
 	t.Run("keeps a mint whose prefix is free", func(t *testing.T) {
 		oidcClient := retentionClient(nil)
 		r := retentionReconciler(t, oidcClient)
-		api := &fakeClientSecretAPI{secrets: []pocketid.OIDCClientSecret{secretWithPrefix("ours", prefix, time.Hour)}}
+		api := &fakeSecretServer{secrets: []pid.OIDCClientSecretDto{secretWithPrefix("ours", prefix, time.Hour)}}
 
-		created, value, err := r.mintClientSecret(context.Background(), oidcClient, api, api.secrets)
+		created, value, err := r.mintClientSecret(context.Background(), oidcClient, api.serve(t), api.secrets)
 		if err != nil {
 			t.Fatalf("mintClientSecret: %v", err)
 		}
@@ -357,12 +359,12 @@ func TestMintClientSecret(t *testing.T) {
 		oidcClient := retentionClient(nil)
 		r := retentionReconciler(t, oidcClient)
 		// The first generated value shares the held secret's prefix; the second does not.
-		api := &fakeClientSecretAPI{
+		api := &fakeSecretServer{
 			generated: []string{storedSecretValue + "-collides", "zzzz-distinct-value"},
-			secrets:   []pocketid.OIDCClientSecret{secretWithPrefix("held", prefix, time.Hour)},
+			secrets:   []pid.OIDCClientSecretDto{secretWithPrefix("held", prefix, time.Hour)},
 		}
 
-		created, value, err := r.mintClientSecret(context.Background(), oidcClient, api, api.secrets)
+		created, value, err := r.mintClientSecret(context.Background(), oidcClient, api.serve(t), api.secrets)
 		if err != nil {
 			t.Fatalf("mintClientSecret: %v", err)
 		}
@@ -385,12 +387,12 @@ func TestMintClientSecret(t *testing.T) {
 	t.Run("ignores a collision with an expired secret", func(t *testing.T) {
 		oidcClient := retentionClient(nil)
 		r := retentionReconciler(t, oidcClient)
-		api := &fakeClientSecretAPI{
+		api := &fakeSecretServer{
 			generated: []string{storedSecretValue + "-collides"},
-			secrets:   []pocketid.OIDCClientSecret{expiredSecret(secretWithPrefix("stale", prefix, time.Hour))},
+			secrets:   []pid.OIDCClientSecretDto{expiredSecret(secretWithPrefix("stale", prefix, time.Hour))},
 		}
 
-		if _, _, err := r.mintClientSecret(context.Background(), oidcClient, api, api.secrets); err != nil {
+		if _, _, err := r.mintClientSecret(context.Background(), oidcClient, api.serve(t), api.secrets); err != nil {
 			t.Fatalf("mintClientSecret: %v", err)
 		}
 		if len(api.calls) != 1 {
@@ -402,12 +404,12 @@ func TestMintClientSecret(t *testing.T) {
 		oidcClient := retentionClient(nil)
 		r := retentionReconciler(t, oidcClient)
 		generated := secretWithPrefix("generated", prefix, time.Hour)
-		r.pendingInitialMint = map[types.NamespacedName]*pocketid.CreatedOIDCClientSecret{
-			client.ObjectKeyFromObject(oidcClient): {OIDCClientSecret: generated, Value: storedSecretValue},
+		r.pendingInitialMint = map[types.NamespacedName]*pid.OIDCClientSecretCreatedDto{
+			client.ObjectKeyFromObject(oidcClient): createdSecret(generated, storedSecretValue),
 		}
-		api := &fakeClientSecretAPI{secrets: []pocketid.OIDCClientSecret{generated}}
+		api := &fakeSecretServer{secrets: []pid.OIDCClientSecretDto{generated}}
 
-		created, value, err := r.mintClientSecret(context.Background(), oidcClient, api, api.secrets)
+		created, value, err := r.mintClientSecret(context.Background(), oidcClient, api.serve(t), api.secrets)
 		if err != nil {
 			t.Fatalf("mintClientSecret: %v", err)
 		}
@@ -422,12 +424,12 @@ func TestMintClientSecret(t *testing.T) {
 	t.Run("mints when the generated secret is gone", func(t *testing.T) {
 		oidcClient := retentionClient(nil)
 		r := retentionReconciler(t, oidcClient)
-		r.pendingInitialMint = map[types.NamespacedName]*pocketid.CreatedOIDCClientSecret{
-			client.ObjectKeyFromObject(oidcClient): {OIDCClientSecret: secretWithPrefix("generated", prefix, time.Hour), Value: storedSecretValue},
+		r.pendingInitialMint = map[types.NamespacedName]*pid.OIDCClientSecretCreatedDto{
+			client.ObjectKeyFromObject(oidcClient): createdSecret(secretWithPrefix("generated", prefix, time.Hour), storedSecretValue),
 		}
-		api := &fakeClientSecretAPI{}
+		api := &fakeSecretServer{}
 
-		if _, _, err := r.mintClientSecret(context.Background(), oidcClient, api, nil); err != nil {
+		if _, _, err := r.mintClientSecret(context.Background(), oidcClient, api.serve(t), nil); err != nil {
 			t.Fatalf("mintClientSecret: %v", err)
 		}
 		if len(api.calls) != 1 {
@@ -438,9 +440,9 @@ func TestMintClientSecret(t *testing.T) {
 	t.Run("propagates a failed create", func(t *testing.T) {
 		oidcClient := retentionClient(nil)
 		r := retentionReconciler(t, oidcClient)
-		api := &fakeClientSecretAPI{err: errors.New("pocket-id unavailable")}
+		api := &fakeSecretServer{err: errors.New("pocket-id unavailable")}
 
-		if _, _, err := r.mintClientSecret(context.Background(), oidcClient, api, nil); err == nil {
+		if _, _, err := r.mintClientSecret(context.Background(), oidcClient, api.serve(t), nil); err == nil {
 			t.Fatal("expected the create failure to propagate")
 		}
 	})
@@ -450,13 +452,13 @@ func TestMintClientSecret(t *testing.T) {
 	t.Run("stops when a collider cannot be discarded", func(t *testing.T) {
 		oidcClient := retentionClient(nil)
 		r := retentionReconciler(t, oidcClient)
-		api := &fakeClientSecretAPI{
+		api := &fakeSecretServer{
 			deleteErr: errors.New("pocket-id unavailable"),
 			generated: []string{storedSecretValue + "-collides", "zzzz-distinct-value"},
-			secrets:   []pocketid.OIDCClientSecret{secretWithPrefix("held", prefix, time.Hour)},
+			secrets:   []pid.OIDCClientSecretDto{secretWithPrefix("held", prefix, time.Hour)},
 		}
 
-		if _, _, err := r.mintClientSecret(context.Background(), oidcClient, api, api.secrets); err == nil {
+		if _, _, err := r.mintClientSecret(context.Background(), oidcClient, api.serve(t), api.secrets); err == nil {
 			t.Fatal("expected the failed discard to be reported")
 		}
 		if len(api.calls) != 1 {
@@ -467,12 +469,12 @@ func TestMintClientSecret(t *testing.T) {
 	t.Run("gives up rather than minting forever", func(t *testing.T) {
 		oidcClient := retentionClient(nil)
 		r := retentionReconciler(t, oidcClient)
-		api := &fakeClientSecretAPI{
+		api := &fakeSecretServer{
 			generated: []string{storedSecretValue + "-1", storedSecretValue + "-2", storedSecretValue + "-3", storedSecretValue + "-4"},
-			secrets:   []pocketid.OIDCClientSecret{secretWithPrefix("held", prefix, time.Hour)},
+			secrets:   []pid.OIDCClientSecretDto{secretWithPrefix("held", prefix, time.Hour)},
 		}
 
-		if _, _, err := r.mintClientSecret(context.Background(), oidcClient, api, api.secrets); err == nil {
+		if _, _, err := r.mintClientSecret(context.Background(), oidcClient, api.serve(t), api.secrets); err == nil {
 			t.Fatal("expected mintClientSecret to give up")
 		}
 		if len(api.calls) != maxClientSecretMintAttempts {
@@ -491,16 +493,16 @@ func TestReconcileClientSecretRetention_SurfacesAFailedRetirement(t *testing.T) 
 	oidcClient := retentionClient(nil)
 	r := retentionReconciler(t, oidcClient)
 	prefix := pocketid.SecretPrefix(storedSecretValue)
-	api := &fakeClientSecretAPI{
+	api := &fakeSecretServer{
 		deleteErr: errors.New("pocket-id unavailable"),
-		secrets: []pocketid.OIDCClientSecret{
+		secrets: []pid.OIDCClientSecretDto{
 			secretWithPrefix("old", "aaaa", 30*24*time.Hour),
 			secretWithPrefix("older", "bbbb", 60*24*time.Hour),
 			secretWithPrefix("ours", prefix, 0),
 		},
 	}
 
-	err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api, api.secrets, nil, storedSecretValue)
+	err := r.reconcileClientSecretRetention(context.Background(), oidcClient, api.serve(t), api.secrets, nil, storedSecretValue)
 	if err == nil {
 		t.Fatal("expected the failed retirement to be reported")
 	}
@@ -515,12 +517,12 @@ func TestDeleteClientSecrets_CountsRetirementsByReason(t *testing.T) {
 	oidcClient := retentionClient(nil)
 	oidcClient.Name = "retired-counter"
 	r := retentionReconciler(t, oidcClient)
-	api := &fakeClientSecretAPI{}
+	api := &fakeSecretServer{}
 	before := testutil.ToFloat64(
 		metrics.OIDCClientSecretsRetired.WithLabelValues(testNamespace, oidcClient.Name, "superseded"))
 
-	secrets := []pocketid.OIDCClientSecret{secretWithPrefix("a", "aaaa", time.Hour), secretWithPrefix("b", "bbbb", 0)}
-	if err := r.deleteClientSecrets(context.Background(), oidcClient, api, secrets, "superseded"); err != nil {
+	secrets := []pid.OIDCClientSecretDto{secretWithPrefix("a", "aaaa", time.Hour), secretWithPrefix("b", "bbbb", 0)}
+	if err := r.deleteClientSecrets(context.Background(), oidcClient, api.serve(t), secrets, "superseded"); err != nil {
 		t.Fatalf("deleteClientSecrets: %v", err)
 	}
 
@@ -534,8 +536,8 @@ func TestDeleteClientSecrets_CountsRetirementsByReason(t *testing.T) {
 func TestMakeRoomForClientSecret(t *testing.T) {
 	prefix := pocketid.SecretPrefix(storedSecretValue)
 
-	atCap := func() []pocketid.OIDCClientSecret {
-		secrets := []pocketid.OIDCClientSecret{secretWithPrefix("ours", prefix, 0)}
+	atCap := func() []pid.OIDCClientSecretDto {
+		secrets := []pid.OIDCClientSecretDto{secretWithPrefix("ours", prefix, 0)}
 		for i := range pocketid.MaxOIDCClientSecrets - 1 {
 			secrets = append(secrets, secretWithPrefix("stale-"+string(rune('a'+i)), "aaaa", time.Duration(i+1)*time.Hour))
 		}
@@ -546,9 +548,9 @@ func TestMakeRoomForClientSecret(t *testing.T) {
 		oidcClient := retentionClient(&metav1.Duration{Duration: time.Hour})
 		r := retentionReconciler(t, oidcClient)
 		secrets := atCap()
-		api := &fakeClientSecretAPI{secrets: secrets}
+		api := &fakeSecretServer{secrets: secrets}
 
-		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api, storedSecretValue, false, secrets); err != nil {
+		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api.serve(t), storedSecretValue, false, secrets); err != nil {
 			t.Fatalf("makeRoomForClientSecret: %v", err)
 		}
 		// One is enough to get under the cap, and the overlap does not protect a secret that
@@ -567,13 +569,13 @@ func TestMakeRoomForClientSecret(t *testing.T) {
 	t.Run("refuses when no secret can be ruled out", func(t *testing.T) {
 		oidcClient := retentionClient(nil)
 		r := retentionReconciler(t, oidcClient)
-		secrets := make([]pocketid.OIDCClientSecret, 0, pocketid.MaxOIDCClientSecrets)
+		secrets := make([]pid.OIDCClientSecretDto, 0, pocketid.MaxOIDCClientSecrets)
 		for i := range pocketid.MaxOIDCClientSecrets {
 			secrets = append(secrets, secretWithPrefix("collides-"+string(rune('a'+i)), prefix, time.Duration(i)*time.Hour))
 		}
-		api := &fakeClientSecretAPI{secrets: secrets}
+		api := &fakeSecretServer{secrets: secrets}
 
-		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api, storedSecretValue, false, secrets); err == nil {
+		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api.serve(t), storedSecretValue, false, secrets); err == nil {
 			t.Fatal("expected an error when every secret could be the one in use")
 		}
 		if len(api.deleted) != 0 {
@@ -587,9 +589,9 @@ func TestMakeRoomForClientSecret(t *testing.T) {
 		oidcClient := retentionClient(nil)
 		r := retentionReconciler(t, oidcClient)
 		secrets := atCap()
-		api := &fakeClientSecretAPI{deleteErr: errors.New("pocket-id unavailable"), secrets: secrets}
+		api := &fakeSecretServer{deleteErr: errors.New("pocket-id unavailable"), secrets: secrets}
 
-		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api, storedSecretValue, false, secrets); err == nil {
+		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api.serve(t), storedSecretValue, false, secrets); err == nil {
 			t.Fatal("expected the failed retirement to stop the caller before it mints")
 		}
 	})
@@ -600,13 +602,13 @@ func TestMakeRoomForClientSecret(t *testing.T) {
 		oidcClient := retentionClient(nil)
 		r := retentionReconciler(t, oidcClient)
 		// The oldest secret is a candidate, so an oldest-first rule alone would take it.
-		secrets := []pocketid.OIDCClientSecret{secretWithPrefix("in-use", prefix, 90*24*time.Hour)}
+		secrets := []pid.OIDCClientSecretDto{secretWithPrefix("in-use", prefix, 90*24*time.Hour)}
 		for i := range pocketid.MaxOIDCClientSecrets - 1 {
 			secrets = append(secrets, secretWithPrefix("other-"+string(rune('a'+i)), "aaaa", time.Duration(i)*time.Hour))
 		}
-		api := &fakeClientSecretAPI{secrets: secrets}
+		api := &fakeSecretServer{secrets: secrets}
 
-		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api, storedSecretValue, true, secrets); err != nil {
+		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api.serve(t), storedSecretValue, true, secrets); err != nil {
 			t.Fatalf("makeRoomForClientSecret: %v", err)
 		}
 		if slices.Contains(api.deleted, "in-use") {
@@ -618,13 +620,13 @@ func TestMakeRoomForClientSecret(t *testing.T) {
 	t.Run("retires a candidate as a last resort when the value can be restored", func(t *testing.T) {
 		oidcClient := retentionClient(nil)
 		r := retentionReconciler(t, oidcClient)
-		secrets := make([]pocketid.OIDCClientSecret, 0, pocketid.MaxOIDCClientSecrets)
+		secrets := make([]pid.OIDCClientSecretDto, 0, pocketid.MaxOIDCClientSecrets)
 		for i := range pocketid.MaxOIDCClientSecrets {
 			secrets = append(secrets, secretWithPrefix("collides-"+string(rune('a'+i)), prefix, time.Duration(i)*time.Hour))
 		}
-		api := &fakeClientSecretAPI{secrets: secrets}
+		api := &fakeSecretServer{secrets: secrets}
 
-		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api, storedSecretValue, true, secrets); err != nil {
+		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api.serve(t), storedSecretValue, true, secrets); err != nil {
 			t.Fatalf("makeRoomForClientSecret: %v", err)
 		}
 		if len(api.deleted) != 1 || api.deleted[0] != "collides-t" {
@@ -635,10 +637,10 @@ func TestMakeRoomForClientSecret(t *testing.T) {
 	t.Run("does nothing below the cap", func(t *testing.T) {
 		oidcClient := retentionClient(nil)
 		r := retentionReconciler(t, oidcClient)
-		secrets := []pocketid.OIDCClientSecret{secretWithPrefix("ours", prefix, 0)}
-		api := &fakeClientSecretAPI{secrets: secrets}
+		secrets := []pid.OIDCClientSecretDto{secretWithPrefix("ours", prefix, 0)}
+		api := &fakeSecretServer{secrets: secrets}
 
-		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api, storedSecretValue, false, secrets); err != nil {
+		if err := r.makeRoomForClientSecret(context.Background(), oidcClient, api.serve(t), storedSecretValue, false, secrets); err != nil {
 			t.Fatalf("makeRoomForClientSecret: %v", err)
 		}
 		if len(api.deleted) != 0 {
@@ -680,7 +682,7 @@ func TestReconcileSecret_AdoptsMigratedSecretWithoutRotating(t *testing.T) {
 	apiClient := clientSecretClient(t, "must-not-be-minted", &creates)
 
 	// The migrated secret is the one Pocket-ID carried over, so it has no prefix to match on.
-	observed := []pocketid.OIDCClientSecret{secretWithPrefix("migrated", "", 90*24*time.Hour)}
+	observed := []pid.OIDCClientSecretDto{secretWithPrefix("migrated", "", 90*24*time.Hour)}
 	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient, observed); err != nil {
 		t.Fatalf("ReconcileSecret: %v", err)
 	}
@@ -711,7 +713,7 @@ func TestReconcileSecret_MintsWhenStoredSecretNoLongerExists(t *testing.T) {
 	creates := 0
 	apiClient := clientSecretClient(t, "minted-secret", &creates)
 
-	observed := []pocketid.OIDCClientSecret{secretWithPrefix("someone-elses", "zzzz", time.Hour)}
+	observed := []pid.OIDCClientSecretDto{secretWithPrefix("someone-elses", "zzzz", time.Hour)}
 	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient, observed); err != nil {
 		t.Fatalf("ReconcileSecret: %v", err)
 	}
@@ -741,7 +743,7 @@ func TestReconcileSecret_KeepsAnAmbiguousButPresentSecret(t *testing.T) {
 	apiClient := clientSecretClient(t, "must-not-be-minted", &creates)
 
 	prefix := pocketid.SecretPrefix(storedSecretValue)
-	observed := []pocketid.OIDCClientSecret{secretWithPrefix("a", prefix, time.Hour), secretWithPrefix("b", prefix, 0)}
+	observed := []pid.OIDCClientSecretDto{secretWithPrefix("a", prefix, time.Hour), secretWithPrefix("b", prefix, 0)}
 	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient, observed); err != nil {
 		t.Fatalf("ReconcileSecret: %v", err)
 	}
@@ -769,7 +771,7 @@ func TestReconcileSecret_MintsWhenTheStoredSecretExpired(t *testing.T) {
 	creates := 0
 	apiClient := clientSecretClient(t, "minted-secret", &creates)
 
-	observed := []pocketid.OIDCClientSecret{expiredSecret(secretWithPrefix("ours", pocketid.SecretPrefix(storedSecretValue), time.Hour))}
+	observed := []pid.OIDCClientSecretDto{expiredSecret(secretWithPrefix("ours", pocketid.SecretPrefix(storedSecretValue), time.Hour))}
 	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient, observed); err != nil {
 		t.Fatalf("ReconcileSecret: %v", err)
 	}
@@ -840,7 +842,7 @@ func TestReconcileSecret_KeepsWorkingCredentialAfterAnUnstoredMint(t *testing.T)
 	var deleted []string
 	apiClient := mintSequenceClient(t, "in-use", prefix, []string{"unreachable"}, &deleted)
 
-	observed := []pocketid.OIDCClientSecret{
+	observed := []pid.OIDCClientSecretDto{
 		secretWithPrefix("in-use", prefix, 24*time.Hour),
 		secretWithPrefix("orphan", prefix, time.Minute),
 	}
@@ -878,7 +880,7 @@ func TestReconcileSecret_RotationRetriesACollidingMint(t *testing.T) {
 	var deleted []string
 	apiClient := mintSequenceClient(t, "superseded", prefix, []string{collidingValue, distinctValue}, &deleted)
 
-	observed := []pocketid.OIDCClientSecret{secretWithPrefix("superseded", prefix, time.Hour)}
+	observed := []pid.OIDCClientSecretDto{secretWithPrefix("superseded", prefix, time.Hour)}
 	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient, observed); err != nil {
 		t.Fatalf("ReconcileSecret: %v", err)
 	}
@@ -964,7 +966,7 @@ func TestReconcileSecret_RotationRetiresThePreviousSecret(t *testing.T) {
 	// supersede.
 	previous := secretWithPrefix("previous", pocketid.SecretPrefix(storedSecretValue), 24*time.Hour)
 	var deleted []string
-	held := []pocketid.OIDCClientSecret{previous}
+	held := []pid.OIDCClientSecretDto{previous}
 	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		switch req.Method {
 		case http.MethodPost:
@@ -973,7 +975,7 @@ func TestReconcileSecret_RotationRetiresThePreviousSecret(t *testing.T) {
 		case http.MethodDelete:
 			id := path.Base(req.URL.Path)
 			deleted = append(deleted, id)
-			held = slices.DeleteFunc(held, func(s pocketid.OIDCClientSecret) bool { return s.ID == id })
+			held = slices.DeleteFunc(held, func(s pid.OIDCClientSecretDto) bool { return s.ID == id })
 			w.WriteHeader(http.StatusNoContent)
 		default:
 			entries := make([]string, 0, len(held))
@@ -985,7 +987,7 @@ func TestReconcileSecret_RotationRetiresThePreviousSecret(t *testing.T) {
 		}
 	}))
 
-	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient, []pocketid.OIDCClientSecret{previous}); err != nil {
+	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient, []pid.OIDCClientSecretDto{previous}); err != nil {
 		t.Fatalf("ReconcileSecret: %v", err)
 	}
 

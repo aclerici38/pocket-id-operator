@@ -45,7 +45,7 @@ type NamespacedUserReference struct {
 	Namespace string `json:"namespace,omitempty"`
 }
 
-// UserGroupUsers defines the members the operator manages in a user group.
+// UserGroupUsers is the full member list of a user group.
 type UserGroupUsers struct {
 	// UserRefs are PocketIDUser custom resources to add to this group. Each must be Ready.
 	// +optional
@@ -83,7 +83,7 @@ type PocketIDUserGroupSpec struct {
 	// +optional
 	CustomClaims []CustomClaim `json:"customClaims,omitempty"`
 
-	// Users defines the members the operator manages in this group. Members added outside the operator are left in place.
+	// Users is the group's full member list. When set, members added outside the operator are removed; when unset, membership is left alone.
 	// +optional
 	Users *UserGroupUsers `json:"users,omitempty"`
 
@@ -120,13 +120,9 @@ type PocketIDUserGroupStatus struct {
 	// +optional
 	LdapID string `json:"ldapID,omitempty"`
 
-	// TotalUserCount is the number of members in the group, including those not managed by the operator.
+	// TotalUserCount is the number of members in the group.
 	// +optional
 	TotalUserCount int `json:"totalUserCount,omitempty"`
-
-	// ManagedUserIDs are the Pocket-ID user IDs the operator manages in this group. Members not in this list were added outside the operator and are never removed.
-	// +optional
-	ManagedUserIDs []string `json:"managedUserIDs,omitempty"`
 
 	// CustomClaims are the group's custom claims in Pocket-ID.
 	// +optional

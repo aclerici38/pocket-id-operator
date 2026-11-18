@@ -39,7 +39,7 @@ func TestResolveUserGroupReferences_ResolvesBlockedDeletion(t *testing.T) {
 	ids, err := ResolveUserGroupReferences(
 		context.Background(),
 		c,
-		&fakeUserGroupLookup{},
+		nil,
 		[]pocketidv1alpha1.NamespacedUserGroupReference{{Name: group.Name, Namespace: group.Namespace}},
 		"default",
 	)

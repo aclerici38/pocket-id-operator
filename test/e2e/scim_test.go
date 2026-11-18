@@ -10,7 +10,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
 )
 
 var _ = Describe("SCIM Service Provider", Ordered, func() {
@@ -294,7 +294,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 func getSCIMProviderEndpoint(oidcClientID string) string {
 	GinkgoHelper()
 
-	body, code := pocketIDRequest(http.MethodGet, "/api/oidc/clients/"+oidcClientID+"/scim-service-provider")
+	body, code := pocketIDRequest(http.MethodGet, "/api/admin/oidc/clients/"+oidcClientID+"/scim-service-provider")
 	if code == http.StatusNotFound {
 		return ""
 	}
@@ -310,7 +310,7 @@ func getSCIMProviderEndpoint(oidcClientID string) string {
 // checkSCIMProviderExists reports whether a SCIM service provider exists for the client.
 func checkSCIMProviderExists(oidcClientID string) bool {
 	GinkgoHelper()
-	return getStatusFromPocketID("/api/oidc/clients/"+oidcClientID+"/scim-service-provider") == http.StatusOK
+	return getStatusFromPocketID("/api/admin/oidc/clients/"+oidcClientID+"/scim-service-provider") == http.StatusOK
 }
 
 // checkSCIMProviderGone reports whether the SCIM service provider for the given OIDC
@@ -319,7 +319,7 @@ func checkSCIMProviderExists(oidcClientID string) bool {
 // whether or not the record existed.
 func checkSCIMProviderGone(oidcClientID string) bool {
 	GinkgoHelper()
-	return getStatusFromPocketID("/api/oidc/clients/"+oidcClientID+"/scim-service-provider") == http.StatusNotFound
+	return getStatusFromPocketID("/api/admin/oidc/clients/"+oidcClientID+"/scim-service-provider") == http.StatusNotFound
 }
 
 // createSCIMProviderInPocketID creates a SCIM service provider directly in Pocket-ID and
@@ -329,10 +329,8 @@ func createSCIMProviderInPocketID(oidcClientID, endpoint string) string {
 	ctx, cancel := testCtx()
 	defer cancel()
 
-	provider, err := pid.CreateSCIMServiceProvider(ctx, pocketid.SCIMServiceProviderInput{
-		OIDCClientID: oidcClientID,
-		Endpoint:     endpoint,
-	})
+	provider, err := pid.Decode[pid.SCIMServiceProviderDTO](pocketID.CreateSCIMServiceProvider(ctx,
+		pid.SCIMServiceProviderCreateDTO{OIDCClientID: oidcClientID, Endpoint: endpoint}))
 	Expect(err).NotTo(HaveOccurred(), "creating SCIM provider for client %s", oidcClientID)
 	Expect(provider.ID).NotTo(BeEmpty())
 	return provider.ID

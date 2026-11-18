@@ -1,29 +1,37 @@
 package pocketid
 
 import (
+	"cmp"
+	"net/http"
 	"time"
+
+	"github.com/aclerici38/pocket-id-go-client/v3/client"
 
 	"github.com/aclerici38/pocket-id-operator/internal/metrics"
 )
 
-// recordCall records the duration and result of a Pocket-ID API call into the
-// pocketid_operator_pocketid_api_* metrics. Call this immediately after the raw API
-// call with the operation name, the error it returned, and the elapsed duration.
-//
-// Result label mapping:
-//   - nil error       -> "success"
-//   - IsNotFoundError -> "not_found"
-//   - any other error -> "error"
-func recordCall(operation string, err error, duration time.Duration) {
-	metrics.PocketIDAPIRequestDuration.WithLabelValues(operation).Observe(duration.Seconds())
+// metricsTransport records the duration and result of every Pocket-ID API call into the
+// pocketid_operator_pocketid_api_* metrics, labelled with Pocket-ID's operation name.
+type metricsTransport struct {
+	next http.RoundTripper
+}
 
-	resultLabel := "success"
-	if err != nil {
-		if IsNotFoundError(err) {
-			resultLabel = "not_found"
-		} else {
-			resultLabel = "error"
-		}
+func (t metricsTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	operation, _ := client.OperationName(req)
+	operation = cmp.Or(operation, "unknown")
+
+	start := time.Now()
+	resp, err := t.next.RoundTrip(req)
+	metrics.PocketIDAPIRequestDuration.WithLabelValues(operation).Observe(time.Since(start).Seconds())
+
+	result := "error"
+	switch {
+	case err != nil:
+	case resp.StatusCode == http.StatusNotFound:
+		result = "not_found"
+	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+		result = "success"
 	}
-	metrics.PocketIDAPIRequests.WithLabelValues(operation, resultLabel).Inc()
+	metrics.PocketIDAPIRequests.WithLabelValues(operation, result).Inc()
+	return resp, err
 }

@@ -23,6 +23,8 @@ spec:
 
 List every redirect URI the client uses under `spec.callbackUrls`, and any post-logout redirect URIs under `spec.logoutCallbackUrls`. Pocket-ID only redirects to URLs registered on the client, so an authorization request whose `redirect_uri` is not listed is rejected. Wildcards are supported.
 
+The spec owns both lists: leaving one unset clears any URLs set in Pocket-ID's UI or API. A client that never redirects, such as one using only client credentials or the device code flow, can leave them unset.
+
 ## Credentials Secret
 
 Unless `spec.secret.enabled` is `false`, the operator writes a Secret named `<client>-oidc-credentials` (override with `spec.secret.name`) containing:

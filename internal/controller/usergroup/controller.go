@@ -17,9 +17,11 @@ limitations under the License.
 package usergroup
 
 import (
+	"cmp"
 	"context"
 	"fmt"
-	"sort"
+	"slices"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -31,6 +33,8 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
@@ -119,8 +123,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return common.ApplyResync(ctrl.Result{}), nil
 	}
 
-	// Fetch current state from Pocket ID
-	current, err := apiClient.GetUserGroup(ctx, userGroup.Status.GroupID)
+	current, err := r.pushUserGroupState(ctx, userGroup, apiClient)
 	if err != nil {
 		if pocketid.IsNotFoundError(err) {
 			log.Info("User group was deleted externally, will recreate", "groupID", userGroup.Status.GroupID)
@@ -130,7 +133,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			}
 			return ctrl.Result{RequeueAfter: common.RequeueImmediate}, nil
 		}
-		_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "GetError", err.Error())
+		log.Error(err, "Failed to push user group state")
+		_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 	}
 
@@ -139,24 +143,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
-	updated, err := r.pushUserGroupState(ctx, userGroup, apiClient, current)
-	if err != nil {
-		log.Error(err, "Failed to push user group state")
-		_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "ReconcileError", err.Error())
-		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
-	}
-
-	// Read the write back in this same pass, so Ready below never stamps observedGeneration
-	// against state the operator has not observed yet.
-	if updated {
-		if current, err = apiClient.GetUserGroup(ctx, userGroup.Status.GroupID); err != nil {
-			_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "GetError", err.Error())
-			return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
-		}
-		if err := r.updateUserGroupStatus(ctx, userGroup, current); err != nil {
-			log.Error(err, "Failed to update user group status")
-			return ctrl.Result{RequeueAfter: common.Requeue}, nil
-		}
+	// The relationship to OIDC clients is written exclusively by the OIDC client controller, to
+	// avoid concurrent writes to the shared join table causing DB deadlocks, so it is only checked.
+	if _, err := helpers.ResolveOIDCClientReferences(ctx, r.Client, userGroup.Spec.AllowedOIDCClients, userGroup.Namespace); err != nil {
+		_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionFalse, "ReconcileError", "resolve allowed OIDC client references: "+err.Error())
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
 	_ = r.SetReadyCondition(ctx, userGroup, metav1.ConditionTrue, "Reconciled", "User group is in sync")
@@ -164,59 +155,50 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	return common.ApplyResync(ctrl.Result{}), nil
 }
 
-// pocketIDUserGroupAPI defines the minimal interface needed for user group operations
-type PocketIDUserGroupAPI interface {
-	ListUserGroups(ctx context.Context, search string) ([]*pocketid.UserGroup, error)
-	CreateUserGroup(ctx context.Context, name, friendlyName string) (*pocketid.UserGroup, error)
-	GetUserGroup(ctx context.Context, id string) (*pocketid.UserGroup, error)
-	UpdateUserGroup(ctx context.Context, id, name, friendlyName string) (*pocketid.UserGroup, error)
-	UpdateUserGroupCustomClaims(ctx context.Context, id string, claims []pocketid.CustomClaim) ([]pocketid.CustomClaim, error)
-	UpdateUserGroupUsers(ctx context.Context, id string, userIDs []string) error
-}
-
 // FindExistingUserGroup checks if a user group with the given name already exists in Pocket-ID.
 // Returns the existing group if found, or nil if no matching group exists.
-func (r *Reconciler) FindExistingUserGroup(ctx context.Context, apiClient PocketIDUserGroupAPI, name string) (*pocketid.UserGroup, error) {
+func (r *Reconciler) FindExistingUserGroup(ctx context.Context, apiClient *pocketid.Client, name string) (*pid.UserGroupMinimalDto, error) {
 	log := logf.FromContext(ctx)
 
 	log.Info("Checking if user group exists in Pocket-ID", "name", name)
-	existingGroups, err := apiClient.ListUserGroups(ctx, name)
+	existingGroups, err := pid.Decode[pid.PaginatedDtoUserGroupMinimalDto](apiClient.ListUserGroups(ctx, &pid.ListUserGroupsParams{Search: &name}))
 	if err != nil {
 		return nil, fmt.Errorf("list user groups: %w", err)
 	}
 
-	for _, existingGroup := range existingGroups {
+	for _, existingGroup := range existingGroups.Data {
 		if existingGroup.Name == name {
 			log.Info("Found existing user group with matching name", "name", name, "groupID", existingGroup.ID)
-			return existingGroup, nil
+			return &existingGroup, nil
 		}
 	}
 
 	return nil, nil
 }
 
+// userGroupNames returns the group's name, spec.name or metadata.name, and its friendly name,
+// which defaults to the name.
+func userGroupNames(userGroup *pocketidinternalv1alpha1.PocketIDUserGroup) (name, friendlyName string) {
+	name = cmp.Or(userGroup.Spec.Name, userGroup.Name)
+	return name, cmp.Or(userGroup.Spec.FriendlyName, name)
+}
+
 // createOrAdoptUserGroup handles creation or adoption when no status ID exists.
 // Returns (requeue, error). On success, sets the status ID and signals a requeue.
 func (r *Reconciler) createOrAdoptUserGroup(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, apiClient *pocketid.Client) (bool, error) {
-	name := userGroup.Spec.Name
-	if name == "" {
-		name = userGroup.Name
-	}
-	friendlyName := userGroup.Spec.FriendlyName
-	if friendlyName == "" {
-		friendlyName = name
-	}
+	name, friendlyName := userGroupNames(userGroup)
 
-	result, err := common.CreateOrAdopt(ctx, common.CreateOrAdoptConfig[*pocketid.UserGroup]{
+	result, err := common.CreateOrAdopt(ctx, common.CreateOrAdoptConfig[*pid.UserGroupMinimalDto]{
 		ResourceKind: "user group",
 		ResourceID:   name,
-		Create: func() (*pocketid.UserGroup, error) {
-			return apiClient.CreateUserGroup(ctx, name, friendlyName)
+		Create: func() (*pid.UserGroupMinimalDto, error) {
+			// Only the ID is used, which the minimal form carries.
+			return pid.Decode[*pid.UserGroupMinimalDto](apiClient.CreateUserGroup(ctx, pid.UserGroupCreateDto{Name: name, FriendlyName: friendlyName}))
 		},
-		FindExisting: func() (*pocketid.UserGroup, error) {
+		FindExisting: func() (*pid.UserGroupMinimalDto, error) {
 			return r.FindExistingUserGroup(ctx, apiClient, name)
 		},
-		IsNil: func(g *pocketid.UserGroup) bool {
+		IsNil: func(g *pid.UserGroupMinimalDto) bool {
 			return g == nil
 		},
 	})
@@ -240,145 +222,36 @@ func (r *Reconciler) createOrAdoptUserGroup(ctx context.Context, userGroup *pock
 	return true, nil
 }
 
-// buildUserGroupInput resolves the desired state from the CR spec into a UserGroupInput.
-func (r *Reconciler) buildUserGroupInput(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, apiClient *pocketid.Client) (pocketid.UserGroupInput, error) {
-	name := userGroup.Spec.Name
-	if name == "" {
-		name = userGroup.Name
-	}
-	friendlyName := userGroup.Spec.FriendlyName
-	if friendlyName == "" {
-		friendlyName = name
-	}
-
-	var userIDs []string
-	if userGroup.Spec.Users != nil {
-		var err error
-		userIDs, err = r.resolveUsers(ctx, userGroup, apiClient)
-		if err != nil {
-			return pocketid.UserGroupInput{}, err
-		}
-	}
-
-	return pocketid.UserGroupInput{
-		Name:         name,
-		FriendlyName: friendlyName,
-		CustomClaims: helpers.CustomClaimsToPocketID(userGroup.Spec.CustomClaims),
-		UserIDs:      userIDs,
-	}, nil
-}
-
-// computeMergedMembers computes the final membership list by merging the operator's
-// desired managed users users that are externally managed through pocket-id. Users that were
-// previously managed but are no longer in the desired set are removed.
-func computeMergedMembers(desiredManaged, previouslyManaged, currentMembers []string) []string {
-	// toRemove: previously managed but no longer desired
-	toRemove := make(map[string]struct{})
-	desiredSet := make(map[string]struct{}, len(desiredManaged))
-	for _, id := range desiredManaged {
-		desiredSet[id] = struct{}{}
-	}
-	for _, id := range previouslyManaged {
-		if _, ok := desiredSet[id]; !ok {
-			toRemove[id] = struct{}{}
-		}
-	}
-
-	// Start with current members, remove the ones we need to drop, add desired
-	resultSet := make(map[string]struct{}, len(currentMembers)+len(desiredManaged))
-	for _, id := range currentMembers {
-		if _, ok := toRemove[id]; !ok {
-			resultSet[id] = struct{}{}
-		}
-	}
-	for _, id := range desiredManaged {
-		resultSet[id] = struct{}{}
-	}
-
-	result := make([]string, 0, len(resultSet))
-	for id := range resultSet {
-		result = append(result, id)
-	}
-	sort.Strings(result)
-	return result
-}
-
-// pushUserGroupState compares the desired state from the CR spec against the current
-// state fetched from Pocket ID and only pushes updates for fields that differ.
-// Only operator-managed users are added/removed and externally-added users are preserved.
-func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, apiClient *pocketid.Client, current *pocketid.UserGroup) (bool, error) {
-	log := logf.FromContext(ctx)
-
-	desired, err := r.buildUserGroupInput(ctx, userGroup, apiClient)
+// pushUserGroupState writes the spec's names, custom claims and, when spec.users is set, the
+// full member list, and returns the group as it stands afterwards. Members are never touched
+// while spec.users is unset.
+func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, apiClient *pocketid.Client) (pid.UserGroupDto, error) {
+	userIDs, err := r.resolveUsers(ctx, userGroup, apiClient)
 	if err != nil {
-		return false, err
+		return pid.UserGroupDto{}, err
 	}
 
-	currentInput := current.ToInput()
-	nameChanged := desired.Name != currentInput.Name || desired.FriendlyName != currentInput.FriendlyName
-	claimsChanged := !pocketid.CustomClaimsEqual(desired.CustomClaims, currentInput.CustomClaims)
-
-	// Preserve externally-added users, only manage CR-declared users
-	previouslyManaged := userGroup.Status.ManagedUserIDs
-	finalMembers := computeMergedMembers(desired.UserIDs, previouslyManaged, current.UserIDs)
-	usersChanged := !pocketid.SortedEqual(finalMembers, current.UserIDs)
-
-	updated := false
-	if !nameChanged && !claimsChanged && !usersChanged {
-		log.V(1).Info("User group state is in sync, skipping update")
-	} else {
-		log.Info("Updating user group", "name", userGroup.Name)
-
-		if nameChanged {
-			if _, err := apiClient.UpdateUserGroup(ctx, userGroup.Status.GroupID, desired.Name, desired.FriendlyName); err != nil {
-				return false, fmt.Errorf("update user group: %w", err)
-			}
-		}
-
-		if claimsChanged {
-			claims := desired.CustomClaims
-			if claims == nil {
-				claims = []pocketid.CustomClaim{}
-			}
-			if _, err := apiClient.UpdateUserGroupCustomClaims(ctx, userGroup.Status.GroupID, claims); err != nil {
-				return false, err
-			}
-		}
-
-		if usersChanged {
-			if err := apiClient.UpdateUserGroupUsers(ctx, userGroup.Status.GroupID, finalMembers); err != nil {
-				return false, err
-			}
-		}
-
-		metrics.ResourceOperations.WithLabelValues("PocketIDUserGroup", "updated").Inc()
-		updated = true
+	id := userGroup.Status.GroupID
+	name, friendlyName := userGroupNames(userGroup)
+	group, err := pid.Decode[pid.UserGroupDto](apiClient.PatchUserGroup(ctx, id, pid.PatchUserGroupJSONRequestBody{
+		Name:         &name,
+		FriendlyName: &friendlyName,
+	}))
+	if err != nil {
+		return group, fmt.Errorf("update user group: %w", err)
 	}
 
-	// Persist the operator-managed set to status after successful reconciliation
-	if !pocketid.SortedEqual(desired.UserIDs, userGroup.Status.ManagedUserIDs) {
-		managedIDs := desired.UserIDs
-		if managedIDs == nil {
-			managedIDs = []string{}
-		}
-		base := userGroup.DeepCopy()
-		userGroup.Status.ManagedUserIDs = managedIDs
-		if err := common.PatchStatus(ctx, r.Client, userGroup, base); err != nil {
-			return false, fmt.Errorf("update managed user IDs status: %w", err)
-		}
+	if group.CustomClaims, err = pid.Decode[[]pid.CustomClaimDto](apiClient.UpdateCustomClaimsForUserGroup(ctx, id,
+		helpers.CustomClaimsToPocketID(userGroup.Spec.CustomClaims))); err != nil {
+		return group, fmt.Errorf("update user group custom claims: %w", err)
 	}
 
-	// Always validate that referenced OIDC clients exist and are ready, even when
-	// no other fields changed. The relationship is written exclusively by the OIDC
-	// client controller to avoid concurrent writes to the shared join table causing
-	// DB deadlocks.
-	if len(userGroup.Spec.AllowedOIDCClients) > 0 {
-		if _, err := helpers.ResolveOIDCClientReferences(ctx, r.Client, userGroup.Spec.AllowedOIDCClients, userGroup.Namespace); err != nil {
-			return false, fmt.Errorf("resolve allowed OIDC client references: %w", err)
+	if userGroup.Spec.Users != nil {
+		if group, err = pid.Decode[pid.UserGroupDto](apiClient.UpdateUsersInGroup(ctx, id, pid.UserGroupUpdateUsersDto{UserIDs: userIDs})); err != nil {
+			return group, fmt.Errorf("update user group members: %w", err)
 		}
 	}
-
-	return updated, nil
+	return group, nil
 }
 
 // setGroupID persists only the group ID to status.
@@ -431,23 +304,23 @@ func (r *Reconciler) resolveUsers(ctx context.Context, userGroup *pocketidintern
 		userIDSet[userID] = struct{}{}
 	}
 
+	// Never nil, so an empty list clears the members.
 	userIDs := make([]string, 0, len(userIDSet))
 	for id := range userIDSet {
 		userIDs = append(userIDs, id)
 	}
-	sort.Strings(userIDs)
-
+	slices.Sort(userIDs)
 	return userIDs, nil
 }
 
 // resolveUsername looks up a username in Pocket-ID and returns the user ID.
 func (r *Reconciler) resolveUsername(ctx context.Context, apiClient *pocketid.Client, username string) (string, error) {
-	users, err := apiClient.ListUsers(ctx, username)
+	users, err := pid.Decode[pid.PaginatedDtoUserDto](apiClient.ListUsers(ctx, &pid.ListUsersParams{Search: &username}))
 	if err != nil {
 		return "", fmt.Errorf("list users: %w", err)
 	}
 
-	for _, user := range users {
+	for _, user := range users.Data {
 		if user.Username == username {
 			return user.ID, nil
 		}
@@ -463,23 +336,27 @@ func (r *Reconciler) clearGroupStatus(ctx context.Context, userGroup *pocketidin
 	})
 }
 
-func (r *Reconciler) updateUserGroupStatus(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, current *pocketid.UserGroup) error {
-	if current == nil {
-		return nil
+func (r *Reconciler) updateUserGroupStatus(ctx context.Context, userGroup *pocketidinternalv1alpha1.PocketIDUserGroup, current pid.UserGroupDto) error {
+	clientIDs := make([]string, 0, len(current.AllowedOIDCClients))
+	for _, c := range current.AllowedOIDCClients {
+		clientIDs = append(clientIDs, c.ID)
 	}
+	// Pocket-ID returns relations unordered; sort so status stays stable.
+	slices.Sort(clientIDs)
+
 	base := userGroup.DeepCopy()
 	userGroup.Status.GroupID = current.ID
 	userGroup.Status.Name = current.Name
 	userGroup.Status.FriendlyName = current.FriendlyName
-	userGroup.Status.CreatedAt = current.CreatedAt
-	userGroup.Status.LdapID = current.LdapID
-	userGroup.Status.TotalUserCount = current.UserCount
+	userGroup.Status.CreatedAt = current.CreatedAt.Format(time.RFC3339)
+	userGroup.Status.LdapID = current.LDAPID
+	userGroup.Status.TotalUserCount = len(current.Users)
 	userGroup.Status.CustomClaims = helpers.CustomClaimsFromPocketID(current.CustomClaims)
-	userGroup.Status.AllowedOIDCClientIDs = current.AllowedOIDCClientIDs
+	userGroup.Status.AllowedOIDCClientIDs = clientIDs
 	if err := common.PatchStatus(ctx, r.Client, userGroup, base); err != nil {
 		return err
 	}
-	metrics.UserGroupMemberCount.WithLabelValues(userGroup.Namespace, userGroup.Name).Set(float64(current.UserCount))
+	metrics.UserGroupMemberCount.WithLabelValues(userGroup.Namespace, userGroup.Name).Set(float64(len(current.Users)))
 	return nil
 }
 
@@ -560,7 +437,7 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, userGroup *pocketidint
 		userGroup.Spec.InstanceSelector,
 		UserGroupFinalizer,
 		func(ctx context.Context, client *pocketid.Client, id string) error {
-			if err := client.DeleteUserGroup(ctx, id); err != nil {
+			if err := pid.Check(client.DeleteUserGroup(ctx, id)); err != nil {
 				return err
 			}
 			metrics.ResourceOperations.WithLabelValues("PocketIDUserGroup", "deleted").Inc()

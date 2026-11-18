@@ -2,324 +2,257 @@ package user
 
 import (
 	"context"
+	"encoding/json"
+	"io"
+	"maps"
 	"net/http"
+	"slices"
+	"strings"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
-	"github.com/go-openapi/runtime"
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid/pocketidtest"
 )
 
-const (
-	testEmailBobGmail = "bob@gmail.com"
-)
+const declaredUserID = "18f3c2f6-2c4b-4f26-9d1c-4b7f6e0a1b2c"
 
-// mockPocketIDClient is a mock implementation of the PocketID client for testing
-type mockPocketIDClient struct {
-	listUsersFunc  func(ctx context.Context, search string) ([]*pocketid.User, error)
-	createUserFunc func(ctx context.Context, input pocketid.UserInput) (*pocketid.User, error)
-	getUserFunc    func(ctx context.Context, id string) (*pocketid.User, error)
-	updateUserFunc func(ctx context.Context, id string, input pocketid.UserInput) (*pocketid.User, error)
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
 }
 
-func (m *mockPocketIDClient) ListUsers(ctx context.Context, search string) ([]*pocketid.User, error) {
-	if m.listUsersFunc != nil {
-		return m.listUsersFunc(ctx, search)
-	}
-	return nil, nil
+func notFound(w http.ResponseWriter) {
+	writeJSON(w, http.StatusNotFound, map[string]string{"error": "User not found", "code": "user_not_found"})
 }
 
-func (m *mockPocketIDClient) CreateUser(ctx context.Context, input pocketid.UserInput) (*pocketid.User, error) {
-	if m.createUserFunc != nil {
-		return m.createUserFunc(ctx, input)
-	}
-	return &pocketid.User{
-		ID:       "new-user-id",
-		Username: input.Username,
-		Email:    input.Email,
-	}, nil
+func pocketIDUser(id, username, email string) map[string]any {
+	return map[string]any{"id": id, "username": username, "email": email}
 }
 
-func (m *mockPocketIDClient) GetUser(ctx context.Context, id string) (*pocketid.User, error) {
-	if m.getUserFunc != nil {
-		return m.getUserFunc(ctx, id)
-	}
-	return nil, nil
+// fakeUsers serves users the way Pocket-ID does, recording every call it gets.
+type fakeUsers struct {
+	users []map[string]any
+	// getStatus, when set, answers every lookup by ID.
+	getStatus int
+	// createStatus, when set, answers every create.
+	createStatus int
+
+	calls      []string
+	created    map[string]any
+	tokenTTL   any
+	patches    []map[string]any
+	claimsBody []string
 }
 
-func (m *mockPocketIDClient) UpdateUser(ctx context.Context, id string, input pocketid.UserInput) (*pocketid.User, error) {
-	if m.updateUserFunc != nil {
-		return m.updateUserFunc(ctx, id, input)
+func (f *fakeUsers) find(id string) map[string]any {
+	for _, u := range f.users {
+		if u["id"] == id {
+			return u
+		}
 	}
-	return &pocketid.User{
-		ID:       id,
-		Username: input.Username,
-		Email:    input.Email,
-	}, nil
+	return nil
 }
 
-func TestFindExistingUser_NoMatch(t *testing.T) {
-	ctx := context.Background()
-	reconciler := &Reconciler{}
-
-	mockClient := &mockPocketIDClient{
-		listUsersFunc: func(ctx context.Context, search string) ([]*pocketid.User, error) {
-			return []*pocketid.User{}, nil
-		},
-	}
-
-	existingUser, err := reconciler.FindExistingUser(ctx, mockClient, "", "newuser", "newuser@example.com")
-	if err != nil {
-		t.Fatalf("FindExistingUser returned unexpected error: %v", err)
-	}
-	if existingUser != nil {
-		t.Fatalf("expected no existing user, got: %+v", existingUser)
-	}
+func (f *fakeUsers) client(t *testing.T) *pocketid.Client {
+	return pocketidtest.NewClient(t, f.handler())
 }
 
-func TestFindExistingUser_MatchByUsername(t *testing.T) {
-	ctx := context.Background()
-	reconciler := &Reconciler{}
-
-	expectedUser := &pocketid.User{
-		ID:       "existing-user-id",
-		Username: "existinguser",
-		Email:    "existing@example.com",
-	}
-
-	mockClient := &mockPocketIDClient{
-		listUsersFunc: func(ctx context.Context, search string) ([]*pocketid.User, error) {
-			if search == "existinguser" {
-				return []*pocketid.User{expectedUser}, nil
+func (f *fakeUsers) handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/admin/users", func(w http.ResponseWriter, r *http.Request) {
+		search := r.URL.Query().Get("search")
+		f.calls = append(f.calls, "list "+search)
+		matches := []map[string]any{}
+		for _, u := range f.users {
+			username, _ := u["username"].(string)
+			email, _ := u["email"].(string)
+			if strings.Contains(username, search) || strings.Contains(email, search) {
+				matches = append(matches, u)
 			}
-			return []*pocketid.User{}, nil
-		},
-	}
-
-	existingUser, err := reconciler.FindExistingUser(ctx, mockClient, "", "existinguser", "different@example.com")
-	if err != nil {
-		t.Fatalf("FindExistingUser returned unexpected error: %v", err)
-	}
-	if existingUser == nil {
-		t.Fatal("expected to find existing user, got nil")
-		return
-	}
-	if existingUser.ID != expectedUser.ID {
-		t.Fatalf("expected user ID %q, got %q", expectedUser.ID, existingUser.ID)
-	}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"data": matches, "pagination": map[string]int{"currentPage": 1, "totalPages": 1}})
+	})
+	mux.HandleFunc("GET /api/admin/users/{id}", func(w http.ResponseWriter, r *http.Request) {
+		f.calls = append(f.calls, "get "+r.PathValue("id"))
+		if f.getStatus != 0 {
+			writeJSON(w, f.getStatus, map[string]string{"error": "failed"})
+			return
+		}
+		if u := f.find(r.PathValue("id")); u != nil {
+			writeJSON(w, http.StatusOK, u)
+			return
+		}
+		notFound(w)
+	})
+	mux.HandleFunc("POST /api/admin/users", func(w http.ResponseWriter, r *http.Request) {
+		f.calls = append(f.calls, "create")
+		_ = json.NewDecoder(r.Body).Decode(&f.created)
+		if f.createStatus != 0 {
+			writeJSON(w, f.createStatus, map[string]string{"error": "Username is already in use", "code": "already_in_use"})
+			return
+		}
+		u := maps.Clone(f.created)
+		if u["id"] == nil {
+			u["id"] = "generated-id"
+		}
+		f.users = append(f.users, u)
+		writeJSON(w, http.StatusCreated, u)
+	})
+	mux.HandleFunc("PATCH /api/admin/users/{id}", func(w http.ResponseWriter, r *http.Request) {
+		f.calls = append(f.calls, "patch "+r.PathValue("id"))
+		u := f.find(r.PathValue("id"))
+		if u == nil {
+			notFound(w)
+			return
+		}
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		f.patches = append(f.patches, body)
+		maps.Copy(u, body)
+		writeJSON(w, http.StatusOK, u)
+	})
+	mux.HandleFunc("PUT /api/admin/custom-claims/user/{userId}", func(w http.ResponseWriter, r *http.Request) {
+		f.calls = append(f.calls, "claims "+r.PathValue("userId"))
+		body, _ := io.ReadAll(r.Body)
+		f.claimsBody = append(f.claimsBody, strings.TrimSpace(string(body)))
+		writeJSON(w, http.StatusOK, json.RawMessage(body))
+	})
+	mux.HandleFunc("POST /api/admin/users/{id}/one-time-access-token", func(w http.ResponseWriter, r *http.Request) {
+		f.calls = append(f.calls, "token "+r.PathValue("id"))
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		f.tokenTTL = body["ttl"]
+		writeJSON(w, http.StatusCreated, map[string]string{"token": "one-time-token"})
+	})
+	return mux
 }
 
-func TestFindExistingUser_MatchByEmail(t *testing.T) {
-	ctx := context.Background()
-	reconciler := &Reconciler{}
+func userTestScheme() *runtime.Scheme {
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+	return scheme
+}
 
-	expectedUser := &pocketid.User{
-		ID:       "existing-user-id",
-		Username: "existinguser",
-		Email:    "existing@example.com",
+func TestFindExistingUser(t *testing.T) {
+	bob := pocketIDUser("bob-id", "bob", "bob@gmail.com")
+	tests := []struct {
+		name                string
+		users               []map[string]any
+		getStatus           int
+		id, username, email string
+		wantID              string
+		wantCalls           []string
+		wantErr             bool
+	}{
+		{name: "no match searches username then email", username: "bob", email: "bob@gmail.com",
+			wantCalls: []string{"list bob", "list bob@gmail.com"}},
+		{name: "matches by username", users: []map[string]any{bob}, username: "bob", email: "other@example.com",
+			wantID: "bob-id", wantCalls: []string{"list bob"}},
+		{name: "matches by email", users: []map[string]any{pocketIDUser("bob-id", "robert", "bob@gmail.com")}, username: "bob", email: "bob@gmail.com",
+			wantID: "bob-id", wantCalls: []string{"list bob", "list bob@gmail.com"}},
+		{name: "picks the exact username among partial matches",
+			users:    []map[string]any{pocketIDUser("other", "bobby", "x@example.com"), bob},
+			username: "bob", wantID: "bob-id", wantCalls: []string{"list bob"}},
+		{name: "skips an empty email", username: "bob", wantCalls: []string{"list bob"}},
+		{name: "looks up a declared ID without listing", users: []map[string]any{bob}, id: "bob-id", username: "bob",
+			wantID: "bob-id", wantCalls: []string{"get bob-id"}},
+		// Falling back to the username would adopt a user with a different ID than the one declared.
+		{name: "an unknown declared ID does not fall back to the username", users: []map[string]any{bob}, id: declaredUserID, username: "bob",
+			wantCalls: []string{"get " + declaredUserID}},
+		{name: "a failed ID lookup is an error", getStatus: http.StatusInternalServerError, id: declaredUserID,
+			wantCalls: []string{"get " + declaredUserID}, wantErr: true},
 	}
-
-	mockClient := &mockPocketIDClient{
-		listUsersFunc: func(ctx context.Context, search string) ([]*pocketid.User, error) {
-			if search == "existing@example.com" {
-				return []*pocketid.User{expectedUser}, nil
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &fakeUsers{users: tt.users, getStatus: tt.getStatus}
+			found, err := (&Reconciler{}).FindExistingUser(context.Background(), f.client(t), tt.id, tt.username, tt.email)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("error = %v, wantErr %v", err, tt.wantErr)
 			}
-			return []*pocketid.User{}, nil
-		},
-	}
-
-	existingUser, err := reconciler.FindExistingUser(ctx, mockClient, "", "newusername", "existing@example.com")
-	if err != nil {
-		t.Fatalf("FindExistingUser returned unexpected error: %v", err)
-	}
-	if existingUser == nil {
-		t.Fatal("expected to find existing user, got nil")
-		return
-	}
-	if existingUser.ID != expectedUser.ID {
-		t.Fatalf("expected user ID %q, got %q", expectedUser.ID, existingUser.ID)
-	}
-}
-
-func TestFindExistingUser_SkipsPlaceholderEmail(t *testing.T) {
-	ctx := context.Background()
-	reconciler := &Reconciler{}
-
-	callCount := 0
-	mockClient := &mockPocketIDClient{
-		listUsersFunc: func(ctx context.Context, search string) ([]*pocketid.User, error) {
-			callCount++
-			return []*pocketid.User{}, nil
-		},
-	}
-
-	username := "testuser"
-	placeholderEmail := "testuser@placeholder.local"
-
-	existingUser, err := reconciler.FindExistingUser(ctx, mockClient, "", username, placeholderEmail)
-	if err != nil {
-		t.Fatalf("FindExistingUser returned unexpected error: %v", err)
-	}
-	if existingUser != nil {
-		t.Fatalf("expected no existing user, got: %+v", existingUser)
-	}
-	if callCount != 1 {
-		t.Fatalf("expected ListUsers to be called once (username only), got %d calls", callCount)
-	}
-}
-
-func TestUserAdoption_ExistingUserByUsername(t *testing.T) {
-	ctx := context.Background()
-
-	existingUser := &pocketid.User{
-		ID:       "existing-user-id",
-		Username: "bob",
-		Email:    testEmailBobGmail,
-	}
-
-	createCalled := false
-	mockClient := &mockPocketIDClient{
-		listUsersFunc: func(ctx context.Context, search string) ([]*pocketid.User, error) {
-			if search == "bob" {
-				return []*pocketid.User{existingUser}, nil
+			gotID := ""
+			if found != nil {
+				gotID = found.ID
 			}
-			return []*pocketid.User{}, nil
-		},
-		createUserFunc: func(ctx context.Context, input pocketid.UserInput) (*pocketid.User, error) {
-			createCalled = true
-			t.Fatal("CreateUser should not be called when user exists")
-			return nil, nil
-		},
-	}
-
-	reconciler := &Reconciler{}
-
-	foundUser, err := reconciler.FindExistingUser(ctx, mockClient, "", "bob", testEmailBobGmail)
-	if err != nil {
-		t.Fatalf("FindExistingUser returned error: %v", err)
-	}
-	if foundUser == nil {
-		t.Fatal("expected to find existing user")
-		return
-	}
-	if foundUser.ID != existingUser.ID {
-		t.Fatalf("expected user ID %q, got %q", existingUser.ID, foundUser.ID)
-	}
-	if createCalled {
-		t.Fatal("CreateUser should not have been called for existing user")
-	}
-}
-
-func TestUserAdoption_PrioritizesUsernameMatch(t *testing.T) {
-	ctx := context.Background()
-
-	userMatchingUsername := &pocketid.User{
-		ID:       "username-match-id",
-		Username: "bob",
-		Email:    "bob@oldmail.com",
-	}
-
-	mockClient := &mockPocketIDClient{
-		listUsersFunc: func(ctx context.Context, search string) ([]*pocketid.User, error) {
-			if search == "bob" {
-				return []*pocketid.User{userMatchingUsername}, nil
+			if gotID != tt.wantID {
+				t.Errorf("found ID = %q, want %q", gotID, tt.wantID)
 			}
-			if search == testEmailBobGmail {
-				t.Fatal("should not search by email when username already matched")
-				return nil, nil
+			if !slices.Equal(f.calls, tt.wantCalls) {
+				t.Errorf("calls = %v, want %v", f.calls, tt.wantCalls)
 			}
-			return []*pocketid.User{}, nil
-		},
-	}
-
-	reconciler := &Reconciler{}
-
-	foundUser, err := reconciler.FindExistingUser(ctx, mockClient, "", "bob", testEmailBobGmail)
-	if err != nil {
-		t.Fatalf("FindExistingUser returned error: %v", err)
-	}
-	if foundUser == nil {
-		t.Fatal("expected to find existing user by username")
-		return
-	}
-	if foundUser.ID != userMatchingUsername.ID {
-		t.Fatalf("expected user ID %q, got %q", userMatchingUsername.ID, foundUser.ID)
+		})
 	}
 }
 
-func TestFindExistingUser_MultipleUsersInResponse(t *testing.T) {
-	ctx := context.Background()
-	reconciler := &Reconciler{}
-
-	targetUser := &pocketid.User{
-		ID:       "target-user-id",
-		Username: "targetuser",
-		Email:    "target@example.com",
+func TestCreateOrAdoptUser(t *testing.T) {
+	tests := []struct {
+		name         string
+		declaredID   string
+		users        []map[string]any
+		createStatus int
+		wantID       string
+		wantCalls    []string
+		wantToken    bool
+	}{
+		// Creating would be rejected as a duplicate primary key.
+		{name: "adopts the user carrying the declared ID", declaredID: declaredUserID,
+			users:  []map[string]any{pocketIDUser(declaredUserID, "renamed-alice", "")},
+			wantID: declaredUserID, wantCalls: []string{"get " + declaredUserID}},
+		{name: "creates with the declared ID when absent", declaredID: declaredUserID,
+			wantID: declaredUserID, wantCalls: []string{"get " + declaredUserID, "create", "token " + declaredUserID}, wantToken: true},
+		{name: "creates without an ID lookup when none is declared",
+			wantID: "generated-id", wantCalls: []string{"create", "token generated-id"}, wantToken: true},
+		{name: "adopts by username when the create conflicts", createStatus: http.StatusConflict,
+			users:  []map[string]any{pocketIDUser("existing-id", "alice", "alice@example.com")},
+			wantID: "existing-id", wantCalls: []string{"create", "list alice"}},
 	}
-
-	otherUser := &pocketid.User{
-		ID:       "other-user-id",
-		Username: "otheruser",
-		Email:    "other@example.com",
-	}
-
-	mockClient := &mockPocketIDClient{
-		listUsersFunc: func(ctx context.Context, search string) ([]*pocketid.User, error) {
-			if search == "targetuser" {
-				return []*pocketid.User{otherUser, targetUser}, nil
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			user := &pocketidinternalv1alpha1.PocketIDUser{
+				ObjectMeta: metav1.ObjectMeta{Name: "alice", Namespace: "default"},
+				Spec: pocketidinternalv1alpha1.PocketIDUserSpec{
+					UserID: tt.declaredID,
+					Email:  pocketidinternalv1alpha1.StringValue{Value: "alice@example.com"},
+				},
 			}
-			return []*pocketid.User{}, nil
-		},
-	}
+			fc := fake.NewClientBuilder().WithScheme(userTestScheme()).WithObjects(user).WithStatusSubresource(user).Build()
+			r := &Reconciler{Client: fc, APIReader: fc}
+			f := &fakeUsers{users: tt.users, createStatus: tt.createStatus}
+			instance := &pocketidinternalv1alpha1.PocketIDInstance{ObjectMeta: metav1.ObjectMeta{Name: "instance", Namespace: "default"}}
 
-	existingUser, err := reconciler.FindExistingUser(ctx, mockClient, "", "targetuser", "target@example.com")
-	if err != nil {
-		t.Fatalf("FindExistingUser returned unexpected error: %v", err)
-	}
-	if existingUser == nil {
-		t.Fatal("expected to find existing user, got nil")
-		return
-	}
-	if existingUser.ID != targetUser.ID {
-		t.Fatalf("expected target user ID %q, got %q", targetUser.ID, existingUser.ID)
-	}
-}
+			requeue, err := r.createOrAdoptUser(context.Background(), user, f.client(t), instance)
+			if err != nil || !requeue {
+				t.Fatalf("createOrAdoptUser = %v, %v; want a requeue", requeue, err)
+			}
+			if !slices.Equal(f.calls, tt.wantCalls) {
+				t.Errorf("calls = %v, want %v", f.calls, tt.wantCalls)
+			}
+			if f.created != nil && f.created["id"] != nil != (tt.declaredID != "") {
+				t.Errorf("create body id = %v, want present only when declared", f.created["id"])
+			}
 
-func TestFindExistingUser_EmptyEmail(t *testing.T) {
-	ctx := context.Background()
-	reconciler := &Reconciler{}
-
-	callCount := 0
-	mockClient := &mockPocketIDClient{
-		listUsersFunc: func(ctx context.Context, search string) ([]*pocketid.User, error) {
-			callCount++
-			return []*pocketid.User{}, nil
-		},
-	}
-
-	existingUser, err := reconciler.FindExistingUser(ctx, mockClient, "", "testuser", "")
-	if err != nil {
-		t.Fatalf("FindExistingUser returned unexpected error: %v", err)
-	}
-	if existingUser != nil {
-		t.Fatalf("expected no existing user, got: %+v", existingUser)
-	}
-	if callCount != 1 {
-		t.Fatalf("expected ListUsers to be called once (username only), got %d calls", callCount)
-	}
-}
-
-func TestIsNotFoundError_DetectsAPIError404(t *testing.T) {
-	err := runtime.NewAPIError("GetAPIUsersID", nil, http.StatusNotFound)
-
-	if !pocketid.IsNotFoundError(err) {
-		t.Error("expected IsNotFoundError to return true for 404 APIError")
-	}
-}
-
-func TestIsNotFoundError_IgnoresAPIError500(t *testing.T) {
-	err := runtime.NewAPIError("GetAPIUsersID", nil, http.StatusInternalServerError)
-
-	if pocketid.IsNotFoundError(err) {
-		t.Error("expected IsNotFoundError to return false for 500 APIError")
+			latest := &pocketidinternalv1alpha1.PocketIDUser{}
+			if err := fc.Get(context.Background(), client.ObjectKeyFromObject(user), latest); err != nil {
+				t.Fatalf("get user: %v", err)
+			}
+			if latest.Status.UserID != tt.wantID {
+				t.Errorf("status.userID = %q, want %q", latest.Status.UserID, tt.wantID)
+			}
+			if got := latest.Status.OneTimeLoginToken != ""; got != tt.wantToken {
+				t.Errorf("one-time login token set = %v, want %v", got, tt.wantToken)
+			}
+			// The TTL is in seconds.
+			if tt.wantToken && f.tokenTTL != float64(DefaultLoginTokenExpiryMin*60) {
+				t.Errorf("token ttl = %v, want %d", f.tokenTTL, DefaultLoginTokenExpiryMin*60)
+			}
+		})
 	}
 }

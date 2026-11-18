@@ -17,44 +17,32 @@ limitations under the License.
 package api
 
 import (
+	"cmp"
+	"slices"
+
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
-// buildPermissionInputs converts the CR spec permissions into API permission inputs.
-func buildPermissionInputs(permissions []pocketidinternalv1alpha1.APIPermission) []pocketid.APIPermissionInput {
-	inputs := make([]pocketid.APIPermissionInput, 0, len(permissions))
+// buildPermissionInputs converts the CR spec permissions into the full set Pocket-ID replaces
+// the API's permissions with. It is never nil, so an empty spec clears them.
+func buildPermissionInputs(permissions []pocketidinternalv1alpha1.APIPermission) []pid.APIPermissionInputDto {
+	inputs := make([]pid.APIPermissionInputDto, 0, len(permissions))
 	for _, p := range permissions {
-		inputs = append(inputs, pocketid.APIPermissionInput{
+		inputs = append(inputs, pid.APIPermissionInputDto{
 			Key:         p.Key,
 			Name:        p.Name,
-			Description: p.Description,
+			Description: pocketid.NullIfEmpty(p.Description),
 		})
 	}
 	return inputs
 }
 
-// permissionsEqual reports whether the desired inputs match the current permissions,
-// comparing key, name, and description regardless of order.
-func permissionsEqual(desired []pocketid.APIPermissionInput, current []pocketid.APIPermission) bool {
-	if len(desired) != len(current) {
-		return false
-	}
-	currentByKey := make(map[string]pocketid.APIPermission, len(current))
-	for _, p := range current {
-		currentByKey[p.Key] = p
-	}
-	for _, want := range desired {
-		got, ok := currentByKey[want.Key]
-		if !ok || got.Name != want.Name || got.Description != want.Description {
-			return false
-		}
-	}
-	return true
-}
-
-// observedPermissions converts Pocket-ID permissions into the CR status representation.
-func observedPermissions(permissions []pocketid.APIPermission) []pocketidinternalv1alpha1.ObservedAPIPermission {
+// observedPermissions converts Pocket-ID permissions into the CR status representation, sorted
+// by key since Pocket-ID returns them unordered.
+func observedPermissions(permissions []pid.APIPermissionResponseDto) []pocketidinternalv1alpha1.ObservedAPIPermission {
 	if len(permissions) == 0 {
 		return nil
 	}
@@ -67,43 +55,33 @@ func observedPermissions(permissions []pocketid.APIPermission) []pocketidinterna
 			CIMDAccess: p.AllowedForCIMDClients,
 		})
 	}
+	slices.SortFunc(observed, func(a, b pocketidinternalv1alpha1.ObservedAPIPermission) int { return cmp.Compare(a.Key, b.Key) })
 	return observed
 }
 
-// cimdAccessDrift reports whether the API's CIMD access differs from spec, along with the
-// resolved enabled state and the permission IDs to push. Access defaults to on when any
-// permission is marked, so the API-level field is only needed to grant access with no
-// permissions or to revoke it. Keys resolve against the API's live permissions, so this must
-// run after any permission update: a permission created in the same edit has no ID until then.
-//
-// While access is off the marks reach nobody, so they are pushed but never diffed: Pocket-ID
-// is free to keep or clear them and either way the operator must settle. The marks live in
-// spec, so turning access back on pushes them again from there.
-func cimdAccessDrift(api *pocketidinternalv1alpha1.PocketIDAPI, current *pocketid.API) (drift, enabled bool, permissionIDs []string) {
+// cimdAccess resolves the API's CIMD access from spec: whether it is enabled and the IDs of the
+// permissions it covers. Access defaults to on when any permission is marked, so the API-level
+// field is only needed to grant access with no permissions or to revoke it. Keys resolve
+// against the API's live permissions, since a permission created in the same edit has no ID
+// until then. The IDs are sent even while access is off, so turning it back on needs only spec.
+func cimdAccess(api *pocketidinternalv1alpha1.PocketIDAPI, current pid.APIResponseDto) (enabled bool, permissionIDs []string) {
 	wanted := make(map[string]bool, len(api.Spec.Permissions))
-	marked := false
 	for _, p := range api.Spec.Permissions {
-		wanted[p.Key] = p.CIMDAccess
-		marked = marked || p.CIMDAccess
+		if p.CIMDAccess {
+			wanted[p.Key] = true
+		}
 	}
 
-	enabled = marked
+	enabled = len(wanted) > 0
 	if api.Spec.CIMDAccess != nil {
 		enabled = *api.Spec.CIMDAccess
 	}
 
-	desiredIDs := []string{}
-	var currentIDs []string
+	permissionIDs = []string{}
 	for _, p := range current.Permissions {
 		if wanted[p.Key] {
-			desiredIDs = append(desiredIDs, p.ID)
-		}
-		if p.AllowedForCIMDClients {
-			currentIDs = append(currentIDs, p.ID)
+			permissionIDs = append(permissionIDs, p.ID)
 		}
 	}
-
-	drift = enabled != current.AllowCIMDClients ||
-		(enabled && !pocketid.SortedEqual(desiredIDs, currentIDs))
-	return drift, enabled, desiredIDs
+	return enabled, permissionIDs
 }

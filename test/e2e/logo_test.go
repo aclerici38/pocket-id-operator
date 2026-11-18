@@ -159,7 +159,7 @@ func uploadLogoToPocketID(oidcClientID string, light bool) {
 	ctx, cancel := testCtx()
 	defer cancel()
 
-	apiPath := fmt.Sprintf("/api/oidc/clients/%s/logo?light=%t", oidcClientID, light)
+	apiPath := fmt.Sprintf("/api/admin/oidc/clients/%s/logo?light=%t", oidcClientID, light)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, pocketIDBaseURL()+apiPath, &buf)
 	Expect(err).NotTo(HaveOccurred(), "building logo upload request")
 	req.Header.Set("X-API-KEY", staticAPIKey())
@@ -178,7 +178,7 @@ func uploadLogoToPocketID(oidcClientID string, light bool) {
 func getOIDCClientField(oidcClientID, field string) string {
 	GinkgoHelper()
 
-	body := getFromPocketID("/api/oidc/clients/" + oidcClientID)
+	body := getFromPocketID("/api/admin/oidc/clients/" + oidcClientID)
 
 	var client map[string]any
 	Expect(json.Unmarshal([]byte(body), &client)).To(Succeed(), "decoding OIDC client")

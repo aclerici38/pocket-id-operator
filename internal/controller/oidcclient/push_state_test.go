@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -18,30 +17,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
-	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
-	"github.com/aclerici38/pocket-id-operator/internal/pocketid/pocketidtest"
 )
 
 const (
 	grafanaLogoTemplate = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/{{name}}.webp"
 	grafanaLogoURL      = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/grafana.webp"
 )
-
-// pocketIDOIDCClientAPIResponse is the JSON shape returned by Pocket-ID OIDC client
-// endpoints, used in httptest servers within this package's tests.
-type pocketIDOIDCClientAPIResponse struct {
-	ID                 string   `json:"id"`
-	Name               string   `json:"name"`
-	CallbackURLs       []string `json:"callbackURLs"`
-	LogoutCallbackURLs []string `json:"logoutCallbackURLs"`
-	HasLogo            bool     `json:"hasLogo"`
-	HasDarkLogo        bool     `json:"hasDarkLogo"`
-	IsPublic           bool     `json:"isPublic"`
-	IsGroupRestricted  bool     `json:"isGroupRestricted"`
-	PkceEnabled        bool     `json:"pkceEnabled"`
-	AllowedUserGroups  []any    `json:"allowedUserGroups"`
-}
 
 // newPushStateOIDCReconciler creates a Reconciler with a fake K8s client including
 // the UserGroup index required by aggregateAllowedUserGroupIDs.
@@ -71,65 +55,89 @@ func newPushStateOIDCReconciler(scheme *runtime.Scheme, objs ...client.Object) *
 	return r
 }
 
-// okOIDCClientResponse writes a minimal valid OIDC client JSON response.
-func okOIDCClientResponse(w http.ResponseWriter, id, name string) {
-	resp := pocketIDOIDCClientAPIResponse{
-		ID:                 id,
-		Name:               name,
-		CallbackURLs:       []string{},
-		LogoutCallbackURLs: []string{},
-		AllowedUserGroups:  []any{},
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
-}
+// --- oidcClientPatch ---
 
-// --- OidcClientInput callback URL fallback tests ---
-
-func TestOidcClientInput_CallbackURLFallbackFromCurrent(t *testing.T) {
-	// When spec has no callbackURLs, OidcClientInput uses the current server-side URLs.
-	reconciler := &Reconciler{}
-	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-client", Namespace: testNamespace},
-		// No spec.callbackURLs or spec.logoutCallbackURLs
+// A field left out of a PATCH keeps its current value in Pocket-ID, so every managed field has
+// to go out on every reconcile, empty ones included.
+func TestOIDCClientPatch_SendsEveryManagedField(t *testing.T) {
+	managed := []string{
+		"name", "notes", "backchannelLogoutURL", "launchURL", "isPublic", "isGroupRestricted", "pkceEnabled",
+		"requiresReauthentication", "requiresPushedAuthorizationRequests", "skipConsent",
+		"accessTokenDurationMinutes", "refreshTokenDurationMinutes", "callbackURLs", "logoutCallbackURLs",
+		"credentials",
 	}
-	current := &pocketid.OIDCClient{
-		CallbackURLs:       []string{"https://current.example.com/cb"},
-		LogoutCallbackURLs: []string{"https://current.example.com/logout"},
-	}
-
-	input := reconciler.OidcClientInput(oidcClient, current, "", "")
-
-	if len(input.CallbackURLs) != 1 || input.CallbackURLs[0] != "https://current.example.com/cb" {
-		t.Errorf("expected fallback to current callback URLs, got %v", input.CallbackURLs)
-	}
-	if len(input.LogoutCallbackURLs) != 1 || input.LogoutCallbackURLs[0] != "https://current.example.com/logout" {
-		t.Errorf("expected fallback to current logout callback URLs, got %v", input.LogoutCallbackURLs)
-	}
-}
-
-func TestOidcClientInput_SpecCallbackURLsTakePrecedenceOverCurrent(t *testing.T) {
-	// When spec has callbackURLs, they take precedence over current server-side values.
-	reconciler := &Reconciler{}
-	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-client", Namespace: testNamespace},
+	full := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+		ObjectMeta: metav1.ObjectMeta{Name: "app"},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-			CallbackURLs:       []string{"https://spec.example.com/cb"},
-			LogoutCallbackURLs: []string{"https://spec.example.com/logout"},
+			Name: "App", Description: "notes", BackchannelLogoutURL: "https://app.example.com/bc",
+			LaunchURL: "https://app.example.com", IsPublic: true, PKCEEnabled: true,
+			RequiresReauthentication: true, RequiresPushedAuthorizationRequests: true, SkipConsent: true,
+			AccessTokenDurationMinutes: 5, RefreshTokenDurationMinutes: 10,
+			CallbackURLs: []string{"https://app.example.com/cb"}, LogoutCallbackURLs: []string{"https://app.example.com/out"},
 		},
 	}
-	current := &pocketid.OIDCClient{
-		CallbackURLs:       []string{"https://current.example.com/cb"},
-		LogoutCallbackURLs: []string{"https://current.example.com/logout"},
-	}
+	identities := []pid.OIDCClientFederatedIdentityInputDto{{Issuer: new("https://issuer.example.com")}}
 
-	input := reconciler.OidcClientInput(oidcClient, current, "", "")
-
-	if len(input.CallbackURLs) != 1 || input.CallbackURLs[0] != "https://spec.example.com/cb" {
-		t.Errorf("expected spec callback URLs to take precedence, got %v", input.CallbackURLs)
-	}
-	if len(input.LogoutCallbackURLs) != 1 || input.LogoutCallbackURLs[0] != "https://spec.example.com/logout" {
-		t.Errorf("expected spec logout callback URLs to take precedence, got %v", input.LogoutCallbackURLs)
+	for _, tc := range []struct {
+		name       string
+		oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient
+		restricted bool
+		identities []pid.OIDCClientFederatedIdentityInputDto
+		want       []string
+		wantEmpty  bool
+	}{
+		{name: "every field set", oidcClient: full, restricted: true, identities: identities, want: managed},
+		// Unset callback URLs go out as [], clearing any set in Pocket-ID.
+		{name: "every field empty", oidcClient: &pocketidinternalv1alpha1.PocketIDOIDCClient{}, want: managed, wantEmpty: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, err := json.Marshal(oidcClientPatch(tc.oidcClient, tc.restricted, tc.identities))
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			var body map[string]any
+			_ = json.Unmarshal(raw, &body)
+			got := slices.Sorted(func(yield func(string) bool) {
+				for key := range body {
+					if !yield(key) {
+						return
+					}
+				}
+			})
+			if want := slices.Sorted(slices.Values(tc.want)); !slices.Equal(got, want) {
+				t.Fatalf("keys = %v, want %v", got, want)
+			}
+			if !tc.wantEmpty {
+				return
+			}
+			for key, value := range body {
+				switch value := value.(type) {
+				case nil:
+				case bool:
+					if value {
+						t.Errorf("%s = true, want false", key)
+					}
+				case float64:
+					if value != 0 {
+						t.Errorf("%s = %v, want 0", key, value)
+					}
+				case string:
+					if value != "" {
+						t.Errorf("%s = %q, want empty", key, value)
+					}
+				case []any: // callback URLs
+					if len(value) != 0 {
+						t.Errorf("%s = %v, want []", key, value)
+					}
+				case map[string]any: // credentials
+					if fi, ok := value["federatedIdentities"]; !ok || fi != nil {
+						t.Errorf("credentials = %v, want federatedIdentities null", value)
+					}
+				default:
+					t.Errorf("%s = %v, want empty", key, value)
+				}
+			}
+		})
 	}
 }
 
@@ -158,15 +166,6 @@ func TestResolveLogoURLs_DeprecatedFieldsTakePrecedence(t *testing.T) {
 	}
 	if darkLogoURL != "https://explicit.example.com/logo-dark.png" {
 		t.Errorf("expected deprecated darkLogoUrl to win, got %q", darkLogoURL)
-	}
-
-	// Verify OidcClientInput passes the resolved URLs through to the payload
-	input := r.OidcClientInput(oidcClient, nil, logoURL, darkLogoURL)
-	if input.LogoURL != logoURL {
-		t.Errorf("expected logoUrl in OidcClientInput, got %q", input.LogoURL)
-	}
-	if input.DarkLogoURL != darkLogoURL {
-		t.Errorf("expected darkLogoUrl in OidcClientInput, got %q", input.DarkLogoURL)
 	}
 }
 
@@ -366,26 +365,6 @@ func TestResolveLogoURLs_PerClientTemplateOverridesEnvVar(t *testing.T) {
 
 // --- reconcileLogos ---
 
-// fakeLogoAPI records logo deletions. The embedded interface leaves every other method nil,
-// so an unexpected call panics rather than silently passing.
-type fakeLogoAPI struct {
-	PocketIDOIDCClientAPI
-	deleted []bool         // one entry per delete, true for the light side
-	err     error          // fails every delete
-	errOn   map[bool]error // fails one side, keyed the same way as deleted
-}
-
-func (f *fakeLogoAPI) DeleteOIDCClientLogo(_ context.Context, _ string, light bool) error {
-	if f.err != nil {
-		return f.err
-	}
-	if err := f.errOn[light]; err != nil {
-		return err
-	}
-	f.deleted = append(f.deleted, light)
-	return nil
-}
-
 // logoClient builds a CR resolving light via an explicit logo URL, with appliedLight and
 // appliedDark already recorded in status. Callers needing a dark URL set it on the spec.
 func logoClient(light, appliedLight, appliedDark string) *pocketidinternalv1alpha1.PocketIDOIDCClient {
@@ -395,6 +374,7 @@ func logoClient(light, appliedLight, appliedDark string) *pocketidinternalv1alph
 			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{AutoGenerate: new(false), LogoURL: light},
 		},
 		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
+			ClientID:    "client-id",
 			LogoURL:     appliedLight,
 			DarkLogoURL: appliedDark,
 		},
@@ -405,12 +385,13 @@ func TestReconcileLogos_BehaviorTable(t *testing.T) {
 	const url = "https://cdn.example.com/logo.png"
 
 	tests := []struct {
-		name                  string
-		resolved, applied     string
-		serverHasLogo         bool
-		failed                bool
-		wantPush, wantApplied string
-		wantDelete            bool
+		name              string
+		resolved, applied string
+		serverHasLogo     bool
+		failed            bool
+		wantPush          bool
+		wantApplied       string
+		wantDelete        bool
 	}{
 		{
 			name: "unowned side is left alone",
@@ -438,16 +419,16 @@ func TestReconcileLogos_BehaviorTable(t *testing.T) {
 		},
 		{
 			name:     "a new URL is pushed",
-			resolved: url, wantPush: url, wantApplied: url,
+			resolved: url, wantPush: true, wantApplied: url,
 		},
 		{
 			name:     "a changed URL is pushed",
 			resolved: url, applied: "https://cdn.example.com/old.png", serverHasLogo: true,
-			wantPush: url, wantApplied: url,
+			wantPush: true, wantApplied: url,
 		},
 		{
 			name:     "an applied logo deleted server-side is re-pushed",
-			resolved: url, applied: url, wantPush: url, wantApplied: url,
+			resolved: url, applied: url, wantPush: true, wantApplied: url,
 		},
 		{
 			name:     "an applied logo still in place is left alone",
@@ -460,16 +441,18 @@ func TestReconcileLogos_BehaviorTable(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			api := &fakeLogoAPI{}
-
 			// Run each row on both sides so neither is special-cased.
 			for _, light := range []bool{true, false} {
-				oidcClient := logoClient("", "", "")
-				current := &pocketid.OIDCClient{ID: "client-id"}
+				side := "dark"
 				if light {
-					oidcClient.Spec.Logo.LogoURL, oidcClient.Status.LogoURL, current.HasLogo = tt.resolved, tt.applied, tt.serverHasLogo
+					side = "light"
+				}
+				oidcClient := logoClient("", "", "")
+				f := newFakeOIDCClient(t, "client-id", "my-app")
+				if light {
+					oidcClient.Spec.Logo.LogoURL, oidcClient.Status.LogoURL, f.client.HasLogo = tt.resolved, tt.applied, tt.serverHasLogo
 				} else {
-					oidcClient.Spec.Logo.DarkLogoURL, oidcClient.Status.DarkLogoURL, current.HasDarkLogo = tt.resolved, tt.applied, tt.serverHasLogo
+					oidcClient.Spec.Logo.DarkLogoURL, oidcClient.Status.DarkLogoURL, f.client.HasDarkLogo = tt.resolved, tt.applied, tt.serverHasLogo
 				}
 
 				r := newPushStateOIDCReconciler(scheme, oidcClient)
@@ -477,28 +460,30 @@ func TestReconcileLogos_BehaviorTable(t *testing.T) {
 					r.markLogoURLsFailed(tt.resolved)
 					r.failedLogoURLsResetAt = time.Now()
 				}
-				api.deleted = nil
-				plan, err := r.reconcileLogos(context.Background(), oidcClient, api, current)
-				if err != nil {
-					t.Fatalf("light=%v: reconcileLogos: %v", light, err)
+				if _, err := r.reconcileLogos(context.Background(), oidcClient, f.api(), f.client); err != nil {
+					t.Fatalf("%s: reconcileLogos: %v", side, err)
 				}
-				plan.commit()
 
-				push, applied := plan.pushDark, plan.appliedDark
-				if light {
-					push, applied = plan.pushLight, plan.appliedLight
+				var wantPushes, wantCalls []string
+				if tt.wantDelete {
+					wantCalls = append(wantCalls, "delete logo light="+map[bool]string{true: "true", false: "false"}[light])
 				}
-				if push != tt.wantPush {
-					t.Errorf("light=%v: push: got %q, want %q", light, push, tt.wantPush)
+				if tt.wantPush {
+					wantPushes = []string{side + " " + url}
+					wantCalls = append(wantCalls, "PATCH")
+				}
+				if got := f.logoPatches(); !slices.Equal(got, wantPushes) {
+					t.Errorf("%s: pushes = %v, want %v", side, got, wantPushes)
+				}
+				if !slices.Equal(f.calls, wantCalls) {
+					t.Errorf("%s: calls = %v, want %v", side, f.calls, wantCalls)
+				}
+				applied := oidcClient.Status.DarkLogoURL
+				if light {
+					applied = oidcClient.Status.LogoURL
 				}
 				if applied != tt.wantApplied {
-					t.Errorf("light=%v: applied: got %q, want %q", light, applied, tt.wantApplied)
-				}
-				if want := []bool(nil); !tt.wantDelete && !slices.Equal(api.deleted, want) {
-					t.Errorf("light=%v: expected no deletions, got %v", light, api.deleted)
-				}
-				if tt.wantDelete && !slices.Equal(api.deleted, []bool{light}) {
-					t.Errorf("light=%v: expected one deletion of that side, got %v", light, api.deleted)
+					t.Errorf("%s: applied: got %q, want %q", side, applied, tt.wantApplied)
 				}
 			}
 		})
@@ -590,42 +575,26 @@ func TestReconcileLogos_OnlyLightResolvedLeavesUploadedDarkLogo(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
 
-	api := &fakeLogoAPI{}
 	oidcClient := logoClient("https://cdn.example.com/logo.png", "", "")
 	r := newPushStateOIDCReconciler(scheme, oidcClient)
-	current := &pocketid.OIDCClient{ID: "client-id", HasDarkLogo: true}
+	f := newFakeOIDCClient(t, "client-id", "my-app")
+	f.client.HasDarkLogo = true
 
-	plan, err := r.reconcileLogos(context.Background(), oidcClient, api, current)
+	current, err := r.reconcileLogos(context.Background(), oidcClient, f.api(), f.client)
 	if err != nil {
 		t.Fatalf("reconcileLogos: %v", err)
 	}
-	if len(api.deleted) != 0 {
-		t.Errorf("expected no deletions, got %v", api.deleted)
+	if got := f.logoPatches(); !slices.Equal(got, []string{"light https://cdn.example.com/logo.png"}) {
+		t.Errorf("expected only the light URL to be pushed, got %v", got)
 	}
-	if plan.pushDark != "" {
-		t.Errorf("expected no dark push, got %q", plan.pushDark)
-	}
-	if plan.pushLight != "https://cdn.example.com/logo.png" {
-		t.Errorf("expected the light URL to be pushed, got %q", plan.pushLight)
+	if !current.HasLogo || !current.HasDarkLogo {
+		t.Errorf("expected the returned client to carry both logos, got %+v", current)
 	}
 }
 
-func TestReconcileLogos_DeleteFailurePropagates(t *testing.T) {
+func TestMarkLogoURLsFailed_KeysByURL(t *testing.T) {
 	r := &Reconciler{}
-	api := &fakeLogoAPI{err: errors.New("boom")}
-	oidcClient := logoClient("", "https://cdn.example.com/logo.png", "")
-
-	if _, err := r.reconcileLogos(context.Background(), oidcClient, api, &pocketid.OIDCClient{ID: "client-id"}); err == nil {
-		t.Fatal("expected the delete failure to propagate")
-	}
-}
-
-func TestMarkLogoURLsFailed_IgnoresEmptyAndKeysByURL(t *testing.T) {
-	r := &Reconciler{}
-	r.markLogoURLsFailed("", "https://cdn.example.com/logo.png")
-	if r.logoURLFailed("") {
-		t.Error("an empty URL must not be recorded")
-	}
+	r.markLogoURLsFailed("https://cdn.example.com/logo.png")
 	if !r.logoURLFailed("https://cdn.example.com/logo.png") {
 		t.Error("expected the URL to be recorded as failed")
 	}
@@ -646,22 +615,21 @@ func TestReconcileLogos_RefusedURLIsRetriedAfterTTL(t *testing.T) {
 	r.markLogoURLsFailed(url)
 	r.failedLogoURLsResetAt = time.Now()
 
-	current := &pocketid.OIDCClient{ID: "client-id"}
-	plan, err := r.reconcileLogos(context.Background(), oidcClient, &fakeLogoAPI{}, current)
-	if err != nil {
+	f := newFakeOIDCClient(t, "client-id", "my-app")
+	apiClient := f.api()
+	if _, err := r.reconcileLogos(context.Background(), oidcClient, apiClient, f.client); err != nil {
 		t.Fatalf("reconcileLogos: %v", err)
 	}
-	if plan.pushLight != "" {
-		t.Errorf("expected the refused URL to stay suppressed, got %q", plan.pushLight)
+	if got := f.logoPatches(); len(got) != 0 {
+		t.Errorf("expected the refused URL to stay suppressed, got %v", got)
 	}
 
 	r.failedLogoURLsResetAt = time.Now().Add(-failedLogoURLTTL - time.Minute)
-	plan, err = r.reconcileLogos(context.Background(), oidcClient, &fakeLogoAPI{}, current)
-	if err != nil {
+	if _, err := r.reconcileLogos(context.Background(), oidcClient, apiClient, f.client); err != nil {
 		t.Fatalf("reconcileLogos after TTL: %v", err)
 	}
-	if plan.pushLight != url {
-		t.Errorf("expected the URL to be retried after the TTL, got %q", plan.pushLight)
+	if got := f.logoPatches(); !slices.Equal(got, []string{"light " + url}) {
+		t.Errorf("expected the URL to be retried after the TTL, got %v", got)
 	}
 	if r.logoURLFailed(url) {
 		t.Error("the refusal set should have been dropped")
@@ -682,15 +650,7 @@ func TestApplyLogoStatus_PersistsAppliedURLs(t *testing.T) {
 			DarkLogoURL: "https://example.com/old-dark.png",
 		},
 	}
-
-	fc := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithObjects(oidcClient).
-		WithStatusSubresource(oidcClient).
-		Build()
-	r := &Reconciler{Client: fc, Scheme: scheme}
-	r.EnsureClient(fc)
-
+	r := newPushStateOIDCReconciler(scheme, oidcClient)
 	ctx := context.Background()
 
 	// Light logo newly applied, dark logo released back to Pocket-ID.
@@ -700,7 +660,7 @@ func TestApplyLogoStatus_PersistsAppliedURLs(t *testing.T) {
 	}
 
 	fetched := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
-	if err := fc.Get(ctx, client.ObjectKeyFromObject(oidcClient), fetched); err != nil {
+	if err := r.Get(ctx, client.ObjectKeyFromObject(oidcClient), fetched); err != nil {
 		t.Fatalf("get failed: %v", err)
 	}
 	if fetched.Status.LogoURL != "https://example.com/logo.png" {
@@ -708,6 +668,73 @@ func TestApplyLogoStatus_PersistsAppliedURLs(t *testing.T) {
 	}
 	if fetched.Status.DarkLogoURL != "" {
 		t.Errorf("expected darkLogoUrl to be cleared, got %q", fetched.Status.DarkLogoURL)
+	}
+}
+
+// A deletion that succeeded must be recorded even when the pass later fails, or the next
+// one deletes whatever was uploaded in its place.
+func TestReconcileLogos_RecordsDeletionWhenTheOtherSideFails(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	oidcClient := logoClient("", "https://cdn.example.com/logo.png", "https://cdn.example.com/dark.png")
+	r := newPushStateOIDCReconciler(scheme, oidcClient)
+
+	// Light deletes cleanly; dark fails.
+	f := newFakeOIDCClient(t, "client-id", "my-app")
+	f.fail = failDarkLogoDelete("boom")
+
+	if _, err := r.reconcileLogos(context.Background(), oidcClient, f.api(), f.client); err == nil {
+		t.Fatal("expected the dark deletion failure to propagate")
+	}
+
+	fetched := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
+	if err := r.Get(context.Background(), client.ObjectKeyFromObject(oidcClient), fetched); err != nil {
+		t.Fatalf("get failed: %v", err)
+	}
+	if fetched.Status.LogoURL != "" {
+		t.Errorf("the completed deletion must be persisted, got %q", fetched.Status.LogoURL)
+	}
+	if fetched.Status.DarkLogoURL != "https://cdn.example.com/dark.png" {
+		t.Errorf("the failed deletion must keep its record, got %q", fetched.Status.DarkLogoURL)
+	}
+}
+
+// Neither failure should hide the other: the delete failure explains the reconcile, and the
+// status failure explains why the completed deletion was not recorded.
+func TestReconcileLogos_ReportsBothDeleteAndStatusFailures(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+
+	oidcClient := logoClient("", "https://cdn.example.com/logo.png", "https://cdn.example.com/dark.png")
+	r := newPushStateOIDCReconciler(scheme, oidcClient)
+	r.Client = interceptor.NewClient(r.Client.(client.WithWatch), interceptor.Funcs{
+		SubResourcePatch: func(_ context.Context, _ client.Client, _ string, _ client.Object, _ client.Patch, _ ...client.SubResourcePatchOption) error {
+			return errors.New("simulated status patch failure")
+		},
+	})
+
+	f := newFakeOIDCClient(t, "client-id", "my-app")
+	f.fail = failDarkLogoDelete("delete refused")
+
+	_, err := r.reconcileLogos(context.Background(), oidcClient, f.api(), f.client)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), "delete refused") {
+		t.Errorf("delete failure missing from %v", err)
+	}
+	if !strings.Contains(err.Error(), "simulated status patch failure") {
+		t.Errorf("status failure missing from %v", err)
+	}
+}
+
+func failDarkLogoDelete(message string) func(*http.Request, map[string]any) (int, any) {
+	return func(r *http.Request, _ map[string]any) (int, any) {
+		if r.Method == http.MethodDelete && r.URL.Query().Get("light") == "false" {
+			return http.StatusInternalServerError, map[string]string{"code": "internal_error", "error": message}
+		}
+		return 0, nil
 	}
 }
 
@@ -729,69 +756,26 @@ func TestAggregateAllowedUserGroupIDs_OutputIsSorted(t *testing.T) {
 			Status: pocketidinternalv1alpha1.PocketIDUserGroupStatus{GroupID: groupID, Conditions: readyCondition()},
 		}
 	}
-	groupC := mkGroup("group-c", "gid-c")
-	groupA := mkGroup("group-a", "gid-a")
-	groupB := mkGroup("group-b", "gid-b")
-
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
 		ObjectMeta: metav1.ObjectMeta{Name: "sort-client", Namespace: testNamespace},
 	}
 
-	fc := newAggregationFakeClient(scheme, groupC, groupA, groupB, oidcClient)
+	fc := newAggregationFakeClient(scheme, mkGroup("group-c", "gid-c"), mkGroup("group-a", "gid-a"), mkGroup("group-b", "gid-b"), oidcClient)
 	reconciler := &Reconciler{Client: fc, Scheme: scheme}
 
 	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(ids) != 3 {
-		t.Fatalf("expected 3 IDs, got %v", ids)
-	}
-	if ids[0] != "gid-a" || ids[1] != "gid-b" || ids[2] != "gid-c" {
+	if !slices.Equal(ids, []string{"gid-a", "gid-b", "gid-c"}) {
 		t.Errorf("expected sorted [gid-a, gid-b, gid-c], got %v", ids)
 	}
 }
 
-// --- pushOIDCClientState tests ---
+// --- pushOIDCClientState ---
 
-func TestPushOIDCClientState_SkipsWhenInSync(t *testing.T) {
-	ctx := context.Background()
-	scheme := runtime.NewScheme()
-	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
-
-	oidcClientCR := &pocketidinternalv1alpha1.PocketIDOIDCClient{
-		ObjectMeta: metav1.ObjectMeta{Name: "sync-client", Namespace: testNamespace},
-		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-			CallbackURLs: []string{"https://example.com/cb"},
-		},
-		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
-			ClientID:   "sync-id",
-			Conditions: readyCondition(), // already ready → not firstReconcile
-		},
-	}
-
-	// current matches desired: same name, same callback URLs, no groups, no credentials
-	current := &pocketid.OIDCClient{
-		ID:           "sync-id",
-		Name:         "sync-client",
-		CallbackURLs: []string{"https://example.com/cb"},
-	}
-
-	r := newPushStateOIDCReconciler(scheme, oidcClientCR)
-
-	// Server that fails on any call — verifies no API calls are made.
-	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		t.Error("unexpected API call during in-sync pushOIDCClientState")
-		http.Error(w, "unexpected", http.StatusInternalServerError)
-	}))
-
-	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestPushOIDCClientState_UpdatesWhenFieldsChange(t *testing.T) {
-	ctx := context.Background()
+// The spec is written every reconcile, and the client comes back from the write.
+func TestPushOIDCClientState_PatchesAndReturnsTheResult(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
 
@@ -800,80 +784,45 @@ func TestPushOIDCClientState_UpdatesWhenFieldsChange(t *testing.T) {
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			CallbackURLs: []string{"https://new.example.com/cb"},
 		},
-		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
-			ClientID:   "update-id",
-			Conditions: readyCondition(),
-		},
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{ClientID: "update-id"},
 	}
-	// current has different callback URLs → update required
-	current := &pocketid.OIDCClient{
-		ID:           "update-id",
-		Name:         "update-client",
-		CallbackURLs: []string{"https://old.example.com/cb"},
-	}
-
 	r := newPushStateOIDCReconciler(scheme, oidcClientCR)
+	f := newFakeOIDCClient(t, "update-id", "old-name")
+	f.client.CallbackURLs = []string{"https://old.example.com/cb"}
 
-	updateCalled := false
-	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if req.Method == http.MethodPut && req.URL.Path == "/api/oidc/clients/update-id" {
-			updateCalled = true
-			okOIDCClientResponse(w, "update-id", "update-client")
-			return
+	for range 2 {
+		current, err := r.pushOIDCClientState(context.Background(), oidcClientCR, f.api())
+		if err != nil {
+			t.Fatalf("pushOIDCClientState: %v", err)
 		}
-		http.NotFound(w, req)
-	}))
-
-	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		if current.Name != "update-client" || !slices.Equal(current.CallbackURLs, oidcClientCR.Spec.CallbackURLs) {
+			t.Errorf("expected the written client back, got %+v", current)
+		}
 	}
-	if !updateCalled {
-		t.Error("expected UpdateOIDCClient to be called when callback URLs differ")
+	if len(f.patches) != 2 {
+		t.Errorf("expected a PATCH every reconcile, got %d", len(f.patches))
 	}
 }
 
-// Federated identities are read back from Pocket-ID, so they drive an update only when they
-// differ: in sync they cost nothing, and ones the spec no longer lists are cleared.
+// Federated identities are owned by the spec: they go out every reconcile, and ones the spec
+// no longer lists are cleared.
 func TestPushOIDCClientState_FederatedIdentities(t *testing.T) {
-	ctx := context.Background()
 	scheme := runtime.NewScheme()
 	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
 
-	identity := pocketid.OIDCClientFederatedIdentity{Issuer: "https://issuer.example.com", Subject: "sa:myapp"}
 	for _, tc := range []struct {
-		name       string
-		spec       []pocketidinternalv1alpha1.OIDCClientFederatedIdentity
-		server     []pocketid.OIDCClientFederatedIdentity
-		wantUpdate bool
-		wantKID    string // kid of the first key sent, when keys are expected
+		name    string
+		spec    []pocketidinternalv1alpha1.OIDCClientFederatedIdentity
+		wantLen int
+		wantKID string // kid of the first key sent, when keys are expected
 	}{
+		{name: "removed from spec"},
+		{name: "in spec", spec: []pocketidinternalv1alpha1.OIDCClientFederatedIdentity{{Issuer: "https://issuer.example.com", Subject: "sa:myapp"}}, wantLen: 1},
 		{
-			name:   "in sync",
-			spec:   []pocketidinternalv1alpha1.OIDCClientFederatedIdentity{{Issuer: identity.Issuer, Subject: identity.Subject}},
-			server: []pocketid.OIDCClientFederatedIdentity{identity},
-		},
-		{
-			name:       "removed from spec",
-			server:     []pocketid.OIDCClientFederatedIdentity{identity},
-			wantUpdate: true,
-		},
-		{
-			name:       "added to spec",
-			spec:       []pocketidinternalv1alpha1.OIDCClientFederatedIdentity{{Issuer: identity.Issuer, Subject: identity.Subject}},
-			wantUpdate: true,
-		},
-		{
-			// Pocket-ID re-encodes keys, which reorders their members.
-			name:   "keys in sync",
-			spec:   []pocketidinternalv1alpha1.OIDCClientFederatedIdentity{{Issuer: identity.Issuer, PublicKeys: []pocketidinternalv1alpha1.OIDCClientPublicKey{inlineKey(keyA)}}},
-			server: []pocketid.OIDCClientFederatedIdentity{{Issuer: identity.Issuer, PublicKeys: rawKeys(`{"crv":"Ed25519","kid":"a","kty":"OKP","x":"AA"}`)}},
-		},
-		{
-			name:       "key rotated",
-			spec:       []pocketidinternalv1alpha1.OIDCClientFederatedIdentity{{Issuer: identity.Issuer, PublicKeys: []pocketidinternalv1alpha1.OIDCClientPublicKey{inlineKey(keyB)}}},
-			server:     []pocketid.OIDCClientFederatedIdentity{{Issuer: identity.Issuer, PublicKeys: rawKeys(keyA)}},
-			wantUpdate: true,
-			wantKID:    "b",
+			name:    "with keys",
+			spec:    []pocketidinternalv1alpha1.OIDCClientFederatedIdentity{{Issuer: "https://issuer.example.com", PublicKeys: []pocketidinternalv1alpha1.OIDCClientPublicKey{inlineKey(keyB)}}},
+			wantLen: 1,
+			wantKID: "b",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -882,33 +831,16 @@ func TestPushOIDCClientState_FederatedIdentities(t *testing.T) {
 				Spec:       pocketidinternalv1alpha1.PocketIDOIDCClientSpec{FederatedIdentities: tc.spec},
 				Status:     pocketidinternalv1alpha1.PocketIDOIDCClientStatus{ClientID: "cred-id"},
 			}
-			current := &pocketid.OIDCClient{ID: "cred-id", Name: "cred-client", FederatedIdentities: tc.server}
-
 			r := newPushStateOIDCReconciler(scheme, oidcClientCR)
+			f := newFakeOIDCClient(t, "cred-id", "cred-client")
 
-			var sent map[string]any
-			apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-				if req.Method == http.MethodPut && req.URL.Path == "/api/oidc/clients/cred-id" {
-					_ = json.NewDecoder(req.Body).Decode(&sent)
-					okOIDCClientResponse(w, "cred-id", "cred-client")
-					return
-				}
-				http.NotFound(w, req)
-			}))
-
-			if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			if _, err := r.pushOIDCClientState(context.Background(), oidcClientCR, f.api()); err != nil {
+				t.Fatalf("pushOIDCClientState: %v", err)
 			}
-			if (sent != nil) != tc.wantUpdate {
-				t.Fatalf("update sent = %v, want %v", sent != nil, tc.wantUpdate)
-			}
-			if sent == nil {
-				return
-			}
-			credentials, _ := sent["credentials"].(map[string]any)
+			credentials, _ := f.patches[0]["credentials"].(map[string]any)
 			identities, _ := credentials["federatedIdentities"].([]any)
-			if len(identities) != len(tc.spec) {
-				t.Errorf("sent %d federated identities, want %d: %v", len(identities), len(tc.spec), sent["credentials"])
+			if len(identities) != tc.wantLen {
+				t.Fatalf("sent %d federated identities, want %d: %v", len(identities), tc.wantLen, credentials)
 			}
 			if tc.wantKID != "" {
 				first, _ := identities[0].(map[string]any)
@@ -938,23 +870,25 @@ func TestOIDCClientWrites_StopOnUnresolvablePublicKeys(t *testing.T) {
 				PublicKeys: []pocketidinternalv1alpha1.OIDCClientPublicKey{configMapKey("absent", "jwks", false)},
 			}},
 		},
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{ClientID: "keys-id"},
 	}
 	r := newPushStateOIDCReconciler(scheme, oidcClientCR)
 	r.APIReader = r.Client
 
 	var writes int
-	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if req.Method != http.MethodGet {
-			writes++
-		}
-		http.NotFound(w, req)
-	}))
+	apiClient := fakeAPI(t, map[string]http.HandlerFunc{
+		"/": func(w http.ResponseWriter, req *http.Request) {
+			if req.Method != http.MethodGet {
+				writes++
+			}
+			writeStatus(w, http.StatusNotFound, map[string]string{"code": "not_found"})
+		},
+	})
 
 	if _, err := r.createOrAdoptOIDCClient(ctx, oidcClientCR, apiClient); !errors.Is(err, errPublicKeys) {
 		t.Errorf("create: expected a public key error, got %v", err)
 	}
-	current := &pocketid.OIDCClient{ID: "keys-id", Name: "keys-client"}
-	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); !errors.Is(err, errPublicKeys) {
+	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient); !errors.Is(err, errPublicKeys) {
 		t.Errorf("update: expected a public key error, got %v", err)
 	}
 	if writes != 0 {
@@ -962,7 +896,10 @@ func TestOIDCClientWrites_StopOnUnresolvablePublicKeys(t *testing.T) {
 	}
 }
 
-func TestPushOIDCClientState_UpdatesGroupsWhenChanged(t *testing.T) {
+// Pocket-ID back-channel logs out users outside the allowed groups whenever a restricted
+// client's groups or restriction change, so the groups must land before restriction is turned
+// on, and restriction must be off before the groups are cleared.
+func TestPushOIDCClientState_AllowedGroupsOrdering(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
 
@@ -970,183 +907,112 @@ func TestPushOIDCClientState_UpdatesGroupsWhenChanged(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "group-a", Namespace: testNamespace},
 		Status:     pocketidinternalv1alpha1.PocketIDUserGroupStatus{GroupID: "gid-a", Conditions: readyCondition()},
 	}
-	oidcClientCR := &pocketidinternalv1alpha1.PocketIDOIDCClient{
-		ObjectMeta: metav1.ObjectMeta{Name: "groups-client", Namespace: testNamespace},
-		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-			AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{{Name: "group-a"}},
-		},
-		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
-			ClientID:   "groups-id",
-			Conditions: readyCondition(),
-		},
-	}
-	// current has no allowed groups → groups differ
-	current := &pocketid.OIDCClient{
-		ID:                  "groups-id",
-		Name:                "groups-client",
-		AllowedUserGroupIDs: []string{},
-	}
-
-	r := newPushStateOIDCReconciler(scheme, oidcClientCR, groupA)
-
-	// Restriction is being turned on, so the groups must land first or Pocket-ID would
-	// back-channel log out every authorized user.
-	if calls := recordGroupPushOrder(t, r, oidcClientCR, current); !slices.Equal(calls, []string{"groups [gid-a]", "client restricted=true"}) {
-		t.Errorf("expected groups pushed before the client update, got %v", calls)
-	}
-}
-
-func TestPushOIDCClientState_UnrestrictsBeforeClearingGroups(t *testing.T) {
-	scheme := runtime.NewScheme()
-	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
-
-	oidcClientCR := &pocketidinternalv1alpha1.PocketIDOIDCClient{
-		ObjectMeta: metav1.ObjectMeta{Name: "groups-client", Namespace: testNamespace},
-		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
-			ClientID:   "groups-id",
-			Conditions: readyCondition(),
-		},
-	}
-	current := &pocketid.OIDCClient{
-		ID:                  "groups-id",
-		Name:                "groups-client",
-		IsGroupRestricted:   true,
-		AllowedUserGroupIDs: []string{"gid-a"},
-	}
-
-	r := newPushStateOIDCReconciler(scheme, oidcClientCR)
-
-	if calls := recordGroupPushOrder(t, r, oidcClientCR, current); !slices.Equal(calls, []string{"client restricted=false", "groups []"}) {
-		t.Errorf("expected the client unrestricted before its groups are cleared, got %v", calls)
-	}
-}
-
-// recordGroupPushOrder runs pushOIDCClientState and returns the client and allowed-groups
-// updates it sent, in order, each with the restriction flag or group IDs it carried.
-func recordGroupPushOrder(t *testing.T, r *Reconciler, oidcClientCR *pocketidinternalv1alpha1.PocketIDOIDCClient, current *pocketid.OIDCClient) []string {
-	t.Helper()
-	var calls []string
-	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		switch {
-		case req.Method == http.MethodPut && req.URL.Path == "/api/oidc/clients/groups-id":
-			var body struct {
-				IsGroupRestricted bool `json:"isGroupRestricted"`
-			}
-			_ = json.NewDecoder(req.Body).Decode(&body)
-			calls = append(calls, fmt.Sprintf("client restricted=%t", body.IsGroupRestricted))
-			okOIDCClientResponse(w, "groups-id", "groups-client")
-		case req.Method == http.MethodPut && req.URL.Path == "/api/oidc/clients/groups-id/allowed-user-groups":
-			var body struct {
-				UserGroupIDs []string `json:"userGroupIds"`
-			}
-			_ = json.NewDecoder(req.Body).Decode(&body)
-			calls = append(calls, fmt.Sprintf("groups %v", body.UserGroupIDs))
-			w.WriteHeader(http.StatusOK)
-		default:
-			http.NotFound(w, req)
-		}
-	}))
-
-	if _, err := r.pushOIDCClientState(context.Background(), oidcClientCR, apiClient, current); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	return calls
-}
-
-func TestPushOIDCClientState_IsGroupRestrictedReflectsAggregation(t *testing.T) {
-	// When a UserGroup reverse-references the OIDC client (via spec.allowedOIDCClients),
-	// IsGroupRestricted must be set to true even if spec.allowedUserGroups is empty.
-	ctx := context.Background()
-	scheme := runtime.NewScheme()
-	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
-
-	group := &pocketidinternalv1alpha1.PocketIDUserGroup{
+	// Only a reverse reference from the group, no spec.allowedUserGroups.
+	reverseGroup := &pocketidinternalv1alpha1.PocketIDUserGroup{
 		ObjectMeta: metav1.ObjectMeta{Name: "reverse-group", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDUserGroupSpec{
-			AllowedOIDCClients: []pocketidinternalv1alpha1.NamespacedOIDCClientReference{{Name: "restrict-client"}},
+			AllowedOIDCClients: []pocketidinternalv1alpha1.NamespacedOIDCClientReference{{Name: "reverse-client"}},
 		},
 		Status: pocketidinternalv1alpha1.PocketIDUserGroupStatus{GroupID: "gid-reverse", Conditions: readyCondition()},
 	}
-	oidcClientCR := &pocketidinternalv1alpha1.PocketIDOIDCClient{
-		ObjectMeta: metav1.ObjectMeta{Name: "restrict-client", Namespace: testNamespace},
-		Spec:       pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-			// No spec.allowedUserGroups — only a reverse reference from the group
-		},
-		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
-			ClientID:   "restrict-id",
-			Conditions: readyCondition(),
-		},
-	}
-	// current reports no groups → aggregation will produce one group → state differs
-	current := &pocketid.OIDCClient{
-		ID:                  "restrict-id",
-		Name:                "restrict-client",
-		AllowedUserGroupIDs: []string{},
-	}
 
-	r := newPushStateOIDCReconciler(scheme, oidcClientCR, group)
+	for _, tc := range []struct {
+		name, clientName string
+		groups           []pocketidinternalv1alpha1.NamespacedUserGroupReference
+		wantCalls        []string
+		wantRestricted   bool
+		wantGroups       int
+	}{
+		{name: "restricting", clientName: "groups-client", groups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{{Name: "group-a"}},
+			wantCalls: []string{"groups [gid-a]", "PATCH"}, wantRestricted: true, wantGroups: 1},
+		{name: "reverse reference restricts", clientName: "reverse-client",
+			wantCalls: []string{"groups [gid-reverse]", "PATCH"}, wantRestricted: true, wantGroups: 1},
+		{name: "unrestricting", clientName: "groups-client", wantCalls: []string{"PATCH", "groups []"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			oidcClientCR := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{Name: tc.clientName, Namespace: testNamespace},
+				Spec:       pocketidinternalv1alpha1.PocketIDOIDCClientSpec{AllowedUserGroups: tc.groups},
+				Status:     pocketidinternalv1alpha1.PocketIDOIDCClientStatus{ClientID: "groups-id"},
+			}
+			r := newPushStateOIDCReconciler(scheme, oidcClientCR, groupA, reverseGroup)
+			f := newFakeOIDCClient(t, "groups-id", tc.clientName)
+			f.client.IsGroupRestricted = !tc.wantRestricted
+			f.client.AllowedUserGroups = []pid.UserGroupMinimalDto{{ID: "gid-old"}}
 
-	groupsUpdateSent := false
-	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		switch {
-		case req.Method == http.MethodPut && req.URL.Path == "/api/oidc/clients/restrict-id":
-			okOIDCClientResponse(w, "restrict-id", "restrict-client")
-		case req.Method == http.MethodPut && req.URL.Path == "/api/oidc/clients/restrict-id/allowed-user-groups":
-			groupsUpdateSent = true
-			w.WriteHeader(http.StatusOK)
-		default:
-			http.NotFound(w, req)
-		}
-	}))
-
-	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+			current, err := r.pushOIDCClientState(context.Background(), oidcClientCR, f.api())
+			if err != nil {
+				t.Fatalf("pushOIDCClientState: %v", err)
+			}
+			if !slices.Equal(f.calls, tc.wantCalls) {
+				t.Errorf("calls = %v, want %v", f.calls, tc.wantCalls)
+			}
+			if current.IsGroupRestricted != tc.wantRestricted || len(current.AllowedUserGroups) != tc.wantGroups {
+				t.Errorf("returned restricted=%v groups=%v, want %v and %d groups",
+					current.IsGroupRestricted, current.AllowedUserGroups, tc.wantRestricted, tc.wantGroups)
+			}
+		})
 	}
-	if !groupsUpdateSent {
-		t.Error("expected group update when UserGroup reverse-references the OIDC client")
+}
+
+// A 500 on the allowed-groups write is usually transient, so it is retried; anything else is not.
+func TestUpdateAllowedGroups_Retries500(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		failures  int
+		status    int
+		wantCalls int
+		wantErr   bool
+	}{
+		{name: "recovers", failures: 2, status: http.StatusInternalServerError, wantCalls: 3},
+		{name: "gives up", failures: 3, status: http.StatusInternalServerError, wantCalls: 3, wantErr: true},
+		{name: "no retry on other errors", failures: 1, status: http.StatusBadRequest, wantCalls: 1, wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFakeOIDCClient(t, "client-id", "app")
+			calls := 0
+			f.fail = func(*http.Request, map[string]any) (int, any) {
+				calls++
+				if calls <= tc.failures {
+					return tc.status, map[string]string{"error": "boom"}
+				}
+				return 0, nil
+			}
+			err := updateAllowedGroups(context.Background(), f.api(), pid.OIDCClientID("client-id"), []string{"gid"})
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("error = %v, wantErr %v", err, tc.wantErr)
+			}
+			if calls != tc.wantCalls {
+				t.Errorf("calls = %d, want %d", calls, tc.wantCalls)
+			}
+		})
 	}
 }
 
 // --- Logo push behaviour ---
 
 // Issue #603: autoGenerate=false against a client whose logo was uploaded through the UI
-// used to diff hasLogo forever, re-issuing a PUT that could never converge.
-func TestPushOIDCClientState_UploadedLogoWithAutoGenerateOffMakesNoCalls(t *testing.T) {
-	ctx := context.Background()
+// must leave the logo alone and never record it as the operator's.
+func TestPushOIDCClientState_UploadedLogoWithAutoGenerateOffIsLeftAlone(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
 
 	oidcClientCR := &pocketidinternalv1alpha1.PocketIDOIDCClient{
 		ObjectMeta: metav1.ObjectMeta{Name: "sync-client", Namespace: testNamespace},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-			CallbackURLs: []string{"https://example.com/cb"},
-			Logo:         &pocketidinternalv1alpha1.OIDCClientLogoSpec{AutoGenerate: new(false)},
+			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{AutoGenerate: new(false)},
 		},
-		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
-			ClientID:   "sync-id",
-			Conditions: readyCondition(),
-		},
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{ClientID: "sync-id"},
 	}
-	current := &pocketid.OIDCClient{
-		ID:           "sync-id",
-		Name:         "sync-client",
-		CallbackURLs: []string{"https://example.com/cb"},
-		HasLogo:      true,
-		HasDarkLogo:  true,
-	}
-
 	r := newPushStateOIDCReconciler(scheme, oidcClientCR)
-	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Errorf("unexpected %s %s: an uploaded logo is not the operator's to manage", r.Method, r.URL.Path)
-		http.Error(w, "unexpected", http.StatusInternalServerError)
-	}))
+	f := newFakeOIDCClient(t, "sync-id", "sync-client")
+	f.client.HasLogo, f.client.HasDarkLogo = true, true
 
-	updated, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if _, err := r.pushOIDCClientState(context.Background(), oidcClientCR, f.api()); err != nil {
+		t.Fatalf("pushOIDCClientState: %v", err)
 	}
-	if updated {
-		t.Error("expected no update")
+	if !slices.Equal(f.calls, []string{"PATCH", "groups []"}) || len(f.logoPatches()) != 0 {
+		t.Errorf("an uploaded logo is not the operator's to manage, got calls %v", f.calls)
 	}
 	if oidcClientCR.Status.LogoURL != "" || oidcClientCR.Status.DarkLogoURL != "" {
 		t.Errorf("expected no applied record for an uploaded logo, got %q %q",
@@ -1154,10 +1020,8 @@ func TestPushOIDCClientState_UploadedLogoWithAutoGenerateOffMakesNoCalls(t *test
 	}
 }
 
-// A logo Pocket-ID cannot fetch must not hold the client back: the configuration is already
-// committed by the time the download runs, and failing here would re-push every resync.
+// A logo Pocket-ID cannot fetch must not hold the client back, and is not retried.
 func TestPushOIDCClientState_LogoErrorIsNonFatalAndNotRetried(t *testing.T) {
-	ctx := context.Background()
 	scheme := runtime.NewScheme()
 	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
 
@@ -1166,61 +1030,66 @@ func TestPushOIDCClientState_LogoErrorIsNonFatalAndNotRetried(t *testing.T) {
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{LogoURL: "https://cdn.example.com/missing.png"},
 		},
-		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
-			ClientID:   "logo-id",
-			Conditions: readyCondition(),
-		},
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{ClientID: "logo-id"},
 	}
-	current := &pocketid.OIDCClient{ID: "logo-id", Name: "logo-client"}
-
 	r := newPushStateOIDCReconciler(scheme, oidcClientCR)
-	var puts int
-	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if req.Method != http.MethodPut {
-			t.Errorf("unexpected %s %s", req.Method, req.URL.Path)
-			http.Error(w, "unexpected", http.StatusInternalServerError)
-			return
-		}
-		puts++
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnprocessableEntity)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"error": "Logo could not be downloaded", "code": "logo_download_failed", "request_id": "req-1",
-		})
-	}))
+	f := newFakeOIDCClient(t, "logo-id", "logo-client")
+	f.fail = logoRejected("https://cdn.example.com/missing.png", "https://cdn.example.com/other.png")
+	apiClient := f.api()
 
-	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
+	attempts := func() int {
+		n := 0
+		for _, call := range f.calls {
+			if call == "PATCH" {
+				n++
+			}
+		}
+		return n
+	}
+
+	if _, err := r.pushOIDCClientState(context.Background(), oidcClientCR, apiClient); err != nil {
 		t.Fatalf("expected a logo failure to be non-fatal, got %v", err)
 	}
-	if puts != 1 {
-		t.Fatalf("expected exactly one PUT, got %d", puts)
+	// Rejected logo PATCHes are answered before being recorded, so only config PATCHes count.
+	if attempts() != 1 {
+		t.Fatalf("expected one config PATCH, got %v", f.calls)
 	}
 	if oidcClientCR.Status.LogoURL != "" {
 		t.Errorf("a rejected URL must not be recorded as applied, got %q", oidcClientCR.Status.LogoURL)
 	}
+	if !r.logoURLFailed("https://cdn.example.com/missing.png") {
+		t.Fatal("expected the URL to be remembered as failed")
+	}
 
 	// Same URL: skipped entirely on the next pass.
-	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
+	rejected := 0
+	f.fail = func(req *http.Request, body map[string]any) (int, any) {
+		status, resp := logoRejected("https://cdn.example.com/missing.png", "https://cdn.example.com/other.png")(req, body)
+		if status != 0 {
+			rejected++
+		}
+		return status, resp
+	}
+	if _, err := r.pushOIDCClientState(context.Background(), oidcClientCR, apiClient); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if puts != 1 {
-		t.Errorf("expected the failed URL not to be retried, got %d PUTs", puts)
+	if rejected != 0 {
+		t.Errorf("expected the failed URL not to be retried, got %d attempts", rejected)
 	}
 
 	// A different URL is a different key, so it is tried once.
 	oidcClientCR.Spec.Logo.LogoURL = "https://cdn.example.com/other.png"
-	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
+	if _, err := r.pushOIDCClientState(context.Background(), oidcClientCR, apiClient); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if puts != 2 {
-		t.Errorf("expected a changed URL to be attempted, got %d PUTs", puts)
+	if rejected != 1 {
+		t.Errorf("expected a changed URL to be attempted once, got %d", rejected)
 	}
 }
 
 // The default templates resolve a dark URL that dashboard-icons often does not have, so a
 // dark failure must leave the light logo owned, applied and retryable.
 func TestPushOIDCClientState_DarkLogoFailureLeavesLightLogoIntact(t *testing.T) {
-	ctx := context.Background()
 	scheme := runtime.NewScheme()
 	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
 
@@ -1232,37 +1101,22 @@ func TestPushOIDCClientState_DarkLogoFailureLeavesLightLogoIntact(t *testing.T) 
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			Logo: &pocketidinternalv1alpha1.OIDCClientLogoSpec{LogoURL: lightURL, DarkLogoURL: darkURL},
 		},
-		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
-			ClientID:   "logo-id",
-			Conditions: readyCondition(),
-		},
+		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{ClientID: "logo-id"},
 	}
-	current := &pocketid.OIDCClient{ID: "logo-id", Name: "logo-client"}
-
 	r := newPushStateOIDCReconciler(scheme, oidcClientCR)
-	var sent []string // darkLogoUrl of each PUT, so the two updates are distinguishable
-	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		var body map[string]any
-		_ = json.NewDecoder(req.Body).Decode(&body)
-		dark, _ := body["darkLogoUrl"].(string)
-		sent = append(sent, dark)
+	f := newFakeOIDCClient(t, "logo-id", "logo-client")
+	f.fail = logoRejected(darkURL)
+	apiClient := f.api()
 
-		if dark == "" { // the light update
-			okOIDCClientResponse(w, "logo-id", "logo-client")
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnprocessableEntity)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"error": "Logo could not be downloaded", "code": "logo_download_failed",
-		})
-	}))
-
-	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
+	current, err := r.pushOIDCClientState(context.Background(), oidcClientCR, apiClient)
+	if err != nil {
 		t.Fatalf("expected the dark failure to be non-fatal, got %v", err)
 	}
-	if len(sent) != 2 || sent[0] != "" || sent[1] != darkURL {
-		t.Fatalf("expected one update per side, got %q", sent)
+	if got := f.logoPatches(); !slices.Equal(got, []string{"light " + lightURL}) {
+		t.Fatalf("expected the light logo to land, got %v", got)
+	}
+	if !current.HasLogo || current.HasDarkLogo {
+		t.Errorf("expected the returned client to carry only the light logo, got %+v", current)
 	}
 	if oidcClientCR.Status.LogoURL != lightURL {
 		t.Errorf("light logo should stay applied, got %q", oidcClientCR.Status.LogoURL)
@@ -1277,77 +1131,12 @@ func TestPushOIDCClientState_DarkLogoFailureLeavesLightLogoIntact(t *testing.T) 
 		t.Error("the dark URL should be remembered as failed")
 	}
 
-	// Next pass: light is in place and dark is skipped, so nothing is sent at all.
-	current.HasLogo = true
-	sent = nil
-	if _, err := r.pushOIDCClientState(ctx, oidcClientCR, apiClient, current); err != nil {
+	// Next pass: light is in place and dark is skipped, so no logo is sent at all.
+	f.patches = nil
+	if _, err := r.pushOIDCClientState(context.Background(), oidcClientCR, apiClient); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(sent) != 0 {
-		t.Errorf("expected no further updates, got %q", sent)
-	}
-}
-
-// A deletion that succeeded must be recorded even when the pass later fails, or the next
-// one deletes whatever was uploaded in its place.
-func TestReconcileLogos_RecordsDeletionWhenTheOtherSideFails(t *testing.T) {
-	scheme := runtime.NewScheme()
-	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
-
-	oidcClient := logoClient("", "https://cdn.example.com/logo.png", "https://cdn.example.com/dark.png")
-	r := newPushStateOIDCReconciler(scheme, oidcClient)
-
-	// Light deletes cleanly; dark fails.
-	api := &fakeLogoAPI{errOn: map[bool]error{false: errors.New("boom")}}
-
-	plan, err := r.reconcileLogos(context.Background(), oidcClient, api, &pocketid.OIDCClient{ID: "client-id"})
-	if err == nil {
-		t.Fatal("expected the dark deletion failure to propagate")
-	}
-	if plan.appliedLight != "" {
-		t.Errorf("light was deleted, so it must be disowned: got %q", plan.appliedLight)
-	}
-	if plan.appliedDark != "https://cdn.example.com/dark.png" {
-		t.Errorf("dark deletion failed, so it stays owned: got %q", plan.appliedDark)
-	}
-
-	fetched := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
-	if err := r.Get(context.Background(), client.ObjectKeyFromObject(oidcClient), fetched); err != nil {
-		t.Fatalf("get failed: %v", err)
-	}
-	if fetched.Status.LogoURL != "" {
-		t.Errorf("the completed deletion must be persisted, got %q", fetched.Status.LogoURL)
-	}
-	if fetched.Status.DarkLogoURL != "https://cdn.example.com/dark.png" {
-		t.Errorf("the failed deletion must keep its record, got %q", fetched.Status.DarkLogoURL)
-	}
-}
-
-// Neither failure should hide the other: the delete failure explains the reconcile, and the
-// status failure explains why the completed deletion was not recorded.
-func TestReconcileLogos_ReportsBothDeleteAndStatusFailures(t *testing.T) {
-	scheme := runtime.NewScheme()
-	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
-
-	oidcClient := logoClient("", "https://cdn.example.com/logo.png", "https://cdn.example.com/dark.png")
-	r := newPushStateOIDCReconciler(scheme, oidcClient)
-	r.Client = interceptor.NewClient(r.Client.(client.WithWatch), interceptor.Funcs{
-		SubResourcePatch: func(_ context.Context, _ client.Client, _ string, _ client.Object, _ client.Patch, _ ...client.SubResourcePatchOption) error {
-			return errors.New("simulated status patch failure")
-		},
-	})
-	r.EnsureClient(r.Client)
-
-	api := &fakeLogoAPI{errOn: map[bool]error{false: errors.New("delete refused")}}
-
-	_, err := r.reconcileLogos(context.Background(), oidcClient, api, &pocketid.OIDCClient{ID: "client-id"})
-	if err == nil {
-		t.Fatal("expected an error")
-	}
-	if !strings.Contains(err.Error(), "delete refused") {
-		t.Errorf("delete failure missing from %v", err)
-	}
-	if !strings.Contains(err.Error(), "simulated status patch failure") {
-		t.Errorf("status failure missing from %v", err)
+	if got := f.logoPatches(); len(got) != 0 {
+		t.Errorf("expected no further logo updates, got %v", got)
 	}
 }

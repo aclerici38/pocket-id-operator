@@ -330,11 +330,11 @@ type PocketIDOIDCClientSpec struct {
 	// +optional
 	ClientID string `json:"clientID,omitempty"`
 
-	// Callback URLs for the client.
+	// Callback URLs for the client. Pocket-ID only redirects to registered URLs; unset clears any set outside the operator.
 	// +optional
 	CallbackURLs []string `json:"callbackUrls,omitempty"`
 
-	// Logout callback URLs for the client.
+	// Logout callback URLs for the client. Unset clears any set outside the operator.
 	// +optional
 	LogoutCallbackURLs []string `json:"logoutCallbackUrls,omitempty"`
 
@@ -406,7 +406,7 @@ type PocketIDOIDCClientSpec struct {
 	// +optional
 	AllowedUserGroups []NamespacedUserGroupReference `json:"allowedUserGroups,omitempty"`
 
-	// APIAccess grants this client permission to request scoped access on the referenced PocketIDAPIs.
+	// APIAccess grants this client permission to request scoped access on the referenced PocketIDAPIs. The operator owns all of the client's grants: access granted outside the operator is revoked.
 	// +optional
 	APIAccess []OIDCClientAPIAccess `json:"apiAccess,omitempty"`
 
@@ -504,14 +504,6 @@ type PocketIDOIDCClientStatus struct {
 	// AllowedUserGroupIDs are the resolved group IDs assigned to the client
 	// +optional
 	AllowedUserGroupIDs []string `json:"allowedUserGroupIDs,omitempty"`
-
-	// ManagedAPIPermissionIDs are the Pocket-ID API permission IDs the operator last pushed as this client's API access (both delegated and client-credentials).
-	// +optional
-	ManagedAPIPermissionIDs []string `json:"managedAPIPermissionIDs,omitempty"`
-
-	// ManagedAPIs are the Pocket-ID API IDs the operator last granted this client.
-	// +optional
-	ManagedAPIs []string `json:"managedAPIs,omitempty"`
 
 	// CIMDGrantedAPIs are the resources of APIs reachable through their cimdAccess setting rather than this client's own grant; revoke it on the PocketIDAPI, not via spec.apiAccess. Only populated for cimd clients.
 	// +optional

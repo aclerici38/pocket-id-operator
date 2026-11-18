@@ -31,7 +31,7 @@ var _ = Describe("External Deletion Recovery", Ordered, func() {
 			originalUserID := waitForStatusFieldNotEmpty("pocketiduser", userName, userNS, ".status.userID")
 
 			By("deleting the user directly from Pocket-ID via API")
-			deleteFromPocketID(fmt.Sprintf("/api/users/%s", originalUserID))
+			deleteFromPocketID(fmt.Sprintf("/api/admin/users/%s", originalUserID))
 
 			By("waiting for the operator to detect deletion and recreate the user")
 			Eventually(func(g Gomega) {
@@ -61,7 +61,7 @@ var _ = Describe("External Deletion Recovery", Ordered, func() {
 			originalGroupID := waitForStatusFieldNotEmpty("pocketidusergroup", groupName, userNS, ".status.groupID")
 
 			By("deleting the group directly from Pocket-ID via API")
-			deleteFromPocketID(fmt.Sprintf("/api/user-groups/%s", originalGroupID))
+			deleteFromPocketID(fmt.Sprintf("/api/admin/user-groups/%s", originalGroupID))
 
 			By("waiting for the operator to detect deletion and recreate the group")
 			Eventually(func(g Gomega) {
@@ -121,7 +121,7 @@ var _ = Describe("External Deletion Recovery", Ordered, func() {
 			originalClientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
 
 			By("deleting the client directly from Pocket-ID via API")
-			deleteFromPocketID(fmt.Sprintf("/api/oidc/clients/%s", originalClientID))
+			deleteFromPocketID(fmt.Sprintf("/api/admin/oidc/clients/%s", originalClientID))
 
 			By("waiting for the operator to detect deletion and recreate the client")
 			Eventually(func(g Gomega) {

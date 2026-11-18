@@ -54,6 +54,8 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gatewayv1apply "sigs.k8s.io/gateway-api/applyconfiguration/apis/v1"
 
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 	"github.com/aclerici38/pocket-id-operator/internal/metrics"
@@ -230,14 +232,14 @@ func (r *Reconciler) reconcileExternal(ctx context.Context, instance *pocketidin
 		reason = "APIClientError"
 		message = err.Error()
 		log.Error(err, "external instance API client unavailable")
-	} else if version, vErr := apiClient.GetCurrentVersion(ctx); vErr != nil {
+	} else if version, vErr := pid.Decode[pid.CurrentVersionDto](apiClient.GetCurrentDeployedVersionOfPocketID(ctx)); vErr != nil {
 		message = fmt.Sprintf("ping external Pocket-ID: %v", vErr)
 		log.Error(vErr, "could not reach external Pocket-ID")
 	} else {
 		ready = metav1.ConditionTrue
 		reason = "Ready"
 		message = "Adopted external Pocket-ID"
-		instance.Status.Version = version
+		instance.Status.Version = version.CurrentVersion
 		// Halt below, after the status patch persists the detected version.
 	}
 
@@ -983,10 +985,11 @@ func (r *Reconciler) reconcileVersion(ctx context.Context, instance *pocketidint
 
 	log := logf.FromContext(ctx)
 
-	version, err := apiClient.GetCurrentVersion(ctx)
+	current, err := pid.Decode[pid.CurrentVersionDto](apiClient.GetCurrentDeployedVersionOfPocketID(ctx))
 	if err != nil {
-		return err
+		return fmt.Errorf("get current version: %w", err)
 	}
+	version := current.CurrentVersion
 
 	normalizedVersion := normalizeVersion(version)
 	if semver.IsValid(normalizedVersion) && semver.Compare(normalizedVersion, latestTestedPocketIDVersion) > 0 {

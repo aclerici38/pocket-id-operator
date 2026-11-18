@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -15,7 +14,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
-	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
 const (
@@ -53,7 +51,7 @@ func rawKeys(keys ...string) []json.RawMessage {
 	return out
 }
 
-func TestResolvePublicKeys(t *testing.T) {
+func TestFederatedIdentities_PublicKeys(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = corev1.AddToScheme(scheme)
 	reader := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
@@ -112,13 +110,12 @@ func TestResolvePublicKeys(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{ObjectMeta: metav1.ObjectMeta{Name: "c", Namespace: testNamespace}}
-			identities := make([]pocketid.OIDCClientFederatedIdentity, len(tc.keys))
 			for _, keys := range tc.keys {
 				oidcClient.Spec.FederatedIdentities = append(oidcClient.Spec.FederatedIdentities,
 					pocketidinternalv1alpha1.OIDCClientFederatedIdentity{Issuer: "https://issuer.example.com", PublicKeys: keys})
 			}
 
-			err := r.resolvePublicKeys(context.Background(), oidcClient, identities)
+			identities, err := r.federatedIdentities(context.Background(), oidcClient)
 			if tc.wantErr {
 				if !errors.Is(err, errPublicKeys) {
 					t.Fatalf("expected a public key error, got %v", err)
@@ -132,11 +129,13 @@ func TestResolvePublicKeys(t *testing.T) {
 				return
 			}
 			if err != nil {
-				t.Fatalf("resolvePublicKeys: %v", err)
+				t.Fatalf("federatedIdentities: %v", err)
 			}
 			for i, identity := range identities {
-				if !reflect.DeepEqual(identity.PublicKeys, tc.want[i]) {
-					t.Errorf("identity %d keys = %s, want %s", i, identity.PublicKeys, tc.want[i])
+				got, _ := json.Marshal(identity.PublicKeys)
+				want, _ := json.Marshal(tc.want[i])
+				if string(got) != string(want) {
+					t.Errorf("identity %d keys = %s, want %s", i, got, want)
 				}
 			}
 		})

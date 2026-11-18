@@ -28,8 +28,8 @@ PocketIDOIDCClientSpec defines the desired state of PocketIDOIDCClient
 | `description` | string |  |  | Description is an optional description for the client<br />_MaxLength: 150_ |
 | `instanceSelector` | [LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#labelselector-v1-meta) |  |  | InstanceSelector selects the PocketIDInstance to reconcile against.<br />If omitted, the controller expects exactly one instance in the cluster. |
 | `clientID` | string |  |  | ClientID is the optional OIDC client ID to use instead of a generated one. The Client ID is immutable and cannot be changed once the oidc client is created.<br />An https:// URL marks the client as an OAuth Client ID Metadata Document (CIMD) client, which the operator adopts but never creates and only partially manages.<br />_MaxLength: 512_<br />_MinLength: 2_ |
-| `callbackUrls` | string array |  |  | Callback URLs for the client. |
-| `logoutCallbackUrls` | string array |  |  | Logout callback URLs for the client. |
+| `callbackUrls` | string array |  |  | Callback URLs for the client. Pocket-ID only redirects to registered URLs; unset clears any set outside the operator. |
+| `logoutCallbackUrls` | string array |  |  | Logout callback URLs for the client. Unset clears any set outside the operator. |
 | `backchannelLogoutUrl` | string |  |  | Back-channel logout URL Pocket-ID notifies when a user's session for the client ends. |
 | `launchUrl` | string |  |  | Launch URL for the client. Used in the "apps" dashboard in the Pocket-ID ui. |
 | `logoUrl` | string |  |  | Deprecated: Use spec.logo.logoUrl instead. |
@@ -44,7 +44,7 @@ PocketIDOIDCClientSpec defines the desired state of PocketIDOIDCClient
 | `refreshTokenDurationMinutes` | integer |  | `43200` | How long refresh tokens issued to this client stay valid, in minutes.<br />_Maximum: 525600_<br />_Minimum: 1_ |
 | [`federatedIdentities`](#pocketidoidcclientspecfederatedidentities) | []object |  |  | FederatedIdentities configures JWT assertion identities. |
 | [`allowedUserGroups`](#pocketidoidcclientspecallowedusergroups) | []object |  |  | AllowedUserGroups restricts access to the listed user groups.<br />Each entry names either a PocketIDUserGroup CR or, for groups managed outside this cluster, an existing Pocket-ID group by name or ID. |
-| [`apiAccess`](#pocketidoidcclientspecapiaccess) | []object |  |  | APIAccess grants this client permission to request scoped access on the referenced PocketIDAPIs. |
+| [`apiAccess`](#pocketidoidcclientspecapiaccess) | []object |  |  | APIAccess grants this client permission to request scoped access on the referenced PocketIDAPIs. The operator owns all of the client's grants: access granted outside the operator is revoked. |
 | [`secret`](#pocketidoidcclientspecsecret) | object |  |  | Secret defines how OIDC client credentials should be stored in a Kubernetes Secret. |
 | [`scim`](#pocketidoidcclientspecscim) | object |  |  | SCIM configures SCIM provisioning for this OIDC client. Pocket ID will push user/group changes to the configured endpoint. |
 | [`clientSecretRotation`](#pocketidoidcclientspecclientsecretrotation) | object |  |  | ClientSecretRotation configures automatic, scheduled regeneration of the client secret.<br />When unset the secret is only regenerated on create/adopt, on self-heal, or when the regenerate-client-secret annotation is set. |
@@ -250,8 +250,6 @@ PocketIDOIDCClientStatus defines the observed state of PocketIDOIDCClient.
 | `callbackUrls` | string array |  |  | CallbackURLs are the current callback URLs from Pocket-ID |
 | `logoutCallbackUrls` | string array |  |  | LogoutCallbackURLs are the current logout callback URLs from Pocket-ID |
 | `allowedUserGroupIDs` | string array |  |  | AllowedUserGroupIDs are the resolved group IDs assigned to the client |
-| `managedAPIPermissionIDs` | string array |  |  | ManagedAPIPermissionIDs are the Pocket-ID API permission IDs the operator last pushed as this client's API access (both delegated and client-credentials). |
-| `managedAPIs` | string array |  |  | ManagedAPIs are the Pocket-ID API IDs the operator last granted this client. |
 | `cimdGrantedAPIs` | string array |  |  | CIMDGrantedAPIs are the resources of APIs reachable through their cimdAccess setting rather than this client's own grant; revoke it on the PocketIDAPI, not via spec.apiAccess. Only populated for cimd clients. |
 | `pkceSupported` | boolean |  |  | PKCESupported indicates Pocket-ID observed the client using PKCE during an authorization flow while spec.pkceEnabled is false, signalling PKCE can be enabled. |
 | `logoUrl` | string |  |  | LogoURL is the light logo URL the operator last successfully applied to Pocket-ID. |

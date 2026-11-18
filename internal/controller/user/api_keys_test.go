@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"slices"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -19,6 +20,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
@@ -26,6 +29,8 @@ import (
 )
 
 const (
+	createdAt  = "2026-01-01T00:00:00Z"
+	lastUsedAt = "2026-11-01T00:00:00Z"
 	expiresAt  = "2030-01-01T00:00:00Z"
 	renewedAt  = "2031-01-01T00:00:00Z"
 	keysPath   = "/api/api-keys"
@@ -33,15 +38,20 @@ const (
 	renew1Path = "/api/api-keys/key-1/renew"
 )
 
+func at(value string) time.Time {
+	t, _ := time.Parse(time.RFC3339, value)
+	return t
+}
+
 // fakeKeys serves the user's API keys from keys, recording each write and failing them with writeStatus if set.
 type fakeKeys struct {
-	keys        map[string]pocketid.APIKey
+	keys        map[string]pid.APIKeyDto
 	writes      []string
 	writeStatus int
 }
 
-func newFakeKeys(t *testing.T, writeStatus int, keys ...pocketid.APIKey) (*pocketid.Client, *fakeKeys) {
-	f := &fakeKeys{keys: map[string]pocketid.APIKey{}, writeStatus: writeStatus}
+func newFakeKeys(t *testing.T, writeStatus int, keys ...pid.APIKeyDto) (*pocketid.Client, *fakeKeys) {
+	f := &fakeKeys{keys: map[string]pid.APIKeyDto{}, writeStatus: writeStatus}
 	for _, key := range keys {
 		f.keys[key.ID] = key
 	}
@@ -50,27 +60,27 @@ func newFakeKeys(t *testing.T, writeStatus int, keys ...pocketid.APIKey) (*pocke
 	mux.HandleFunc("GET "+keysPath, func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data":       slices.Collect(maps.Values(f.keys)),
-			"pagination": map[string]int{"totalPages": 1},
+			"pagination": map[string]int{"currentPage": 1, "totalPages": 1},
 		})
 	})
-	mux.HandleFunc("POST "+keysPath, f.write(http.StatusCreated, func(key pocketid.APIKey, _ string) any {
-		key.ID = "key-new"
+	mux.HandleFunc("POST "+keysPath, f.write(http.StatusCreated, func(key pid.APIKeyDto, _ string) any {
+		key.ID, key.CreatedAt = "key-new", at(createdAt)
 		f.keys[key.ID] = key
-		return pocketid.APIKeyWithToken{APIKey: key, Token: "new-token"}
+		return pid.APIKeyResponseDto{APIKey: key, Token: "new-token"}
 	}))
-	mux.HandleFunc("PUT /api/api-keys/{id}", f.write(http.StatusOK, func(body pocketid.APIKey, id string) any {
+	mux.HandleFunc("PUT /api/api-keys/{id}", f.write(http.StatusOK, func(body pid.APIKeyDto, id string) any {
 		key := f.keys[id]
 		key.Name, key.Description, key.Scopes = body.Name, body.Description, body.Scopes
 		f.keys[id] = key
 		return key
 	}))
-	mux.HandleFunc("POST /api/api-keys/{id}/renew", f.write(http.StatusOK, func(body pocketid.APIKey, id string) any {
+	mux.HandleFunc("POST /api/api-keys/{id}/renew", f.write(http.StatusOK, func(body pid.APIKeyDto, id string) any {
 		key := f.keys[id]
 		key.ExpiresAt = body.ExpiresAt
 		f.keys[id] = key
-		return pocketid.APIKeyWithToken{APIKey: key, Token: "renewed-token"}
+		return pid.APIKeyResponseDto{APIKey: key, Token: "renewed-token"}
 	}))
-	mux.HandleFunc("DELETE /api/api-keys/{id}", f.write(http.StatusNoContent, func(_ pocketid.APIKey, id string) any {
+	mux.HandleFunc("DELETE /api/api-keys/{id}", f.write(http.StatusNoContent, func(_ pid.APIKeyDto, id string) any {
 		delete(f.keys, id)
 		return nil
 	}))
@@ -83,14 +93,14 @@ func newFakeKeys(t *testing.T, writeStatus int, keys ...pocketid.APIKey) (*pocke
 	})), f
 }
 
-func (f *fakeKeys) write(status int, apply func(body pocketid.APIKey, id string) any) http.HandlerFunc {
+func (f *fakeKeys) write(status int, apply func(body pid.APIKeyDto, id string) any) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		f.writes = append(f.writes, r.Method+" "+r.URL.Path)
 		if f.writeStatus != 0 {
 			w.WriteHeader(f.writeStatus)
 			return
 		}
-		var body pocketid.APIKey
+		var body pid.APIKeyDto
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		resp := apply(body, r.PathValue("id"))
 		w.WriteHeader(status)
@@ -103,7 +113,7 @@ func (f *fakeKeys) write(status int, apply func(body pocketid.APIKey, id string)
 // serveSession answers the session flow around API key requests.
 func serveSession(w http.ResponseWriter, r *http.Request) bool {
 	switch r.URL.Path {
-	case "/api/users/user-1/one-time-access-token":
+	case "/api/admin/users/user-1/one-time-access-token":
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{"token":"one-time-token"}`))
 	case "/api/one-time-access-token":
@@ -129,8 +139,8 @@ func newAPIKeyReconciler(user *pocketidinternalv1alpha1.PocketIDUser, objs ...cl
 
 func TestReconcileAPIKeys(t *testing.T) {
 	spec := pocketidinternalv1alpha1.APIKeySpec{Name: "key", ExpiresAt: expiresAt, Description: "desc", Scopes: []string{"account:read"}}
-	stored := pocketid.APIKey{ID: "key-1", Name: "key", Description: "desc", ExpiresAt: expiresAt, LastUsedAt: "2026-11-01T00:00:00Z", Scopes: []string{"account:read"}}
-	tracked := pocketidinternalv1alpha1.APIKeyStatus{Name: "key", ID: "key-1", ExpiresAt: expiresAt, SecretName: "user-key-key"}
+	stored := pid.APIKeyDto{ID: "key-1", Name: "key", Description: "desc", CreatedAt: at(createdAt), ExpiresAt: at(expiresAt), LastUsedAt: new(at(lastUsedAt)), Scopes: []string{"account:read"}}
+	tracked := pocketidinternalv1alpha1.APIKeyStatus{Name: "key", ID: "key-1", CreatedAt: createdAt, ExpiresAt: expiresAt, SecretName: "user-key-key"}
 	withStatus := func(s pocketidinternalv1alpha1.APIKeyStatus, edit func(*pocketidinternalv1alpha1.APIKeyStatus)) []pocketidinternalv1alpha1.APIKeyStatus {
 		edit(&s)
 		return []pocketidinternalv1alpha1.APIKeyStatus{s}
@@ -140,7 +150,7 @@ func TestReconcileAPIKeys(t *testing.T) {
 		name        string
 		spec        func(*pocketidinternalv1alpha1.APIKeySpec)
 		status      []pocketidinternalv1alpha1.APIKeyStatus
-		stored      []pocketid.APIKey
+		stored      []pid.APIKeyDto
 		writeStatus int
 		wantWrites  []string
 		wantStatus  []pocketidinternalv1alpha1.APIKeyStatus
@@ -169,37 +179,37 @@ func TestReconcileAPIKeys(t *testing.T) {
 		{
 			name:       "leaves a key in sync alone and records its last use",
 			status:     []pocketidinternalv1alpha1.APIKeyStatus{tracked},
-			stored:     []pocketid.APIKey{stored},
-			wantStatus: withStatus(tracked, func(s *pocketidinternalv1alpha1.APIKeyStatus) { s.LastUsedAt = stored.LastUsedAt }),
+			stored:     []pid.APIKeyDto{stored},
+			wantStatus: withStatus(tracked, func(s *pocketidinternalv1alpha1.APIKeyStatus) { s.LastUsedAt = lastUsedAt }),
 		},
 		{
 			name:       "ignores scope order",
 			spec:       func(s *pocketidinternalv1alpha1.APIKeySpec) { s.Scopes = []string{"users:read", "account:read"} },
 			status:     []pocketidinternalv1alpha1.APIKeyStatus{tracked},
-			stored:     []pocketid.APIKey{{ID: "key-1", Name: "key", Description: "desc", ExpiresAt: expiresAt, Scopes: []string{"account:read", "users:read"}}},
+			stored:     []pid.APIKeyDto{{ID: "key-1", Name: "key", Description: "desc", CreatedAt: at(createdAt), ExpiresAt: at(expiresAt), Scopes: []string{"account:read", "users:read"}}},
 			wantStatus: []pocketidinternalv1alpha1.APIKeyStatus{tracked},
 		},
 		{
 			name:       "updates drifted scopes in place",
 			spec:       func(s *pocketidinternalv1alpha1.APIKeySpec) { s.Scopes = []string{"account:read", "users:read"} },
 			status:     []pocketidinternalv1alpha1.APIKeyStatus{tracked},
-			stored:     []pocketid.APIKey{stored},
+			stored:     []pid.APIKeyDto{stored},
 			wantWrites: []string{"PUT " + key1Path},
-			wantStatus: withStatus(tracked, func(s *pocketidinternalv1alpha1.APIKeyStatus) { s.LastUsedAt = stored.LastUsedAt }),
+			wantStatus: withStatus(tracked, func(s *pocketidinternalv1alpha1.APIKeyStatus) { s.LastUsedAt = lastUsedAt }),
 		},
 		{
 			name:       "updates a drifted description in place",
 			spec:       func(s *pocketidinternalv1alpha1.APIKeySpec) { s.Description = "changed" },
 			status:     []pocketidinternalv1alpha1.APIKeyStatus{tracked},
-			stored:     []pocketid.APIKey{stored},
+			stored:     []pid.APIKeyDto{stored},
 			wantWrites: []string{"PUT " + key1Path},
-			wantStatus: withStatus(tracked, func(s *pocketidinternalv1alpha1.APIKeyStatus) { s.LastUsedAt = stored.LastUsedAt }),
+			wantStatus: withStatus(tracked, func(s *pocketidinternalv1alpha1.APIKeyStatus) { s.LastUsedAt = lastUsedAt }),
 		},
 		{
 			name:        "reports an update Pocket-ID refuses",
 			spec:        func(s *pocketidinternalv1alpha1.APIKeySpec) { s.Scopes = []string{"users:read"} },
 			status:      []pocketidinternalv1alpha1.APIKeyStatus{tracked},
-			stored:      []pocketid.APIKey{stored},
+			stored:      []pid.APIKeyDto{stored},
 			writeStatus: http.StatusBadRequest,
 			wantWrites:  []string{"PUT " + key1Path},
 			wantStatus:  []pocketidinternalv1alpha1.APIKeyStatus{tracked},
@@ -209,10 +219,10 @@ func TestReconcileAPIKeys(t *testing.T) {
 			name:       "renews a key whose explicit expiry changed",
 			spec:       func(s *pocketidinternalv1alpha1.APIKeySpec) { s.ExpiresAt = renewedAt },
 			status:     []pocketidinternalv1alpha1.APIKeyStatus{tracked},
-			stored:     []pocketid.APIKey{stored},
+			stored:     []pid.APIKeyDto{stored},
 			wantWrites: []string{"POST " + renew1Path},
 			wantStatus: withStatus(tracked, func(s *pocketidinternalv1alpha1.APIKeyStatus) {
-				s.ExpiresAt, s.LastUsedAt = renewedAt, stored.LastUsedAt
+				s.ExpiresAt, s.LastUsedAt = renewedAt, lastUsedAt
 			}),
 			wantToken: "renewed-token",
 		},
@@ -220,8 +230,8 @@ func TestReconcileAPIKeys(t *testing.T) {
 			name:       "keeps the expiry Pocket-ID chose when none is set",
 			spec:       func(s *pocketidinternalv1alpha1.APIKeySpec) { s.ExpiresAt = "" },
 			status:     []pocketidinternalv1alpha1.APIKeyStatus{tracked},
-			stored:     []pocketid.APIKey{stored},
-			wantStatus: withStatus(tracked, func(s *pocketidinternalv1alpha1.APIKeyStatus) { s.LastUsedAt = stored.LastUsedAt }),
+			stored:     []pid.APIKeyDto{stored},
+			wantStatus: withStatus(tracked, func(s *pocketidinternalv1alpha1.APIKeyStatus) { s.LastUsedAt = lastUsedAt }),
 		},
 	}
 
@@ -274,7 +284,7 @@ func TestReconcileAPIKeys(t *testing.T) {
 func TestReconcileAPIKeys_RetriesTokenThatWasNotSaved(t *testing.T) {
 	tests := []struct {
 		name       string
-		stored     []pocketid.APIKey
+		stored     []pid.APIKeyDto
 		wantWrites []string
 		wantToken  string
 	}{
@@ -285,7 +295,7 @@ func TestReconcileAPIKeys_RetriesTokenThatWasNotSaved(t *testing.T) {
 		},
 		{
 			name:       "renews again although Pocket-ID already has the expiry",
-			stored:     []pocketid.APIKey{{ID: "key-1", Name: "key", ExpiresAt: expiresAt}},
+			stored:     []pid.APIKeyDto{{ID: "key-1", Name: "key", ExpiresAt: at(expiresAt)}},
 			wantWrites: []string{"POST " + renew1Path, "POST " + renew1Path},
 			wantToken:  "renewed-token",
 		},
@@ -422,7 +432,7 @@ func TestReconcileAPIKeys_RemovedKey(t *testing.T) {
 			}
 			secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "removed-key", Namespace: "default", Labels: tt.labels}}
 			r, fc := newAPIKeyReconciler(user, secret)
-			apiClient, keys := newFakeKeys(t, tt.writeStatus, pocketid.APIKey{ID: "key-1", Name: "removed"})
+			apiClient, keys := newFakeKeys(t, tt.writeStatus, pid.APIKeyDto{ID: "key-1", Name: "removed"})
 
 			err := r.reconcileAPIKeys(ctx, user, apiClient, "default", "instance")
 			if (err != nil) != tt.wantErr {

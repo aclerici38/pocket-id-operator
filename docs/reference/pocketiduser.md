@@ -18,7 +18,7 @@ PocketIDUserSpec defines the desired state of PocketIDUser.
 | [`username`](#pocketiduserspecusername) | object |  |  | Username of the user. Defaults to the metadata.name. Can be a plain value or reference a secret. |
 | [`firstName`](#pocketiduserspecfirstname) | object |  |  | First name of the user. Defaults to the username. Can be a plain value or reference a secret. |
 | [`lastName`](#pocketiduserspeclastname) | object |  |  | Last name of the user. Can be a plain value or reference a secret. |
-| [`email`](#pocketiduserspecemail) | object |  |  | Email of the user. Defaults to "<username>@placeholder.local". Can be a plain value or reference a secret. |
+| [`email`](#pocketiduserspecemail) | object |  |  | Email of the user. Can be a plain value or reference a secret.<br />Leave it unset only if the instance sets userManagement.requireUserEmail to false. |
 | [`displayName`](#pocketiduserspecdisplayname) | object |  |  | DisplayName of the user. Defaults to the first name followed by the last name, if set. Can be a plain value or reference a secret. |
 | `instanceSelector` | [LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#labelselector-v1-meta) |  |  | InstanceSelector selects the PocketIDInstance to reconcile against.<br />If omitted, the controller expects exactly one instance in the cluster. |
 | `userInfoSecretRef` | [LocalObjectReference](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#localobjectreference-v1-core) |  |  | UserInfoSecretRef references a single Secret containing sensitive user profile fields. Values from the secret are evaluated last, so spec.username will override the username key in this secret.<br />Keys: username, firstName, lastName, email, displayName |

@@ -15,13 +15,15 @@ import (
 	"math/big"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+	"github.com/oapi-codegen/nullable"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -55,6 +57,8 @@ type InstanceOptions struct {
 	PersistenceSize    string
 	ExistingClaim      string
 	CIMDURLAllowlist   []string
+	// EmailOptional sets userManagement.requireUserEmail to false, so users need no email.
+	EmailOptional bool
 	// TLSSecretName makes the instance terminate TLS from that kubernetes.io/tls
 	// Secret, which also forces appUrl to https.
 	TLSSecretName string
@@ -116,6 +120,9 @@ func buildInstanceYAML(opts InstanceOptions) string {
 		}
 	}
 	persistence += cimd
+	if opts.EmailOptional {
+		persistence += "  userManagement:\n    requireUserEmail: false\n"
+	}
 
 	if opts.NodePort != 0 {
 		persistence += fmt.Sprintf(`  serviceTemplate:
@@ -411,14 +418,21 @@ type FederatedIdentity struct {
 	ReplayProtection bool
 }
 
-// federatedIdentitiesFromPocketID returns a client's federated identities as the operator reads them.
-func federatedIdentitiesFromPocketID(clientID string) []pocketid.OIDCClientFederatedIdentity {
+// federatedIdentitiesFromPocketID returns a client's federated identities, with no public keys
+// read as nil so an identity compares equal however Pocket-ID encodes an empty list.
+func federatedIdentitiesFromPocketID(clientID string) []pid.OIDCClientFederatedIdentityDto {
 	GinkgoHelper()
 	ctx, cancel := testCtx()
 	defer cancel()
-	client, err := pid.GetOIDCClient(ctx, clientID)
+	client, err := pid.Decode[pid.OIDCClientWithAllowedUserGroupsDto](pocketID.GetOIDCClient(ctx, pid.OIDCClientID(clientID)))
 	Expect(err).NotTo(HaveOccurred())
-	return client.FederatedIdentities
+	identities := client.Credentials.FederatedIdentities
+	for i := range identities {
+		if len(identities[i].PublicKeys) == 0 {
+			identities[i].PublicKeys = nil
+		}
+	}
+	return identities
 }
 
 // APIAccessGrant configures a spec.apiAccess entry granting permissions on a PocketIDAPI.
@@ -1033,11 +1047,9 @@ func addUserToGroupInPocketID(groupID, userID string) {
 	ctx, cancel := testCtx()
 	defer cancel()
 
-	group, err := pid.GetUserGroup(ctx, groupID)
-	Expect(err).NotTo(HaveOccurred(), "reading group %s", groupID)
-
-	Expect(pid.UpdateUserGroupUsers(ctx, groupID, append(group.UserIDs, userID))).
-		To(Succeed(), "adding user %s to group %s", userID, groupID)
+	Expect(pid.Check(pocketID.UpdateUsersInGroup(ctx, groupID, pid.UserGroupUpdateUsersDto{
+		UserIDs: append(groupMemberIDs(groupID), userID),
+	}))).To(Succeed(), "adding user %s to group %s", userID, groupID)
 }
 
 // createAPIInPocketID creates an API directly via the Pocket-ID API (bypassing the
@@ -1048,10 +1060,25 @@ func createAPIInPocketID(name, resource string) string {
 	ctx, cancel := testCtx()
 	defer cancel()
 
-	api, err := pid.CreateAPI(ctx, pocketid.APIInput{Name: name, Resource: resource})
+	api, err := pid.Decode[pid.APIResponseDto](pocketID.CreateAPI(ctx, pid.APICreateDto{Name: name, Resource: resource}))
 	Expect(err).NotTo(HaveOccurred(), "creating API %q", name)
 	Expect(api.ID).NotTo(BeEmpty())
 	return api.ID
+}
+
+// grantAPIAccessInPocketID grants a client delegated access to an API directly via the
+// Pocket-ID API, simulating access granted in the UI.
+func grantAPIAccessInPocketID(apiID, clientID string, permissionIDs ...string) {
+	GinkgoHelper()
+	ctx, cancel := testCtx()
+	defer cancel()
+
+	Expect(pid.Check(pocketID.UpdateClientAccessToAPI(ctx, apiID, pid.OIDCClientID(clientID), pid.APIClientGrantUpdateDto{
+		ClientAccess:               new(false),
+		ClientPermissionIDs:        nullable.NewNullableWithValue([]string{}),
+		UserDelegatedAccess:        new(true),
+		UserDelegatedPermissionIDs: nullable.NewNullableWithValue(append([]string{}, permissionIDs...)),
+	}))).To(Succeed(), "granting client %s access to API %s", clientID, apiID)
 }
 
 // deleteUserGroupInPocketID deletes a user group directly via the Pocket-ID API,
@@ -1061,11 +1088,11 @@ func deleteUserGroupInPocketID(groupID string) {
 	ctx, cancel := testCtx()
 	defer cancel()
 
-	Expect(pid.DeleteUserGroup(ctx, groupID)).To(Succeed(), "deleting group %s", groupID)
+	Expect(pid.Check(pocketID.DeleteUserGroup(ctx, groupID))).To(Succeed(), "deleting group %s", groupID)
 }
 
 func clientSecretsSectionFromPocketID(clientID string) string {
-	body := getFromPocketID("/api/oidc/clients/" + clientID)
+	body := getFromPocketID("/api/admin/oidc/clients/" + clientID)
 	section := regexp.MustCompile(`"secrets":\[[^\]]*\]`).FindString(body)
 	Expect(section).NotTo(BeEmpty(),
 		"a client read must carry credentials.secrets; the operator has no other source for them: %s", body)
@@ -1100,18 +1127,29 @@ func deleteClientSecretInPocketID(clientID, secretID string) {
 	ctx, cancel := testCtx()
 	defer cancel()
 
-	Expect(pid.DeleteOIDCClientSecret(ctx, clientID, secretID)).
+	Expect(pid.Check(pocketID.DeleteClientSecret(ctx, pid.OIDCClientID(clientID), secretID))).
 		To(Succeed(), "deleting secret %s of client %s", secretID, clientID)
 }
 
 func getGroupMembersFromPocketID(groupID string) string {
 	GinkgoHelper()
+	return strings.Join(groupMemberIDs(groupID), " ")
+}
+
+// groupMemberIDs returns the IDs of a group's members, sorted.
+func groupMemberIDs(groupID string) []string {
+	GinkgoHelper()
 	ctx, cancel := testCtx()
 	defer cancel()
 
-	group, err := pid.GetUserGroup(ctx, groupID)
+	group, err := pid.Decode[pid.UserGroupDto](pocketID.GetUserGroupByID(ctx, groupID))
 	Expect(err).NotTo(HaveOccurred(), "reading group %s", groupID)
-	return strings.Join(group.UserIDs, " ")
+	ids := make([]string, 0, len(group.Users))
+	for _, user := range group.Users {
+		ids = append(ids, user.ID)
+	}
+	slices.Sort(ids)
+	return ids
 }
 
 // instanceSelectorYAML renders a spec.instanceSelector block, or nothing when no labels

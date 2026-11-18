@@ -1,126 +1,50 @@
-// Package pocketid provides a clean wrapper around the Pocket-ID API client.
 package pocketid
 
 import (
-	"errors"
-	"fmt"
 	"net/http"
 	"slices"
-	"strings"
-	"time"
 
-	"github.com/go-openapi/runtime"
-
-	"github.com/aclerici38/pocket-id-go-client/v2/models"
+	"github.com/aclerici38/pocket-id-go-client/v3/client"
 )
 
-// APIError is a failed Pocket-ID call carrying the structured error envelope:
-//
-//	{"error": "...", "code": "already_in_use", "details": {...}, "request_id": "..."}
-type APIError struct {
-	Operation  string
-	StatusCode int
-	// Code is empty when something other than Pocket-ID answered — a proxy, an ingress
-	// controller — and classification falls back to StatusCode.
-	Code    models.ApperrorCode
-	Message string
-	// RequestID matches the entry in Pocket-ID's own logs.
-	RequestID string
-	// Details is the envelope's extra context, e.g. {"property": "email"}.
-	Details map[string]any
-	// RetryAfter is set only on rate-limited responses.
-	RetryAfter time.Duration
-
-	// err is kept so errors.As still finds the generated response types underneath.
-	err error
-}
-
-// Error renders as "[PostAPIOidcClients] status 409: Client ID is already in use
-// (code client_id_already_exists, request_id req-42)". The request ID goes in the message
-// so it reaches both the operator's logs and the resource's Ready condition.
-func (e *APIError) Error() string {
-	message := e.Message
-	if message == "" && e.err != nil {
-		message = e.err.Error()
-	}
-
-	var attrs []string
-	if e.Code != "" {
-		attrs = append(attrs, "code "+string(e.Code))
-	}
-	if e.RequestID != "" {
-		attrs = append(attrs, "request_id "+e.RequestID)
-	}
-
-	text := fmt.Sprintf("[%s] status %d: %s", e.Operation, e.StatusCode, message)
-	if len(attrs) > 0 {
-		text += " (" + strings.Join(attrs, ", ") + ")"
-	}
-	return text
-}
-
-func (e *APIError) Unwrap() error { return e.err }
-
-// HasFieldError reports whether a validation failure blames any of fields. The envelope
-// carries them as {"details": {"fields": [{"field": "logoUrl", "message": "..."}]}}.
-func (e *APIError) HasFieldError(fields ...string) bool {
-	entries, _ := e.Details["fields"].([]any)
-	for _, entry := range entries {
-		object, _ := entry.(map[string]any)
-		name, _ := object["field"].(string)
-		if slices.Contains(fields, name) {
-			return true
-		}
-	}
-	return false
-}
+// APIError is a non-2xx response from Pocket-ID.
+type APIError = client.APIError
 
 // AsAPIError returns the *APIError in err's chain, or nil if the call never got a response.
-func AsAPIError(err error) *APIError {
-	if apiErr, ok := errors.AsType[*APIError](err); ok {
-		return apiErr
-	}
-	return nil
-}
+var AsAPIError = client.AsAPIError
 
 // classify reports whether err carries one of codes. A code is authoritative: if one is
-// present and not in the list the answer is no, whatever the status says. Only an
-// envelope-less failure falls back to fallbackStatuses.
-func classify(err error, codes []models.ApperrorCode, fallbackStatuses ...int) bool {
-	if apiErr := AsAPIError(err); apiErr != nil && apiErr.Code != "" {
+// present and not in the list the answer is no, whatever the status says. Only a response
+// without Pocket-ID's error body, such as a proxy's, falls back to statuses.
+func classify(err error, codes []client.Code, statuses ...int) bool {
+	apiErr := AsAPIError(err)
+	if apiErr == nil {
+		return false
+	}
+	if apiErr.Code != "" {
 		return slices.Contains(codes, apiErr.Code)
 	}
-	var status runtime.ClientResponseStatus
-	return errors.As(err, &status) && slices.ContainsFunc(fallbackStatuses, status.IsCode)
+	return slices.Contains(statuses, apiErr.StatusCode)
 }
 
 // setup_not_available also answers 404, but means the setup endpoint is closed rather than
 // a managed resource missing.
-var notFoundCodes = []models.ApperrorCode{
-	models.ApperrorCodeNotFound,
-	models.ApperrorCodeUserNotFound,
-	models.ApperrorCodeAPIKeyNotFound,
-	models.ApperrorCodeImageNotFound,
+var notFoundCodes = []client.Code{
+	client.CodeNotFound,
+	client.CodeUserNotFound,
+	client.CodeAPIKeyNotFound,
+	client.CodeImageNotFound,
 }
 
-var alreadyExistsCodes = []models.ApperrorCode{
-	models.ApperrorCodeAlreadyInUse,
-	models.ApperrorCodeClientIDAlreadyExists,
+var alreadyExistsCodes = []client.Code{
+	client.CodeAlreadyInUse,
+	client.CodeClientIDAlreadyExists,
 }
 
-var validationCodes = []models.ApperrorCode{
-	models.ApperrorCodeValidationFailed,
-	models.ApperrorCodeInvalidRequestBody,
-	models.ApperrorCodeOidcInvalidCallbackURL,
-	models.ApperrorCodeReservedClaim,
-	models.ApperrorCodeDuplicateClaim,
-	models.ApperrorCodeInvalidAPIKeyExpiration,
-}
-
-var logoCodes = []models.ApperrorCode{
-	models.ApperrorCodeLogoDownloadFailed,
-	models.ApperrorCodeLogoTypeNotSupported,
-	models.ApperrorCodeLogoTooLarge,
+var logoCodes = []client.Code{
+	client.CodeLogoDownloadFailed,
+	client.CodeLogoTypeNotSupported,
+	client.CodeLogoTooLarge,
 }
 
 // IsLogoError reports a failure Pocket-ID blames on a logo URL rather than on the client
@@ -132,7 +56,7 @@ func IsLogoError(err error) bool {
 		return true
 	}
 	apiErr := AsAPIError(err)
-	return apiErr != nil && apiErr.Code == models.ApperrorCodeValidationFailed &&
+	return apiErr != nil && apiErr.Code == client.CodeValidationFailed &&
 		apiErr.HasFieldError("logoUrl", "darkLogoUrl")
 }
 
@@ -141,7 +65,7 @@ func IsNotFoundError(err error) bool {
 }
 
 func IsServerError(err error) bool {
-	return classify(err, []models.ApperrorCode{models.ApperrorCodeInternalError}, http.StatusInternalServerError)
+	return classify(err, []client.Code{client.CodeInternal}, http.StatusInternalServerError)
 }
 
 // IsAlreadyExistsError reports a uniqueness conflict. The status fallback is 409 only: a
@@ -151,14 +75,8 @@ func IsAlreadyExistsError(err error) bool {
 	return classify(err, alreadyExistsCodes, http.StatusConflict)
 }
 
-// IsValidationError reports a request Pocket-ID rejected on its contents. Retrying is
-// pointless until the resource spec changes.
-func IsValidationError(err error) bool {
-	return classify(err, validationCodes, http.StatusBadRequest)
-}
-
 // IsRateLimitedError pairs with AsAPIError().RetryAfter to back off for as long as
 // Pocket-ID asked.
 func IsRateLimitedError(err error) bool {
-	return classify(err, []models.ApperrorCode{models.ApperrorCodeRateLimited}, http.StatusTooManyRequests)
+	return classify(err, []client.Code{client.CodeRateLimited}, http.StatusTooManyRequests)
 }

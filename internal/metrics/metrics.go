@@ -12,7 +12,7 @@ var (
 	// PocketIDAPIRequests counts calls made to the Pocket-ID API.
 	// Labels:
 	//
-	//	operation - snake_case method name, e.g. "get_user", "create_user"
+	//	operation - Pocket-ID operation name, e.g. "GetUserByID", or "unknown"
 	//	result    - "success", "not_found", or "error"
 	PocketIDAPIRequests = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -25,7 +25,7 @@ var (
 	// PocketIDAPIRequestDuration observes the latency of each Pocket-ID API call.
 	// Labels:
 	//
-	//	operation - snake_case method name, e.g. "get_user", "create_user"
+	//	operation - Pocket-ID operation name, e.g. "GetUserByID", or "unknown"
 	PocketIDAPIRequestDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "pocketid_operator_pocketid_api_request_duration_seconds",
@@ -39,11 +39,11 @@ var (
 	// Labels:
 	//
 	//	kind      - "PocketIDUser", "PocketIDUserGroup", "PocketIDOIDCClient"
-	//	operation - "created", "adopted", "updated", "deleted"
+	//	operation - "created", "adopted", "deleted"
 	ResourceOperations = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "pocketid_operator_resource_operations_total",
-			Help: "Total number of create/adopt/update/delete operations performed on Pocket-ID resources.",
+			Help: "Total number of create/adopt/delete operations performed on Pocket-ID resources.",
 		},
 		[]string{"kind", "operation"},
 	)

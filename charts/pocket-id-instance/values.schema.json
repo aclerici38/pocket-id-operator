@@ -4403,7 +4403,7 @@
               },
               "email": {
                 "additionalProperties": false,
-                "description": "Email of the user. Defaults to \"<username>@placeholder.local\". Can be a plain value or reference a secret.",
+                "description": "Email of the user. Can be a plain value or reference a secret.\nLeave it unset only if the instance sets userManagement.requireUserEmail to false.",
                 "properties": {
                   "value": {
                     "description": "Plain text value.",
@@ -4875,7 +4875,7 @@
               },
               "users": {
                 "additionalProperties": false,
-                "description": "Users defines the members the operator manages in this group. Members added outside the operator are left in place.",
+                "description": "Users is the group's full member list. When set, members added outside the operator are removed; when unset, membership is left alone.",
                 "properties": {
                   "userIDs": {
                     "description": "UserIDs are Pocket-ID user IDs to add to this group, for users not managed by a PocketIDUser.",
@@ -5045,7 +5045,7 @@
                 ]
               },
               "apiAccess": {
-                "description": "APIAccess grants this client permission to request scoped access on the referenced PocketIDAPIs.",
+                "description": "APIAccess grants this client permission to request scoped access on the referenced PocketIDAPIs. The operator owns all of the client's grants: access granted outside the operator is revoked.",
                 "items": {
                   "additionalProperties": false,
                   "description": "OIDCClientAPIAccess grants a client scoped permissions on a referenced PocketIDAPI.\nPermissions are referenced by their key and the operator resolves them to Pocket-ID permission IDs via the PocketIDAPI status.\nThe access flags grant a flow that selects no permissions, so setting one to false alongside a permission list is rejected rather than silently ignoring the list.",
@@ -5134,7 +5134,7 @@
                 ]
               },
               "callbackUrls": {
-                "description": "Callback URLs for the client.",
+                "description": "Callback URLs for the client. Pocket-ID only redirects to registered URLs; unset clears any set outside the operator.",
                 "items": {
                   "type": "string"
                 },
@@ -5562,7 +5562,7 @@
                 ]
               },
               "logoutCallbackUrls": {
-                "description": "Logout callback URLs for the client.",
+                "description": "Logout callback URLs for the client. Unset clears any set outside the operator.",
                 "items": {
                   "type": "string"
                 },

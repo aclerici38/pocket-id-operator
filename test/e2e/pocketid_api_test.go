@@ -77,15 +77,14 @@ func deleteFromPocketID(apiPath string) {
 	Expect(code).To(BeNumerically("<", 300), "DELETE %s returned %d: %s", apiPath, code, body)
 }
 
-// getAppConfigFieldFromPocketID returns a single field from Pocket-ID's public application
-// configuration. The endpoint needs no auth: it is the same payload the login page reads
-// before the user has a session. The response is a flat array of {"key","type","value"}
-// rather than an object keyed by field name, and values are always strings, so booleans
-// come back as "true"/"false".
+// getAppConfigFieldFromPocketID returns a single field from Pocket-ID's application
+// configuration. The admin endpoint lists every field, public or not. The response is a flat
+// array of {"key","type","value"} rather than an object keyed by field name, and values are
+// always strings, so booleans come back as "true"/"false".
 func getAppConfigFieldFromPocketID(field string) string {
 	GinkgoHelper()
 
-	body := getFromPocketID("/api/application-configuration")
+	body := getFromPocketID("/api/admin/application-configuration")
 
 	var entries []struct {
 		Key   string `json:"key"`

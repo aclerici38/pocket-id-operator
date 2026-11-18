@@ -133,8 +133,9 @@ spec:
                     x-kubernetes-map-type: atomic
                 type: object
               email:
-                description: Email of the user. Defaults to "<username>@placeholder.local".
-                  Can be a plain value or reference a secret.
+                description: |-
+                  Email of the user. Can be a plain value or reference a secret.
+                  Leave it unset only if the instance sets userManagement.requireUserEmail to false.
                 properties:
                   value:
                     description: Plain text value.

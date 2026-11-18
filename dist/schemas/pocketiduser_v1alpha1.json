@@ -167,7 +167,7 @@
         },
         "email": {
           "additionalProperties": false,
-          "description": "Email of the user. Defaults to \"\u003cusername\u003e@placeholder.local\". Can be a plain value or reference a secret.",
+          "description": "Email of the user. Can be a plain value or reference a secret.\nLeave it unset only if the instance sets userManagement.requireUserEmail to false.",
           "properties": {
             "value": {
               "description": "Plain text value.",
