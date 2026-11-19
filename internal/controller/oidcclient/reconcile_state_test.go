@@ -2,6 +2,7 @@ package oidcclient
 
 import (
 	"context"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -20,8 +21,8 @@ import (
 
 // reconcileFixture builds a reconciler whose whole dependency chain — instance, API key,
 // referenced API and a fake Pocket-ID holding the client — is satisfied, so Reconcile can run
-// end to end. It returns the fake client and the API IDs granted to it.
-func reconcileFixture(t *testing.T, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) (*Reconciler, *fakeOIDCClient, *[]string) {
+// end to end. extra adds or overrides routes. It returns the fake client and the API IDs granted to it.
+func reconcileFixture(t *testing.T, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, extra map[string]http.HandlerFunc) (*Reconciler, *fakeOIDCClient, *[]string) {
 	t.Helper()
 
 	f := newFakeOIDCClient(t, "client-1", "app-before-write")
@@ -34,6 +35,7 @@ func reconcileFixture(t *testing.T, oidcClient *pocketidinternalv1alpha1.PocketI
 		granted = append(granted, r.PathValue("id"))
 		writeJSON(w, map[string]any{"userDelegatedAccess": true, "userDelegatedPermissionIds": []string{"p-read"}})
 	}
+	maps.Copy(routes, extra)
 
 	mux := http.NewServeMux()
 	for pattern, handler := range routes {
@@ -132,7 +134,7 @@ func adoptedClient(generation int64) *pocketidinternalv1alpha1.PocketIDOIDCClien
 func TestReconcile_ReadyOnlyAfterStateIsPushedAndObserved(t *testing.T) {
 	ctx := context.Background()
 	oidcClient := adoptedClient(2)
-	r, f, granted := reconcileFixture(t, oidcClient)
+	r, f, granted := reconcileFixture(t, oidcClient, nil)
 
 	result, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(oidcClient)})
 	if err != nil {
@@ -165,7 +167,7 @@ func TestReconcile_ReadyOnlyAfterStateIsPushedAndObserved(t *testing.T) {
 func TestReconcile_ClientDeletedExternallyClearsStatus(t *testing.T) {
 	ctx := context.Background()
 	oidcClient := adoptedClient(1)
-	r, f, _ := reconcileFixture(t, oidcClient)
+	r, f, _ := reconcileFixture(t, oidcClient, nil)
 	f.fail = func(r *http.Request, _ map[string]any) (int, any) {
 		return http.StatusNotFound, map[string]string{"code": "not_found"}
 	}
@@ -193,4 +195,48 @@ func readyForGeneration(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient,
 		}
 	}
 	return false
+}
+
+// Every pass syncs the SCIM provider itself, since each write the operator makes postpones
+// Pocket-ID's debounced sync, and the client is only Ready once the endpoint took the sync.
+func TestReconcile_SCIMSyncGatesReady(t *testing.T) {
+	for name, tc := range map[string]struct {
+		status int
+		ready  bool
+	}{
+		"synced":         {http.StatusOK, true},
+		"endpoint error": {http.StatusBadGateway, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			oidcClient := adoptedClient(1)
+			oidcClient.Spec.SCIM = &pocketidinternalv1alpha1.SCIMSpec{Endpoint: "https://scim.example.com/v2"}
+			oidcClient.Status.SCIMProviderID = "scim-1"
+			var synced []string
+			r, _, _ := reconcileFixture(t, oidcClient, map[string]http.HandlerFunc{
+				"PUT /api/admin/scim/service-provider/{id}": func(w http.ResponseWriter, r *http.Request) {
+					writeJSON(w, map[string]string{"id": r.PathValue("id")})
+				},
+				"POST /api/admin/scim/service-provider/{id}/sync": func(w http.ResponseWriter, r *http.Request) {
+					synced = append(synced, r.PathValue("id"))
+					w.WriteHeader(tc.status)
+				},
+			})
+
+			if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(oidcClient)}); err != nil {
+				t.Fatalf("Reconcile: %v", err)
+			}
+
+			if !slices.Equal(synced, []string{"scim-1"}) {
+				t.Errorf("expected one sync of the tracked provider, got %v", synced)
+			}
+			var got pocketidinternalv1alpha1.PocketIDOIDCClient
+			if err := r.Get(ctx, client.ObjectKeyFromObject(oidcClient), &got); err != nil {
+				t.Fatalf("get: %v", err)
+			}
+			if readyForGeneration(&got, 1) != tc.ready {
+				t.Errorf("expected Ready=%v, got %+v", tc.ready, got.Status.Conditions)
+			}
+		})
+	}
 }

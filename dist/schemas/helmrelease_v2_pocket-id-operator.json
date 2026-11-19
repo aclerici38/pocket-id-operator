@@ -7192,7 +7192,7 @@
                           },
                           "scim": {
                             "additionalProperties": false,
-                            "description": "SCIM configures SCIM provisioning for this OIDC client. Pocket ID will push user/group changes to the configured endpoint.",
+                            "description": "SCIM configures SCIM provisioning for this OIDC client. The operator syncs users and groups to the endpoint every reconcile, and the client is only Ready once the sync succeeds.",
                             "properties": {
                               "endpoint": {
                                 "description": "Endpoint is the URL of the external SCIM service provider.",

@@ -414,7 +414,7 @@ type PocketIDOIDCClientSpec struct {
 	// +optional
 	Secret *OIDCClientSecretSpec `json:"secret,omitempty"`
 
-	// SCIM configures SCIM provisioning for this OIDC client. Pocket ID will push user/group changes to the configured endpoint.
+	// SCIM configures SCIM provisioning for this OIDC client. The operator syncs users and groups to the endpoint every reconcile, and the client is only Ready once the sync succeeds.
 	// +optional
 	SCIM *SCIMSpec `json:"scim,omitempty"`
 

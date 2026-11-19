@@ -72,6 +72,8 @@ const (
 
 	// failedLogoURLTTL is how long a URL Pocket-ID refused stays suppressed.
 	failedLogoURLTTL = 24 * time.Hour
+	// scimSyncTimeout bounds the inline SCIM sync, so a slow endpoint can't stall the controller.
+	scimSyncTimeout = 30 * time.Second
 )
 
 // errAwaitingCIMD reports that a metadata-document client does not exist in Pocket-ID yet.
@@ -249,6 +251,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err := r.clearRegenerateClientSecretAnnotation(ctx, oidcClient); err != nil {
 		log.Error(err, "Failed to remove regenerate-client-secret annotation")
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+	}
+
+	if oidcClient.Spec.SCIM != nil {
+		if err := syncSCIM(ctx, apiClient, oidcClient.Status.SCIMProviderID); err != nil {
+			log.Error(err, "Failed to sync SCIM service provider")
+			_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "SCIMSyncError", err.Error())
+			return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
+		}
 	}
 
 	_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionTrue, "Reconciled", "OIDC client is in sync")
@@ -971,6 +981,17 @@ func (r *Reconciler) ReconcileSCIM(ctx context.Context, oidcClient *pocketidinte
 		return fmt.Errorf("create SCIM service provider: %w", err)
 	}
 	return r.setSCIMProviderID(ctx, oidcClient, created.ID)
+}
+
+// syncSCIM pushes users and groups to the SCIM endpoint now. Pocket-ID's own debounced sync is
+// postponed by every user, group and membership write, which the operator makes each reconcile.
+func syncSCIM(ctx context.Context, apiClient *pocketid.Client, id string) error {
+	ctx, cancel := context.WithTimeout(ctx, scimSyncTimeout)
+	defer cancel()
+	if err := pid.Check(apiClient.SyncSCIMServiceProvider(ctx, id)); err != nil {
+		return fmt.Errorf("sync SCIM service provider: %w", err)
+	}
+	return nil
 }
 
 // getSCIMProvider returns the client's SCIM service provider, or nil if it has none.

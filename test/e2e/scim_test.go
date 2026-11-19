@@ -4,8 +4,8 @@ package e2e
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -15,7 +15,19 @@ import (
 
 var _ = Describe("SCIM Service Provider", Ordered, func() {
 	// These tests verify that the operator correctly manages SCIM service provider
-	// configurations in Pocket-ID when spec.scim is set on a PocketIDOIDCClient.
+	// configurations in Pocket-ID when spec.scim is set on a PocketIDOIDCClient. A client is
+	// only Ready once its provider synced, so the endpoints point at an in-cluster stub.
+	const stubName = "scim-stub"
+	scimURL := func(path string) string { return fmt.Sprintf("http://%s.%s.svc:8080%s", stubName, userNS, path) }
+
+	BeforeAll(func() {
+		deploySCIMStub(stubName)
+	})
+
+	AfterAll(func() {
+		deleteObject("pod", stubName, userNS)
+		deleteObject("service", stubName, userNS)
+	})
 
 	Context("Basic SCIM lifecycle", func() {
 		const clientName = "test-scim-basic"
@@ -25,7 +37,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			applyYAML(buildOIDCClientYAML(OIDCClientOptions{
 				Name: clientName,
 				SCIM: &SCIMConfig{
-					Endpoint: "https://scim.example.com/v2",
+					Endpoint: scimURL("/v2"),
 				},
 			}))
 
@@ -39,7 +51,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			By("verifying the SCIM provider exists in Pocket-ID via API")
 			oidcClientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
 			scimEndpoint := getSCIMProviderEndpoint(oidcClientID)
-			Expect(scimEndpoint).To(Equal("https://scim.example.com/v2"))
+			Expect(scimEndpoint).To(Equal(scimURL("/v2")))
 		})
 
 		It("should update the SCIM service provider when the endpoint changes", func() {
@@ -47,7 +59,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			applyYAML(buildOIDCClientYAML(OIDCClientOptions{
 				Name: clientName,
 				SCIM: &SCIMConfig{
-					Endpoint: "https://scim-updated.example.com/v2",
+					Endpoint: scimURL("/v2-updated"),
 				},
 			}))
 
@@ -55,7 +67,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			oidcClientID := getField("pocketidoidcclient", clientName, userNS, ".status.clientID")
 			Eventually(func(g Gomega) {
 				endpoint := getSCIMProviderEndpoint(oidcClientID)
-				g.Expect(endpoint).To(Equal("https://scim-updated.example.com/v2"))
+				g.Expect(endpoint).To(Equal(scimURL("/v2-updated")))
 			}).Should(Succeed())
 
 			By("verifying the OIDC client is still ready")
@@ -109,7 +121,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			applyYAML(buildOIDCClientYAML(OIDCClientOptions{
 				Name: clientName,
 				SCIM: &SCIMConfig{
-					Endpoint: "https://scim.example.com/v2",
+					Endpoint: scimURL("/v2"),
 					TokenSecretRef: &SecretKeyRef{
 						Name: secretName,
 						Key:  "token",
@@ -127,7 +139,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			By("verifying the SCIM provider was created in Pocket-ID")
 			oidcClientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
 			scimEndpoint := getSCIMProviderEndpoint(oidcClientID)
-			Expect(scimEndpoint).To(Equal("https://scim.example.com/v2"))
+			Expect(scimEndpoint).To(Equal(scimURL("/v2")))
 		})
 
 		AfterAll(func() {
@@ -145,7 +157,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			applyYAML(buildOIDCClientYAML(OIDCClientOptions{
 				Name: clientName,
 				SCIM: &SCIMConfig{
-					Endpoint: "https://scim-cleanup.example.com/v2",
+					Endpoint: scimURL("/cleanup"),
 				},
 			}))
 
@@ -182,15 +194,14 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			pocketIDClientID := "scim-adopt-test-client"
 			createOIDCClientInPocketID(pocketIDClientID, "SCIM Adopt Test",
 				[]string{"https://adopt-scim.example.com/callback"})
-			scimID := createSCIMProviderInPocketID(pocketIDClientID,
-				"https://scim-pre-existing.example.com/v2")
+			scimID := createSCIMProviderInPocketID(pocketIDClientID, scimURL("/pre-existing"))
 
 			By("creating a PocketIDOIDCClient CR with spec.scim set, adopting the existing OIDC client")
 			applyYAML(buildOIDCClientYAML(OIDCClientOptions{
 				Name:     clientName,
 				ClientID: pocketIDClientID,
 				SCIM: &SCIMConfig{
-					Endpoint: "https://scim-pre-existing.example.com/v2",
+					Endpoint: scimURL("/pre-existing"),
 				},
 			}))
 
@@ -208,35 +219,50 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 		})
 	})
 
-	Context("SCIM idempotency", func() {
-		const clientName = "test-scim-idempotent"
+	Context("SCIM sync on every reconcile", func() {
+		const clientName = "test-scim-resync"
 
-		It("should not modify SCIM endpoint on reconcile when nothing has changed", func() {
+		It("should sync the provider again on a later reconcile without changing it", func() {
 			By("creating an OIDC client with a SCIM endpoint")
 			applyYAML(buildOIDCClientYAML(OIDCClientOptions{
 				Name: clientName,
 				SCIM: &SCIMConfig{
-					Endpoint: "https://idempotent.example.com/scim",
+					Endpoint: scimURL("/resync"),
 				},
 			}))
 			waitForReady("pocketidoidcclient", clientName, userNS)
 			oidcClientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
 
-			By("verifying the initial SCIM endpoint in Pocket-ID")
-			initialEndpoint := getSCIMProviderEndpoint(oidcClientID)
-			Expect(initialEndpoint).To(Equal("https://idempotent.example.com/scim"))
+			By("recording the first sync, which Ready waits for")
+			first := getSCIMProvider(oidcClientID)
+			Expect(first.Endpoint).To(Equal(scimURL("/resync")))
+			Expect(first.LastSyncedAt).NotTo(BeEmpty())
 
-			By("triggering another reconcile by annotating the client")
+			By("waiting for another reconcile to sync again")
 			Expect(annotateObject("pocketidoidcclient", clientName, userNS, "test/trigger-reconcile=1")).To(Succeed())
-			// The RESYNC_INTERVAL env var is 5s in e2e — wait for at least two cycles.
-			time.Sleep(15 * time.Second)
-			waitForReady("pocketidoidcclient", clientName, userNS)
+			Eventually(func(g Gomega) {
+				g.Expect(getSCIMProvider(oidcClientID).LastSyncedAt).NotTo(Equal(first.LastSyncedAt))
+			}).Should(Succeed())
+			Expect(getSCIMProvider(oidcClientID).Endpoint).To(Equal(scimURL("/resync")))
+		})
 
-			By("verifying the SCIM endpoint is unchanged after no-op reconcile")
-			// Clean up any previous check pod from this name
-			deleteObject("pod", "scim-idempotent-check-2", userNS)
-			endpointAfter := getSCIMProviderEndpoint(oidcClientID)
-			Expect(endpointAfter).To(Equal("https://idempotent.example.com/scim"))
+		AfterAll(func() {
+			deleteObject("pocketidoidcclient", clientName, userNS)
+			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
+		})
+	})
+
+	Context("SCIM sync failure", func() {
+		const clientName = "test-scim-unreachable"
+
+		It("should report not ready when the SCIM endpoint can't be synced", func() {
+			applyYAML(buildOIDCClientYAML(OIDCClientOptions{
+				Name: clientName,
+				SCIM: &SCIMConfig{
+					Endpoint: fmt.Sprintf("http://scim-missing.%s.svc:8080/v2", userNS),
+				},
+			}))
+			waitForConditionReason("pocketidoidcclient", clientName, userNS, "Ready", "SCIMSyncError")
 		})
 
 		AfterAll(func() {
@@ -288,23 +314,98 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 
 // --- SCIM API Helpers ---
 
-// getSCIMProviderEndpoint returns the SCIM endpoint configured for the OIDC client, or
-// the empty string when Pocket-ID has no provider for it. The raw request is used rather
-// than the typed client so a 404 stays distinguishable from a transport failure.
-func getSCIMProviderEndpoint(oidcClientID string) string {
+// deploySCIMStub runs a pod and Service on port 8080 that accept any SCIM sync: lists are
+// empty, and creates and updates echo the resource back with an ID.
+func deploySCIMStub(name string) {
 	GinkgoHelper()
 
+	applyYAML(fmt.Sprintf(`apiVersion: v1
+kind: Pod
+metadata:
+  name: %[1]s
+  namespace: %[2]s
+  labels:
+    app: %[1]s
+spec:
+  containers:
+  - name: stub
+    image: mirror.gcr.io/library/python:alpine
+    command: ["python", "-u", "-c"]
+    args:
+    - |
+      import http.server, json, uuid
+      class Handler(http.server.BaseHTTPRequestHandler):
+          def reply(self, code, body=None):
+              data = json.dumps(body).encode() if body is not None else b""
+              self.send_response(code)
+              self.send_header("Content-Type", "application/scim+json")
+              self.send_header("Content-Length", str(len(data)))
+              self.end_headers()
+              self.wfile.write(data)
+          def body(self):
+              return json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+          def do_GET(self):
+              self.reply(200, {"Resources": [], "totalResults": 0, "startIndex": 1, "itemsPerPage": 0})
+          def do_POST(self):
+              self.reply(201, {**self.body(), "id": str(uuid.uuid4())})
+          def do_PUT(self):
+              self.reply(200, self.body())
+          def do_DELETE(self):
+              self.reply(204)
+          def log_message(self, *args):
+              pass
+      http.server.HTTPServer(("", 8080), Handler).serve_forever()
+    ports:
+    - containerPort: 8080
+    readinessProbe:
+      tcpSocket:
+        port: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: %[1]s
+  namespace: %[2]s
+spec:
+  selector:
+    app: %[1]s
+  ports:
+  - port: 8080
+`, name, userNS))
+
+	Eventually(func(g Gomega) {
+		pod, err := getObject("pod", name, userNS)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(conditionField(pod, "Ready", "status")).To(Equal("True"))
+	}).Should(Succeed())
+}
+
+// scimProvider is the part of Pocket-ID's SCIM provider the tests read.
+type scimProvider struct {
+	Endpoint     string `json:"endpoint"`
+	LastSyncedAt string `json:"lastSyncedAt"`
+}
+
+// getSCIMProvider returns the client's SCIM provider, or the zero value when Pocket-ID has
+// none. The raw request is used rather than the typed client so a 404 stays distinguishable
+// from a transport failure.
+func getSCIMProvider(oidcClientID string) scimProvider {
+	GinkgoHelper()
+
+	var provider scimProvider
 	body, code := pocketIDRequest(http.MethodGet, "/api/admin/oidc/clients/"+oidcClientID+"/scim-service-provider")
 	if code == http.StatusNotFound {
-		return ""
+		return provider
 	}
 	Expect(code).To(Equal(http.StatusOK), "reading SCIM provider: %d: %s", code, body)
-
-	var provider struct {
-		Endpoint string `json:"endpoint"`
-	}
 	Expect(json.Unmarshal([]byte(body), &provider)).To(Succeed(), "decoding SCIM provider")
-	return provider.Endpoint
+	return provider
+}
+
+// getSCIMProviderEndpoint returns the client's SCIM endpoint, or "" when it has no provider.
+func getSCIMProviderEndpoint(oidcClientID string) string {
+	GinkgoHelper()
+	return getSCIMProvider(oidcClientID).Endpoint
 }
 
 // checkSCIMProviderExists reports whether a SCIM service provider exists for the client.
