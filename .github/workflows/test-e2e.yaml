@@ -76,19 +76,30 @@ jobs:
           ref: ${{ steps.release.outputs.tag }}
           persist-credentials: false
 
-      - name: Setup Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: true
-          cache-dependency-path: go.sum
-
       - name: Setup mise
         uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
         with:
           # renovate: datasource=github-releases depName=jdx/mise
           version: "2026.11.9"
+          cache_save: ${{ github.ref == 'refs/heads/main' }}
           install_args: "go kind kubectl kustomize go:sigs.k8s.io/controller-tools/cmd/controller-gen go:github.com/onsi/ginkgo/v2/ginkgo"
+
+      - name: Locate Go caches
+        id: go-env
+        run: |
+          echo "prefix=go-e2e-v1-${ImageOS}-${RUNNER_ARCH}-$(go env GOVERSION)" >> "$GITHUB_OUTPUT"
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "modules=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Go cache
+        id: go-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.go-env.outputs.build }}
+            ${{ steps.go-env.outputs.modules }}
+          key: ${{ steps.go-env.outputs.prefix }}-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: ${{ steps.go-env.outputs.prefix }}-
 
       - name: Download image artifact
         if: inputs.image_tag != '' && !inputs.latest_release
@@ -124,6 +135,16 @@ jobs:
           else
             mise run test-e2e-only
           fi
+
+      - name: Save Go cache
+        # A latest-release run builds an older go.sum, so it doesn't seed main's cache.
+        if: github.ref == 'refs/heads/main' && !inputs.latest_release && steps.go-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.go-env.outputs.build }}
+            ${{ steps.go-env.outputs.modules }}
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}
 
       - name: Print diagnostics
         if: ${{ !cancelled() }}
