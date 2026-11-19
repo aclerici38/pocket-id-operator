@@ -102,9 +102,7 @@ jobs:
           context: .
           platforms: linux/amd64
           outputs: type=image,name=${{ inputs.image_repo }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: |
-            type=gha,scope=build-amd64
-            type=gha,scope=build-amd64-main
+          cache-from: type=gha,scope=build-amd64
           cache-to: type=gha,mode=max,scope=build-amd64
 
       - name: Build local image for e2e
@@ -161,9 +159,7 @@ jobs:
           context: .
           platforms: linux/arm64
           outputs: type=image,name=${{ inputs.image_repo }},push-by-digest=true,name-canonical=true,push=${{ inputs.push }}
-          cache-from: |
-            type=gha,scope=build-arm64
-            type=gha,scope=build-arm64-main
+          cache-from: type=gha,scope=build-arm64
           cache-to: type=gha,mode=max,scope=build-arm64
 
   manifest:

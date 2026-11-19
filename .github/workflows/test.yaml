@@ -35,6 +35,7 @@ jobs:
         with:
           # renovate: datasource=github-releases depName=jdx/mise
           version: "2026.11.9"
+          cache_save: ${{ github.ref == 'refs/heads/main' }}
           install_args: setup-envtest
 
       - name: Run tests
