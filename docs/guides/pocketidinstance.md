@@ -2,7 +2,7 @@
 
 A `PocketIDInstance` provisions Pocket-ID in the cluster. It creates a Deployment or a StatefulSet, a Service exposing port 1411, and a Secret with the static API key used by the operator for authentication.
 
-Most of the configuration available in this custom resource simply sets the corresponding [environment variables](https://pocket-id.org/docs/configuration/environment-variables). These are exposed as custom resource fields instead of just relying on `spec.env` to offer a better experience deploying in Kubernetes and simplify the configuration (automatically setting `UI_CONFIG_DISABLED` when necessary, setting HTTPRoute hostname, `TRUST_PROXY` config, etc.). Any of these fields can be overwritten by setting the variable in `spec.env` if preferred.
+Most of the configuration available in this custom resource simply sets the corresponding [environment variables](https://pocket-id.org/docs/configuration/environment-variables). These are exposed as custom resource fields instead of just relying on `spec.env` to offer a better experience deploying in Kubernetes and simplify the configuration (setting HTTPRoute hostname, `TRUST_PROXY` config, etc.). Any of these fields can be overwritten by setting the variable in `spec.env` if preferred.
 
 ## Minimal Example
 For full documentation on each field in this CRD see [the API reference](../reference/pocketidinstance.md). For common configurations see [the examples](../examples/pocketidinstance.md), including a [full featured example](../examples/pocketidinstance.md#full-featured-example).
@@ -58,10 +58,6 @@ See [the example configuration](../examples/pocketidinstance.md#smtp), for up to
 ## LDAP
 
 When the `ldap` block is present, the operator automatically sets `LDAP_ENABLED=true`. See [example](../examples/pocketidinstance.md#ldap).
-
-## UI Configuration
-
-The operator automatically sets `UI_CONFIG_DISABLED=true` when any of the `ui`, `userManagement`, `webauthn`, `smtp`, `emailNotifications`, or `ldap` sections, or `cimdUrlAllowlist` or `enabledFeatures`, are configured.
 
 ## Tracing
 
@@ -191,7 +187,6 @@ See [example](../examples/pocketidinstance.md#external-instance).
   - `ENCRYPTION_KEY` (from `spec.encryptionKey`)
   - `STATIC_API_KEY` (secret reference)
 - Conditionally set from spec fields:
-  - `UI_CONFIG_DISABLED=true` (when `spec.ui`, `spec.userManagement`, `spec.webauthn`, `spec.smtp`, `spec.emailNotifications`, `spec.ldap`, `spec.cimdUrlAllowlist`, or `spec.enabledFeatures` is configured)
   - `DB_CONNECTION_STRING` (from `spec.databaseUrl`)
   - `APP_URL` (from `spec.appUrl`)
   - `INTERNAL_APP_URL` (from `spec.internalAppUrl`)

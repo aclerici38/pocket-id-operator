@@ -162,63 +162,6 @@ func TestBuildEnvVars_EncryptionKeyAbsentWhenNil(t *testing.T) {
 	requireEnvAbsent(t, env, "ENCRYPTION_KEY")
 }
 
-func TestBuildEnvVars_UIConfigDisabledAbsentByDefault(t *testing.T) {
-	inst := minimalInstance()
-	env := buildEnvVars(inst)
-	requireEnvAbsent(t, env, "UI_CONFIG_DISABLED")
-}
-
-func TestBuildEnvVars_UIConfigDisabledWhenUISet(t *testing.T) {
-	inst := minimalInstance()
-	inst.Spec.UI = &pocketidinternalv1alpha1.UIConfig{AppName: "Test"}
-	requireEnv(t, buildEnvVars(inst), "UI_CONFIG_DISABLED", "true")
-}
-
-func TestBuildEnvVars_UIConfigDisabledWhenUserManagementSet(t *testing.T) {
-	inst := minimalInstance()
-	inst.Spec.UserManagement = &pocketidinternalv1alpha1.UserManagementConfig{EmailsVerified: new(true)}
-	requireEnv(t, buildEnvVars(inst), "UI_CONFIG_DISABLED", "true")
-}
-
-func TestBuildEnvVars_UIConfigDisabledWhenSMTPSet(t *testing.T) {
-	inst := minimalInstance()
-	inst.Spec.SMTP = &pocketidinternalv1alpha1.SMTPConfig{
-		Host: "smtp.example.com",
-		Port: 25,
-		From: "noreply@example.com",
-	}
-	requireEnv(t, buildEnvVars(inst), "UI_CONFIG_DISABLED", "true")
-}
-
-func TestBuildEnvVars_UIConfigDisabledWhenEmailNotificationsSet(t *testing.T) {
-	inst := minimalInstance()
-	inst.Spec.EmailNotifications = &pocketidinternalv1alpha1.EmailNotificationsConfig{}
-	requireEnv(t, buildEnvVars(inst), "UI_CONFIG_DISABLED", "true")
-}
-
-func TestBuildEnvVars_UIConfigDisabledWhenLDAPSet(t *testing.T) {
-	inst := minimalInstance()
-	inst.Spec.LDAP = &pocketidinternalv1alpha1.LDAPConfig{
-		URL:          "ldaps://ldap.example.com",
-		BindDN:       "cn=admin,dc=example,dc=com",
-		BindPassword: pocketidinternalv1alpha1.SensitiveValue{Value: "secret"},
-		Base:         "dc=example,dc=com",
-	}
-	requireEnv(t, buildEnvVars(inst), "UI_CONFIG_DISABLED", "true")
-}
-
-func TestBuildEnvVars_UIConfigDisabledWhenWebAuthnSet(t *testing.T) {
-	inst := minimalInstance()
-	inst.Spec.WebAuthn = &pocketidinternalv1alpha1.WebAuthnConfig{UserVerification: "preferred"}
-	requireEnv(t, buildEnvVars(inst), "UI_CONFIG_DISABLED", "true")
-}
-
-func TestBuildEnvVars_UIConfigDisabledWhenCIMDAllowlistSet(t *testing.T) {
-	inst := minimalInstance()
-	inst.Spec.CIMDURLAllowlist = []string{"https://apps.example.com/*/client-metadata.json"}
-	requireEnv(t, buildEnvVars(inst), "UI_CONFIG_DISABLED", "true")
-}
-
 func TestBuildEnvVars_CIMDURLAllowlist(t *testing.T) {
 	inst := minimalInstance()
 	inst.Spec.CIMDURLAllowlist = []string{
@@ -236,7 +179,6 @@ func TestBuildEnvVars_EnabledFeatures(t *testing.T) {
 
 	env := buildEnvVars(inst)
 	requireEnv(t, env, "ENABLED_FEATURES", `["scim","apiKeys"]`)
-	requireEnv(t, env, "UI_CONFIG_DISABLED", "true")
 }
 
 func TestBuildEnvVars_EnabledFeaturesAbsentWhenEmpty(t *testing.T) {
@@ -245,7 +187,6 @@ func TestBuildEnvVars_EnabledFeaturesAbsentWhenEmpty(t *testing.T) {
 
 	env := buildEnvVars(inst)
 	requireEnvAbsent(t, env, "ENABLED_FEATURES")
-	requireEnvAbsent(t, env, "UI_CONFIG_DISABLED")
 }
 
 func TestBuildEnvVars_OutboundAllowedHosts(t *testing.T) {
@@ -266,8 +207,6 @@ func TestBuildEnvVars_OutboundAllowedHosts(t *testing.T) {
 	requireEnv(t, env, "OUTBOUND_ALLOWED_HOSTS_BACKCHANNEL_LOGOUT", "private,loopback")
 	requireEnv(t, env, "OUTBOUND_ALLOWED_HOSTS_FEDERATED_JWKS", "kubernetes.default.svc")
 	requireEnv(t, env, "OUTBOUND_ALLOWED_HOSTS_LDAP_PICTURE", "192.168.1.10")
-	// These are environment-only settings the UI cannot change
-	requireEnvAbsent(t, env, "UI_CONFIG_DISABLED")
 }
 
 func TestBuildEnvVars_OutboundAllowedHostsAbsentWhenEmpty(t *testing.T) {
@@ -286,7 +225,6 @@ func TestBuildEnvVars_CIMDURLAllowlistAbsentWhenEmpty(t *testing.T) {
 
 	env := buildEnvVars(inst)
 	requireEnvAbsent(t, env, "CIMD_URL_ALLOWLIST")
-	requireEnvAbsent(t, env, "UI_CONFIG_DISABLED")
 }
 
 func TestBuildEnvVars_DatabaseUrl(t *testing.T) {
