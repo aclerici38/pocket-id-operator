@@ -372,8 +372,7 @@ var _ = Describe("Group-OIDC Reference Removal", Ordered, func() {
 		// When a UserGroup removes a client from allowedOIDCClients, the OIDCClient
 		// controller is not immediately re-queued (requestsForUserGroup only sees the
 		// updated spec, which no longer contains the reference). The OIDCClient picks
-		// up the removal on its next periodic resync (ResyncInterval = 2 min + jitter).
-		// Use a 5-minute timeout to cover the worst-case jitter window.
+		// up the removal on its next periodic resync (RESYNC_INTERVAL, 2s in the e2e config).
 		const (
 			revRemovalGroup  = "rev-removal-group"
 			revRemovalClient = "rev-removal-client"

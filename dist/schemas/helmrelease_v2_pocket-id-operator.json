@@ -12679,6 +12679,12 @@
                   "description": "Sets the TZ env var on the operator container, controlling the local timezone for clientSecretRotation.window cron expressions. Defaults to UTC when unset.",
                   "default": ""
                 },
+                "resyncInterval": {
+                  "type": "string",
+                  "description": "How often every resource is re-reconciled against Pocket-ID, as a Go duration (e.g. \"5m\", \"1h\"). Up to 25% jitter is added. Sets RESYNC_INTERVAL.",
+                  "default": "10m",
+                  "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$"
+                },
                 "autoGenerateLogos": {
                   "type": "boolean",
                   "description": "Auto-generate logo URLs for OIDC clients from templates. Set to false to make it opt-in per client.",

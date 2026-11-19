@@ -232,7 +232,7 @@ Time at which the secret next becomes **eligible** for rotation: the rotation an
 
 **Type:** Gauge (`0`/`1`)
 
-Whether the client's maintenance window is currently open, refreshed on every reconcile (by default every ~2 minutes). The bundled dashboard shows it as the **Window** column of the Rotation Schedule table, and it also works well in a state-timeline panel. Only present for clients that configure `spec.clientSecretRotation.window`.
+Whether the client's maintenance window is currently open, refreshed on every reconcile (by default every ~10 minutes). The bundled dashboard shows it as the **Window** column of the Rotation Schedule table, and it also works well in a state-timeline panel. Only present for clients that configure `spec.clientSecretRotation.window`.
 
 #### `pocketid_operator_oidcclient_rotation_window_next_open_timestamp_seconds`
 

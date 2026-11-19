@@ -67,7 +67,7 @@ While `clientSecretRef` is set, the operator never generates or rotates the secr
 - The `pocketid.internal/regenerate-client-secret` annotation is ignored. It is still removed, and the reason is logged.
 - The value is always pushed to Pocket-ID, even with `spec.secret.storeClientSecret: false` (which only omits `client_secret` from the credentials Secret) or `spec.secret.enabled: false`.
 
-Pocket-ID stores client secrets hashed and never returns them, so the operator cannot read back what is set. Instead it records the source Secret's revision in `status.clientSecretSourceVersion` and pushes again whenever that revision changes. The referenced Secret is not watched, so edits are picked up on the next resync (default 2 minutes).
+Pocket-ID stores client secrets hashed and never returns them, so the operator cannot read back what is set. Instead it records the source Secret's revision in `status.clientSecretSourceVersion` and pushes again whenever that revision changes. The referenced Secret is not watched, so edits are picked up on the next resync (default 10 minutes, chart: `operator.resyncInterval`).
 
 If `clientSecretRef` is removed later, the declared value stays in place until something else replaces it. Enabling `clientSecretRotation` at that point will usually rotate immediately, since the rotation anchor falls back to the client's creation time.
 
@@ -82,7 +82,7 @@ Replacing a client secret invalidates the old one immediately, breaking any cons
 - It applies to every replacement: scheduled rotations, the `regenerate-client-secret` annotation, and `clientSecretRef` updates.
 - The window is measured from when the **replacement** was created, so a superseded secret always gets the full window however long it had been in service.
 - Unset or `0` (the default) deletes the previous secret as soon as the replacement is written to the credentials Secret, so only one is ever valid.
-- Retirement happens on a reconcile, so a secret is deleted within one resync interval (default 2 minutes) of its overlap elapsing.
+- Retirement happens on a reconcile, so a secret is deleted within one resync interval (default 10 minutes) of its overlap elapsing.
 - The maximum is `168h`, and it may not exceed `clientSecretRotation.interval` when set, since an overlap outlasting the rotation period would accumulate secrets. A client that reaches the limit anyway has its oldest superseded secrets retired early rather than blocking rotation.
 
 ## Client Secret Rotation
