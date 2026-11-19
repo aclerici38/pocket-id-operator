@@ -1707,7 +1707,7 @@
                         ]
                       },
                       "cimdUrlAllowlist": {
-                        "description": "Allowed OAuth Client ID Metadata Document URLs. The operator sets UI_CONFIG_DISABLED=true when this field is set.\nJSON-encoded into CIMD_URL_ALLOWLIST. See https://pocket-id.org/docs/configuration/environment-variables.",
+                        "description": "Allowed OAuth Client ID Metadata Document URLs.\nJSON-encoded into CIMD_URL_ALLOWLIST. See https://pocket-id.org/docs/configuration/environment-variables.",
                         "items": {
                           "type": "string"
                         },
@@ -2144,7 +2144,7 @@
                       },
                       "emailNotifications": {
                         "additionalProperties": false,
-                        "description": "Email notification settings. Requires smtp. The operator sets UI_CONFIG_DISABLED=true when this section is configured.",
+                        "description": "Email notification settings. Requires smtp.",
                         "properties": {
                           "apiKeyExpiration": {
                             "description": "API key expiration notifications.\nSets EMAIL_API_KEY_EXPIRATION_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables.",
@@ -2213,7 +2213,7 @@
                         ]
                       },
                       "enabledFeatures": {
-                        "description": "Optional features to show in the admin UI. The operator sets UI_CONFIG_DISABLED=true when this field is set.\nJSON-encoded into ENABLED_FEATURES. Requires a Pocket-ID release that supports it. See https://pocket-id.org/docs/configuration/environment-variables.",
+                        "description": "Optional features to show in the admin UI.\nJSON-encoded into ENABLED_FEATURES. Requires a Pocket-ID release that supports it. See https://pocket-id.org/docs/configuration/environment-variables.",
                         "items": {
                           "type": "string"
                         },
@@ -3120,7 +3120,7 @@
                       },
                       "ldap": {
                         "additionalProperties": false,
-                        "description": "LDAP authentication. When present, the operator sets LDAP_ENABLED=true and UI_CONFIG_DISABLED=true.",
+                        "description": "LDAP authentication. When present, the operator sets LDAP_ENABLED=true.",
                         "properties": {
                           "adminGroupName": {
                             "description": "Group that grants admin privileges.\nSets LDAP_ADMIN_GROUP_NAME. See https://pocket-id.org/docs/configuration/environment-variables.",
@@ -5072,7 +5072,7 @@
                       },
                       "smtp": {
                         "additionalProperties": false,
-                        "description": "SMTP email transport. When present, the operator sets UI_CONFIG_DISABLED=true.",
+                        "description": "SMTP email transport.",
                         "properties": {
                           "from": {
                             "description": "Sender email address.\nSets SMTP_FROM. See https://pocket-id.org/docs/configuration/environment-variables.",
@@ -5627,7 +5627,7 @@
                       },
                       "ui": {
                         "additionalProperties": false,
-                        "description": "UI settings. The operator sets UI_CONFIG_DISABLED=true when this section is configured.",
+                        "description": "UI settings.",
                         "properties": {
                           "accentColor": {
                             "description": "Deprecated: use colorTheme instead.",
@@ -5680,7 +5680,7 @@
                       },
                       "userManagement": {
                         "additionalProperties": false,
-                        "description": "User registration and account settings. The operator sets UI_CONFIG_DISABLED=true when this section is configured.",
+                        "description": "User registration and account settings.",
                         "properties": {
                           "allowOwnAccountEdit": {
                             "description": "Allow users to edit their own account.\nSets ALLOW_OWN_ACCOUNT_EDIT. See https://pocket-id.org/docs/configuration/environment-variables.",
@@ -5742,7 +5742,7 @@
                       },
                       "webauthn": {
                         "additionalProperties": false,
-                        "description": "Passkey restrictions. The operator sets UI_CONFIG_DISABLED=true when this section is configured.",
+                        "description": "Passkey restrictions.",
                         "properties": {
                           "allowSyncedPasskeys": {
                             "description": "Allow synced passkeys.\nSets WEBAUTHN_ALLOW_SYNCED_PASSKEYS. See https://pocket-id.org/docs/configuration/environment-variables.",

@@ -42,14 +42,14 @@ PocketIDInstanceSpec defines the desired state of PocketIDInstance.
 | `serviceTemplate` | [ServiceSpec](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#servicespec-v1-core) |  |  | ServiceTemplate is merged with the operator-built Service spec.<br />Operator-managed fields (the selector and the number, protocol, and appProtocol of the http/metrics ports) always take precedence.<br />_Schemaless: \{\}_ |
 | `fileBackend` | string |  |  | File storage backend. Automatically set to "s3" when s3 config is present.<br />Sets FILE_BACKEND. See https://pocket-id.org/docs/configuration/environment-variables. |
 | [`s3`](#pocketidinstancespecs3) | object |  |  | S3 file backend. When present, the operator sets FILE_BACKEND=s3. |
-| [`smtp`](#pocketidinstancespecsmtp) | object |  |  | SMTP email transport. When present, the operator sets UI_CONFIG_DISABLED=true. |
-| [`emailNotifications`](#pocketidinstancespecemailnotifications) | object |  |  | Email notification settings. Requires smtp. The operator sets UI_CONFIG_DISABLED=true when this section is configured. |
-| [`ldap`](#pocketidinstancespecldap) | object |  |  | LDAP authentication. When present, the operator sets LDAP_ENABLED=true and UI_CONFIG_DISABLED=true. |
+| [`smtp`](#pocketidinstancespecsmtp) | object |  |  | SMTP email transport. |
+| [`emailNotifications`](#pocketidinstancespecemailnotifications) | object |  |  | Email notification settings. Requires smtp. |
+| [`ldap`](#pocketidinstancespecldap) | object |  |  | LDAP authentication. When present, the operator sets LDAP_ENABLED=true. |
 | [`logging`](#pocketidinstancespeclogging) | object |  |  | Logging configuration. |
 | [`tracing`](#pocketidinstancespectracing) | object |  |  | OpenTelemetry tracing. When present, the operator sets OTEL_TRACES_EXPORTER=otlp.<br />Configure other OTEL_* variables via spec.env. |
-| [`ui`](#pocketidinstancespecui) | object |  |  | UI settings. The operator sets UI_CONFIG_DISABLED=true when this section is configured. |
-| [`userManagement`](#pocketidinstancespecusermanagement) | object |  |  | User registration and account settings. The operator sets UI_CONFIG_DISABLED=true when this section is configured. |
-| [`webauthn`](#pocketidinstancespecwebauthn) | object |  |  | Passkey restrictions. The operator sets UI_CONFIG_DISABLED=true when this section is configured. |
+| [`ui`](#pocketidinstancespecui) | object |  |  | UI settings. |
+| [`userManagement`](#pocketidinstancespecusermanagement) | object |  |  | User registration and account settings. |
+| [`webauthn`](#pocketidinstancespecwebauthn) | object |  |  | Passkey restrictions. |
 | [`geoip`](#pocketidinstancespecgeoip) | object |  |  | GeoIP/MaxMind integration for audit log geolocation. |
 | `auditLogRetentionDays` | integer |  |  | Audit log retention in days.<br />Sets AUDIT_LOG_RETENTION_DAYS. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `analyticsDisabled` | boolean |  |  | Disable anonymous usage analytics.<br />Sets ANALYTICS_DISABLED. See https://pocket-id.org/docs/configuration/environment-variables. |
@@ -59,8 +59,8 @@ PocketIDInstanceSpec defines the desired state of PocketIDInstance.
 | `localIPv6Ranges` | string |  |  | Local IPv6 ranges (comma-separated CIDRs).<br />Sets LOCAL_IPV6_RANGES. See https://pocket-id.org/docs/configuration/environment-variables. |
 | [`trustedProxies`](#pocketidinstancespectrustedproxies) | object |  |  | TrustedProxies configures which proxies Pocket-ID trusts for X-Forwarded-* headers. When unset, the operator trusts the private/loopback ranges if spec.route.enabled is set.<br />Sets TRUST_PROXY. See https://pocket-id.org/docs/configuration/environment-variables#trust_proxy. |
 | `timezone` | string |  |  | Timezone (e.g. "America/New_York").<br />Sets TZ. |
-| `cimdUrlAllowlist` | string array |  |  | Allowed OAuth Client ID Metadata Document URLs. The operator sets UI_CONFIG_DISABLED=true when this field is set.<br />JSON-encoded into CIMD_URL_ALLOWLIST. See https://pocket-id.org/docs/configuration/environment-variables. |
-| `enabledFeatures` | string array |  |  | Optional features to show in the admin UI. The operator sets UI_CONFIG_DISABLED=true when this field is set.<br />JSON-encoded into ENABLED_FEATURES. Requires a Pocket-ID release that supports it. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `cimdUrlAllowlist` | string array |  |  | Allowed OAuth Client ID Metadata Document URLs.<br />JSON-encoded into CIMD_URL_ALLOWLIST. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `enabledFeatures` | string array |  |  | Optional features to show in the admin UI.<br />JSON-encoded into ENABLED_FEATURES. Requires a Pocket-ID release that supports it. See https://pocket-id.org/docs/configuration/environment-variables. |
 | [`outboundAllowedHosts`](#pocketidinstancespecoutboundallowedhosts) | object |  |  | Private or reserved destinations Pocket-ID may reach when fetching URLs, per feature. |
 | [`OIDCClientRotation`](#pocketidinstancespecoidcclientrotation) | object |  |  | OIDCClientRotation configures instance-wide throttling of OIDC client secret rotations. |
 
@@ -197,7 +197,7 @@ SensitiveValue holds a value that can be provided as plain text or from a Kubern
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-SMTPConfig configures SMTP email transport. When present, the operator sets UI_CONFIG_DISABLED=true.
+SMTPConfig configures SMTP email transport.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
@@ -224,7 +224,7 @@ SensitiveValue holds a value that can be provided as plain text or from a Kubern
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-EmailNotificationsConfig controls which email notifications Pocket-ID sends. Requires smtp. The operator sets UI_CONFIG_DISABLED=true when this section is configured.
+EmailNotificationsConfig controls which email notifications Pocket-ID sends. Requires smtp.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
@@ -240,7 +240,7 @@ EmailNotificationsConfig controls which email notifications Pocket-ID sends. Req
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-LDAPConfig configures LDAP authentication. When present, the operator sets LDAP_ENABLED=true and UI_CONFIG_DISABLED=true.
+LDAPConfig configures LDAP authentication. When present, the operator sets LDAP_ENABLED=true.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
@@ -312,7 +312,7 @@ Configure other OTEL_* variables via spec.env.
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-UIConfig configures Pocket-ID UI settings. The operator sets UI_CONFIG_DISABLED=true when this section is configured.
+UIConfig configures Pocket-ID UI settings.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
@@ -327,7 +327,7 @@ UIConfig configures Pocket-ID UI settings. The operator sets UI_CONFIG_DISABLED=
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-UserManagementConfig configures user registration and account settings. The operator sets UI_CONFIG_DISABLED=true when this section is configured.
+UserManagementConfig configures user registration and account settings.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
@@ -342,7 +342,7 @@ UserManagementConfig configures user registration and account settings. The oper
 
 <sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
 
-WebAuthnConfig restricts which passkeys Pocket-ID accepts. The operator sets UI_CONFIG_DISABLED=true when this section is configured.
+WebAuthnConfig restricts which passkeys Pocket-ID accepts.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
