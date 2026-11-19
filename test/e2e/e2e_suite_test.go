@@ -196,6 +196,9 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 		CIMDURLAllowlist: []string{cimdMetadataURL},
 		NodePort:         pocketIDNodePort,
 		EmailOptional:    true,
+		// Most specs share this instance, so the limit on starting user sessions would
+		// serialize every API key spec.
+		RateLimitingDisabled: true,
 	})
 
 	By("waiting for the shared instance to be Ready")
