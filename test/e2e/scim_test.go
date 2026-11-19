@@ -136,10 +136,28 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			scimID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.scimProviderID")
 			Expect(scimID).NotTo(BeEmpty())
 
-			By("verifying the SCIM provider was created in Pocket-ID")
+			By("verifying the SCIM provider was created in Pocket-ID with the token")
 			oidcClientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
-			scimEndpoint := getSCIMProviderEndpoint(oidcClientID)
-			Expect(scimEndpoint).To(Equal(scimURL("/v2")))
+			provider := getSCIMProvider(oidcClientID)
+			Expect(provider.Endpoint).To(Equal(scimURL("/v2")))
+			Expect(provider.HasToken).To(BeTrue())
+		})
+
+		// Pocket-ID rejects an endpoint change that omits a stored token, so the operator must
+		// send an empty one to clear it.
+		It("should clear the token when the ref is removed along with an endpoint change", func() {
+			applyYAML(buildOIDCClientYAML(OIDCClientOptions{
+				Name: clientName,
+				SCIM: &SCIMConfig{Endpoint: scimURL("/v2-no-token")},
+			}))
+
+			oidcClientID := getField("pocketidoidcclient", clientName, userNS, ".status.clientID")
+			Eventually(func(g Gomega) {
+				provider := getSCIMProvider(oidcClientID)
+				g.Expect(provider.Endpoint).To(Equal(scimURL("/v2-no-token")))
+				g.Expect(provider.HasToken).To(BeFalse())
+			}).Should(Succeed())
+			waitForReady("pocketidoidcclient", clientName, userNS)
 		})
 
 		AfterAll(func() {
@@ -383,6 +401,7 @@ spec:
 // scimProvider is the part of Pocket-ID's SCIM provider the tests read.
 type scimProvider struct {
 	Endpoint     string `json:"endpoint"`
+	HasToken     bool   `json:"hasToken"`
 	LastSyncedAt string `json:"lastSyncedAt"`
 }
 

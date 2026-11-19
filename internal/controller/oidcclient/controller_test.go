@@ -2745,6 +2745,7 @@ func TestReconcileDelete_KeepFinalizerWhenAPIClientNotReady(t *testing.T) {
 // fakeSCIMAPI is a Pocket-ID holding at most one SCIM service provider, recording every call.
 type fakeSCIMAPI struct {
 	existingProvider   *pid.SCIMServiceProviderDTO // the client's provider, if any
+	storedToken        bool                        // whether existingProvider has a token
 	created            *pid.SCIMServiceProviderCreateDTO
 	updated            map[string]pid.SCIMServiceProviderCreateDTO // keyed by SCIM provider ID
 	deleted            []string                                    // SCIM provider IDs deleted
@@ -2775,6 +2776,11 @@ func (f *fakeSCIMAPI) serve(t *testing.T) *pocketid.Client {
 			}
 			var body pid.SCIMServiceProviderCreateDTO
 			decodeBody(t, r, &body)
+			// Upstream refuses to send a stored token to a new endpoint unless it's given again.
+			if f.storedToken && body.Endpoint != f.existingProvider.Endpoint && !body.Token.IsSpecified() {
+				writeStatus(w, http.StatusBadRequest, map[string]string{"error": "Enter the token again when you change the endpoint"})
+				return
+			}
 			if f.updated == nil {
 				f.updated = make(map[string]pid.SCIMServiceProviderCreateDTO)
 			}
@@ -2948,8 +2954,8 @@ func TestReconcileSCIM_WithSpec_NoTrackedID_ExistingInPocketID_Adopts(t *testing
 	}
 }
 
-// A tracked provider is PUT by ID every reconcile without being looked up, and leaving the token
-// out keeps the stored one.
+// A tracked provider is PUT by ID every reconcile without being looked up, and with no
+// tokenSecretRef the token is cleared.
 func TestReconcileSCIM_WithSpec_WithTrackedID_PutsByID(t *testing.T) {
 	oidcClient := oidcClientWithSCIM(&pocketidinternalv1alpha1.SCIMSpec{Endpoint: "https://scim.example.com/v2"}, "tracked-scim-id")
 	r := newSCIMReconciler(t, oidcClient)
@@ -2962,11 +2968,29 @@ func TestReconcileSCIM_WithSpec_WithTrackedID_PutsByID(t *testing.T) {
 	if !ok || len(api.updated) != 1 || api.created != nil {
 		t.Fatalf("expected only a PUT of tracked-scim-id, updated %v, created %v", api.updated, api.created)
 	}
-	if body.Endpoint != "https://scim.example.com/v2" || body.Token.IsSpecified() {
-		t.Errorf("expected the spec endpoint and no token, got %+v", body)
+	if token, err := body.Token.Get(); body.Endpoint != "https://scim.example.com/v2" || err != nil || token != "" {
+		t.Errorf("expected the spec endpoint and an empty token, got %+v", body)
 	}
 	if len(api.getProviderCallIDs) != 0 {
 		t.Errorf("expected no lookup, got %v", api.getProviderCallIDs)
+	}
+}
+
+// Changing the endpoint of a provider with a stored token and no tokenSecretRef clears the token
+// rather than being rejected by upstream.
+func TestReconcileSCIM_EndpointChange_NoTokenRef_ClearsToken(t *testing.T) {
+	oidcClient := oidcClientWithSCIM(&pocketidinternalv1alpha1.SCIMSpec{Endpoint: "https://new.example.com/v2"}, "tracked-scim-id")
+	r := newSCIMReconciler(t, oidcClient)
+	api := &fakeSCIMAPI{
+		existingProvider: &pid.SCIMServiceProviderDTO{ID: "tracked-scim-id", Endpoint: "https://old.example.com/v2"},
+		storedToken:      true,
+	}
+
+	if err := r.ReconcileSCIM(context.Background(), oidcClient, api.serve(t)); err != nil {
+		t.Fatalf("ReconcileSCIM: %v", err)
+	}
+	if token, err := api.updated["tracked-scim-id"].Token.Get(); err != nil || token != "" {
+		t.Errorf("expected an empty token, got %q (%v)", token, err)
 	}
 }
 

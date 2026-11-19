@@ -944,13 +944,11 @@ func (r *Reconciler) ReconcileSCIM(ctx context.Context, oidcClient *pocketidinte
 		return fmt.Errorf("resolve SCIM token secret: %w", err)
 	}
 
+	// Always send the token: the spec owns it, and upstream rejects an endpoint change that omits a stored one.
 	body := pid.SCIMServiceProviderCreateDTO{
 		Endpoint:     oidcClient.Spec.SCIM.Endpoint,
 		OIDCClientID: oidcClient.Status.ClientID,
-	}
-	// Leaving the token out keeps the stored one.
-	if token != "" {
-		body.Token = nullable.NewNullableWithValue(token)
+		Token:        nullable.NewNullableWithValue(token),
 	}
 
 	if id := oidcClient.Status.SCIMProviderID; id != "" {
