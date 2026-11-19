@@ -2,7 +2,9 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
   "ignorePaths": [".mise/locks/**"],
-  "dependencyDashboard": true,
+  "dependencyDashboard": {
+    "enabled": true
+  },
   "prConcurrentLimit": 0,
   "prHourlyLimit": 0,
   "automerge": true,
