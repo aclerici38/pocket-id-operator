@@ -71,6 +71,10 @@ spec:
             - name: DEFAULT_DARK_LOGO_URL
               value: {{ .Values.operator.defaultDarkLogoUrl | quote }}
             {{- end }}
+            {{- if .Values.operator.resyncInterval }}
+            - name: RESYNC_INTERVAL
+              value: {{ .Values.operator.resyncInterval | quote }}
+            {{- end }}
             {{- $tz := .Values.operator.timezone | default (dig "spec" "timezone" "" (.Values.instance | default dict)) }}
             {{- if $tz }}
             - name: TZ
