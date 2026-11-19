@@ -98,6 +98,8 @@ jobs:
 
   e2e:
     name: E2E Tests
+    # Disabled until pocket-id v3 is released
+    if: false
     needs:
       - meta
       - build
