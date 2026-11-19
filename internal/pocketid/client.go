@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"iter"
 	"net/http"
 	"strings"
 	"time"
@@ -125,4 +126,18 @@ func NullIfEmpty(s string) nullable.Nullable[string] {
 		return nullable.NewNullNullable[string]()
 	}
 	return nullable.NewNullableWithValue(s)
+}
+
+// SearchUsers yields matches across all result pages.
+func (c *Client) SearchUsers(ctx context.Context, search string) iter.Seq2[client.UserDto, error] {
+	return client.All[client.UserDto](func(page int) (*http.Response, error) {
+		return c.ListUsers(ctx, &client.ListUsersParams{Search: &search, PaginationPage: &page})
+	})
+}
+
+// SearchUserGroups yields matches across all result pages.
+func (c *Client) SearchUserGroups(ctx context.Context, search string) iter.Seq2[client.UserGroupMinimalDto, error] {
+	return client.All[client.UserGroupMinimalDto](func(page int) (*http.Response, error) {
+		return c.ListUserGroups(ctx, &client.ListUserGroupsParams{Search: &search, PaginationPage: &page})
+	})
 }

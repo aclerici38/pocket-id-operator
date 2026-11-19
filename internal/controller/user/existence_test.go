@@ -142,6 +142,29 @@ func userTestScheme() *runtime.Scheme {
 	return scheme
 }
 
+func TestFindExistingUserAcrossPages(t *testing.T) {
+	var pages []string
+	api := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page := r.URL.Query().Get("pagination[page]")
+		pages = append(pages, page)
+		if r.URL.Query().Get("search") != "bob" {
+			t.Errorf("unexpected search: %s", r.URL.RawQuery)
+		}
+		switch page {
+		case "1":
+			writeJSON(w, http.StatusOK, map[string]any{"data": []any{pocketIDUser("other", "bobby", "")}, "pagination": map[string]int{"currentPage": 1, "totalPages": 3}})
+		case "2":
+			writeJSON(w, http.StatusOK, map[string]any{"data": []any{pocketIDUser("bob-id", "bob", "")}, "pagination": map[string]int{"currentPage": 2, "totalPages": 3}})
+		default:
+			http.Error(w, "unexpected page", http.StatusBadRequest)
+		}
+	}))
+	found, err := (&Reconciler{}).FindExistingUser(t.Context(), api, "", "bob", "")
+	if err != nil || found == nil || found.ID != "bob-id" || !slices.Equal(pages, []string{"1", "2"}) {
+		t.Fatalf("found = %v, pages = %v, err = %v", found, pages, err)
+	}
+}
+
 func TestFindExistingUser(t *testing.T) {
 	bob := pocketIDUser("bob-id", "bob", "bob@gmail.com")
 	tests := []struct {

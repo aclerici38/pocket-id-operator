@@ -19,6 +19,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -151,12 +152,12 @@ func (r *Reconciler) FindExistingAPI(ctx context.Context, apiClient *pocketid.Cl
 	log := logf.FromContext(ctx)
 
 	log.Info("Checking if API exists in Pocket-ID", "resource", resource)
-	existing, err := pid.Decode[pid.PaginatedAPIAPIResponseDto](apiClient.ListAPIs(ctx, &pid.ListAPIsParams{Search: &resource}))
-	if err != nil {
-		return nil, fmt.Errorf("list APIs: %w", err)
-	}
-
-	for _, candidate := range existing.Data {
+	for candidate, err := range pid.All[pid.APIResponseDto](func(page int) (*http.Response, error) {
+		return apiClient.ListAPIs(ctx, &pid.ListAPIsParams{Search: &resource, PaginationPage: &page})
+	}) {
+		if err != nil {
+			return nil, fmt.Errorf("list APIs: %w", err)
+		}
 		if candidate.Resource == resource {
 			log.Info("Found existing API with matching resource", "resource", resource, "apiID", candidate.ID)
 			return &candidate, nil

@@ -22,6 +22,7 @@ import (
 	stderrors "errors"
 	"fmt"
 	"maps"
+	"net/http"
 	"slices"
 	"sort"
 	"strings"
@@ -324,12 +325,12 @@ func (r *Reconciler) findExistingOIDCClient(ctx context.Context, apiClient *pock
 	}
 
 	log.Info("Searching for OIDC client by name", "name", name)
-	clients, err := pid.Decode[pid.PaginatedDtoOIDCClientWithAllowedGroupsDto](apiClient.ListOIDCClients(ctx, &pid.ListOIDCClientsParams{Search: &name}))
-	if err != nil {
-		return "", fmt.Errorf("list OIDC clients: %w", err)
-	}
-
-	for _, c := range clients.Data {
+	for c, err := range pid.All[pid.OIDCClientWithAllowedGroupsDto](func(page int) (*http.Response, error) {
+		return apiClient.ListOIDCClients(ctx, &pid.ListOIDCClientsParams{Search: &name, PaginationPage: &page})
+	}) {
+		if err != nil {
+			return "", fmt.Errorf("list OIDC clients: %w", err)
+		}
 		if c.Name != name {
 			continue
 		}

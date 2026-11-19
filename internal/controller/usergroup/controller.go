@@ -161,12 +161,10 @@ func (r *Reconciler) FindExistingUserGroup(ctx context.Context, apiClient *pocke
 	log := logf.FromContext(ctx)
 
 	log.Info("Checking if user group exists in Pocket-ID", "name", name)
-	existingGroups, err := pid.Decode[pid.PaginatedDtoUserGroupMinimalDto](apiClient.ListUserGroups(ctx, &pid.ListUserGroupsParams{Search: &name}))
-	if err != nil {
-		return nil, fmt.Errorf("list user groups: %w", err)
-	}
-
-	for _, existingGroup := range existingGroups.Data {
+	for existingGroup, err := range apiClient.SearchUserGroups(ctx, name) {
+		if err != nil {
+			return nil, fmt.Errorf("list user groups: %w", err)
+		}
 		if existingGroup.Name == name {
 			log.Info("Found existing user group with matching name", "name", name, "groupID", existingGroup.ID)
 			return &existingGroup, nil
@@ -315,12 +313,10 @@ func (r *Reconciler) resolveUsers(ctx context.Context, userGroup *pocketidintern
 
 // resolveUsername looks up a username in Pocket-ID and returns the user ID.
 func (r *Reconciler) resolveUsername(ctx context.Context, apiClient *pocketid.Client, username string) (string, error) {
-	users, err := pid.Decode[pid.PaginatedDtoUserDto](apiClient.ListUsers(ctx, &pid.ListUsersParams{Search: &username}))
-	if err != nil {
-		return "", fmt.Errorf("list users: %w", err)
-	}
-
-	for _, user := range users.Data {
+	for user, err := range apiClient.SearchUsers(ctx, username) {
+		if err != nil {
+			return "", fmt.Errorf("list users: %w", err)
+		}
 		if user.Username == username {
 			return user.ID, nil
 		}

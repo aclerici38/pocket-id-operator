@@ -347,13 +347,10 @@ func (r *Reconciler) FindExistingUser(ctx context.Context, apiClient *pocketid.C
 
 	// Check if user with username already exists
 	log.Info("Checking if user exists in Pocket-ID", "username", username)
-	existingUsers, err := pid.Decode[pid.PaginatedDtoUserDto](apiClient.ListUsers(ctx, &pid.ListUsersParams{Search: &username}))
-	if err != nil {
-		return nil, fmt.Errorf("list users: %w", err)
-	}
-
-	// Check if username already exists
-	for _, existingUser := range existingUsers.Data {
+	for existingUser, err := range apiClient.SearchUsers(ctx, username) {
+		if err != nil {
+			return nil, fmt.Errorf("list users: %w", err)
+		}
 		if existingUser.Username == username {
 			log.Info("Found existing user with matching username", "username", username, "userID", existingUser.ID)
 			return &existingUser, nil
@@ -362,11 +359,10 @@ func (r *Reconciler) FindExistingUser(ctx context.Context, apiClient *pocketid.C
 
 	// Check if email already exists
 	if email != "" {
-		emailUsers, err := pid.Decode[pid.PaginatedDtoUserDto](apiClient.ListUsers(ctx, &pid.ListUsersParams{Search: &email}))
-		if err != nil {
-			return nil, fmt.Errorf("list users by email: %w", err)
-		}
-		for _, existingUser := range emailUsers.Data {
+		for existingUser, err := range apiClient.SearchUsers(ctx, email) {
+			if err != nil {
+				return nil, fmt.Errorf("list users by email: %w", err)
+			}
 			if existingUser.Email == email {
 				log.Info("Found existing user with matching email", "email", email, "userID", existingUser.ID)
 				return &existingUser, nil

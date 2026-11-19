@@ -174,12 +174,10 @@ func lookupUserGroupByName(ctx context.Context, lookup *pocketid.Client, name st
 		return "", fmt.Errorf("cannot resolve user group %q by name without a Pocket-ID client", name)
 	}
 
-	groups, err := pid.Decode[pid.PaginatedDtoUserGroupMinimalDto](lookup.ListUserGroups(ctx, &pid.ListUserGroupsParams{Search: &name}))
-	if err != nil {
-		return "", fmt.Errorf("list user groups matching %q: %w", name, err)
-	}
-
-	for _, group := range groups.Data {
+	for group, err := range lookup.SearchUserGroups(ctx, name) {
+		if err != nil {
+			return "", fmt.Errorf("list user groups matching %q: %w", name, err)
+		}
 		if group.Name == name {
 			return group.ID, nil
 		}
