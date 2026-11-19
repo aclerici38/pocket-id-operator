@@ -105,8 +105,8 @@ func SecretPrefix(value string) string {
 	return value[:OIDCClientSecretPrefixLength]
 }
 
-// LooksLikeCIMDID reports whether a client ID is a metadata document URL. Pocket-ID
-// restricts registered client IDs to [a-zA-Z0-9._-]+, so an "https://" prefix can only come
+// LooksLikeCIMDID reports whether a client ID is a metadata document URL. Pocket-ID refuses
+// to register a standard client under an https URL, so an "https://" prefix can only come
 // from a metadata document. It needs no API round trip, which is what makes it usable before a
 // client has been resolved. It matches the CRD's CEL admission rules and upstream's
 // fosite.LooksLikeCIMDURL, which both require the https scheme.
