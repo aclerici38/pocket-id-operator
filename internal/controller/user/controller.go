@@ -133,7 +133,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		requeue, err := r.createOrAdoptUser(ctx, user, apiClient, instance)
 		if err != nil {
 			log.Error(err, "Failed to create or adopt user")
-			_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "ReconcileError", err.Error())
+			_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, common.ErrorReason(err, "ReconcileError"), err.Error())
 			return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 		}
 		if requeue {
@@ -153,7 +153,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			return ctrl.Result{RequeueAfter: common.RequeueImmediate}, nil
 		}
 		log.Error(err, "Failed to push user state")
-		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "ReconcileError", err.Error())
+		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, common.ErrorReason(err, "ReconcileError"), err.Error())
 		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 	}
 
@@ -164,7 +164,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	if err := r.reconcileAPIKeys(ctx, user, apiClient, instance.Namespace, instance.Name); err != nil {
 		log.Error(err, "Failed to reconcile API keys")
-		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "APIKeyError", err.Error())
+		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, common.ErrorReason(err, "APIKeyError"), err.Error())
 		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 	}
 

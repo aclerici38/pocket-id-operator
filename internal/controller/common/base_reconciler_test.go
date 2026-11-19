@@ -3,6 +3,7 @@ package common
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -151,6 +152,28 @@ func TestRequeueAfterFor_HonorsRetryAfter(t *testing.T) {
 	throttled.RetryAfter = 2 * MaxRateLimitRequeue
 	if got := RequeueAfterFor(throttled); got != MaxRateLimitRequeue {
 		t.Errorf("RequeueAfterFor: got %v, want the cap %v", got, MaxRateLimitRequeue)
+	}
+}
+
+// A throttled call must not report the caller's failure reason, or a reconcile Pocket-ID
+// never evaluated reads as one it rejected.
+func TestErrorReason(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "plain failure", err: errors.New("boom"), want: "APIKeyError"},
+		{name: "rejected request", err: &pocketid.APIError{StatusCode: http.StatusBadRequest}, want: "APIKeyError"},
+		{name: "throttled", err: &pocketid.APIError{StatusCode: http.StatusTooManyRequests, Code: "rate_limited"}, want: ReasonRateLimited},
+		{name: "throttled and wrapped", err: fmt.Errorf("exchange one-time access token: %w", &pocketid.APIError{StatusCode: http.StatusTooManyRequests}), want: ReasonRateLimited},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := ErrorReason(test.err, "APIKeyError"); got != test.want {
+				t.Errorf("ErrorReason: got %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 
