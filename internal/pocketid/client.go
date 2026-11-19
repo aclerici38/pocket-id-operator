@@ -9,6 +9,7 @@ import (
 	"iter"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aclerici38/pocket-id-go-client/v3/client"
@@ -17,6 +18,10 @@ import (
 )
 
 const logoutTimeout = 5 * time.Second
+
+// sessionsBlockedUntil maps a server URL to when Pocket-ID will next accept a session exchange.
+// Clients are built per reconcile, so this outlives them.
+var sessionsBlockedUntil sync.Map
 
 // Client is the generated Pocket-ID client, plus the HTTP client a user session reuses.
 type Client struct {
@@ -63,6 +68,14 @@ func NewClient(baseURL, apiKey string, opts ...ClientOption) (*Client, error) {
 // WithUserSession runs fn in a session for the user, the only credential that can manage keys
 // the user owns, and ends the session once fn returns.
 func (c *Client) WithUserSession(ctx context.Context, userID string, tokenTTL time.Duration, fn func(*client.Client) error) error {
+	// Skip the one-time token too while throttled; it would go unused.
+	if until, ok := sessionsBlockedUntil.Load(c.Server); ok {
+		if wait := time.Until(until.(time.Time)); wait > 0 {
+			return fmt.Errorf("exchange one-time access token: %w",
+				&APIError{StatusCode: http.StatusTooManyRequests, Code: client.CodeRateLimited, RetryAfter: wait})
+		}
+	}
+
 	token, err := client.Decode[client.TokenCreatedDto](c.CreateOneTimeAccessTokenForUserAdmin(ctx, userID,
 		client.TokenCreateDto{TTL: new(int64(tokenTTL.Seconds()))}))
 	if err != nil {
@@ -71,6 +84,9 @@ func (c *Client) WithUserSession(ctx context.Context, userID string, tokenTTL ti
 
 	session, err := client.NewSession(ctx, c.Server, token.Token, c.httpClient)
 	if err != nil {
+		if IsRateLimitedError(err) {
+			sessionsBlockedUntil.Store(c.Server, time.Now().Add(AsAPIError(err).RetryAfter))
+		}
 		return fmt.Errorf("exchange one-time access token: %w", err)
 	}
 	// A created key's token is only returned once, so a failed logout must not fail the call, and

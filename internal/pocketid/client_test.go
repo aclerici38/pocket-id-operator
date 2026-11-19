@@ -243,3 +243,32 @@ func TestWithUserSession_EndsSession(t *testing.T) {
 		})
 	}
 }
+
+// After a throttled exchange, sessions fail without a request until Retry-After passes.
+func TestWithUserSession_WaitsOutRateLimit(t *testing.T) {
+	calls := 0
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/one-time-access-token" {
+			w.Header().Set("Retry-After", "10")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"error":"Too many requests","code":"rate_limited"}`))
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"token":"one-time"}`))
+	}))
+	fn := func(*client.Client) error { return nil }
+
+	if err := c.WithUserSession(t.Context(), "user-1", 0, fn); !IsRateLimitedError(err) {
+		t.Fatalf("first call: got %v, want rate limited", err)
+	}
+	err := c.WithUserSession(t.Context(), "user-1", 0, fn)
+	if !IsRateLimitedError(err) || AsAPIError(err).RetryAfter <= 0 {
+		t.Fatalf("second call: got %v, want rate limited with a wait", err)
+	}
+	if calls != 2 {
+		t.Errorf("calls = %d, want 2 (none after the 429)", calls)
+	}
+}

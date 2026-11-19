@@ -59,6 +59,9 @@ type InstanceOptions struct {
 	CIMDURLAllowlist   []string
 	// EmailOptional sets userManagement.requireUserEmail to false, so users need no email.
 	EmailOptional bool
+	// RateLimitingDisabled turns off Pocket-ID's rate limits, which every operator request
+	// shares since it comes from one IP.
+	RateLimitingDisabled bool
 	// TLSSecretName makes the instance terminate TLS from that kubernetes.io/tls
 	// Secret, which also forces appUrl to https.
 	TLSSecretName string
@@ -122,6 +125,9 @@ func buildInstanceYAML(opts InstanceOptions) string {
 	persistence += cimd
 	if opts.EmailOptional {
 		persistence += "  userManagement:\n    requireUserEmail: false\n"
+	}
+	if opts.RateLimitingDisabled {
+		persistence += "  rateLimitingDisabled: true\n"
 	}
 
 	if opts.NodePort != 0 {
