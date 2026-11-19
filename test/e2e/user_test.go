@@ -389,7 +389,15 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 					Admin:   new(admin),
 					APIKeys: []APIKeySpec{{Name: "refused-key", Scopes: []string{scope}}},
 				})
-				waitForConditionReason("pocketiduser", userName, userNS, "Ready", "APIKeyError")
+				// The failure must be Pocket-ID refusing the key itself, not an earlier step such as
+				// starting the session, which would leave status and Secret just as empty. Reason and
+				// message are read together because a retry can overwrite the condition in between.
+				Eventually(func(g Gomega) {
+					obj, err := getObject("pocketiduser", userName, userNS)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(conditionField(obj, "Ready", "reason")).To(Equal("APIKeyError"))
+					g.Expect(conditionField(obj, "Ready", "message")).To(ContainSubstring("create API key"))
+				}).Should(Succeed())
 				Expect(getField("pocketiduser", userName, userNS, ".status.apiKeys")).To(BeEmpty())
 				waitForSecretNotExists(userName+"-refused-key-key", userNS)
 
