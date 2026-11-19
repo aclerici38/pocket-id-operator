@@ -54,6 +54,12 @@
       "groupName": "kubernetes"
     },
     {
+      "description": "pocket-id-go-client dev builds are bumped manually; only track tagged releases",
+      "matchPackageNames": ["github.com/aclerici38/pocket-id-go-client/v3"],
+      "matchUpdateTypes": ["digest"],
+      "enabled": false
+    },
+    {
       "groupName": "go-openapi",
       "matchPackageNames": [
         "/^github\\.com/go-openapi//"
