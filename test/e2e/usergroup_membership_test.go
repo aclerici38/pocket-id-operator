@@ -3,326 +3,102 @@
 package e2e
 
 import (
-	"fmt"
-	"strings"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
-// These tests verify the non-destructive (merge-based) membership reconciliation
-// for user groups. The operator should only manage users declared in the CR and
-// never remove externally-added users.
+// When spec.users is set the operator owns the group's full member list, so members added
+// outside it are removed. When it is unset, membership is never touched.
 
-var _ = Describe("UserGroup Membership Merge Behavior", Ordered, func() {
+var _ = Describe("UserGroup Membership Ownership", Ordered, func() {
 	const (
-		managedUser    = "merge-managed-user"
-		managedUser2   = "merge-managed-user-2"
-		externalUser   = "merge-external-user"
-		mergeGroupName = "merge-test-group"
+		managedUser  = "membership-managed-user"
+		externalUser = "membership-external-user"
 	)
 
+	var managedUserID, externalUserID string
+
 	BeforeAll(func() {
-		By("creating users for membership merge tests")
-		createUserAndWaitReady(UserOptions{
-			Name:  managedUser,
-			Email: "merge-managed@example.local",
-		})
-		createUserAndWaitReady(UserOptions{
-			Name:  managedUser2,
-			Email: "merge-managed-2@example.local",
-		})
-		createUserAndWaitReady(UserOptions{
-			Name:  externalUser,
-			Email: "merge-external@example.local",
-		})
+		By("creating users for membership tests")
+		createUserAndWaitReady(UserOptions{Name: managedUser, Email: "membership-managed@example.local"})
+		createUserAndWaitReady(UserOptions{Name: externalUser, Email: "membership-external@example.local"})
+		managedUserID = waitForStatusFieldNotEmpty("pocketiduser", managedUser, userNS, ".status.userID")
+		externalUserID = waitForStatusFieldNotEmpty("pocketiduser", externalUser, userNS, ".status.userID")
 	})
 
-	Context("External users are preserved across reconciles", func() {
-		It("should not remove a user added via the Pocket-ID UI", func() {
-			managedUserID := waitForStatusFieldNotEmpty("pocketiduser", managedUser, userNS, ".status.userID")
-			externalUserID := waitForStatusFieldNotEmpty("pocketiduser", externalUser, userNS, ".status.userID")
+	// reconcileWithFriendlyName re-applies the group with a new friendly name, which bumps the
+	// generation and so forces a reconcile.
+	reconcileWithFriendlyName := func(opts UserGroupOptions, friendlyName string) {
+		opts.FriendlyName = friendlyName
+		createUserGroup(opts)
+		waitForStatusField("pocketidusergroup", opts.Name, userNS, ".status.friendlyName", friendlyName)
+		waitForReady("pocketidusergroup", opts.Name, userNS)
+	}
 
-			By("creating a user group with one managed user")
-			createUserGroupAndWaitReady(UserGroupOptions{
-				Name:      mergeGroupName,
-				GroupName: "merge-test",
-				UserRefs:  []ResourceRef{{Name: managedUser}},
-			})
+	It("should remove members added in the UI when spec.users is set", func() {
+		opts := UserGroupOptions{
+			Name:      "membership-owned-group",
+			GroupName: "membership-owned",
+			UserRefs:  []ResourceRef{{Name: managedUser}},
+		}
+		createUserGroupAndWaitReady(opts)
+		groupID := waitForStatusFieldNotEmpty("pocketidusergroup", opts.Name, userNS, ".status.groupID")
 
-			By("verifying the managed user is in status.managedUserIDs")
-			Eventually(func(g Gomega) {
-				ids := getField("pocketidusergroup", mergeGroupName, userNS, ".status.managedUserIDs[*]")
-				g.Expect(ids).To(ContainSubstring(managedUserID))
-			}).Should(Succeed())
+		By("adding a user directly via the Pocket-ID API")
+		addUserToGroupInPocketID(groupID, externalUserID)
+		Expect(getGroupMembersFromPocketID(groupID)).To(ContainSubstring(externalUserID))
 
-			groupID := waitForStatusFieldNotEmpty("pocketidusergroup", mergeGroupName, userNS, ".status.groupID")
+		reconcileWithFriendlyName(opts, "Membership Owned Updated")
 
-			By("adding an external user directly via the Pocket-ID API")
-			addUserToGroupInPocketID(groupID, externalUserID)
-
-			By("verifying the external user exists in Pocket-ID")
-			Eventually(func(g Gomega) {
-				members := getGroupMembersFromPocketID(groupID)
-				g.Expect(members).To(ContainSubstring(externalUserID))
-				g.Expect(members).To(ContainSubstring(managedUserID))
-			}).Should(Succeed())
-
-			By("triggering a reconcile by updating the group friendlyName")
-			createUserGroup(UserGroupOptions{
-				Name:         mergeGroupName,
-				GroupName:    "merge-test",
-				FriendlyName: "Merge Test Updated",
-				UserRefs:     []ResourceRef{{Name: managedUser}},
-			})
-			waitForReady("pocketidusergroup", mergeGroupName, userNS)
-
-			By("verifying the external user is still in the group in Pocket-ID after reconcile")
-			Eventually(func(g Gomega) {
-				members := getGroupMembersFromPocketID(groupID)
-				g.Expect(members).To(ContainSubstring(externalUserID),
-					"external user should be preserved after reconcile")
-				g.Expect(members).To(ContainSubstring(managedUserID),
-					"managed user should still be present")
-			}).Should(Succeed())
-
-			By("verifying status.managedUserIDs only contains the managed user")
-			ids := getField("pocketidusergroup", mergeGroupName, userNS, ".status.managedUserIDs[*]")
-			Expect(ids).To(ContainSubstring(managedUserID))
-			Expect(ids).NotTo(ContainSubstring(externalUserID),
-				"external user should NOT appear in managedUserIDs")
-		})
-
-		AfterAll(func() {
-			deleteObject("pod", "add-external-user", userNS)
-			deleteObject("pod", "check-members-1", userNS)
-			deleteObject("pod", "check-members-2", userNS)
-		})
+		Eventually(func(g Gomega) {
+			members := getGroupMembersFromPocketID(groupID)
+			g.Expect(members).To(Equal(managedUserID), "only the spec's members should remain")
+		}).Should(Succeed())
+		waitForStatusField("pocketidusergroup", opts.Name, userNS, ".status.totalUserCount", "1")
 	})
 
-	Context("Removing a managed user preserves external users", func() {
-		const groupName = "merge-remove-managed-group"
+	It("should keep members added in the UI when spec.users is unset", func() {
+		opts := UserGroupOptions{
+			Name:      "membership-unowned-group",
+			GroupName: "membership-unowned",
+		}
+		createUserGroupAndWaitReady(opts)
+		groupID := waitForStatusFieldNotEmpty("pocketidusergroup", opts.Name, userNS, ".status.groupID")
 
-		It("should remove only the managed user dropped from CR, keeping external users", func() {
-			managedUserID := waitForStatusFieldNotEmpty("pocketiduser", managedUser, userNS, ".status.userID")
-			managedUser2ID := waitForStatusFieldNotEmpty("pocketiduser", managedUser2, userNS, ".status.userID")
-			externalUserID := waitForStatusFieldNotEmpty("pocketiduser", externalUser, userNS, ".status.userID")
+		By("adding a user directly via the Pocket-ID API")
+		addUserToGroupInPocketID(groupID, externalUserID)
 
-			By("creating a user group with two managed users")
-			createUserGroupAndWaitReady(UserGroupOptions{
-				Name:      groupName,
-				GroupName: "merge-remove-managed",
-				UserRefs:  []ResourceRef{{Name: managedUser}, {Name: managedUser2}},
-			})
+		reconcileWithFriendlyName(opts, "Membership Unowned Updated")
 
-			groupID := waitForStatusFieldNotEmpty("pocketidusergroup", groupName, userNS, ".status.groupID")
-
-			By("adding an external user directly via the Pocket-ID API")
-			addUserToGroupInPocketID(groupID, externalUserID)
-
-			By("verifying all three users are in the group")
-			Eventually(func(g Gomega) {
-				members := getGroupMembersFromPocketID(groupID)
-				g.Expect(members).To(ContainSubstring(managedUserID))
-				g.Expect(members).To(ContainSubstring(managedUser2ID))
-				g.Expect(members).To(ContainSubstring(externalUserID))
-			}).Should(Succeed())
-
-			By("removing managedUser2 from the CR")
-			createUserGroup(UserGroupOptions{
-				Name:      groupName,
-				GroupName: "merge-remove-managed",
-				UserRefs:  []ResourceRef{{Name: managedUser}}, // managedUser2 removed
-			})
-			waitForReady("pocketidusergroup", groupName, userNS)
-
-			By("verifying managedUser2 was removed but external user and managedUser are preserved")
-			Eventually(func(g Gomega) {
-				members := getGroupMembersFromPocketID(groupID)
-				g.Expect(members).To(ContainSubstring(managedUserID),
-					"remaining managed user should still be present")
-				g.Expect(members).To(ContainSubstring(externalUserID),
-					"external user should be preserved")
-				g.Expect(members).NotTo(ContainSubstring(managedUser2ID),
-					"removed managed user should be gone")
-			}).Should(Succeed())
-
-			By("verifying status.managedUserIDs reflects only the remaining managed user")
-			Eventually(func(g Gomega) {
-				ids := getField("pocketidusergroup", groupName, userNS, ".status.managedUserIDs[*]")
-				g.Expect(ids).To(ContainSubstring(managedUserID))
-				g.Expect(ids).NotTo(ContainSubstring(managedUser2ID))
-			}).Should(Succeed())
-		})
-
-		AfterAll(func() {
-			for _, pod := range []string{"add-ext-for-remove", "check-3-members", "check-after-remove"} {
-				deleteObject("pod", pod, userNS)
-			}
-		})
+		Consistently(func() string {
+			return getGroupMembersFromPocketID(groupID)
+		}, "10s", "2s").Should(Equal(externalUserID), "members must not be touched without spec.users")
+		waitForStatusField("pocketidusergroup", opts.Name, userNS, ".status.totalUserCount", "1")
 	})
 
-	Context("Clearing all managed users preserves external users", func() {
-		const groupName = "merge-clear-all-group"
+	It("should replace the members of an adopted group with spec.users", func() {
+		const pocketIDName = "membership-adopt"
+		groupID := createUserGroupInPocketID(pocketIDName, "Membership Adopt Group")
+		addUserToGroupInPocketID(groupID, externalUserID)
 
-		It("should remove all managed users but preserve external users when spec.users is cleared", func() {
-			managedUserID := waitForStatusFieldNotEmpty("pocketiduser", managedUser, userNS, ".status.userID")
-			externalUserID := waitForStatusFieldNotEmpty("pocketiduser", externalUser, userNS, ".status.userID")
+		opts := UserGroupOptions{
+			Name:      "membership-adopt-group",
+			GroupName: pocketIDName,
+			UserRefs:  []ResourceRef{{Name: managedUser}},
+		}
+		createUserGroupAndWaitReady(opts)
+		Expect(waitForStatusFieldNotEmpty("pocketidusergroup", opts.Name, userNS, ".status.groupID")).
+			To(Equal(groupID), "operator should adopt the existing group")
 
-			By("creating a user group with a managed user")
-			createUserGroupAndWaitReady(UserGroupOptions{
-				Name:      groupName,
-				GroupName: "merge-clear-all",
-				UserRefs:  []ResourceRef{{Name: managedUser}},
-			})
-
-			groupID := waitForStatusFieldNotEmpty("pocketidusergroup", groupName, userNS, ".status.groupID")
-
-			By("adding an external user directly via the Pocket-ID API")
-			addUserToGroupInPocketID(groupID, externalUserID)
-
-			By("verifying both users are in the group")
-			Eventually(func(g Gomega) {
-				members := getGroupMembersFromPocketID(groupID)
-				g.Expect(members).To(ContainSubstring(managedUserID))
-				g.Expect(members).To(ContainSubstring(externalUserID))
-			}).Should(Succeed())
-
-			By("clearing all users from the CR spec")
-			createUserGroup(UserGroupOptions{
-				Name:      groupName,
-				GroupName: "merge-clear-all",
-				// UserRefs intentionally absent — all managed users removed
-			})
-			waitForReady("pocketidusergroup", groupName, userNS)
-
-			By("verifying managed user was removed but external user is preserved in Pocket-ID")
-			Eventually(func(g Gomega) {
-				members := getGroupMembersFromPocketID(groupID)
-				g.Expect(members).To(ContainSubstring(externalUserID),
-					"external user should be preserved")
-				g.Expect(members).NotTo(ContainSubstring(managedUserID),
-					"managed user should be removed")
-			}).Should(Succeed())
-
-			By("verifying status.managedUserIDs is empty")
-			Eventually(func(g Gomega) {
-				ids := getField("pocketidusergroup", groupName, userNS, ".status.managedUserIDs")
-				g.Expect(ids).To(BeEmpty())
-			}).Should(Succeed())
-		})
-
-		AfterAll(func() {
-			for _, pod := range []string{"add-ext-for-clear", "check-before-clear", "check-after-clear"} {
-				deleteObject("pod", pod, userNS)
-			}
-		})
+		Eventually(func() string {
+			return getGroupMembersFromPocketID(groupID)
+		}).Should(Equal(managedUserID))
 	})
 
-	Context("Adoption preserves existing group members", func() {
-		const (
-			adoptGroupName    = "merge-adopt-group"
-			adoptPocketIDName = "merge-adopt-test"
-			adoptUser         = "merge-adopt-user"
-		)
-
-		It("should adopt a group with existing users and not remove them", func() {
-			By("creating a user that will be pre-existing in the group")
-			createUserAndWaitReady(UserOptions{
-				Name:  adoptUser,
-				Email: "merge-adopt@example.local",
-			})
-			preExistingUserID := waitForStatusFieldNotEmpty("pocketiduser", adoptUser, userNS, ".status.userID")
-			managedUserID := waitForStatusFieldNotEmpty("pocketiduser", managedUser, userNS, ".status.userID")
-
-			By("creating a group directly in Pocket-ID with a user")
-			groupID := createUserGroupInPocketID(adoptPocketIDName, "Merge Adopt Group")
-
-			By("adding the pre-existing user to the group via API")
-			addUserToGroupInPocketID(groupID, preExistingUserID)
-
-			By("creating a CR that adopts the group and adds a managed user")
-			createUserGroupAndWaitReady(UserGroupOptions{
-				Name:      adoptGroupName,
-				GroupName: adoptPocketIDName,
-				UserRefs:  []ResourceRef{{Name: managedUser}},
-			})
-
-			By("verifying the operator adopted the group (same group ID)")
-			adoptedGroupID := waitForStatusFieldNotEmpty("pocketidusergroup", adoptGroupName, userNS, ".status.groupID")
-			Expect(adoptedGroupID).To(Equal(groupID), "operator should adopt the existing group")
-
-			By("verifying both the pre-existing and managed users are in the group")
-			Eventually(func(g Gomega) {
-				members := getGroupMembersFromPocketID(groupID)
-				g.Expect(members).To(ContainSubstring(preExistingUserID),
-					"pre-existing user should be preserved after adoption")
-				g.Expect(members).To(ContainSubstring(managedUserID),
-					"managed user should be added to the group")
-			}).Should(Succeed())
-
-			By("verifying status.managedUserIDs only contains the CR-declared user")
-			ids := getField("pocketidusergroup", adoptGroupName, userNS, ".status.managedUserIDs[*]")
-			Expect(ids).To(ContainSubstring(managedUserID))
-			Expect(ids).NotTo(ContainSubstring(preExistingUserID),
-				"pre-existing user should NOT be in managedUserIDs")
-		})
-
-		AfterAll(func() {
-			deleteObject("pocketidusergroup", adoptGroupName, userNS)
-			waitForResourceDeleted("pocketidusergroup", adoptGroupName, userNS)
-			for _, pod := range []string{"create-adopt-merge-group", "add-pre-existing", "check-adopt-members"} {
-				deleteObject("pod", pod, userNS)
-			}
-		})
-	})
-
-	Context("TotalUserCount reflects all members including external", func() {
-		const groupName = "merge-count-group"
-
-		It("should report totalUserCount including external users", func() {
-			managedUserID := waitForStatusFieldNotEmpty("pocketiduser", managedUser, userNS, ".status.userID")
-			externalUserID := waitForStatusFieldNotEmpty("pocketiduser", externalUser, userNS, ".status.userID")
-
-			By("creating a user group with one managed user")
-			createUserGroupAndWaitReady(UserGroupOptions{
-				Name:      groupName,
-				GroupName: "merge-count",
-				UserRefs:  []ResourceRef{{Name: managedUser}},
-			})
-
-			By("verifying totalUserCount is 1")
-			waitForStatusField("pocketidusergroup", groupName, userNS, ".status.totalUserCount", "1")
-
-			groupID := waitForStatusFieldNotEmpty("pocketidusergroup", groupName, userNS, ".status.groupID")
-
-			By(fmt.Sprintf("adding external user %s to group %s via Pocket-ID API", externalUserID, groupID))
-			addUserToGroupInPocketID(groupID, externalUserID)
-
-			By("triggering a reconcile and verifying totalUserCount reflects 2 users")
-			// Trigger reconcile by re-applying the same spec (friendlyName change)
-			createUserGroup(UserGroupOptions{
-				Name:         groupName,
-				GroupName:    "merge-count",
-				FriendlyName: "Merge Count Updated",
-				UserRefs:     []ResourceRef{{Name: managedUser}},
-			})
-			waitForReady("pocketidusergroup", groupName, userNS)
-
-			Eventually(func(g Gomega) {
-				count := getField("pocketidusergroup", groupName, userNS, ".status.totalUserCount")
-				g.Expect(count).To(Equal("2"),
-					"totalUserCount should include both managed and external users")
-			}).Should(Succeed())
-
-			By("verifying managedUserIDs still only has 1 entry")
-			ids := getField("pocketidusergroup", groupName, userNS, ".status.managedUserIDs[*]")
-			Expect(strings.Fields(ids)).To(HaveLen(1))
-			Expect(ids).To(ContainSubstring(managedUserID))
-		})
-
-		AfterAll(func() {
-			deleteObject("pod", "add-ext-for-count", userNS)
-		})
+	AfterAll(func() {
+		for _, name := range []string{"membership-owned-group", "membership-unowned-group", "membership-adopt-group"} {
+			deleteObject("pocketidusergroup", name, userNS)
+			waitForResourceDeleted("pocketidusergroup", name, userNS)
+		}
 	})
 })

@@ -29,8 +29,9 @@ Unset fields fall back to defaults, since Pocket-ID requires some of them:
 | --- | --- |
 | `username` | `metadata.name` |
 | `firstName` | The username |
-| `email` | `<username>@placeholder.local` |
 | `displayName` | `<firstName> <lastName>` |
+
+`email` has no default. Pocket-ID rejects a user without one unless the instance sets `spec.userManagement.requireUserEmail: false`, and the error shows on the user's `Ready` condition.
 
 The operator writes the profile as stored in Pocket-ID to a Secret named `<user>-user-data`, with the same five keys. Its name is recorded in `status.userInfoSecretName`.
 

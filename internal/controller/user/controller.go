@@ -17,10 +17,10 @@ limitations under the License.
 package user
 
 import (
-	"cmp"
 	"context"
 	stderrors "errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"sync"
 	"time"
@@ -39,6 +39,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/helpers"
@@ -51,6 +53,8 @@ const (
 	UserGroupUserFinalizer = "pocketid.internal/user-group-finalizer"
 	// DefaultLoginTokenExpiryMin must stay above 15 for a full-length token
 	DefaultLoginTokenExpiryMin = 60
+	loginTokenTTL              = DefaultLoginTokenExpiryMin * time.Minute
+	apiKeysPageSize            = 100
 
 	// DeleteFromPocketIDAnnotation when set to "true" will delete the user from Pocket-ID
 	// when the PocketIDUser resource is deleted from Kubernetes. By default, users are
@@ -138,8 +142,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return common.ApplyResync(ctrl.Result{}), nil
 	}
 
-	// Fetch current state from Pocket ID
-	pUser, err := apiClient.GetUser(ctx, user.Status.UserID)
+	pUser, err := r.pushUserState(ctx, user, apiClient)
 	if err != nil {
 		if pocketid.IsNotFoundError(err) {
 			log.Info("User was deleted externally, will recreate", "userID", user.Status.UserID)
@@ -149,33 +152,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			}
 			return ctrl.Result{RequeueAfter: common.RequeueImmediate}, nil
 		}
-		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "GetError", err.Error())
+		log.Error(err, "Failed to push user state")
+		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 	}
 
 	if err := r.updateUserStatus(ctx, user, pUser); err != nil {
 		log.Error(err, "Failed to update user status")
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
-	}
-
-	updated, err := r.pushUserState(ctx, user, apiClient, pUser)
-	if err != nil {
-		log.Error(err, "Failed to push user state")
-		_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "ReconcileError", err.Error())
-		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
-	}
-
-	// Read the write back in this same pass, so Ready below never stamps observedGeneration
-	// against state the operator has not observed yet.
-	if updated {
-		if pUser, err = apiClient.GetUser(ctx, user.Status.UserID); err != nil {
-			_ = r.SetReadyCondition(ctx, user, metav1.ConditionFalse, "GetError", err.Error())
-			return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
-		}
-		if err := r.updateUserStatus(ctx, user, pUser); err != nil {
-			log.Error(err, "Failed to update user status")
-			return ctrl.Result{RequeueAfter: common.Requeue}, nil
-		}
 	}
 
 	if err := r.reconcileAPIKeys(ctx, user, apiClient, instance.Namespace, instance.Name); err != nil {
@@ -306,7 +290,7 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, user *pocketidinternal
 			}
 			log.Info("Deleting user from Pocket-ID", "userID", user.Status.UserID)
 			// A user already gone from Pocket-ID must not hold the finalizer.
-			if err := apiClient.DeleteUser(ctx, user.Status.UserID); err != nil {
+			if err := pid.Check(apiClient.DeleteUser(ctx, user.Status.UserID)); err != nil {
 				if !pocketid.IsNotFoundError(err) {
 					log.Error(err, "Failed to delete user from Pocket-ID")
 					return ctrl.Result{}, err
@@ -341,23 +325,15 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, user *pocketidinternal
 	return ctrl.Result{}, nil
 }
 
-// PocketIDUserAPI defines the minimal interface needed for user operations
-type PocketIDUserAPI interface {
-	ListUsers(ctx context.Context, search string) ([]*pocketid.User, error)
-	CreateUser(ctx context.Context, input pocketid.UserInput) (*pocketid.User, error)
-	GetUser(ctx context.Context, id string) (*pocketid.User, error)
-	UpdateUser(ctx context.Context, id string, input pocketid.UserInput) (*pocketid.User, error)
-}
-
 // FindExistingUser checks if a user already exists in Pocket-ID.
 // If id is non-empty, it looks up by ID directly. Otherwise it searches by username
 // and then email. Returns the existing user if found, or nil if no match exists.
-func (r *Reconciler) FindExistingUser(ctx context.Context, apiClient PocketIDUserAPI, id, username, email string) (*pocketid.User, error) {
+func (r *Reconciler) FindExistingUser(ctx context.Context, apiClient *pocketid.Client, id, username, email string) (*pid.UserDto, error) {
 	log := logf.FromContext(ctx)
 
 	if id != "" {
 		log.Info("Looking up user by ID", "userID", id)
-		existingUser, err := apiClient.GetUser(ctx, id)
+		existingUser, err := pid.Decode[*pid.UserDto](apiClient.GetUserByID(ctx, id))
 		if err != nil {
 			if pocketid.IsNotFoundError(err) {
 				log.Info("User not found in Pocket-ID", "userID", id)
@@ -371,29 +347,25 @@ func (r *Reconciler) FindExistingUser(ctx context.Context, apiClient PocketIDUse
 
 	// Check if user with username already exists
 	log.Info("Checking if user exists in Pocket-ID", "username", username)
-	existingUsers, err := apiClient.ListUsers(ctx, username)
-	if err != nil {
-		return nil, fmt.Errorf("list users: %w", err)
-	}
-
-	// Check if username already exists
-	for _, existingUser := range existingUsers {
+	for existingUser, err := range apiClient.SearchUsers(ctx, username) {
+		if err != nil {
+			return nil, fmt.Errorf("list users: %w", err)
+		}
 		if existingUser.Username == username {
 			log.Info("Found existing user with matching username", "username", username, "userID", existingUser.ID)
-			return existingUser, nil
+			return &existingUser, nil
 		}
 	}
 
 	// Check if email already exists
-	if email != "" && email != fmt.Sprintf("%s@placeholder.local", username) {
-		emailUsers, err := apiClient.ListUsers(ctx, email)
-		if err != nil {
-			return nil, fmt.Errorf("list users by email: %w", err)
-		}
-		for _, existingUser := range emailUsers {
+	if email != "" {
+		for existingUser, err := range apiClient.SearchUsers(ctx, email) {
+			if err != nil {
+				return nil, fmt.Errorf("list users by email: %w", err)
+			}
 			if existingUser.Email == email {
 				log.Info("Found existing user with matching email", "email", email, "userID", existingUser.ID)
-				return existingUser, nil
+				return &existingUser, nil
 			}
 		}
 	}
@@ -401,12 +373,17 @@ func (r *Reconciler) FindExistingUser(ctx context.Context, apiClient PocketIDUse
 	return nil, nil
 }
 
-// buildUserInput resolves all user fields from spec and secrets into a UserInput.
-func (r *Reconciler) buildUserInput(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser) (pocketid.UserInput, error) {
+// userInput is the user's profile, resolved from spec and secrets.
+type userInput struct {
+	username, firstName, lastName, email, displayName string
+}
+
+// buildUserInput resolves all user fields from spec and secrets into a userInput.
+func (r *Reconciler) buildUserInput(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser) (userInput, error) {
 	userInfoInputSecret := userInfoInputSecretName(user)
 	username, err := helpers.ResolveStringValue(ctx, r.Client, r.APIReader, user.Namespace, user.Spec.Username, userInfoInputSecret, UserInfoSecretKeyUsername)
 	if err != nil {
-		return pocketid.UserInput{}, fmt.Errorf("resolve username: %w", err)
+		return userInput{}, fmt.Errorf("resolve username: %w", err)
 	}
 	if username == "" {
 		username = user.Name
@@ -414,7 +391,7 @@ func (r *Reconciler) buildUserInput(ctx context.Context, user *pocketidinternalv
 
 	firstName, err := helpers.ResolveStringValue(ctx, r.Client, r.APIReader, user.Namespace, user.Spec.FirstName, userInfoInputSecret, UserInfoSecretKeyFirstName)
 	if err != nil {
-		return pocketid.UserInput{}, fmt.Errorf("resolve firstName: %w", err)
+		return userInput{}, fmt.Errorf("resolve firstName: %w", err)
 	}
 	// FirstName is required by Pocket-ID, default to username if not set
 	if firstName == "" {
@@ -423,21 +400,17 @@ func (r *Reconciler) buildUserInput(ctx context.Context, user *pocketidinternalv
 
 	lastName, err := helpers.ResolveStringValue(ctx, r.Client, r.APIReader, user.Namespace, user.Spec.LastName, userInfoInputSecret, UserInfoSecretKeyLastName)
 	if err != nil {
-		return pocketid.UserInput{}, fmt.Errorf("resolve lastName: %w", err)
+		return userInput{}, fmt.Errorf("resolve lastName: %w", err)
 	}
 
 	email, err := helpers.ResolveStringValue(ctx, r.Client, r.APIReader, user.Namespace, user.Spec.Email, userInfoInputSecret, UserInfoSecretKeyEmail)
 	if err != nil {
-		return pocketid.UserInput{}, fmt.Errorf("resolve email: %w", err)
-	}
-	// Email is required by Pocket-ID by default, generate a placeholder if not set
-	if email == "" {
-		email = fmt.Sprintf("%s@placeholder.local", username)
+		return userInput{}, fmt.Errorf("resolve email: %w", err)
 	}
 
 	displayName, err := helpers.ResolveStringValue(ctx, r.Client, r.APIReader, user.Namespace, user.Spec.DisplayName, userInfoInputSecret, UserInfoSecretKeyDisplayName)
 	if err != nil {
-		return pocketid.UserInput{}, fmt.Errorf("resolve displayName: %w", err)
+		return userInput{}, fmt.Errorf("resolve displayName: %w", err)
 	}
 	// Default displayName to "FirstName LastName" if not set
 	if displayName == "" {
@@ -454,17 +427,22 @@ func (r *Reconciler) buildUserInput(ctx context.Context, user *pocketidinternalv
 		}
 	}
 
-	return pocketid.UserInput{
-		ID:          user.Spec.UserID,
-		Username:    username,
-		FirstName:   firstName,
-		LastName:    lastName,
-		Email:       email,
-		DisplayName: displayName,
-		IsAdmin:     user.Spec.Admin,
-		Disabled:    user.Spec.Disabled,
-		Locale:      user.Spec.Locale,
-	}, nil
+	return userInput{username: username, firstName: firstName, lastName: lastName, email: email, displayName: displayName}, nil
+}
+
+// userPatch is every profile field the operator manages. emailVerified is managed by Pocket-ID,
+// and the ID can only be set at creation.
+func userPatch(user *pocketidinternalv1alpha1.PocketIDUser, input userInput) pid.PatchUserJSONRequestBody {
+	return pid.PatchUserJSONRequestBody{
+		Username:    &input.username,
+		FirstName:   &input.firstName,
+		LastName:    &input.lastName,
+		Email:       pocketid.NullIfEmpty(input.email),
+		DisplayName: &input.displayName,
+		IsAdmin:     &user.Spec.Admin,
+		Disabled:    &user.Spec.Disabled,
+		Locale:      pocketid.NullIfEmpty(user.Spec.Locale),
+	}
 }
 
 // createOrAdoptUser handles creation or adoption when no status ID exists.
@@ -478,8 +456,9 @@ func (r *Reconciler) createOrAdoptUser(ctx context.Context, user *pocketidintern
 	}
 
 	// A declarative ID identifies the user directly, so adopt an existing one up front
-	if input.ID != "" {
-		existing, err := r.FindExistingUser(ctx, apiClient, input.ID, "", "")
+	id := user.Spec.UserID
+	if id != "" {
+		existing, err := r.FindExistingUser(ctx, apiClient, id, "", "")
 		if err != nil {
 			return false, fmt.Errorf("search for existing user by ID: %w", err)
 		}
@@ -490,16 +469,31 @@ func (r *Reconciler) createOrAdoptUser(ctx context.Context, user *pocketidintern
 		}
 	}
 
-	result, err := common.CreateOrAdopt(ctx, common.CreateOrAdoptConfig[*pocketid.User]{
+	patch := userPatch(user, input)
+	result, err := common.CreateOrAdopt(ctx, common.CreateOrAdoptConfig[*pid.UserDto]{
 		ResourceKind: "user",
-		ResourceID:   input.Username,
-		Create: func() (*pocketid.User, error) {
-			return apiClient.CreateUser(ctx, input)
+		ResourceID:   input.username,
+		Create: func() (*pid.UserDto, error) {
+			body := pid.UserCreateDto{
+				Username:    input.username,
+				FirstName:   patch.FirstName,
+				LastName:    patch.LastName,
+				Email:       patch.Email,
+				DisplayName: patch.DisplayName,
+				IsAdmin:     patch.IsAdmin,
+				Disabled:    patch.Disabled,
+				Locale:      patch.Locale,
+			}
+			// Pocket-ID generates an ID unless the spec declares one.
+			if id != "" {
+				body.ID = &id
+			}
+			return pid.Decode[*pid.UserDto](apiClient.CreateUser(ctx, body))
 		},
-		FindExisting: func() (*pocketid.User, error) {
-			return r.FindExistingUser(ctx, apiClient, input.ID, input.Username, input.Email)
+		FindExisting: func() (*pid.UserDto, error) {
+			return r.FindExistingUser(ctx, apiClient, id, input.username, input.email)
 		},
-		IsNil: func(u *pocketid.User) bool {
+		IsNil: func(u *pid.UserDto) bool {
 			return u == nil
 		},
 	})
@@ -523,11 +517,11 @@ func (r *Reconciler) createOrAdoptUser(ctx context.Context, user *pocketidintern
 
 	// Generate one-time login token for newly created user only
 	if result.IsNewlyCreated {
-		token, err := apiClient.CreateOneTimeAccessToken(ctx, result.Resource.ID, DefaultLoginTokenExpiryMin)
+		token, err := createLoginToken(ctx, apiClient, result.Resource.ID)
 		if err != nil {
 			log.Error(err, "Failed to create one-time login token - user created but token not available")
 		} else {
-			if err := r.SetOneTimeLoginStatus(ctx, user, instance, token.Token); err != nil {
+			if err := r.SetOneTimeLoginStatus(ctx, user, instance, token); err != nil {
 				return false, fmt.Errorf("set one-time login status: %w", err)
 			}
 		}
@@ -536,50 +530,24 @@ func (r *Reconciler) createOrAdoptUser(ctx context.Context, user *pocketidintern
 	return true, nil
 }
 
-// pushUserState compares the desired state from the CR spec against the current
-// state fetched from Pocket ID and only pushes an update if they differ.
-func (r *Reconciler) pushUserState(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client, current *pocketid.User) (bool, error) {
-	log := logf.FromContext(ctx)
-
-	desired, err := r.buildUserInput(ctx, user)
+// pushUserState writes the spec's profile and custom claims, and returns the user as it stands
+// afterwards.
+func (r *Reconciler) pushUserState(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, apiClient *pocketid.Client) (pid.UserDto, error) {
+	input, err := r.buildUserInput(ctx, user)
 	if err != nil {
-		return false, err
+		return pid.UserDto{}, err
 	}
 
-	// EmailVerified is managed by Pocket-ID.
-	// Always preserve the current value so the operator never resets it.
-	desired.EmailVerified = current.EmailVerified
-
-	desiredClaims := helpers.CustomClaimsToPocketID(user.Spec.CustomClaims)
-	profileChanged := !desired.Equal(current.ToInput())
-	claimsChanged := !pocketid.CustomClaimsEqual(desiredClaims, current.CustomClaims)
-
-	if !profileChanged && !claimsChanged {
-		log.V(1).Info("User state is in sync, skipping update")
-		return false, nil
+	pUser, err := pid.Decode[pid.UserDto](apiClient.PatchUser(ctx, user.Status.UserID, userPatch(user, input)))
+	if err != nil {
+		return pUser, fmt.Errorf("update user: %w", err)
 	}
 
-	log.Info("Updating user", "name", user.Name)
-
-	if profileChanged {
-		if _, err := apiClient.UpdateUser(ctx, user.Status.UserID, desired); err != nil {
-			return false, fmt.Errorf("update user: %w", err)
-		}
+	if pUser.CustomClaims, err = pid.Decode[[]pid.CustomClaimDto](apiClient.UpdateCustomClaimsForUser(ctx, user.Status.UserID,
+		helpers.CustomClaimsToPocketID(user.Spec.CustomClaims))); err != nil {
+		return pUser, fmt.Errorf("update user custom claims: %w", err)
 	}
-
-	// Custom claims have a dedicated endpoint that replaces the full set.
-	if claimsChanged {
-		if desiredClaims == nil {
-			desiredClaims = []pocketid.CustomClaim{}
-		}
-		if _, err := apiClient.UpdateUserCustomClaims(ctx, user.Status.UserID, desiredClaims); err != nil {
-			return false, fmt.Errorf("update user custom claims: %w", err)
-		}
-	}
-
-	metrics.ResourceOperations.WithLabelValues("PocketIDUser", "updated").Inc()
-
-	return true, nil
+	return pUser, nil
 }
 
 // setUserID persists only the user ID to status.
@@ -598,7 +566,7 @@ func (r *Reconciler) clearUserStatus(ctx context.Context, user *pocketidinternal
 }
 
 // updateUserStatus updates the User CR status from Pocket-ID response
-func (r *Reconciler) updateUserStatus(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, pUser *pocketid.User) error {
+func (r *Reconciler) updateUserStatus(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, pUser pid.UserDto) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		latest := &pocketidinternalv1alpha1.PocketIDUser{}
 		if err := r.Get(ctx, client.ObjectKeyFromObject(user), latest); err != nil {
@@ -637,7 +605,7 @@ func (r *Reconciler) SetOneTimeLoginStatus(ctx context.Context, user *pocketidin
 		baseURL = common.InternalServiceURL(instance)
 	}
 	loginURL := fmt.Sprintf("%s/lc/%s", baseURL, token)
-	expiresAt := time.Now().UTC().Add(time.Duration(DefaultLoginTokenExpiryMin) * time.Minute)
+	expiresAt := time.Now().UTC().Add(loginTokenTTL)
 
 	user.Status.OneTimeLoginToken = token
 	user.Status.OneTimeLoginURL = loginURL
@@ -656,12 +624,19 @@ func (r *Reconciler) createOneTimeToken(ctx context.Context, user *pocketidinter
 		return nil
 	}
 
-	token, err := apiClient.CreateOneTimeAccessToken(ctx, user.Status.UserID, DefaultLoginTokenExpiryMin)
+	token, err := createLoginToken(ctx, apiClient, user.Status.UserID)
 	if err != nil {
 		return fmt.Errorf("create one-time login token: %w", err)
 	}
 
-	return r.SetOneTimeLoginStatus(ctx, user, instance, token.Token)
+	return r.SetOneTimeLoginStatus(ctx, user, instance, token)
+}
+
+// createLoginToken creates a one-time token the user can sign in with at /lc/{token}.
+func createLoginToken(ctx context.Context, apiClient *pocketid.Client, userID string) (string, error) {
+	token, err := pid.Decode[pid.TokenCreatedDto](apiClient.CreateOneTimeAccessTokenForUserAdmin(ctx, userID,
+		pid.TokenCreateDto{TTL: new(int64(loginTokenTTL.Seconds()))}))
+	return token.Token, err
 }
 
 // cleanupOneTimeToken clears the one-time login token from status if it
@@ -711,13 +686,14 @@ func (r *Reconciler) reconcileAPIKeys(ctx context.Context, user *pocketidinterna
 	if _, checked := r.apiKeysChecked.Load(user.UID); checked && apiKeysConverged(user) {
 		return nil
 	}
-	err := apiClient.WithUserSession(ctx, user.Status.UserID, DefaultLoginTokenExpiryMin, func(session *pocketid.UserSession) error {
-		keys, err := session.ListAPIKeys(ctx)
-		if err != nil {
-			return err
-		}
-		current := make(map[string]pocketid.APIKey, len(keys))
-		for _, key := range keys {
+	err := apiClient.WithUserSession(ctx, user.Status.UserID, loginTokenTTL, func(session *pid.Client) error {
+		current := make(map[string]pid.APIKeyDto)
+		for key, err := range pid.All[pid.APIKeyDto](func(page int) (*http.Response, error) {
+			return session.ListAPIKeys(ctx, &pid.ListAPIKeysParams{PaginationPage: &page, PaginationLimit: new(apiKeysPageSize)})
+		}) {
+			if err != nil {
+				return fmt.Errorf("list API keys: %w", err)
+			}
 			current[key.ID] = key
 		}
 
@@ -738,15 +714,14 @@ func (r *Reconciler) reconcileAPIKeys(ctx context.Context, user *pocketidinterna
 }
 
 // reconcileAPIKey creates the key if Pocket-ID doesn't have it, then pushes any drift from the spec.
-func (r *Reconciler) reconcileAPIKey(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, session *pocketid.UserSession, spec pocketidinternalv1alpha1.APIKeySpec, current map[string]pocketid.APIKey, recordOp func(string)) error {
+func (r *Reconciler) reconcileAPIKey(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, session *pid.Client, spec pocketidinternalv1alpha1.APIKeySpec, current map[string]pid.APIKeyDto, recordOp func(string)) error {
 	log := logf.FromContext(ctx)
 
 	status := apiKeyStatus(user, spec.Name)
 	secretName := fmt.Sprintf("%s-%s-key", user.Name, spec.Name)
 	key, exists := current[status.ID]
 
-	var issued *pocketid.APIKeyWithToken
-	var err error
+	var issued pid.APIKeyResponseDto
 	switch {
 	case !exists:
 		if status.ID != "" {
@@ -754,25 +729,40 @@ func (r *Reconciler) reconcileAPIKey(ctx context.Context, user *pocketidinternal
 			metrics.ExternalDeletions.WithLabelValues("APIKey").Inc()
 		}
 		log.Info("Creating API key", "name", spec.Name)
-		expiresAt := cmp.Or(spec.ExpiresAt, pocketid.DefaultAPIKeyExpiry().Format(time.RFC3339))
-		if issued, err = session.CreateAPIKey(ctx, spec.Name, expiresAt, spec.Description, spec.Scopes); err != nil {
+		expiresAt, err := apiKeyExpiry(spec.ExpiresAt)
+		if err != nil {
 			return err
+		}
+		if issued, err = pid.Decode[pid.APIKeyResponseDto](session.CreateAPIKey(ctx, pid.APIKeyCreateDto{
+			Name:        spec.Name,
+			ExpiresAt:   expiresAt,
+			Description: pocketid.NullIfEmpty(spec.Description),
+			Scopes:      spec.Scopes,
+		})); err != nil {
+			return fmt.Errorf("create API key: %w", err)
 		}
 		recordOp("created")
 	// Status records the expiry whose token was saved, so a renewal whose token never reached the Secret is retried.
-	case expiryDrifted(spec.ExpiresAt, key.ExpiresAt) || expiryDrifted(spec.ExpiresAt, status.ExpiresAt):
+	case expiryDrifted(spec.ExpiresAt, key.ExpiresAt.Format(time.RFC3339)) || expiryDrifted(spec.ExpiresAt, status.ExpiresAt):
 		log.Info("Renewing API key", "name", spec.Name, "expiresAt", spec.ExpiresAt)
-		if issued, err = session.RenewAPIKey(ctx, key.ID, spec.ExpiresAt); err != nil {
+		expiresAt, err := apiKeyExpiry(spec.ExpiresAt)
+		if err != nil {
 			return err
+		}
+		if issued, err = pid.Decode[pid.APIKeyResponseDto](session.RenewAPIKey(ctx, key.ID, pid.APIKeyRenewDto{
+			ExpiresAt:        expiresAt,
+			GracePeriodHours: new(0),
+		})); err != nil {
+			return fmt.Errorf("renew API key: %w", err)
 		}
 		recordOp("renewed")
 	}
-	if issued != nil {
+	if issued.Token != "" {
 		key = issued.APIKey
 		if err := ensureAPIKeySecret(ctx, r.Client, r.Scheme, user, secretName, issued.Token); err != nil {
 			// The retry creates another key, so revoke this one rather than leave a key nobody holds the token for.
 			if !exists {
-				if revokeErr := session.DeleteAPIKey(ctx, key.ID); revokeErr != nil {
+				if revokeErr := revokeAPIKey(ctx, session, key.ID); revokeErr != nil {
 					log.Error(revokeErr, "Failed to revoke API key whose token wasn't saved", "name", spec.Name)
 				}
 			}
@@ -782,28 +772,56 @@ func (r *Reconciler) reconcileAPIKey(ctx context.Context, user *pocketidinternal
 
 	if key.Name != spec.Name || key.Description != spec.Description || !scopesEqual(key.Scopes, spec.Scopes) {
 		log.Info("Updating API key", "name", spec.Name)
-		updated, err := session.UpdateAPIKey(ctx, key.ID, spec.Name, spec.Description, spec.Scopes)
+		updated, err := pid.Decode[pid.APIKeyDto](session.UpdateAPIKey(ctx, key.ID, pid.APIKeyUpdateDto{
+			Name:        spec.Name,
+			Description: pocketid.NullIfEmpty(spec.Description),
+			Scopes:      spec.Scopes,
+		}))
 		if err != nil {
-			return err
+			return fmt.Errorf("update API key: %w", err)
 		}
-		key = *updated
+		key = updated
 		recordOp("updated")
 	}
 
+	lastUsedAt := ""
+	if key.LastUsedAt != nil {
+		lastUsedAt = key.LastUsedAt.Format(time.RFC3339)
+	}
 	base := user.DeepCopy()
 	mergeAPIKeyStatus(user, pocketidinternalv1alpha1.APIKeyStatus{
 		Name:       spec.Name,
 		ID:         key.ID,
-		CreatedAt:  key.CreatedAt,
-		ExpiresAt:  key.ExpiresAt,
-		LastUsedAt: key.LastUsedAt,
+		CreatedAt:  key.CreatedAt.Format(time.RFC3339),
+		ExpiresAt:  key.ExpiresAt.Format(time.RFC3339),
+		LastUsedAt: lastUsedAt,
 		SecretName: secretName,
 	})
 	return common.PatchStatus(ctx, r.Client, user, base)
 }
 
+// apiKeyExpiry returns the spec's expiry, or the default when it sets none.
+func apiKeyExpiry(spec string) (time.Time, error) {
+	if spec == "" {
+		return pocketid.DefaultAPIKeyExpiry(), nil
+	}
+	expiresAt, err := time.Parse(time.RFC3339, spec)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("parse expiresAt: %w", err)
+	}
+	return expiresAt, nil
+}
+
+// revokeAPIKey revokes an API key, treating one that's already gone as revoked.
+func revokeAPIKey(ctx context.Context, session *pid.Client, id string) error {
+	if err := pid.Check(session.RevokeAPIKey(ctx, id)); err != nil && !pocketid.IsNotFoundError(err) {
+		return fmt.Errorf("revoke API key: %w", err)
+	}
+	return nil
+}
+
 // pruneAPIKeys revokes the keys recorded in status that are no longer in the spec.
-func (r *Reconciler) pruneAPIKeys(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, session *pocketid.UserSession, recordOp func(string)) error {
+func (r *Reconciler) pruneAPIKeys(ctx context.Context, user *pocketidinternalv1alpha1.PocketIDUser, session *pid.Client, recordOp func(string)) error {
 	log := logf.FromContext(ctx)
 
 	wantedKeys := make(map[string]bool, len(user.Spec.APIKeys))
@@ -819,7 +837,7 @@ func (r *Reconciler) pruneAPIKeys(ctx context.Context, user *pocketidinternalv1a
 
 		log.Info("Deleting API key", "name", name)
 		if keyStatus.ID != "" {
-			if err := session.DeleteAPIKey(ctx, keyStatus.ID); err != nil {
+			if err := revokeAPIKey(ctx, session, keyStatus.ID); err != nil {
 				return fmt.Errorf("delete API key %s: %w", name, err)
 			}
 			recordOp("deleted")

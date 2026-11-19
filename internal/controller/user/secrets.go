@@ -9,9 +9,10 @@ import (
 	corev1apply "k8s.io/client-go/applyconfigurations/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
-	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
 const (
@@ -63,7 +64,7 @@ func mergeAPIKeyStatus(user *pocketidinternalv1alpha1.PocketIDUser, keyStatus po
 	user.Status.APIKeys = append(user.Status.APIKeys, keyStatus)
 }
 
-func ensureUserInfoSecret(ctx context.Context, c client.Client, scheme *runtime.Scheme, user *pocketidinternalv1alpha1.PocketIDUser, secretName string, pUser *pocketid.User) error {
+func ensureUserInfoSecret(ctx context.Context, c client.Client, scheme *runtime.Scheme, user *pocketidinternalv1alpha1.PocketIDUser, secretName string, pUser pid.UserDto) error {
 	ownerRef, err := common.ControllerOwnerReference(user, scheme)
 	if err != nil {
 		return err

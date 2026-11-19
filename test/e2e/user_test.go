@@ -38,9 +38,8 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 			Expect(secretData(secretName, userNS, "username")).To(Equal(userName))
 		})
 
-		It("should set placeholder email default", func() {
-			secretName := userName + "-user-data"
-			Expect(secretData(secretName, userNS, "email")).To(Equal(userName + "@placeholder.local"))
+		It("should leave email unset", func() {
+			Expect(secretData(userName+"-user-data", userNS, "email")).To(BeEmpty())
 		})
 
 		It("should set one-time login status fields", func() {
@@ -53,6 +52,26 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 				g.Expect(loginURL).To(ContainSubstring(token))
 				g.Expect(expiresAt).NotTo(BeEmpty())
 			}).Should(Succeed())
+		})
+	})
+
+	// Pocket-ID requires an email by default, and the operator must not invent one to get past it.
+	Context("Required Email", func() {
+		const instance = "require-email-instance"
+		const userName = "test-require-email-user"
+		labels := map[string]string{"e2e-instance": "require-email"}
+
+		It("should reject a user without an email until one is set", func() {
+			DeferCleanup(func() {
+				_ = deleteObjectAndWait("pocketiduser", userName, userNS, time.Minute)
+				_ = deleteObjectAndWait("pocketidinstance", instance, instanceNS, 2*time.Minute)
+			})
+			createInstanceAndWaitReady(InstanceOptions{Name: instance, Labels: labels})
+
+			createUser(UserOptions{Name: userName, InstanceSelector: labels})
+			waitForConditionReason("pocketiduser", userName, userNS, "Ready", "ReconcileError")
+
+			createUserAndWaitReady(UserOptions{Name: userName, InstanceSelector: labels, Email: userName + "@example.com"})
 		})
 	})
 
@@ -209,7 +228,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 			outSecret := userName + "-user-data"
 			Expect(secretData(outSecret, userNS, "username")).To(Equal(userName))
 			Expect(secretData(outSecret, userNS, "firstName")).To(Equal(userName))
-			Expect(secretData(outSecret, userNS, "email")).To(Equal(userName + "@placeholder.local"))
+			Expect(secretData(outSecret, userNS, "email")).To(BeEmpty())
 		})
 	})
 
@@ -299,8 +318,8 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 
 			token := secretData(getField("pocketiduser", userName, userNS, ".status.apiKeys[0].secretName"), userNS, "token")
 			Expect(pocketIDStatusForAPIKey(token, "/api/users/me")).To(Equal(http.StatusOK))
-			Expect(pocketIDStatusForAPIKey(token, "/api/users")).To(Equal(http.StatusOK))
-			Expect(pocketIDStatusForAPIKey(token, "/api/user-groups")).To(Equal(http.StatusForbidden))
+			Expect(pocketIDStatusForAPIKey(token, "/api/admin/users")).To(Equal(http.StatusOK))
+			Expect(pocketIDStatusForAPIKey(token, "/api/admin/user-groups")).To(Equal(http.StatusForbidden))
 		})
 
 		It("should update a key's scopes in place, keeping its token", func() {
@@ -313,14 +332,14 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 			})
 			keyID := getField("pocketiduser", userName, userNS, ".status.apiKeys[0].id")
 			token := secretData(getField("pocketiduser", userName, userNS, ".status.apiKeys[0].secretName"), userNS, "token")
-			Expect(pocketIDStatusForAPIKey(token, "/api/users")).To(Equal(http.StatusForbidden))
+			Expect(pocketIDStatusForAPIKey(token, "/api/admin/users")).To(Equal(http.StatusForbidden))
 
 			Expect(patchObject("pocketiduser", userName, userNS,
 				`{"spec":{"apiKeys":[{"name":"rescoped-key","scopes":["account:read","users:read"]}]}}`)).To(Succeed())
 			waitForReconciled("pocketiduser", userName, userNS)
 
 			Expect(getField("pocketiduser", userName, userNS, ".status.apiKeys[0].id")).To(Equal(keyID))
-			Expect(pocketIDStatusForAPIKey(token, "/api/users")).To(Equal(http.StatusOK))
+			Expect(pocketIDStatusForAPIKey(token, "/api/admin/users")).To(Equal(http.StatusOK))
 		})
 
 		It("should renew a key when its expiry changes, replacing its token", func() {
@@ -354,11 +373,11 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 				APIKeys: []APIKeySpec{{Name: "demoted-key", Scopes: []string{"account:read", "users:read"}}},
 			})
 			token := secretData(getField("pocketiduser", userName, userNS, ".status.apiKeys[0].secretName"), userNS, "token")
-			Expect(pocketIDStatusForAPIKey(token, "/api/users")).To(Equal(http.StatusOK))
+			Expect(pocketIDStatusForAPIKey(token, "/api/admin/users")).To(Equal(http.StatusOK))
 
 			Expect(patchObject("pocketiduser", userName, userNS, `{"spec":{"admin":false}}`)).To(Succeed())
 			Eventually(func() int {
-				return pocketIDStatusForAPIKey(token, "/api/users")
+				return pocketIDStatusForAPIKey(token, "/api/admin/users")
 			}).Should(Equal(http.StatusForbidden))
 			Expect(pocketIDStatusForAPIKey(token, "/api/users/me")).To(Equal(http.StatusOK))
 		})
@@ -475,7 +494,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 
 			By("verifying user still exists in Pocket-ID")
-			Expect(getFromPocketID("/api/users/" + userID)).To(ContainSubstring(userID))
+			Expect(getFromPocketID("/api/admin/users/" + userID)).To(ContainSubstring(userID))
 		})
 
 		It("should NOT delete user from Pocket-ID when annotation is set to false", func() {
@@ -497,7 +516,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 
 			By("verifying user still exists in Pocket-ID")
-			Expect(getFromPocketID("/api/users/" + userID)).To(ContainSubstring(userID))
+			Expect(getFromPocketID("/api/admin/users/" + userID)).To(ContainSubstring(userID))
 		})
 
 		It("should delete user from Pocket-ID when annotation is set to true", func() {
@@ -519,7 +538,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 
 			By("verifying user no longer exists in Pocket-ID (expect 404)")
-			Expect(getStatusFromPocketID("/api/users/"+userID)).To(Equal(http.StatusNotFound),
+			Expect(getStatusFromPocketID("/api/admin/users/"+userID)).To(Equal(http.StatusNotFound),
 				"the user should have been deleted from Pocket-ID")
 		})
 
@@ -541,7 +560,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 
 			By("verifying user no longer exists in Pocket-ID (expect 404)")
-			Expect(getStatusFromPocketID("/api/users/"+userID)).To(Equal(http.StatusNotFound),
+			Expect(getStatusFromPocketID("/api/admin/users/"+userID)).To(Equal(http.StatusNotFound),
 				"the user should have been deleted from Pocket-ID")
 		})
 	})

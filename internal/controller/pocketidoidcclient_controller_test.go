@@ -32,10 +32,11 @@ import (
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/helpers"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/oidcclient"
-	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
 // PocketIDOIDCClientReconciler is an alias for tests
@@ -1043,18 +1044,18 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 			}
-			current := &pocketid.OIDCClient{
-				ID:                  "client-id",
-				Name:                "Test OIDC Client",
-				AllowedUserGroupIDs: []string{"group-1"},
-				PKCESupported:       true,
+			current := pid.OIDCClientWithAllowedUserGroupsDto{
+				ID:                "client-id",
+				Name:              "Test OIDC Client",
+				AllowedUserGroups: []pid.UserGroupMinimalDto{{ID: "group-2"}, {ID: "group-1"}},
+				PKCESupported:     true,
 			}
 			Expect(reconciler.UpdateOIDCClientStatus(ctx, resource, current)).To(Succeed())
 
 			updated := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: clientName, Namespace: namespace}, updated)).To(Succeed())
 			Expect(updated.Status.ClientID).To(Equal("client-id"))
-			Expect(updated.Status.AllowedUserGroupIDs).To(Equal([]string{"group-1"}))
+			Expect(updated.Status.AllowedUserGroupIDs).To(Equal([]string{"group-1", "group-2"}))
 			Expect(updated.Status.PKCESupported).To(HaveValue(BeTrue()))
 		})
 
@@ -1076,7 +1077,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 			}
 			// Pocket-ID leaves PKCESupported set once a client has used PKCE, even
 			// after PKCE is enabled, so this must not be surfaced as "can enable".
-			current := &pocketid.OIDCClient{
+			current := pid.OIDCClientWithAllowedUserGroupsDto{
 				ID:            "client-id",
 				Name:          "Test OIDC Client",
 				PKCESupported: true,

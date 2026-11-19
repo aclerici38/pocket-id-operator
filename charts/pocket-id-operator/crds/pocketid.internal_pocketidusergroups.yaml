@@ -138,8 +138,9 @@ spec:
                 minLength: 2
                 type: string
               users:
-                description: Users defines the members the operator manages in this
-                  group. Members added outside the operator are left in place.
+                description: Users is the group's full member list. When set, members
+                  added outside the operator are removed; when unset, membership is
+                  left alone.
                 properties:
                   userIDs:
                     description: UserIDs are Pocket-ID user IDs to add to this group,
@@ -272,19 +273,11 @@ spec:
                 description: LdapID is the LDAP identifier if the group is synced
                   from LDAP.
                 type: string
-              managedUserIDs:
-                description: ManagedUserIDs are the Pocket-ID user IDs the operator
-                  manages in this group. Members not in this list were added outside
-                  the operator and are never removed.
-                items:
-                  type: string
-                type: array
               name:
                 description: Name is the group name from Pocket-ID.
                 type: string
               totalUserCount:
-                description: TotalUserCount is the number of members in the group,
-                  including those not managed by the operator.
+                description: TotalUserCount is the number of members in the group.
                 type: integer
             type: object
         type: object

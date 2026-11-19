@@ -9,6 +9,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+
 	pocketidv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
@@ -17,13 +19,6 @@ import (
 // exist. It is a spec error rather than a transient failure, so callers can surface
 // it distinctly instead of as a generic reconcile error.
 var ErrUserGroupNotFound = stderrors.New("user group not found in Pocket-ID")
-
-// UserGroupLookup resolves user groups that are not managed by a PocketIDUserGroup
-// in this cluster.
-type UserGroupLookup interface {
-	ListUserGroups(ctx context.Context, search string) ([]*pocketid.UserGroup, error)
-	GetUserGroup(ctx context.Context, id string) (*pocketid.UserGroup, error)
-}
 
 // IsResourceReady checks if a resource has the Ready condition set to True
 func IsResourceReady(conditions []metav1.Condition) bool {
@@ -109,11 +104,12 @@ func ResolveOIDCClientReferences(
 
 // ResolveUserGroupReferences resolves user group references to Pocket-ID group IDs.
 // A ref naming a PocketIDUserGroup CR is read from the cluster; a groupName/groupID
-// ref names a group directly in Pocket-ID and is resolved through lookup.
+// ref names a group directly in Pocket-ID and is resolved through lookup, which may be nil
+// when there are none.
 func ResolveUserGroupReferences(
 	ctx context.Context,
 	c client.Client,
-	lookup UserGroupLookup,
+	lookup *pocketid.Client,
 	refs []pocketidv1alpha1.NamespacedUserGroupReference,
 	defaultNamespace string,
 ) ([]string, error) {
@@ -173,17 +169,15 @@ func userGroupCRGroupID(
 
 // lookupUserGroupByName resolves a Pocket-ID group name to its ID. The search is
 // server-side and paginated, so only an exact name match is accepted.
-func lookupUserGroupByName(ctx context.Context, lookup UserGroupLookup, name string) (string, error) {
+func lookupUserGroupByName(ctx context.Context, lookup *pocketid.Client, name string) (string, error) {
 	if lookup == nil {
 		return "", fmt.Errorf("cannot resolve user group %q by name without a Pocket-ID client", name)
 	}
 
-	groups, err := lookup.ListUserGroups(ctx, name)
-	if err != nil {
-		return "", fmt.Errorf("list user groups matching %q: %w", name, err)
-	}
-
-	for _, group := range groups {
+	for group, err := range lookup.SearchUserGroups(ctx, name) {
+		if err != nil {
+			return "", fmt.Errorf("list user groups matching %q: %w", name, err)
+		}
 		if group.Name == name {
 			return group.ID, nil
 		}
@@ -195,12 +189,12 @@ func lookupUserGroupByName(ctx context.Context, lookup UserGroupLookup, name str
 // lookupUserGroupByID confirms the group exists. Pocket-ID accepts unknown IDs on the
 // allowed-groups write without error, so an unchecked ID would leave the client
 // group-restricted with nothing attached while still reporting Ready.
-func lookupUserGroupByID(ctx context.Context, lookup UserGroupLookup, id string) (string, error) {
+func lookupUserGroupByID(ctx context.Context, lookup *pocketid.Client, id string) (string, error) {
 	if lookup == nil {
 		return "", fmt.Errorf("cannot resolve user group %q by ID without a Pocket-ID client", id)
 	}
 
-	group, err := lookup.GetUserGroup(ctx, id)
+	group, err := pid.Decode[pid.UserGroupDto](lookup.GetUserGroupByID(ctx, id))
 	if err != nil {
 		if pocketid.IsNotFoundError(err) {
 			return "", fmt.Errorf("%w: no group with ID %q", ErrUserGroupNotFound, id)

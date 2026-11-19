@@ -142,6 +142,10 @@ jobs:
           IMG: ${{ env.OPERATOR_IMAGE }}
         run: mise run test-e2e-only
 
+      - name: Print diagnostics
+        if: ${{ !cancelled() }}
+        run: ./.github/scripts/print-e2e-diagnostics.sh
+
       - name: Update canary dashboard issue
         if: ${{ !cancelled() }}
         env:

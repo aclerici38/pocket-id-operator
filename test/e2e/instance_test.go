@@ -132,6 +132,7 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Ordered, func() {
 			By("creating a user with instance selector")
 			createUserAndWaitReady(UserOptions{
 				Name:  selectorUser,
+				Email: selectorUser + "@example.com",
 				Admin: new(true),
 				InstanceSelector: map[string]string{
 					"environment": "test",
@@ -186,6 +187,7 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Ordered, func() {
 			By("provisioning a user with an API key against the TLS instance")
 			createUserAndWaitReady(UserOptions{
 				Name:             tlsUser,
+				Email:            tlsUser + "@example.com",
 				Admin:            new(true),
 				InstanceSelector: tlsLabels,
 				APIKeys:          []APIKeySpec{{Name: "tls-key", Description: "over TLS", Scopes: []string{"account:read"}}},

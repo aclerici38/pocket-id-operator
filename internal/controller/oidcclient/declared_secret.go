@@ -8,6 +8,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
@@ -67,7 +69,7 @@ func (r *Reconciler) resolveDeclaredClientSecret(ctx context.Context, oidcClient
 // returns it, so that revision is the only way to tell a push is needed. This runs independently
 // of ReconcileSecret so the declared secret still reaches Pocket-ID when spec.secret.enabled is
 // false, which is also why it handles its own retirement.
-func (r *Reconciler) SyncDeclaredClientSecret(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient PocketIDOIDCClientAPI, observed []pocketid.OIDCClientSecret) error {
+func (r *Reconciler) SyncDeclaredClientSecret(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client, observed []pid.OIDCClientSecretDto) error {
 	if !hasDeclaredClientSecret(oidcClient) {
 		// The ref was removed; drop the stale record so re-adding it pushes again.
 		if oidcClient.Status.ClientSecretSourceVersion != "" {
@@ -90,7 +92,7 @@ func (r *Reconciler) SyncDeclaredClientSecret(ctx context.Context, oidcClient *p
 	// deleted out-of-band leaves the client unable to authenticate. Push again to restore it.
 	missing := !clientSecretPresent(secret, observed)
 
-	var minted *pocketid.OIDCClientSecret
+	var minted *pid.OIDCClientSecretDto
 	var versionErr error
 	if version != oidcClient.Status.ClientSecretSourceVersion || missing {
 		logf.FromContext(ctx).Info("Setting declared client secret",
@@ -103,9 +105,9 @@ func (r *Reconciler) SyncDeclaredClientSecret(ctx context.Context, oidcClient *p
 			return err
 		}
 
-		created, returned, err := apiClient.CreateOIDCClientSecret(ctx, oidcClient.Status.ClientID, secret)
+		created, returned, err := createClientSecret(ctx, apiClient, oidcClient.Status.ClientID, &secret)
 		if err != nil {
-			return fmt.Errorf("create client secret: %w", err)
+			return err
 		}
 		// The declared value is what gets mirrored into the managed Secret, so a Pocket-ID that
 		// stored something else would leave the two disagreeing with nothing to detect it later.

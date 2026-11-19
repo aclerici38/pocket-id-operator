@@ -11,8 +11,10 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+	"github.com/oapi-codegen/nullable"
+
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
-	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
 // errPublicKeys marks a federated identity whose public keys could not be resolved.
@@ -21,27 +23,39 @@ var errPublicKeys = errors.New("federated identity public keys")
 // secretKeyMembers are the JWK members that carry private or symmetric key material (RFC 7518 §6).
 var secretKeyMembers = []string{"d", "p", "q", "dp", "dq", "qi", "oth", "k"}
 
-// resolvePublicKeys fills each federated identity's public keys from the spec. identities must be
-// the ones OidcClientInput built from the same spec, in the same order. Pocket-ID validates the
-// keys and names the offending one in its error, but a key carrying secret material is refused.
-func (r *Reconciler) resolvePublicKeys(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, identities []pocketid.OIDCClientFederatedIdentity) error {
+// federatedIdentities builds the spec's federated identities, resolving their public keys. It is
+// nil when there are none. Pocket-ID validates the keys and names the offending one in its
+// error, but a key carrying secret material is refused here.
+func (r *Reconciler) federatedIdentities(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) ([]pid.OIDCClientFederatedIdentityInputDto, error) {
+	var identities []pid.OIDCClientFederatedIdentityInputDto
 	for i, identity := range oidcClient.Spec.FederatedIdentities {
+		var publicKeys []any
 		for j, source := range identity.PublicKeys {
 			keys, err := r.publicKeys(ctx, oidcClient.Namespace, source)
 			if err == nil {
 				err = checkNoSecretMaterial(keys)
 			}
 			if err != nil {
-				return fmt.Errorf("%w: federatedIdentities[%d].publicKeys[%d]: %w", errPublicKeys, i, j, err)
+				return nil, fmt.Errorf("%w: federatedIdentities[%d].publicKeys[%d]: %w", errPublicKeys, i, j, err)
 			}
-			identities[i].PublicKeys = append(identities[i].PublicKeys, keys...)
+			for _, key := range keys {
+				publicKeys = append(publicKeys, key)
+			}
 		}
 		// Without keys Pocket-ID falls back to the issuer's JWKS URL, which is not what was asked for.
-		if len(identity.PublicKeys) > 0 && len(identities[i].PublicKeys) == 0 {
-			return fmt.Errorf("%w: federatedIdentities[%d] resolved to no public keys", errPublicKeys, i)
+		if len(identity.PublicKeys) > 0 && len(publicKeys) == 0 {
+			return nil, fmt.Errorf("%w: federatedIdentities[%d] resolved to no public keys", errPublicKeys, i)
 		}
+		identities = append(identities, pid.OIDCClientFederatedIdentityInputDto{
+			Issuer:           &identity.Issuer,
+			Subject:          &identity.Subject,
+			Audience:         &identity.Audience,
+			JWKS:             &identity.JWKS,
+			PublicKeys:       nullable.NewNullableWithValue(publicKeys),
+			ReplayProtection: &identity.ReplayProtection,
+		})
 	}
-	return nil
+	return identities, nil
 }
 
 // publicKeys returns the keys one spec entry holds. A referenced document may be a single JWK or

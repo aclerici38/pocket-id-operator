@@ -9,7 +9,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+	"github.com/oapi-codegen/nullable"
 )
 
 // These tests verify that state-diff reconciliation correctly syncs changes to Pocket-ID
@@ -142,38 +143,30 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 		})
 	})
 
-	Context("User removal from group clears status.managedUserIDs", func() {
+	Context("Dropping spec.users leaves the members alone", func() {
 		const groupName = "sync-remove-users-group"
 
-		It("should clear managedUserIDs in status when all users are removed from spec", func() {
+		It("should keep the members when spec.users is removed", func() {
 			By("creating a user group with a member")
 			createUserGroupAndWaitReady(UserGroupOptions{
 				Name:      groupName,
 				GroupName: "sync-remove-users",
 				UserRefs:  []ResourceRef{{Name: syncTestUser}},
 			})
-
-			By("verifying the user appears in status.managedUserIDs")
 			userID := waitForStatusFieldNotEmpty("pocketiduser", syncTestUser, userNS, ".status.userID")
-			Eventually(func(g Gomega) {
-				ids := getField("pocketidusergroup", groupName, userNS, ".status.managedUserIDs[*]")
-				g.Expect(ids).To(ContainSubstring(userID))
-			}).Should(Succeed())
+			groupID := waitForStatusFieldNotEmpty("pocketidusergroup", groupName, userNS, ".status.groupID")
+			Eventually(func() string { return getGroupMembersFromPocketID(groupID) }).Should(Equal(userID))
 
-			By("removing all users from the spec")
+			By("removing spec.users")
 			createUserGroup(UserGroupOptions{
-				Name:      groupName,
-				GroupName: "sync-remove-users",
-				// UserRefs intentionally absent — all users removed
+				Name:         groupName,
+				GroupName:    "sync-remove-users",
+				FriendlyName: "Sync Remove Users Updated",
 			})
-
-			By("verifying status.managedUserIDs becomes empty")
-			Eventually(func(g Gomega) {
-				ids := getField("pocketidusergroup", groupName, userNS, ".status.managedUserIDs")
-				g.Expect(ids).To(BeEmpty())
-			}).Should(Succeed())
-
+			waitForStatusField("pocketidusergroup", groupName, userNS, ".status.friendlyName", "Sync Remove Users Updated")
 			waitForReady("pocketidusergroup", groupName, userNS)
+
+			Expect(getGroupMembersFromPocketID(groupID)).To(Equal(userID))
 		})
 	})
 
@@ -261,8 +254,8 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 
 			By("verifying initial user and claim are present")
 			Eventually(func(g Gomega) {
-				ids := getField("pocketidusergroup", groupName, userNS, ".status.managedUserIDs[*]")
-				g.Expect(ids).To(ContainSubstring(userID))
+				groupID := getField("pocketidusergroup", groupName, userNS, ".status.groupID")
+				g.Expect(getGroupMembersFromPocketID(groupID)).To(ContainSubstring(userID))
 				val := getField("pocketidusergroup", groupName, userNS, ".status.customClaims[?(@.key=='tier')].value")
 				g.Expect(val).To(Equal("gold"))
 			}).Should(Succeed())
@@ -284,8 +277,8 @@ var _ = Describe("UserGroup State Sync", Ordered, func() {
 
 			By("verifying users and claims are still present")
 			Eventually(func(g Gomega) {
-				ids := getField("pocketidusergroup", groupName, userNS, ".status.managedUserIDs[*]")
-				g.Expect(ids).To(ContainSubstring(userID))
+				groupID := getField("pocketidusergroup", groupName, userNS, ".status.groupID")
+				g.Expect(getGroupMembersFromPocketID(groupID)).To(ContainSubstring(userID))
 				val := getField("pocketidusergroup", groupName, userNS, ".status.customClaims[?(@.key=='tier')].value")
 				g.Expect(val).To(Equal("gold"))
 			}).Should(Succeed())
@@ -353,13 +346,13 @@ func createUserInPocketIDWithVerifiedEmail(username, email string) {
 	ctx, cancel := testCtx()
 	defer cancel()
 
-	_, err := pid.CreateUser(ctx, pocketid.UserInput{
+	err := pid.Check(pocketID.CreateUser(ctx, pid.UserCreateDto{
 		Username:      username,
-		FirstName:     username,
-		DisplayName:   username,
-		Email:         email,
-		EmailVerified: true,
-	})
+		FirstName:     &username,
+		DisplayName:   &username,
+		Email:         nullable.NewNullableWithValue(email),
+		EmailVerified: new(true),
+	}))
 	Expect(err).NotTo(HaveOccurred(), "creating verified user %q", username)
 }
 
@@ -370,7 +363,7 @@ func getUserEmailVerified(userID string) string {
 	ctx, cancel := testCtx()
 	defer cancel()
 
-	user, err := pid.GetUser(ctx, userID)
+	user, err := pid.Decode[pid.UserDto](pocketID.GetUserByID(ctx, userID))
 	Expect(err).NotTo(HaveOccurred(), "reading user %s", userID)
 	return strconv.FormatBool(user.EmailVerified)
 }

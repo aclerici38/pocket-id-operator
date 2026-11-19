@@ -27,7 +27,7 @@ func TestFieldString(t *testing.T) {
 	    "isAdmin": true,
 	    "totalUserCount": 5,
 	    "allowedUserGroupIDs": ["g1", "g2"],
-	    "managedUserIDs": ["u1", "u2"],
+	    "userIDs": ["u1", "u2"],
 	    "empty": [],
 	    "emptyList": [],
 	    "callbackUrls": ["https://a/cb", "https://b/cb"],
@@ -45,7 +45,7 @@ func TestFieldString(t *testing.T) {
 	obj := &unstructured.Unstructured{Object: raw}
 
 	for _, tc := range []struct{ path, want string }{
-		{".status.managedUserIDs[*]", "u1 u2"},
+		{".status.userIDs[*]", "u1 u2"},
 		{".status.empty[*]", ""},
 		{".status.emptyList", ""},
 		{".status.callbackUrls", `["https://a/cb","https://b/cb"]`},

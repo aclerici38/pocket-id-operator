@@ -5,17 +5,15 @@ package e2e
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
 var _ = Describe("OIDC Client Federated Identity Public Keys", Ordered, func() {
-	// Pocket-ID re-encodes every key it stores, so the operator only stays quiet if what comes
-	// back still compares equal to the spec. Keys are not validated by the operator either:
-	// Pocket-ID's rejection has to reach the resource.
+	// Pocket-ID re-encodes every key it stores, so keys are compared as JSON values. Keys are
+	// not validated by the operator either: Pocket-ID's rejection has to reach the resource.
 
 	const (
 		clientName    = "test-public-keys"
@@ -41,12 +39,14 @@ data:
 `, configMapName, userNS, jwks))
 	}
 
-	// inSync is the operator's own comparison, so true means the next reconcile pushes nothing.
+	// inSync reports whether Pocket-ID holds exactly these keys for the issuer.
 	inSync := func(keys ...string) bool {
-		want := []pocketid.OIDCClientFederatedIdentity{{Issuer: issuer, PublicKeys: rawKeys(keys...)}}
+		want := make([]any, len(keys))
+		for i, key := range keys {
+			Expect(json.Unmarshal([]byte(key), &want[i])).To(Succeed())
+		}
 		got := federatedIdentitiesFromPocketID(clientID)
-		return pocketid.OIDCClientInput{Credentials: &pocketid.OIDCClientCredentials{FederatedIdentities: want}}.
-			Equal(pocketid.OIDCClientInput{Credentials: &pocketid.OIDCClientCredentials{FederatedIdentities: got}})
+		return len(got) == 1 && got[0].Issuer == issuer && reflect.DeepEqual(got[0].PublicKeys, want)
 	}
 
 	BeforeAll(func() {

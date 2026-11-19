@@ -124,3 +124,7 @@ jobs:
           else
             mise run test-e2e-only
           fi
+
+      - name: Print diagnostics
+        if: ${{ !cancelled() }}
+        run: ./.github/scripts/print-e2e-diagnostics.sh

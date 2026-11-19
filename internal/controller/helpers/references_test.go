@@ -2,49 +2,55 @@ package helpers
 
 import (
 	"context"
+	"encoding/json"
 	stderrors "errors"
 	"net/http"
 	"strings"
 	"testing"
 
-	openapiruntime "github.com/go-openapi/runtime"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+
 	pocketidv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid/pocketidtest"
 )
 
-// fakeUserGroupLookup serves user groups from a fixed set, mimicking Pocket-ID's
-// substring search.
-type fakeUserGroupLookup struct {
-	groups   []*pocketid.UserGroup
-	listErr  error
-	listCall int
+// userGroupServer serves user groups from a fixed set, mimicking Pocket-ID's substring
+// search. It returns the client and how many searches it answered.
+func userGroupServer(t *testing.T, groups ...pid.UserGroupMinimalDto) (*pocketid.Client, *int) {
+	t.Helper()
+	searches := new(int)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/admin/user-groups", func(w http.ResponseWriter, r *http.Request) {
+		*searches++
+		var data []pid.UserGroupMinimalDto
+		for _, group := range groups {
+			if strings.Contains(group.Name, r.URL.Query().Get("search")) {
+				data = append(data, group)
+			}
+		}
+		writeJSON(w, http.StatusOK, pid.PaginatedDtoUserGroupMinimalDto{Data: data})
+	})
+	mux.HandleFunc("GET /api/admin/user-groups/{id}", func(w http.ResponseWriter, r *http.Request) {
+		for _, group := range groups {
+			if group.ID == r.PathValue("id") {
+				writeJSON(w, http.StatusOK, pid.UserGroupDto{ID: group.ID, Name: group.Name})
+				return
+			}
+		}
+		writeJSON(w, http.StatusNotFound, map[string]string{"code": "not_found"})
+	})
+	return pocketidtest.NewClient(t, mux), searches
 }
 
-func (f *fakeUserGroupLookup) ListUserGroups(_ context.Context, search string) ([]*pocketid.UserGroup, error) {
-	f.listCall++
-	if f.listErr != nil {
-		return nil, f.listErr
-	}
-	var matches []*pocketid.UserGroup
-	for _, group := range f.groups {
-		if strings.Contains(group.Name, search) {
-			matches = append(matches, group)
-		}
-	}
-	return matches, nil
-}
-
-func (f *fakeUserGroupLookup) GetUserGroup(_ context.Context, id string) (*pocketid.UserGroup, error) {
-	for _, group := range f.groups {
-		if group.ID == id {
-			return group, nil
-		}
-	}
-	return nil, openapiruntime.NewAPIError("getUserGroup", nil, http.StatusNotFound)
+func writeJSON(w http.ResponseWriter, status int, body any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(body)
 }
 
 func readyConditions() []metav1.Condition {
@@ -254,10 +260,10 @@ func TestResolveUserGroupReferences_MissingGroupID(t *testing.T) {
 func TestResolveUserGroupReferences_ByGroupName(t *testing.T) {
 	ctx := context.Background()
 	fc := fake.NewClientBuilder().WithScheme(newScheme(t)).Build()
-	lookup := &fakeUserGroupLookup{groups: []*pocketid.UserGroup{
-		{ID: "gid-dev", Name: "developers"},
-		{ID: "gid-ops", Name: "operators"},
-	}}
+	lookup, _ := userGroupServer(t,
+		pid.UserGroupMinimalDto{ID: "gid-dev", Name: "developers"},
+		pid.UserGroupMinimalDto{ID: "gid-ops", Name: "operators"},
+	)
 
 	ids, err := ResolveUserGroupReferences(ctx, fc, lookup,
 		[]pocketidv1alpha1.NamespacedUserGroupReference{{GroupName: "developers"}}, "default")
@@ -274,7 +280,7 @@ func TestResolveUserGroupReferences_ByGroupNameRequiresExactMatch(t *testing.T) 
 	fc := fake.NewClientBuilder().WithScheme(newScheme(t)).Build()
 	// Pocket-ID search is a substring match, so "dev" returns "developers".
 	// Only an exact name may resolve, otherwise a prefix would grant the wrong group.
-	lookup := &fakeUserGroupLookup{groups: []*pocketid.UserGroup{{ID: "gid-dev", Name: "developers"}}}
+	lookup, _ := userGroupServer(t, pid.UserGroupMinimalDto{ID: "gid-dev", Name: "developers"})
 
 	_, err := ResolveUserGroupReferences(ctx, fc, lookup,
 		[]pocketidv1alpha1.NamespacedUserGroupReference{{GroupName: "dev"}}, "default")
@@ -286,7 +292,9 @@ func TestResolveUserGroupReferences_ByGroupNameRequiresExactMatch(t *testing.T) 
 func TestResolveUserGroupReferences_ByGroupNameListError(t *testing.T) {
 	ctx := context.Background()
 	fc := fake.NewClientBuilder().WithScheme(newScheme(t)).Build()
-	lookup := &fakeUserGroupLookup{listErr: stderrors.New("boom")}
+	lookup := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"code": "internal_error"})
+	}))
 
 	// A failed lookup is transient and must not be reported as a missing group.
 	_, err := ResolveUserGroupReferences(ctx, fc, lookup,
@@ -302,7 +310,7 @@ func TestResolveUserGroupReferences_ByGroupNameListError(t *testing.T) {
 func TestResolveUserGroupReferences_ByGroupID(t *testing.T) {
 	ctx := context.Background()
 	fc := fake.NewClientBuilder().WithScheme(newScheme(t)).Build()
-	lookup := &fakeUserGroupLookup{groups: []*pocketid.UserGroup{{ID: "gid-dev", Name: "developers"}}}
+	lookup, searches := userGroupServer(t, pid.UserGroupMinimalDto{ID: "gid-dev", Name: "developers"})
 
 	ids, err := ResolveUserGroupReferences(ctx, fc, lookup,
 		[]pocketidv1alpha1.NamespacedUserGroupReference{{GroupID: "gid-dev"}}, "default")
@@ -312,8 +320,8 @@ func TestResolveUserGroupReferences_ByGroupID(t *testing.T) {
 	if len(ids) != 1 || ids[0] != "gid-dev" {
 		t.Errorf("expected [gid-dev], got %v", ids)
 	}
-	if lookup.listCall != 0 {
-		t.Errorf("expected an ID to be fetched directly, not searched, got %d searches", lookup.listCall)
+	if *searches != 0 {
+		t.Errorf("expected an ID to be fetched directly, not searched, got %d searches", *searches)
 	}
 }
 
@@ -323,7 +331,8 @@ func TestResolveUserGroupReferences_ByGroupIDNotFound(t *testing.T) {
 
 	// Pocket-ID accepts unknown IDs on the allowed-groups write, so this check is the
 	// only thing standing between a typo and a client restricted to no groups at all.
-	_, err := ResolveUserGroupReferences(ctx, fc, &fakeUserGroupLookup{},
+	lookup, _ := userGroupServer(t)
+	_, err := ResolveUserGroupReferences(ctx, fc, lookup,
 		[]pocketidv1alpha1.NamespacedUserGroupReference{{GroupID: "gid-missing"}}, "default")
 	if !stderrors.Is(err, ErrUserGroupNotFound) {
 		t.Fatalf("expected ErrUserGroupNotFound, got %v", err)
@@ -354,7 +363,7 @@ func TestResolveUserGroupReferences_MixedCRAndExternalRefs(t *testing.T) {
 		},
 	}
 	fc := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(group).Build()
-	lookup := &fakeUserGroupLookup{groups: []*pocketid.UserGroup{{ID: "gid-dev", Name: "developers"}}}
+	lookup, _ := userGroupServer(t, pid.UserGroupMinimalDto{ID: "gid-dev", Name: "developers"})
 
 	ids, err := ResolveUserGroupReferences(ctx, fc, lookup, []pocketidv1alpha1.NamespacedUserGroupReference{
 		{Name: "local-admins"},
@@ -385,11 +394,11 @@ func TestResolveUserGroupReferences_ByGroupNamePicksExactMatchAmongResults(t *te
 	fc := fake.NewClientBuilder().WithScheme(newScheme(t)).Build()
 	// Search for "devs" also matches "platform-devs" and "devs-readonly", and the
 	// exact match is not first in the result set.
-	lookup := &fakeUserGroupLookup{groups: []*pocketid.UserGroup{
-		{ID: "gid-platform", Name: "platform-devs"},
-		{ID: "gid-devs", Name: "devs"},
-		{ID: "gid-readonly", Name: "devs-readonly"},
-	}}
+	lookup, _ := userGroupServer(t,
+		pid.UserGroupMinimalDto{ID: "gid-platform", Name: "platform-devs"},
+		pid.UserGroupMinimalDto{ID: "gid-devs", Name: "devs"},
+		pid.UserGroupMinimalDto{ID: "gid-readonly", Name: "devs-readonly"},
+	)
 
 	ids, err := ResolveUserGroupReferences(ctx, fc, lookup,
 		[]pocketidv1alpha1.NamespacedUserGroupReference{{GroupName: "devs"}}, "default")
@@ -405,7 +414,8 @@ func TestResolveUserGroupReferences_ByGroupNameNoResults(t *testing.T) {
 	ctx := context.Background()
 	fc := fake.NewClientBuilder().WithScheme(newScheme(t)).Build()
 
-	_, err := ResolveUserGroupReferences(ctx, fc, &fakeUserGroupLookup{},
+	lookup, _ := userGroupServer(t)
+	_, err := ResolveUserGroupReferences(ctx, fc, lookup,
 		[]pocketidv1alpha1.NamespacedUserGroupReference{{GroupName: "developers"}}, "default")
 	if !stderrors.Is(err, ErrUserGroupNotFound) {
 		t.Fatalf("expected ErrUserGroupNotFound, got %v", err)
@@ -465,7 +475,7 @@ func TestResolveUserGroupReferences_KeepsDuplicates(t *testing.T) {
 		},
 	}
 	fc := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(group).Build()
-	lookup := &fakeUserGroupLookup{groups: []*pocketid.UserGroup{{ID: "gid-dev", Name: "developers"}}}
+	lookup, _ := userGroupServer(t, pid.UserGroupMinimalDto{ID: "gid-dev", Name: "developers"})
 
 	// The same group named three ways. The resolver is deliberately not responsible
 	// for deduplication; aggregateAllowedUserGroupIDs collapses the set.

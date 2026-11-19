@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"testing"
 
-	runtimeclient "github.com/go-openapi/runtime"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -68,7 +67,7 @@ func TestReconcileDeleteWithPocketID_TolerantOfMissingResource(t *testing.T) {
 	group := deletingUserGroup()
 	reconciler, k8s := deleteReconciler(t, group)
 
-	notFound := runtimeclient.NewAPIError("DeleteAPIUserGroupsID", nil, http.StatusNotFound)
+	notFound := &pocketid.APIError{StatusCode: http.StatusNotFound}
 	called := false
 	result, err := reconciler.ReconcileDeleteWithPocketID(
 		context.Background(), group, group.Status.GroupID, nil, testFinalizer,
@@ -101,7 +100,7 @@ func TestReconcileDeleteWithPocketID_KeepsFinalizerOnRealFailure(t *testing.T) {
 	group := deletingUserGroup()
 	reconciler, k8s := deleteReconciler(t, group)
 
-	serverError := runtimeclient.NewAPIError("DeleteAPIUserGroupsID", nil, http.StatusInternalServerError)
+	serverError := &pocketid.APIError{StatusCode: http.StatusInternalServerError}
 	_, err := reconciler.ReconcileDeleteWithPocketID(
 		context.Background(), group, group.Status.GroupID, nil, testFinalizer,
 		func(context.Context, *pocketid.Client, string) error { return serverError },
@@ -126,8 +125,8 @@ func TestRequeueAfterFor(t *testing.T) {
 		want string
 	}{
 		{name: "plain failure", err: errors.New("boom"), want: "standard"},
-		{name: "not found", err: runtimeclient.NewAPIError("op", nil, http.StatusNotFound), want: "standard"},
-		{name: "throttled without a delay", err: runtimeclient.NewAPIError("op", nil, http.StatusTooManyRequests), want: "standard"},
+		{name: "not found", err: &pocketid.APIError{StatusCode: http.StatusNotFound}, want: "standard"},
+		{name: "throttled without a delay", err: &pocketid.APIError{StatusCode: http.StatusTooManyRequests}, want: "standard"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

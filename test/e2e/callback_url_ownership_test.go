@@ -9,13 +9,13 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+	"github.com/oapi-codegen/nullable"
 )
 
-var _ = Describe("Callback URL Preservation", Ordered, func() {
-	// These tests verify that the operator does not overwrite callback URLs
-	// in pocket-id when spec.callbackUrls is empty, preserving any values set
-	// out-of-band via the pocket-id UI or API.
+var _ = Describe("Callback URL Ownership", Ordered, func() {
+	// The spec owns a client's callback URLs: they survive reconciles, replace the
+	// server-side values, and an unset spec clears ones set out-of-band.
 
 	Context("Spec callback URLs are preserved across reconciles", func() {
 		const clientName = "test-callback-preserve"
@@ -56,10 +56,10 @@ var _ = Describe("Callback URL Preservation", Ordered, func() {
 		})
 	})
 
-	Context("Out-of-band callback URLs are preserved when spec has no callbackUrls", func() {
-		const clientName = "test-oob-preserve"
+	Context("Out-of-band callback URLs are cleared when spec has no callbackUrls", func() {
+		const clientName = "test-oob-clear"
 
-		It("should not overwrite out-of-band callback URLs on reconcile", func() {
+		It("should clear out-of-band callback URLs on reconcile", func() {
 			By("creating an OIDC client without any callbackUrls in the spec")
 			applyYAML(fmt.Sprintf(`apiVersion: pocketid.internal/v1alpha1
 kind: PocketIDOIDCClient
@@ -73,26 +73,26 @@ spec:
 			clientID := waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
 
 			By("setting a callback URL directly in pocket-id via API")
-			setOIDCClientCallbackURLsInPocketID(clientID, clientName,
-				[]string{"https://oob-set.example.com/callback"})
+			setOIDCClientCallbackURLsInPocketID(clientID, []string{"https://oob-set.example.com/callback"})
 
 			By("triggering a reconcile via annotation change")
 			err := annotateObject("pocketidoidcclient", clientName, userNS, "test/trigger=reconcile")
 			Expect(err).NotTo(HaveOccurred())
 
-			By("verifying the out-of-band callback URL appears in status after reconcile")
+			By("verifying the out-of-band callback URL is cleared from Pocket-ID")
 			Eventually(func(g Gomega) {
-				urls := getField("pocketidoidcclient", clientName, userNS, ".status.callbackUrls")
-				g.Expect(urls).To(ContainSubstring("https://oob-set.example.com/callback"),
-					"out-of-band callback URL must survive operator reconcile when spec has no callbackUrls")
+				ctx, cancel := testCtx()
+				defer cancel()
+				client, err := pid.Decode[pid.OIDCClientWithAllowedUserGroupsDto](pocketID.GetOIDCClient(ctx, pid.OIDCClientID(clientID)))
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(client.CallbackURLs).To(BeEmpty(),
+					"an unset spec.callbackUrls must clear out-of-band callback URLs")
 			}).Should(Succeed())
 
-			By("verifying the out-of-band callback URL persists across multiple reconciles")
-			Consistently(func(g Gomega) {
-				urls := getField("pocketidoidcclient", clientName, userNS, ".status.callbackUrls")
-				g.Expect(urls).To(ContainSubstring("https://oob-set.example.com/callback"),
-					"out-of-band callback URL must not be wiped by subsequent reconciles")
-			}, 20*time.Second).Should(Succeed())
+			By("verifying status reports no callback URLs")
+			Eventually(func(g Gomega) {
+				g.Expect(getField("pocketidoidcclient", clientName, userNS, ".status.callbackUrls")).To(BeEmpty())
+			}).Should(Succeed())
 		})
 
 		AfterAll(func() {
@@ -139,16 +139,14 @@ spec:
 })
 
 // setOIDCClientCallbackURLsInPocketID rewrites a client's callback URLs directly through
-// the API, simulating an out-of-band edit. Only name and callbackURLs are sent, matching
-// the minimal update DTO the UI submits.
-func setOIDCClientCallbackURLsInPocketID(clientID, clientName string, callbackURLs []string) {
+// the API, simulating an out-of-band edit.
+func setOIDCClientCallbackURLsInPocketID(clientID string, callbackURLs []string) {
 	GinkgoHelper()
 	ctx, cancel := testCtx()
 	defer cancel()
 
-	_, err := pid.UpdateOIDCClient(ctx, clientID, pocketid.OIDCClientInput{
-		Name:         clientName,
-		CallbackURLs: callbackURLs,
-	})
+	err := pid.Check(pocketID.PatchOIDCClient(ctx, pid.OIDCClientID(clientID), pid.PatchOIDCClientJSONRequestBody{
+		CallbackURLs: nullable.NewNullableWithValue(callbackURLs),
+	}))
 	Expect(err).NotTo(HaveOccurred(), "updating callback URLs of client %s", clientID)
 }

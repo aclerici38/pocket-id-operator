@@ -16,6 +16,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+
 	pocketidv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 	"github.com/aclerici38/pocket-id-operator/test/utils"
@@ -53,10 +55,10 @@ var (
 	// clientSet backs the one read the typed client cannot do: pod logs.
 	clientSet *kubernetes.Clientset
 
-	// pid is the Pocket-ID API client for the shared instance, reached over the published
+	// pocketID is the Pocket-ID API client for the shared instance, reached over the published
 	// NodePort. It is the same client the operator uses, so the suite exercises the real
 	// code path rather than a shell reimplementation of it.
-	pid *pocketid.Client
+	pocketID *pocketid.Client
 )
 
 // pocketIDNodePort is the host port the shared instance is published on. It is read from
@@ -193,6 +195,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 		Labels:           sharedInstanceLabels,
 		CIMDURLAllowlist: []string{cimdMetadataURL},
 		NodePort:         pocketIDNodePort,
+		EmailOptional:    true,
 	})
 
 	By("waiting for the shared instance to be Ready")
@@ -215,12 +218,11 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 
 	// The NodePort is a fixed address, so each parallel process builds an identical
 	// client and there is nothing to hand across from process 1.
-	pid, err = pocketid.NewClient(pocketIDBaseURL(), staticAPIKey())
+	pocketID, err = pocketid.NewClient(pocketIDBaseURL(), staticAPIKey())
 	Expect(err).NotTo(HaveOccurred(), "Failed to build Pocket-ID client")
 
 	Eventually(func() error {
-		_, vErr := pid.GetCurrentVersion(context.Background())
-		return vErr
+		return pid.Check(pocketID.GetCurrentDeployedVersionOfPocketID(context.Background()))
 	}).Should(Succeed(),
 		"Pocket-ID should be reachable on the published NodePort")
 })

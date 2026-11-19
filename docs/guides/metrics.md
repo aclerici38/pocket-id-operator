@@ -91,13 +91,13 @@ Counts every call made to the Pocket-ID REST API, partitioned by operation and o
 
 | Label | Values |
 | --- | --- |
-| `operation` | Snake-case operation name, see below |
+| `operation` | Pocket-ID operation name, see below |
 | `result` | `success`, `not_found`, or `error` |
 
 <details>
 <summary>All operation names</summary>
 
-`get_current_version`, `list_users`, `get_user`, `create_user`, `update_user`, `update_user_custom_claims`, `delete_user`, `create_one_time_access_token`, `create_api_key_for_user`, `delete_api_key`, `list_user_groups`, `get_user_group`, `create_user_group`, `update_user_group`, `update_user_group_users`, `update_user_group_custom_claims`, `delete_user_group`, `list_oidc_clients`, `get_oidc_client`, `create_oidc_client`, `update_oidc_client`, `update_oidc_client_allowed_groups`, `delete_oidc_client`, `delete_oidc_client_logo`, `refresh_oidc_client_metadata`, `create_oidc_client_secret`, `delete_oidc_client_secret`, `get_oidc_client_scim_service_provider`, `create_scim_service_provider`, `update_scim_service_provider`, `delete_scim_service_provider`, `list_apis`, `get_api`, `create_api`, `update_api`, `update_api_permissions`, `set_api_cimd_access`, `delete_api`, `list_api_client_grants`, `set_api_client_grant`, `remove_api_client_grant`
+`CreateAPI`, `CreateAPIKey`, `CreateClientSecret`, `CreateOIDCClient`, `CreateOneTimeAccessTokenForUserAdmin`, `CreateSCIMServiceProvider`, `CreateUser`, `CreateUserGroup`, `DeleteAPI`, `DeleteClientLogo`, `DeleteClientSecret`, `DeleteOIDCClient`, `DeleteSCIMServiceProvider`, `DeleteUser`, `DeleteUserGroup`, `ExchangeOneTimeAccessToken`, `GetCurrentDeployedVersionOfPocketID`, `GetOIDCClient`, `GetSCIMServiceProvider`, `GetUserByID`, `GetUserGroupByID`, `ListAPIKeys`, `ListAPIs`, `ListAPIsClientMayAccess`, `ListOIDCClients`, `ListUserGroups`, `ListUsers`, `Logout`, `PatchAPI`, `PatchOIDCClient`, `PatchUser`, `PatchUserGroup`, `RefreshClientMetadataDocument`, `RenewAPIKey`, `RevokeAPIKey`, `RevokeClientAccessToAPI`, `SyncSCIMServiceProvider`, `UpdateAllowedUserGroups`, `UpdateAPIKey`, `UpdateAPIPermissions`, `UpdateClientAccessToAPI`, `UpdateCustomClaimsForUser`, `UpdateCustomClaimsForUserGroup`, `UpdateMetadataDocumentClientAccess`, `UpdateSCIMServiceProvider`, `UpdateUsersInGroup`, and `unknown` for a request that matches no operation
 
 </details>
 
@@ -113,16 +113,15 @@ Latency of each Pocket-ID API call in seconds, partitioned by operation. Use thi
 
 **Type:** Counter · **Labels:** `kind`, `operation`
 
-Counts changes the operator made in Pocket-ID. An increment means the operator actually created, adopted, updated, or deleted something, not just that a reconcile ran.
+Counts changes the operator made in Pocket-ID. An increment means the operator actually created, adopted, or deleted something, not just that a reconcile ran.
 
 | Label | Values |
 | --- | --- |
 | `kind` | `PocketIDUser`, `PocketIDUserGroup`, `PocketIDOIDCClient`, `PocketIDAPI` |
-| `operation` | `created`, `adopted`, `updated`, `deleted` |
+| `operation` | `created`, `adopted`, `deleted` |
 
 - **`created`**: the resource did not exist in Pocket-ID and was created.
 - **`adopted`**: the resource already existed in Pocket-ID and was taken over without being recreated.
-- **`updated`**: the operator detected drift and pushed a change to Pocket-ID.
 - **`deleted`**: the operator deleted the resource from Pocket-ID while finalizing the custom resource.
 
 #### `pocketid_operator_resource_ready`

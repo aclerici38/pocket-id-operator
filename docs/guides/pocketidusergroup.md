@@ -25,13 +25,13 @@ On creation, a `PocketIDUserGroup` is matched to an existing group in Pocket-ID 
 
 ## Members
 
-`spec.users` lists the members the operator manages, in any of three ways. See [example](../examples/pocketidusergroup.md#group-with-claims-and-members).
+`spec.users` lists the group's members, in any of three ways. See [example](../examples/pocketidusergroup.md#group-with-claims-and-members).
 
 - `userRefs` names `PocketIDUser` custom resources, defaulting to the group's namespace. Each user must be `Ready`. A referenced `PocketIDUser` cannot be deleted until the group stops referencing it.
 - `usernames` names existing Pocket-ID users not managed by a `PocketIDUser`. Each must exist in Pocket-ID, or the group reports an error until it does.
 - `userIDs` adds existing Pocket-ID users by ID.
 
-The operator only removes members it added. It records the users it manages in `status.managedUserIDs`; removing one from the spec removes them from the group, while members added in the UI or by another tool are never removed. `status.totalUserCount` counts every member.
+When `spec.users` is set, the operator owns the full member list: members added in the UI or by another tool are removed on the next reconcile. When it is unset, the operator never touches membership. `status.totalUserCount` counts every member.
 
 ## Custom Claims
 

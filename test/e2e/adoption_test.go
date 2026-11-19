@@ -6,7 +6,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+	"github.com/oapi-codegen/nullable"
 )
 
 var _ = Describe("Resource Adoption", Ordered, func() {
@@ -144,13 +145,13 @@ func createUserInPocketID(username, firstName, lastName, email string) string {
 	ctx, cancel := testCtx()
 	defer cancel()
 
-	user, err := pid.CreateUser(ctx, pocketid.UserInput{
+	user, err := pid.Decode[pid.UserDto](pocketID.CreateUser(ctx, pid.UserCreateDto{
 		Username:    username,
-		FirstName:   firstName,
-		LastName:    lastName,
-		Email:       email,
-		DisplayName: firstName + " " + lastName,
-	})
+		FirstName:   &firstName,
+		LastName:    &lastName,
+		Email:       nullable.NewNullableWithValue(email),
+		DisplayName: new(firstName + " " + lastName),
+	}))
 	Expect(err).NotTo(HaveOccurred(), "creating user %q", username)
 	Expect(user.ID).NotTo(BeEmpty())
 	return user.ID
@@ -163,7 +164,8 @@ func createUserGroupInPocketID(name, friendlyName string) string {
 	ctx, cancel := testCtx()
 	defer cancel()
 
-	group, err := pid.CreateUserGroup(ctx, name, friendlyName)
+	group, err := pid.Decode[pid.UserGroupDto](pocketID.CreateUserGroup(ctx,
+		pid.UserGroupCreateDto{Name: name, FriendlyName: friendlyName}))
 	Expect(err).NotTo(HaveOccurred(), "creating group %q", name)
 	Expect(group.ID).NotTo(BeEmpty())
 	return group.ID
@@ -177,11 +179,11 @@ func createOIDCClientInPocketID(clientID, name string, callbackURLs []string) {
 	ctx, cancel := testCtx()
 	defer cancel()
 
-	_, err := pid.CreateOIDCClient(ctx, pocketid.OIDCClientInput{
+	err := pid.Check(pocketID.CreateOIDCClient(ctx, pid.OIDCClientCreateDto{
 		ID:           &clientID,
 		Name:         name,
-		CallbackURLs: callbackURLs,
-	})
+		CallbackURLs: nullable.NewNullableWithValue(callbackURLs),
+	}))
 	Expect(err).NotTo(HaveOccurred(), "creating OIDC client %q", clientID)
 }
 
@@ -192,10 +194,10 @@ func createOIDCClientInPocketIDWithName(name string, callbackURLs []string) stri
 	ctx, cancel := testCtx()
 	defer cancel()
 
-	client, err := pid.CreateOIDCClient(ctx, pocketid.OIDCClientInput{
+	client, err := pid.Decode[pid.OIDCClientCreatedDto](pocketID.CreateOIDCClient(ctx, pid.OIDCClientCreateDto{
 		Name:         name,
-		CallbackURLs: callbackURLs,
-	})
+		CallbackURLs: nullable.NewNullableWithValue(callbackURLs),
+	}))
 	Expect(err).NotTo(HaveOccurred(), "creating OIDC client %q", name)
 	Expect(client.ID).NotTo(BeEmpty())
 	return client.ID

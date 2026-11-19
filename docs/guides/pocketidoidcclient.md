@@ -23,6 +23,8 @@ spec:
 
 List every redirect URI the client uses under `spec.callbackUrls`, and any post-logout redirect URIs under `spec.logoutCallbackUrls`. Pocket-ID only redirects to URLs registered on the client, so an authorization request whose `redirect_uri` is not listed is rejected. Wildcards are supported.
 
+The spec owns both lists: leaving one unset clears any URLs set in Pocket-ID's UI or API. A client that never redirects, such as one using only client credentials or the device code flow, can leave them unset.
+
 ## Credentials Secret
 
 Unless `spec.secret.enabled` is `false`, the operator writes a Secret named `<client>-oidc-credentials` (override with `spec.secret.name`) containing:
@@ -228,4 +230,4 @@ A URL Pocket-ID rejects is remembered in memory and not attempted again for 24 h
 
 ## SCIM Provisioning
 
-`spec.scim` configures a SCIM service provider for the client, so Pocket-ID pushes user and group changes to the external endpoint at `spec.scim.endpoint`. `spec.scim.tokenSecretRef` optionally references a Secret key holding the bearer token sent to the endpoint; without it no `Authorization` header is sent. `status.scimProviderID` is populated once the provider is created, and removing `spec.scim` deletes it from Pocket-ID. See [example](../examples/pocketidoidcclient.md#scim-provisioning).
+`spec.scim` configures a SCIM service provider for the client, so Pocket-ID pushes user and group changes to the external endpoint at `spec.scim.endpoint`. `spec.scim.tokenSecretRef` optionally references a Secret key holding the bearer token sent to the endpoint. The spec owns the token: without a ref no `Authorization` header is sent, and any token set in Pocket-ID's UI or API is cleared. `status.scimProviderID` is populated once the provider is created, and removing `spec.scim` deletes it from Pocket-ID. Every reconcile also syncs the provider, rather than waiting for Pocket-ID's debounced sync, which each user and group write postpones. A failed sync sets `Ready=False` with reason `SCIMSyncError`. See [example](../examples/pocketidoidcclient.md#scim-provisioning).
