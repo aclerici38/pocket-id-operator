@@ -1,7 +1,7 @@
 name: E2E Tests (pocket-id next)
 
 # Compatibility canary: hourly, resolves upstream pocket-id's rolling
-# `next-distroless` digest and — only when it has changed since the last tested
+# `next` digest and — only when it has changed since the last tested
 # run — runs the e2e suite with the published `main` operator against it.
 # Results and a per-hour liveness heartbeat land on a locked dashboard issue.
 
@@ -30,7 +30,7 @@ env:
 
 jobs:
   resolve:
-    name: Resolve next-distroless digest
+    name: Resolve next digest
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -52,7 +52,7 @@ jobs:
           FORCE: ${{ github.event.inputs.force }}
         run: |
           set -euo pipefail
-          REF=ghcr.io/pocket-id/pocket-id:next-distroless
+          REF=ghcr.io/pocket-id/pocket-id:next
 
           # --format '{{.Digest}}' yields the multi-arch index digest (what an
           # `@sha256:` pin references) regardless of which instance is selected;
@@ -94,7 +94,7 @@ jobs:
             echo "| decision    | **${CHANGED}** — ${REASON} |"
           } >>"$GITHUB_STEP_SUMMARY"
 
-          echo "::notice title=next-distroless digest check::changed=${CHANGED} (${REASON}) resolved=${DIGEST} last=${LAST:-none}"
+          echo "::notice title=next digest check::changed=${CHANGED} (${REASON}) resolved=${DIGEST} last=${LAST:-none}"
 
       - name: Heartbeat dashboard issue
         if: steps.check.outputs.changed == 'false'

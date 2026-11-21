@@ -71,7 +71,7 @@ type InstanceOptions struct {
 	NodePort int
 }
 
-const defaultPocketIDImage = "ghcr.io/pocket-id/pocket-id:v2.19.3-distroless@sha256:6a0045a89b80fa6624c091786e7be132a4dde880ca64727a6b019c056b091982"
+const defaultPocketIDImage = "ghcr.io/pocket-id/pocket-id:v2.19.3@sha256:189e03bb73bb86d7108fe81cbe2237c408cff2176b14cd7a39cc12a2ee8b2762"
 
 func pocketIDImage() string {
 	if img := os.Getenv("POCKET_ID_IMAGE"); img != "" {
