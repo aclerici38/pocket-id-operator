@@ -48,14 +48,14 @@ ${BADGE}
 
 |              |                                                          |
 | ------------ | -------------------------------------------------------- |
-| image        | \`ghcr.io/pocket-id/pocket-id:next-distroless@${TDIGEST}\` |
+| image        | \`ghcr.io/pocket-id/pocket-id:next@${TDIGEST}\` |
 | operator     | \`${OPERATOR_IMAGE}\`                                     |
 | last tested  | ${TAT:-never} ([run](${TRUN}))                            |
 | last checked | ${CAT:-never}                                            |
 
 ---
 _Automated hourly by \`.github/workflows/test-e2e-next.yaml\`; this issue is locked, do not edit._
-_The e2e suite only runs when the \`next-distroless\` digest changes; \`last checked\` updates every hour regardless._
+_The e2e suite only runs when the \`next\` digest changes; \`last checked\` updates every hour regardless._
 _While failing, @${CANARY_ASSIGNEE} is assigned; the assignment clears on the next green run._
 EOF
 )"
