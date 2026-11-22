@@ -1,6 +1,7 @@
 package common
 
 import (
+	"cmp"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -50,7 +51,7 @@ func resolveAPIClientCredentials(ctx context.Context, apiReader client.Reader, i
 		if err != nil {
 			return "", "", err
 		}
-		return instance.Spec.External.URL, apiKey, nil
+		return cmp.Or(instance.Spec.External.APIURL, instance.Spec.External.URL), apiKey, nil
 	}
 	apiKey, err := getAPIKeyForInstance(ctx, apiReader, instance)
 	if err != nil {

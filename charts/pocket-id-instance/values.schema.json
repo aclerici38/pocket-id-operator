@@ -1086,6 +1086,14 @@
                     "type": "object",
                     "x-kubernetes-map-type": "atomic"
                   },
+                  "apiUrl": {
+                    "description": "APIURL is the base URL the operator calls for the Pocket-ID API, e.g. an in-cluster Service (http://pocket-id.pocket-id.svc:1411). Defaults to url. Issuer, endpoint, and login URLs the operator publishes always use url. TLS is verified against the operator's system trust store.",
+                    "pattern": "^https?://",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "url": {
                     "description": "URL is the base URL of the existing Pocket-ID instance (e.g. https://auth.example.com).",
                     "pattern": "^https?://",

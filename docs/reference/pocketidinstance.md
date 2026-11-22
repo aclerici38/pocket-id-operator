@@ -84,6 +84,7 @@ ExternalInstanceConfig points the operator at an existing, externally-managed Po
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `url` | string | yes |  | URL is the base URL of the existing Pocket-ID instance (e.g. https://auth.example.com).<br />_Pattern: `^https?://`_ |
+| `apiUrl` | string |  |  | APIURL is the base URL the operator calls for the Pocket-ID API, e.g. an in-cluster Service (http://pocket-id.pocket-id.svc:1411). Defaults to url. Issuer, endpoint, and login URLs the operator publishes always use url. TLS is verified against the operator's system trust store.<br />_Pattern: `^https?://`_ |
 | `apiKeySecretRef` | [SecretKeySelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#secretkeyselector-v1-core) | yes |  | APIKeySecretRef references a Secret key holding a Pocket-ID API key with permission to manage clients, users, and groups on the instance. |
 
 ## `PocketIDInstance.spec.databaseUrl`

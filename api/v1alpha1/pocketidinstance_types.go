@@ -46,6 +46,11 @@ type ExternalInstanceConfig struct {
 	// +kubebuilder:validation:Pattern=`^https?://`
 	URL string `json:"url"`
 
+	// APIURL is the base URL the operator calls for the Pocket-ID API, e.g. an in-cluster Service (http://pocket-id.pocket-id.svc:1411). Defaults to url. Issuer, endpoint, and login URLs the operator publishes always use url. TLS is verified against the operator's system trust store.
+	// +optional
+	// +kubebuilder:validation:Pattern=`^https?://`
+	APIURL string `json:"apiUrl,omitempty"`
+
 	// APIKeySecretRef references a Secret key holding a Pocket-ID API key with permission to manage clients, users, and groups on the instance.
 	// +kubebuilder:validation:Required
 	APIKeySecretRef corev1.SecretKeySelector `json:"apiKeySecretRef"`

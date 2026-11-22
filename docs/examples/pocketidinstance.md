@@ -511,6 +511,8 @@ metadata:
 spec:
   external:
     url: "https://auth.example.com"
+    # Optional: send API requests to the in-cluster Service instead of url.
+    apiUrl: "http://pocket-id.pocket-id.svc:1411"
     apiKeySecretRef:
       name: pocket-id-api-key
       key: key
