@@ -177,6 +177,8 @@ See examples for an [init container](../examples/pocketidinstance.md#init-contai
 
 Configuring `spec.external` allows the operator to manage an instance deployed outside of the PocketIDInstance CRD, e.g. a deployment in a remote cluster, a handwritten deployment, community helm chart, etc. All workload configuration (`spec.encryptionKey`, `spec.smtp`, `spec.persistence`, etc.) is ignored in this mode. There are no limitations for the other custom resources, they will all work as-documented. `spec.external` and `spec.encryptionKey` are mutually exclusive. To migrate from an external instance to an internal one or vice versa, the instance must be recreated.
 
+`spec.external.url` is the instance's public URL: the operator publishes issuer, endpoint, and login URLs from it. When the operator should reach the API another way, such as through an in-cluster Service rather than a public gateway, set `spec.external.apiUrl`. The operator then sends API requests there and still publishes URLs from `url`. It verifies TLS against its system trust store, so a certificate from a private CA requires that CA in the operator's trust store.
+
 See [example](../examples/pocketidinstance.md#external-instance).
 
 ## Generated Resources And Environment
