@@ -1366,7 +1366,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 						Value: "my-plaintext-encryption-key",
 					},
 					DatabaseUrl: &pocketidinternalv1alpha1.SensitiveValue{
-						Value: "sqlite:///app/data/pocket-id.db",
+						Value: "/app/data",
 					},
 				},
 			}
@@ -1407,7 +1407,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 			Expect(encKeyEnv.ValueFrom).To(BeNil())
 
 			Expect(dbUrlEnv).NotTo(BeNil())
-			Expect(dbUrlEnv.Value).To(Equal("sqlite:///app/data/pocket-id.db"))
+			Expect(dbUrlEnv.Value).To(Equal("/app/data"))
 			Expect(dbUrlEnv.ValueFrom).To(BeNil())
 		})
 	})

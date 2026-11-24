@@ -154,7 +154,7 @@ pocket-id-instance:
 
       # Common extras
       # appUrl: https://auth.example.com
-      # databaseUrl: /app/data/pocket-id.db   # or postgres://localhost/pocket-id
+      # databaseUrl: /app/data   # SQLite folder (the default), or postgres://localhost/pocket-id
       # persistence:
       #   existingClaim: pocket-id
       # smtp:
