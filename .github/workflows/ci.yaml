@@ -98,6 +98,8 @@ jobs:
 
   e2e:
     name: E2E Tests
+    # Disabled until pocket-id v3 is released
+    if: false
     needs:
       - meta
       - build
@@ -124,7 +126,7 @@ jobs:
     with:
       image_repo: ${{ needs.meta.outputs.image_repo }}
       image_tag: ${{ needs.meta.outputs.image_tag }}
-      pocket_id_image: ghcr.io/pocket-id/pocket-id:next-distroless
+      pocket_id_image: ghcr.io/pocket-id/pocket-id:next
 
   e2e-latest-release:
     name: E2E Tests (Latest Release)

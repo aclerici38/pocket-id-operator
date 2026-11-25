@@ -1,327 +1,87 @@
 package pocketid
 
 import (
-	"context"
-	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"testing"
-	"time"
 
-	"github.com/go-openapi/runtime"
-
-	"github.com/aclerici38/pocket-id-go-client/v2/models"
+	"github.com/aclerici38/pocket-id-go-client/v3/client"
 )
 
-// errorEnvelope is the JSON shape pocket-id returns for every failure.
-type errorEnvelope struct {
-	Error     string         `json:"error"`
-	Code      string         `json:"code"`
-	Details   map[string]any `json:"details,omitempty"`
-	RequestID string         `json:"request_id"`
-}
+func TestClassification(t *testing.T) {
+	type check struct {
+		name string
+		is   func(error) bool
+	}
+	notFound := check{"IsNotFoundError", IsNotFoundError}
+	exists := check{"IsAlreadyExistsError", IsAlreadyExistsError}
+	server := check{"IsServerError", IsServerError}
+	limited := check{"IsRateLimitedError", IsRateLimitedError}
+	all := []check{notFound, exists, server, limited}
 
-// newTestClient returns a client whose requests are all served by handler over httptest's
-// in-memory network. It mirrors pocketidtest.NewClient, which this package can't import.
-func newTestClient(t *testing.T, handler http.Handler) *Client {
-	t.Helper()
-	ts := httptest.NewTestServer(t, handler)
-	// Server.URL is only populated by the first Client call.
-	hc := ts.Client()
-	client, err := NewClient(ts.URL, "", WithHTTPClient(hc))
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
+	tests := []struct {
+		name string
+		err  error
+		want []check
+	}{
+		{name: "not found code", err: &APIError{StatusCode: 404, Code: client.CodeUserNotFound}, want: []check{notFound}},
+		{name: "conflict code", err: &APIError{StatusCode: 409, Code: client.CodeClientIDAlreadyExists}, want: []check{exists}},
+		// A bare 400 must not be adopted as a conflict: that would hide a bad callback URL.
+		{name: "validation failure is not a conflict", err: &APIError{StatusCode: 400, Code: client.CodeValidationFailed}},
+		{name: "rate limited", err: &APIError{StatusCode: 429, Code: client.CodeRateLimited}, want: []check{limited}},
+		// A 404 that is not a missing resource must not read as one.
+		{name: "code beats status", err: &APIError{StatusCode: 404, Code: client.CodeSetupNotAvailable}},
+		{name: "bare 404", err: &APIError{StatusCode: http.StatusNotFound}, want: []check{notFound}},
+		{name: "bare 409", err: &APIError{StatusCode: http.StatusConflict}, want: []check{exists}},
+		{name: "bare 400", err: &APIError{StatusCode: http.StatusBadRequest}},
+		{name: "bare 500", err: &APIError{StatusCode: http.StatusInternalServerError}, want: []check{server}},
+		// Something other than Pocket-ID answering leaves nothing the operator acts on.
+		{name: "proxy error page", err: &APIError{StatusCode: http.StatusBadGateway}},
+		{name: "wrapped", err: fmt.Errorf("get user: %w", &APIError{StatusCode: 404}), want: []check{notFound}},
+		{name: "no response", err: errors.New("connection refused")},
 	}
-	return client
-}
-
-// envelopeClient returns a client whose every request is answered with the given status and envelope.
-func envelopeClient(t *testing.T, status int, envelope errorEnvelope, headers map[string]string) *Client {
-	t.Helper()
-	return newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("X-Request-ID", envelope.RequestID)
-		for name, value := range headers {
-			w.Header().Set(name, value)
-		}
-		w.WriteHeader(status)
-		_ = json.NewEncoder(w).Encode(envelope)
-	}))
-}
-
-// Operations that declare a default response decode the envelope themselves, so the code
-// has to survive the generated response type.
-func TestAPIError_TypedDefaultResponse(t *testing.T) {
-	client := envelopeClient(t, http.StatusConflict, errorEnvelope{
-		Error:     "Email is already in use",
-		Code:      string(models.ApperrorCodeAlreadyInUse),
-		Details:   map[string]any{"property": "email"},
-		RequestID: "req-typed",
-	}, nil)
-
-	_, err := client.CreateUser(context.Background(), UserInput{Username: "someone"})
-	if err == nil {
-		t.Fatal("CreateUser: expected an error")
-	}
-
-	apiErr := AsAPIError(err)
-	if apiErr == nil {
-		t.Fatalf("AsAPIError: got nil for %v", err)
-	}
-	if apiErr.Code != models.ApperrorCodeAlreadyInUse {
-		t.Errorf("Code: got %q, want %q", apiErr.Code, models.ApperrorCodeAlreadyInUse)
-	}
-	if apiErr.StatusCode != http.StatusConflict {
-		t.Errorf("StatusCode: got %d, want %d", apiErr.StatusCode, http.StatusConflict)
-	}
-	if apiErr.RequestID != "req-typed" {
-		t.Errorf("RequestID: got %q, want %q", apiErr.RequestID, "req-typed")
-	}
-	if apiErr.Message != "Email is already in use" {
-		t.Errorf("Message: got %q", apiErr.Message)
-	}
-	if got := apiErr.Details["property"]; got != "email" {
-		t.Errorf("Details[property]: got %v, want email", got)
-	}
-	if !IsAlreadyExistsError(err) {
-		t.Error("IsAlreadyExistsError: got false, want true")
-	}
-}
-
-// The /api/apis endpoints declare no default response, so the client discards the body and
-// hands back a bare status. The envelope has to come off the wire instead.
-func TestAPIError_UntypedResponse(t *testing.T) {
-	client := envelopeClient(t, http.StatusNotFound, errorEnvelope{
-		Error:     "Resource not found",
-		Code:      string(models.ApperrorCodeNotFound),
-		RequestID: "req-untyped",
-	}, nil)
-
-	_, err := client.GetAPI(context.Background(), "missing")
-	if err == nil {
-		t.Fatal("GetAPI: expected an error")
-	}
-
-	apiErr := AsAPIError(err)
-	if apiErr == nil {
-		t.Fatalf("AsAPIError: got nil for %v", err)
-	}
-	if apiErr.Code != models.ApperrorCodeNotFound {
-		t.Errorf("Code: got %q, want %q", apiErr.Code, models.ApperrorCodeNotFound)
-	}
-	if apiErr.StatusCode != http.StatusNotFound {
-		t.Errorf("StatusCode: got %d, want %d", apiErr.StatusCode, http.StatusNotFound)
-	}
-	if apiErr.RequestID != "req-untyped" {
-		t.Errorf("RequestID: got %q, want %q", apiErr.RequestID, "req-untyped")
-	}
-	if !IsNotFoundError(err) {
-		t.Error("IsNotFoundError: got false, want true")
-	}
-	if apiErr.Operation != "GetAPIApisID" {
-		t.Errorf("Operation: got %q, want GetAPIApisID", apiErr.Operation)
-	}
-}
-
-// A rejected callback URL or an out-of-range token duration is a 400; treating one as a
-// conflict would send it down the adopt path.
-func TestValidationFailureIsNotAConflict(t *testing.T) {
-	client := envelopeClient(t, http.StatusBadRequest, errorEnvelope{
-		Error:     "Callback URL is invalid",
-		Code:      string(models.ApperrorCodeValidationFailed),
-		RequestID: "req-validation",
-	}, nil)
-
-	_, err := client.CreateOIDCClient(context.Background(), OIDCClientInput{Name: "app"})
-	if err == nil {
-		t.Fatal("CreateOIDCClient: expected an error")
-	}
-	if IsAlreadyExistsError(err) {
-		t.Error("IsAlreadyExistsError: got true for a validation failure, want false")
-	}
-	if !IsValidationError(err) {
-		t.Error("IsValidationError: got false, want true")
-	}
-}
-
-// Failures with no envelope classify on their status alone.
-func TestBareStatusFallback(t *testing.T) {
-	notFound := runtime.NewAPIError("op", nil, http.StatusNotFound)
-	if !IsNotFoundError(notFound) {
-		t.Error("IsNotFoundError: got false for a bare 404, want true")
-	}
-
-	conflict := runtime.NewAPIError("op", nil, http.StatusConflict)
-	if !IsAlreadyExistsError(conflict) {
-		t.Error("IsAlreadyExistsError: got false for a bare 409, want true")
-	}
-
-	badRequest := runtime.NewAPIError("op", nil, http.StatusBadRequest)
-	if IsAlreadyExistsError(badRequest) {
-		t.Error("IsAlreadyExistsError: got true for a bare 400, want false")
-	}
-
-	serverError := runtime.NewAPIError("op", nil, http.StatusInternalServerError)
-	if !IsServerError(serverError) {
-		t.Error("IsServerError: got false for a bare 500, want true")
-	}
-}
-
-// A 404 that is not a missing resource must not read as one.
-func TestCodeBeatsStatus(t *testing.T) {
-	client := envelopeClient(t, http.StatusNotFound, errorEnvelope{
-		Error:     "Initial setup is not available",
-		Code:      string(models.ApperrorCodeSetupNotAvailable),
-		RequestID: "req-setup",
-	}, nil)
-
-	_, err := client.GetAPI(context.Background(), "whatever")
-	if err == nil {
-		t.Fatal("GetAPI: expected an error")
-	}
-	if IsNotFoundError(err) {
-		t.Error("IsNotFoundError: got true for setup_not_available, want false")
-	}
-}
-
-// Pocket-ID rate limits the whole /api group and says how long to wait.
-func TestRateLimited(t *testing.T) {
-	client := envelopeClient(t, http.StatusTooManyRequests, errorEnvelope{
-		Error:     "Too many requests",
-		Code:      string(models.ApperrorCodeRateLimited),
-		RequestID: "req-limited",
-	}, map[string]string{"Retry-After": "7"})
-
-	_, err := client.GetUser(context.Background(), "someone")
-	if err == nil {
-		t.Fatal("GetUser: expected an error")
-	}
-	if !IsRateLimitedError(err) {
-		t.Error("IsRateLimitedError: got false, want true")
-	}
-	if delay := AsAPIError(err).RetryAfter; delay != 7*time.Second {
-		t.Errorf("RetryAfter: got %v, want 7s", delay)
-	}
-}
-
-// Something other than pocket-id answering leaves no envelope to classify on.
-func TestNonEnvelopeErrorPage(t *testing.T) {
-	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		w.WriteHeader(http.StatusBadGateway)
-		_, _ = w.Write([]byte("<html><body>502 Bad Gateway</body></html>"))
-	}))
-
-	_, err := client.GetUserGroup(context.Background(), "group")
-	if err == nil {
-		t.Fatal("GetUserGroup: expected an error")
-	}
-	apiErr := AsAPIError(err)
-	if apiErr == nil {
-		t.Fatalf("AsAPIError: got nil for %v", err)
-	}
-	if apiErr.Code != "" {
-		t.Errorf("Code: got %q, want empty", apiErr.Code)
-	}
-	if apiErr.StatusCode != http.StatusBadGateway {
-		t.Errorf("StatusCode: got %d, want %d", apiErr.StatusCode, http.StatusBadGateway)
-	}
-	if IsNotFoundError(err) || IsAlreadyExistsError(err) || IsServerError(err) {
-		t.Error("a 502 from a proxy should not classify as anything the operator acts on")
-	}
-}
-
-// The request ID has to reach the operator's logs, which read the error's message.
-func TestErrorMessageCarriesRequestID(t *testing.T) {
-	apiErr := &APIError{
-		Operation:  "PostAPIOidcClients",
-		StatusCode: http.StatusConflict,
-		Code:       models.ApperrorCodeClientIDAlreadyExists,
-		Message:    "Client ID is already in use",
-		RequestID:  "req-42",
-	}
-	want := "[PostAPIOidcClients] status 409: Client ID is already in use (code client_id_already_exists, request_id req-42)"
-	if got := apiErr.Error(); got != want {
-		t.Errorf("Error():\n got %q\nwant %q", got, want)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, c := range all {
+				want := false
+				for _, w := range tt.want {
+					want = want || w.name == c.name
+				}
+				if got := c.is(tt.err); got != want {
+					t.Errorf("%s = %v, want %v", c.name, got, want)
+				}
+			}
+		})
 	}
 }
 
 // Pocket-ID commits the client update before it fetches the logo, so these codes have to be
 // separable from a failure that rejected the configuration itself.
 func TestIsLogoError(t *testing.T) {
-	tests := []struct {
-		name     string
-		status   int
-		envelope errorEnvelope
-		want     bool
-	}{
-		{
-			name:   "download failed",
-			status: http.StatusUnprocessableEntity,
-			envelope: errorEnvelope{Error: "Logo could not be downloaded",
-				Code: string(models.ApperrorCodeLogoDownloadFailed)},
-			want: true,
-		},
-		{
-			name:   "unsupported type",
-			status: http.StatusUnprocessableEntity,
-			envelope: errorEnvelope{Error: "Logo type not supported",
-				Code: string(models.ApperrorCodeLogoTypeNotSupported)},
-			want: true,
-		},
-		{
-			name:   "too large",
-			status: http.StatusUnprocessableEntity,
-			envelope: errorEnvelope{Error: "Logo too large",
-				Code: string(models.ApperrorCodeLogoTooLarge)},
-			want: true,
-		},
-		{
-			// An unusable URL has no code of its own; the blamed field is the only signal.
-			name:   "invalid URL blamed on logoUrl",
-			status: http.StatusBadRequest,
-			envelope: errorEnvelope{Error: "Validation failed",
-				Code:    string(models.ApperrorCodeValidationFailed),
-				Details: map[string]any{"fields": []any{map[string]any{"field": "logoUrl", "message": "invalid"}}}},
-			want: true,
-		},
-		{
-			name:   "invalid URL blamed on darkLogoUrl",
-			status: http.StatusBadRequest,
-			envelope: errorEnvelope{Error: "Validation failed",
-				Code:    string(models.ApperrorCodeValidationFailed),
-				Details: map[string]any{"fields": []any{map[string]any{"field": "darkLogoUrl", "message": "invalid"}}}},
-			want: true,
-		},
-		{
-			name:   "validation failure on another field is not a logo error",
-			status: http.StatusBadRequest,
-			envelope: errorEnvelope{Error: "Validation failed",
-				Code:    string(models.ApperrorCodeValidationFailed),
-				Details: map[string]any{"fields": []any{map[string]any{"field": "callbackURLs"}}}},
-		},
-		{
-			name:     "validation failure with no details is not a logo error",
-			status:   http.StatusBadRequest,
-			envelope: errorEnvelope{Error: "Validation failed", Code: string(models.ApperrorCodeValidationFailed)},
-		},
-		{
-			// No envelope means no attribution, so the whole update has to be treated as failed.
-			name:   "envelope-less failure is not a logo error",
-			status: http.StatusBadGateway,
-		},
+	blames := func(field string) map[string]any {
+		return map[string]any{"fields": []any{map[string]any{"field": field, "message": "invalid"}}}
 	}
-
+	tests := []struct {
+		name string
+		err  *APIError
+		want bool
+	}{
+		{name: "download failed", err: &APIError{StatusCode: 422, Code: client.CodeLogoDownloadFailed}, want: true},
+		{name: "unsupported type", err: &APIError{StatusCode: 422, Code: client.CodeLogoTypeNotSupported}, want: true},
+		{name: "too large", err: &APIError{StatusCode: 422, Code: client.CodeLogoTooLarge}, want: true},
+		// An unusable URL has no code of its own; the blamed field is the only signal.
+		{name: "invalid URL blamed on logoUrl", err: &APIError{StatusCode: 400, Code: client.CodeValidationFailed, Details: blames("logoUrl")}, want: true},
+		{name: "invalid URL blamed on darkLogoUrl", err: &APIError{StatusCode: 400, Code: client.CodeValidationFailed, Details: blames("darkLogoUrl")}, want: true},
+		{name: "validation failure on another field", err: &APIError{StatusCode: 400, Code: client.CodeValidationFailed, Details: blames("callbackURLs")}},
+		{name: "validation failure with no details", err: &APIError{StatusCode: 400, Code: client.CodeValidationFailed}},
+		// No error body means no attribution, so the whole update has to be treated as failed.
+		{name: "proxy error page", err: &APIError{StatusCode: http.StatusBadGateway}},
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := envelopeClient(t, tt.status, tt.envelope, nil)
-			_, err := client.UpdateOIDCClient(context.Background(), "client-id",
-				OIDCClientInput{Name: "client", LogoURL: "https://cdn.example.com/logo.png"})
-			if err == nil {
-				t.Fatal("UpdateOIDCClient: expected an error")
-			}
-			if got := IsLogoError(err); got != tt.want {
-				t.Errorf("IsLogoError: got %v, want %v (%v)", got, tt.want, err)
+			if got := IsLogoError(tt.err); got != tt.want {
+				t.Errorf("IsLogoError = %v, want %v", got, tt.want)
 			}
 		})
 	}

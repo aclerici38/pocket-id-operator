@@ -27,6 +27,10 @@ operator:
   # env var is left unset.
   timezone: ""
 
+  # Periodic resync interval (Go duration). Referenced Secrets/ConfigMaps are not
+  # watched, so edits to them are picked up on the next resync.
+  resyncInterval: "10m"
+
   # URL templates for auto-generated logos, {{name}} is replaced with the client name.
   # The two sides are independent: set one to "" to stop generating it and the other keeps
   # working, e.g. defaultDarkLogoUrl: "" for light logos only.
@@ -150,7 +154,7 @@ pocket-id-instance:
 
       # Common extras
       # appUrl: https://auth.example.com
-      # databaseUrl: /app/data/pocket-id.db   # or postgres://localhost/pocket-id
+      # databaseUrl: /app/data   # SQLite folder (the default), or postgres://localhost/pocket-id
       # persistence:
       #   existingClaim: pocket-id
       # smtp:

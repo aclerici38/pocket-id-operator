@@ -46,6 +46,11 @@ type ExternalInstanceConfig struct {
 	// +kubebuilder:validation:Pattern=`^https?://`
 	URL string `json:"url"`
 
+	// APIURL is the base URL the operator calls for the Pocket-ID API, e.g. an in-cluster Service (http://pocket-id.pocket-id.svc:1411). Defaults to url. Issuer, endpoint, and login URLs the operator publishes always use url. TLS is verified against the operator's system trust store.
+	// +optional
+	// +kubebuilder:validation:Pattern=`^https?://`
+	APIURL string `json:"apiUrl,omitempty"`
+
 	// APIKeySecretRef references a Secret key holding a Pocket-ID API key with permission to manage clients, users, and groups on the instance.
 	// +kubebuilder:validation:Required
 	APIKeySecretRef corev1.SecretKeySelector `json:"apiKeySecretRef"`
@@ -97,7 +102,7 @@ type S3Config struct {
 	DisableDefaultIntegrityChecks *bool `json:"disableDefaultIntegrityChecks,omitempty"`
 }
 
-// SMTPConfig configures SMTP email transport. When present, the operator sets UI_CONFIG_DISABLED=true.
+// SMTPConfig configures SMTP email transport.
 type SMTPConfig struct {
 	// SMTP server hostname.
 	// Sets SMTP_HOST. See https://pocket-id.org/docs/configuration/environment-variables.
@@ -135,7 +140,7 @@ type SMTPConfig struct {
 	SkipCertVerify *bool `json:"skipCertVerify,omitempty"`
 }
 
-// EmailNotificationsConfig controls which email notifications Pocket-ID sends. Requires smtp. The operator sets UI_CONFIG_DISABLED=true when this section is configured.
+// EmailNotificationsConfig controls which email notifications Pocket-ID sends. Requires smtp.
 type EmailNotificationsConfig struct {
 	// Deprecated: use loginNotificationMode instead.
 	// +optional
@@ -227,7 +232,7 @@ type LDAPAttributeMappingConfig struct {
 	GroupName string `json:"groupName,omitempty"`
 }
 
-// LDAPConfig configures LDAP authentication. When present, the operator sets LDAP_ENABLED=true and UI_CONFIG_DISABLED=true.
+// LDAPConfig configures LDAP authentication. When present, the operator sets LDAP_ENABLED=true.
 type LDAPConfig struct {
 	// LDAP server URL.
 	// Sets LDAP_URL. See https://pocket-id.org/docs/configuration/environment-variables.
@@ -306,7 +311,7 @@ type TracingConfig struct {
 	Endpoint string `json:"endpoint,omitempty"`
 }
 
-// UIConfig configures Pocket-ID UI settings. The operator sets UI_CONFIG_DISABLED=true when this section is configured.
+// UIConfig configures Pocket-ID UI settings.
 type UIConfig struct {
 	// Application name.
 	// Sets APP_NAME. See https://pocket-id.org/docs/configuration/environment-variables.
@@ -338,7 +343,7 @@ type UIConfig struct {
 	ColorTheme string `json:"colorTheme,omitempty"`
 }
 
-// UserManagementConfig configures user registration and account settings. The operator sets UI_CONFIG_DISABLED=true when this section is configured.
+// UserManagementConfig configures user registration and account settings.
 type UserManagementConfig struct {
 	// Mark emails as verified.
 	// Sets EMAILS_VERIFIED. See https://pocket-id.org/docs/configuration/environment-variables.
@@ -371,7 +376,7 @@ type UserManagementConfig struct {
 	SignupDefaultUserGroupIDs []string `json:"signupDefaultUserGroupIds,omitempty"`
 }
 
-// WebAuthnConfig restricts which passkeys Pocket-ID accepts. The operator sets UI_CONFIG_DISABLED=true when this section is configured.
+// WebAuthnConfig restricts which passkeys Pocket-ID accepts.
 type WebAuthnConfig struct {
 	// Passkey user verification requirement.
 	// Sets WEBAUTHN_USER_VERIFICATION. See https://pocket-id.org/docs/configuration/environment-variables.
@@ -671,15 +676,15 @@ type PocketIDInstanceSpec struct {
 	// +optional
 	S3 *S3Config `json:"s3,omitempty"`
 
-	// SMTP email transport. When present, the operator sets UI_CONFIG_DISABLED=true.
+	// SMTP email transport.
 	// +optional
 	SMTP *SMTPConfig `json:"smtp,omitempty"`
 
-	// Email notification settings. Requires smtp. The operator sets UI_CONFIG_DISABLED=true when this section is configured.
+	// Email notification settings. Requires smtp.
 	// +optional
 	EmailNotifications *EmailNotificationsConfig `json:"emailNotifications,omitempty"`
 
-	// LDAP authentication. When present, the operator sets LDAP_ENABLED=true and UI_CONFIG_DISABLED=true.
+	// LDAP authentication. When present, the operator sets LDAP_ENABLED=true.
 	// +optional
 	LDAP *LDAPConfig `json:"ldap,omitempty"`
 
@@ -692,15 +697,15 @@ type PocketIDInstanceSpec struct {
 	// +optional
 	Tracing *TracingConfig `json:"tracing,omitempty"`
 
-	// UI settings. The operator sets UI_CONFIG_DISABLED=true when this section is configured.
+	// UI settings.
 	// +optional
 	UI *UIConfig `json:"ui,omitempty"`
 
-	// User registration and account settings. The operator sets UI_CONFIG_DISABLED=true when this section is configured.
+	// User registration and account settings.
 	// +optional
 	UserManagement *UserManagementConfig `json:"userManagement,omitempty"`
 
-	// Passkey restrictions. The operator sets UI_CONFIG_DISABLED=true when this section is configured.
+	// Passkey restrictions.
 	// +optional
 	WebAuthn *WebAuthnConfig `json:"webauthn,omitempty"`
 
@@ -748,12 +753,12 @@ type PocketIDInstanceSpec struct {
 	// +optional
 	Timezone string `json:"timezone,omitempty"`
 
-	// Allowed OAuth Client ID Metadata Document URLs. The operator sets UI_CONFIG_DISABLED=true when this field is set.
+	// Allowed OAuth Client ID Metadata Document URLs.
 	// JSON-encoded into CIMD_URL_ALLOWLIST. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	CIMDURLAllowlist []string `json:"cimdUrlAllowlist,omitempty"`
 
-	// Optional features to show in the admin UI. The operator sets UI_CONFIG_DISABLED=true when this field is set.
+	// Optional features to show in the admin UI.
 	// JSON-encoded into ENABLED_FEATURES. Requires a Pocket-ID release that supports it. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	EnabledFeatures []string `json:"enabledFeatures,omitempty"`

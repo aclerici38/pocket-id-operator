@@ -72,10 +72,10 @@ jobs:
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Setup mise
-        uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        uses: jdx/mise-action@924e7c586e33d7d4bae9c14e26c5d22e2beb6e78 # v5.3.0
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: "2026.11.5"
+          version: "2026.11.12"
           install_args: uv pypi:zensical
 
       - name: Build site
@@ -122,7 +122,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           # renovate: datasource=npm depName=wrangler
-          wranglerVersion: "4.162.0"
+          wranglerVersion: "4.168.0"
           command: pages deploy site --project-name=${{ env.PROJECT }} --branch=${{ env.BRANCH }} --commit-hash=${{ env.SHA }}
           # Creates a GitHub Deployment, so PRs show a "View deployment" link.
           gitHubToken: ${{ github.token }}

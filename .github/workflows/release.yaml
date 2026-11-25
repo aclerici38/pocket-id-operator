@@ -65,10 +65,10 @@ jobs:
           persist-credentials: false
 
       - name: Setup mise
-        uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        uses: jdx/mise-action@924e7c586e33d7d4bae9c14e26c5d22e2beb6e78 # v5.3.0
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: "2026.11.5"
+          version: "2026.11.12"
           install_args: "yq"
 
       - name: Setup Docker Buildx
@@ -245,16 +245,16 @@ jobs:
 
       - name: Setup mise
         if: ${{ needs.plan.outputs.needs_bump == 'true' || needs.plan.outputs.bump_main == 'true' }}
-        uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        uses: jdx/mise-action@924e7c586e33d7d4bae9c14e26c5d22e2beb6e78 # v5.3.0
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: "2026.11.5"
+          version: "2026.11.12"
           install_args: "sd yq"
 
       - name: Generate GitHub App token
         id: app-token
         if: ${{ needs.plan.outputs.needs_bump == 'true' || needs.plan.outputs.bump_main == 'true' }}
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           client-id: ${{ secrets.APP_CLIENT_ID }}
           private-key: ${{ secrets.APP_KEY }}
@@ -344,10 +344,10 @@ jobs:
           persist-credentials: false
 
       - name: Setup mise
-        uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        uses: jdx/mise-action@924e7c586e33d7d4bae9c14e26c5d22e2beb6e78 # v5.3.0
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: "2026.11.5"
+          version: "2026.11.12"
           install_args: "aqua:orhun/git-cliff"
 
       # On a promotion the release tag already sits on this commit, so its history
@@ -462,10 +462,10 @@ jobs:
       #     so the assets are taken from the tree as-is. ---
       - name: Setup mise
         if: ${{ needs.prepare.outputs.promote != 'true' }}
-        uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        uses: jdx/mise-action@924e7c586e33d7d4bae9c14e26c5d22e2beb6e78 # v5.3.0
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: "2026.11.5"
+          version: "2026.11.12"
           install_args: "aqua:orhun/git-cliff"
 
       # cliff.toml declares [remote.github] and templates commit.remote.username,

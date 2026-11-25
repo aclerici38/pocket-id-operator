@@ -98,7 +98,7 @@ var _ = Describe("Client ID Metadata Documents", Ordered, func() {
 			body := getOIDCClientFromPocketID(encodeCIMDClientID(cimdMetadataURL))
 
 			By("verifying the fields Pocket-ID persists for a CIMD client were applied")
-			Expect(body).To(ContainSubstring(`"description":"managed by e2e"`))
+			Expect(body).To(ContainSubstring(`"notes":"managed by e2e"`))
 			Expect(body).To(ContainSubstring(`"skipConsent":true`))
 			Expect(body).To(ContainSubstring(`"accessTokenDurationMinutes":15`))
 
@@ -142,18 +142,14 @@ var _ = Describe("Client ID Metadata Documents", Ordered, func() {
 				})
 			})
 
-			It("reports the API in status without claiming to manage it", func() {
+			It("reports the API in status", func() {
 				Eventually(func(g Gomega) {
 					g.Expect(getField("pocketidoidcclient", clientName, userNS, ".status.cimdGrantedAPIs[*]")).To(Equal(apiResource))
 				}).Should(Succeed())
-
-				By("verifying the operator claims no ownership of API-side access")
-				Expect(getField("pocketidoidcclient", clientName, userNS, ".status.managedAPIs[*]")).To(BeEmpty())
-				Expect(getField("pocketidoidcclient", clientName, userNS, ".status.managedAPIPermissionIDs[*]")).To(BeEmpty())
 			})
 
 			It("matches what Pocket-ID reports for the client", func() {
-				body := getFromPocketID("/api/api-access/" + encodeCIMDClientID(cimdMetadataURL) + "/apis")
+				body := getFromPocketID("/api/admin/api-access/" + encodeCIMDClientID(cimdMetadataURL) + "/apis")
 				Expect(body).To(ContainSubstring(apiResource))
 				Expect(body).To(ContainSubstring(`"cimdGrantedAccess":true`))
 			})

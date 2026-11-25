@@ -61,7 +61,7 @@ spec:
 
 Notes:
 
-- The client is the **sole owner** of its API access in Pocket-ID. While `spec.apiAccess` is set the operator keeps the access in sync and clears it if the field is later emptied. When it was never set, access configured out-of-band is left untouched.
+- The client is the **sole owner** of its API access in Pocket-ID: the operator keeps it in sync with `spec.apiAccess` and revokes any access granted outside the operator, including on a client that does not set `spec.apiAccess`.
 - `delegatedAccess` and `clientAccess` grant a flow with no permissions selected, for a client that requests a resource without any scopes. Both default to true when the matching permission list is non-empty, so existing grants are unaffected.
 - `clientPermissions` and `clientAccess` (machine-to-machine) require a **confidential** client (`spec.isPublic: false`), since M2M needs a client secret. This is enforced at admission.
 - Permission keys are resolved to Pocket-ID permission IDs from the referenced API's status, so the `PocketIDAPI` must be `Ready` before the grant can be applied.

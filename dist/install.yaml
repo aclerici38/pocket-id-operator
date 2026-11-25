@@ -359,7 +359,7 @@ spec:
                 type: integer
               cimdUrlAllowlist:
                 description: |-
-                  Allowed OAuth Client ID Metadata Document URLs. The operator sets UI_CONFIG_DISABLED=true when this field is set.
+                  Allowed OAuth Client ID Metadata Document URLs.
                   JSON-encoded into CIMD_URL_ALLOWLIST. See https://pocket-id.org/docs/configuration/environment-variables.
                 items:
                   type: string
@@ -702,8 +702,7 @@ spec:
                 - StatefulSet
                 type: string
               emailNotifications:
-                description: Email notification settings. Requires smtp. The operator
-                  sets UI_CONFIG_DISABLED=true when this section is configured.
+                description: Email notification settings. Requires smtp.
                 properties:
                   apiKeyExpiration:
                     description: |-
@@ -749,7 +748,7 @@ spec:
                 type: object
               enabledFeatures:
                 description: |-
-                  Optional features to show in the admin UI. The operator sets UI_CONFIG_DISABLED=true when this field is set.
+                  Optional features to show in the admin UI.
                   JSON-encoded into ENABLED_FEATURES. Requires a Pocket-ID release that supports it. See https://pocket-id.org/docs/configuration/environment-variables.
                 items:
                   type: string
@@ -1085,6 +1084,14 @@ spec:
                     - key
                     type: object
                     x-kubernetes-map-type: atomic
+                  apiUrl:
+                    description: APIURL is the base URL the operator calls for the
+                      Pocket-ID API, e.g. an in-cluster Service (http://pocket-id.pocket-id.svc:1411).
+                      Defaults to url. Issuer, endpoint, and login URLs the operator
+                      publishes always use url. TLS is verified against the operator's
+                      system trust store.
+                    pattern: ^https?://
+                    type: string
                   url:
                     description: URL is the base URL of the existing Pocket-ID instance
                       (e.g. https://auth.example.com).
@@ -1408,7 +1415,7 @@ spec:
                 type: object
               ldap:
                 description: LDAP authentication. When present, the operator sets
-                  LDAP_ENABLED=true and UI_CONFIG_DISABLED=true.
+                  LDAP_ENABLED=true.
                 properties:
                   adminGroupName:
                     description: |-
@@ -3005,8 +3012,7 @@ spec:
                   Operator-managed fields (the selector and the number, protocol, and appProtocol of the http/metrics ports) always take precedence.
                 x-kubernetes-preserve-unknown-fields: true
               smtp:
-                description: SMTP email transport. When present, the operator sets
-                  UI_CONFIG_DISABLED=true.
+                description: SMTP email transport.
                 properties:
                   from:
                     description: |-
@@ -3409,8 +3415,7 @@ spec:
                 - enabled
                 type: object
               ui:
-                description: UI settings. The operator sets UI_CONFIG_DISABLED=true
-                  when this section is configured.
+                description: UI settings.
                 properties:
                   accentColor:
                     description: 'Deprecated: use colorTheme instead.'
@@ -3443,8 +3448,7 @@ spec:
                     type: integer
                 type: object
               userManagement:
-                description: User registration and account settings. The operator
-                  sets UI_CONFIG_DISABLED=true when this section is configured.
+                description: User registration and account settings.
                 properties:
                   allowOwnAccountEdit:
                     description: |-
@@ -3485,8 +3489,7 @@ spec:
                   Sets VERSION_CHECK_DISABLED. See https://pocket-id.org/docs/configuration/environment-variables.
                 type: boolean
               webauthn:
-                description: Passkey restrictions. The operator sets UI_CONFIG_DISABLED=true
-                  when this section is configured.
+                description: Passkey restrictions.
                 properties:
                   allowSyncedPasskeys:
                     description: |-
@@ -3704,8 +3707,9 @@ spec:
                     rule: '!has(self.namespace) || has(self.name)'
                 type: array
               apiAccess:
-                description: APIAccess grants this client permission to request scoped
-                  access on the referenced PocketIDAPIs.
+                description: 'APIAccess grants this client permission to request scoped
+                  access on the referenced PocketIDAPIs. The operator owns all of
+                  the client''s grants: access granted outside the operator is revoked.'
                 items:
                   description: |-
                     OIDCClientAPIAccess grants a client scoped permissions on a referenced PocketIDAPI.
@@ -3770,7 +3774,8 @@ spec:
                   session for the client ends.
                 type: string
               callbackUrls:
-                description: Callback URLs for the client.
+                description: Callback URLs for the client. Pocket-ID only redirects
+                  to registered URLs; unset clears any set outside the operator.
                 items:
                   type: string
                 type: array
@@ -4057,7 +4062,8 @@ spec:
                 description: 'Deprecated: Use spec.logo.logoUrl instead.'
                 type: string
               logoutCallbackUrls:
-                description: Logout callback URLs for the client.
+                description: Logout callback URLs for the client. Unset clears any
+                  set outside the operator.
                 items:
                   type: string
                 type: array
@@ -4088,7 +4094,8 @@ spec:
                 type: boolean
               scim:
                 description: SCIM configures SCIM provisioning for this OIDC client.
-                  Pocket ID will push user/group changes to the configured endpoint.
+                  The operator syncs users and groups to the endpoint every reconcile,
+                  and the client is only Ready once the sync succeeds.
                 properties:
                   endpoint:
                     description: Endpoint is the URL of the external SCIM service
@@ -4411,19 +4418,6 @@ spec:
                 items:
                   type: string
                 type: array
-              managedAPIPermissionIDs:
-                description: ManagedAPIPermissionIDs are the Pocket-ID API permission
-                  IDs the operator last pushed as this client's API access (both delegated
-                  and client-credentials).
-                items:
-                  type: string
-                type: array
-              managedAPIs:
-                description: ManagedAPIs are the Pocket-ID API IDs the operator last
-                  granted this client.
-                items:
-                  type: string
-                type: array
               name:
                 description: Name is the resolved name from Pocket-ID.
                 type: string
@@ -4582,8 +4576,9 @@ spec:
                 minLength: 2
                 type: string
               users:
-                description: Users defines the members the operator manages in this
-                  group. Members added outside the operator are left in place.
+                description: Users is the group's full member list. When set, members
+                  added outside the operator are removed; when unset, membership is
+                  left alone.
                 properties:
                   userIDs:
                     description: UserIDs are Pocket-ID user IDs to add to this group,
@@ -4716,19 +4711,11 @@ spec:
                 description: LdapID is the LDAP identifier if the group is synced
                   from LDAP.
                 type: string
-              managedUserIDs:
-                description: ManagedUserIDs are the Pocket-ID user IDs the operator
-                  manages in this group. Members not in this list were added outside
-                  the operator and are never removed.
-                items:
-                  type: string
-                type: array
               name:
                 description: Name is the group name from Pocket-ID.
                 type: string
               totalUserCount:
-                description: TotalUserCount is the number of members in the group,
-                  including those not managed by the operator.
+                description: TotalUserCount is the number of members in the group.
                 type: integer
             type: object
         type: object
@@ -4871,8 +4858,9 @@ spec:
                     x-kubernetes-map-type: atomic
                 type: object
               email:
-                description: Email of the user. Defaults to "<username>@placeholder.local".
-                  Can be a plain value or reference a secret.
+                description: |-
+                  Email of the user. Can be a plain value or reference a secret.
+                  Leave it unset only if the instance sets userManagement.requireUserEmail to false.
                 properties:
                   value:
                     description: Plain text value.

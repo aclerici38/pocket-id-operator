@@ -372,8 +372,7 @@ var _ = Describe("Group-OIDC Reference Removal", Ordered, func() {
 		// When a UserGroup removes a client from allowedOIDCClients, the OIDCClient
 		// controller is not immediately re-queued (requestsForUserGroup only sees the
 		// updated spec, which no longer contains the reference). The OIDCClient picks
-		// up the removal on its next periodic resync (ResyncInterval = 2 min + jitter).
-		// Use a 5-minute timeout to cover the worst-case jitter window.
+		// up the removal on its next periodic resync (RESYNC_INTERVAL, 2s in the e2e config).
 		const (
 			revRemovalGroup  = "rev-removal-group"
 			revRemovalClient = "rev-removal-client"
@@ -468,7 +467,7 @@ var _ = Describe("UserGroup with Usernames and UserIds", Ordered, func() {
 
 			By("verifying the group has the correct user")
 			Eventually(func(g Gomega) {
-				userIDs := getField("pocketidusergroup", usernameGroupName, userNS, ".status.managedUserIDs[*]")
+				userIDs := getGroupMembersFromPocketID(getField("pocketidusergroup", usernameGroupName, userNS, ".status.groupID"))
 				g.Expect(userIDs).To(ContainSubstring(userID))
 			}).Should(Succeed())
 		})
@@ -520,7 +519,7 @@ var _ = Describe("UserGroup with Usernames and UserIds", Ordered, func() {
 
 			By("verifying the group has the correct user")
 			Eventually(func(g Gomega) {
-				userIDs := getField("pocketidusergroup", userIdGroupName, userNS, ".status.managedUserIDs[*]")
+				userIDs := getGroupMembersFromPocketID(getField("pocketidusergroup", userIdGroupName, userNS, ".status.groupID"))
 				g.Expect(userIDs).To(ContainSubstring(userID))
 			}).Should(Succeed())
 		})
@@ -579,7 +578,7 @@ var _ = Describe("UserGroup with Usernames and UserIds", Ordered, func() {
 
 			By("verifying the group has all 3 users")
 			Eventually(func(g Gomega) {
-				userIDs := getField("pocketidusergroup", mixedGroupName, userNS, ".status.managedUserIDs[*]")
+				userIDs := getGroupMembersFromPocketID(getField("pocketidusergroup", mixedGroupName, userNS, ".status.groupID"))
 				g.Expect(userIDs).To(ContainSubstring(userRefsUserID))
 				g.Expect(userIDs).To(ContainSubstring(usernameUserID))
 				g.Expect(userIDs).To(ContainSubstring(mixedUserIdUserID))
@@ -607,7 +606,7 @@ var _ = Describe("UserGroup with Usernames and UserIds", Ordered, func() {
 
 			By("verifying the group has only 1 user (deduplicated)")
 			Eventually(func(g Gomega) {
-				userIDs := getField("pocketidusergroup", dedupeGroupName, userNS, ".status.managedUserIDs[*]")
+				userIDs := getGroupMembersFromPocketID(getField("pocketidusergroup", dedupeGroupName, userNS, ".status.groupID"))
 				// Should contain the user ID exactly once (no duplicates)
 				g.Expect(userIDs).To(Equal(usernameUserID))
 			}).Should(Succeed())
@@ -649,7 +648,8 @@ var _ = Describe("UserGroup with Usernames and UserIds", Ordered, func() {
 
 			By("verifying the group has the correct user")
 			Eventually(func(g Gomega) {
-				userIDs := getField("pocketidusergroup", recoveryUsernameGroupName, userNS, ".status.managedUserIDs[*]")
+				groupID := getField("pocketidusergroup", recoveryUsernameGroupName, userNS, ".status.groupID")
+				userIDs := getGroupMembersFromPocketID(groupID)
 				g.Expect(userIDs).To(ContainSubstring(userID))
 			}).Should(Succeed())
 		})
@@ -980,7 +980,7 @@ var _ = Describe("OIDCClient attaching groups that have no PocketIDUserGroup CR"
 		clientID := getField("pocketidoidcclient", byNameClient, userNS, ".status.clientID")
 
 		Eventually(func(g Gomega) {
-			body := getFromPocketID("/api/oidc/clients/" + clientID)
+			body := getFromPocketID("/api/admin/oidc/clients/" + clientID)
 			g.Expect(body).To(ContainSubstring(externalGroupID))
 		}).Should(Succeed())
 	})
@@ -1039,7 +1039,7 @@ var _ = Describe("OIDCClient attaching groups that have no PocketIDUserGroup CR"
 		// The core promise: the operator resolves the group but never manages it.
 		// friendlyName is the field a PocketIDUserGroup would overwrite on every
 		// resync, so its survival is the strongest available signal.
-		body := getFromPocketID("/api/user-groups/" + externalGroupID)
+		body := getFromPocketID("/api/admin/user-groups/" + externalGroupID)
 		Expect(body).To(ContainSubstring("External Only Group"))
 		Expect(body).To(ContainSubstring(externalGroup))
 	})
@@ -1056,7 +1056,7 @@ var _ = Describe("OIDCClient attaching groups that have no PocketIDUserGroup CR"
 		waitForStatusField("pocketidoidcclient", byIDClient, userNS,
 			".status.allowedUserGroupIDs[0]", externalGroupID)
 
-		body := getFromPocketID("/api/user-groups/" + externalGroupID)
+		body := getFromPocketID("/api/admin/user-groups/" + externalGroupID)
 		Expect(body).To(ContainSubstring(externalGroupID))
 	})
 })
@@ -1120,7 +1120,7 @@ var _ = Describe("OIDCClient mixing CR, name, and ID group references", Ordered,
 		clientID := getField("pocketidoidcclient", comboClient, userNS, ".status.clientID")
 
 		Eventually(func(g Gomega) {
-			body := getFromPocketID("/api/oidc/clients/" + clientID)
+			body := getFromPocketID("/api/admin/oidc/clients/" + clientID)
 			for _, id := range []string{crGroupID, extAID, extBID, extByIDGid} {
 				g.Expect(body).To(ContainSubstring(id))
 			}

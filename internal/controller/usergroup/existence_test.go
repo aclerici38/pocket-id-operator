@@ -2,325 +2,255 @@ package usergroup
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
+	"io"
+	"maps"
 	"net/http"
+	"slices"
+	"strings"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
-	"github.com/go-openapi/runtime"
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid/pocketidtest"
 )
 
-// mockPocketIDUserGroupClient is a mock implementation for testing user group operations
-type mockPocketIDUserGroupClient struct {
-	listUserGroupsFunc              func(ctx context.Context, search string) ([]*pocketid.UserGroup, error)
-	createUserGroupFunc             func(ctx context.Context, name, friendlyName string) (*pocketid.UserGroup, error)
-	getUserGroupFunc                func(ctx context.Context, id string) (*pocketid.UserGroup, error)
-	updateUserGroupFunc             func(ctx context.Context, id, name, friendlyName string) (*pocketid.UserGroup, error)
-	updateUserGroupCustomClaimsFunc func(ctx context.Context, id string, claims []pocketid.CustomClaim) ([]pocketid.CustomClaim, error)
-	updateUserGroupUsersFunc        func(ctx context.Context, id string, userIDs []string) error
-	listUsersFunc                   func(ctx context.Context, search string) ([]*pocketid.User, error)
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
 }
 
-func (m *mockPocketIDUserGroupClient) ListUserGroups(ctx context.Context, search string) ([]*pocketid.UserGroup, error) {
-	if m.listUserGroupsFunc != nil {
-		return m.listUserGroupsFunc(ctx, search)
-	}
-	return nil, nil
+func page(data any) map[string]any {
+	return map[string]any{"data": data, "pagination": map[string]int{"currentPage": 1, "totalPages": 1}}
 }
 
-func (m *mockPocketIDUserGroupClient) CreateUserGroup(ctx context.Context, name, friendlyName string) (*pocketid.UserGroup, error) {
-	if m.createUserGroupFunc != nil {
-		return m.createUserGroupFunc(ctx, name, friendlyName)
-	}
-	return &pocketid.UserGroup{
-		ID:           "new-group-id",
-		Name:         name,
-		FriendlyName: friendlyName,
-	}, nil
+// fakeGroups serves user groups and users the way Pocket-ID does, recording every call it gets.
+type fakeGroups struct {
+	groups []map[string]any
+	users  []map[string]any
+	// createStatus and listUsersStatus, when set, answer every create and user search.
+	createStatus, listUsersStatus int
+
+	calls   []string
+	patches []map[string]any
+	bodies  map[string]string
 }
 
-func (m *mockPocketIDUserGroupClient) GetUserGroup(ctx context.Context, id string) (*pocketid.UserGroup, error) {
-	if m.getUserGroupFunc != nil {
-		return m.getUserGroupFunc(ctx, id)
-	}
-	return nil, nil
-}
-
-func (m *mockPocketIDUserGroupClient) UpdateUserGroup(ctx context.Context, id, name, friendlyName string) (*pocketid.UserGroup, error) {
-	if m.updateUserGroupFunc != nil {
-		return m.updateUserGroupFunc(ctx, id, name, friendlyName)
-	}
-	return &pocketid.UserGroup{
-		ID:           id,
-		Name:         name,
-		FriendlyName: friendlyName,
-	}, nil
-}
-
-func (m *mockPocketIDUserGroupClient) UpdateUserGroupCustomClaims(ctx context.Context, id string, claims []pocketid.CustomClaim) ([]pocketid.CustomClaim, error) {
-	if m.updateUserGroupCustomClaimsFunc != nil {
-		return m.updateUserGroupCustomClaimsFunc(ctx, id, claims)
-	}
-	return claims, nil
-}
-
-func (m *mockPocketIDUserGroupClient) UpdateUserGroupUsers(ctx context.Context, id string, userIDs []string) error {
-	if m.updateUserGroupUsersFunc != nil {
-		return m.updateUserGroupUsersFunc(ctx, id, userIDs)
+func (f *fakeGroups) find(id string) map[string]any {
+	for _, g := range f.groups {
+		if g["id"] == id {
+			return g
+		}
 	}
 	return nil
 }
 
-func (m *mockPocketIDUserGroupClient) ListUsers(ctx context.Context, search string) ([]*pocketid.User, error) {
-	if m.listUsersFunc != nil {
-		return m.listUsersFunc(ctx, search)
+// write records a write's raw body, answering 404 for a group that doesn't exist.
+func (f *fakeGroups) write(w http.ResponseWriter, r *http.Request, call string) (map[string]any, string, bool) {
+	f.calls = append(f.calls, call)
+	body, _ := io.ReadAll(r.Body)
+	if f.bodies == nil {
+		f.bodies = map[string]string{}
 	}
-	return nil, nil
+	f.bodies[call] = strings.TrimSpace(string(body))
+	g := f.find(r.PathValue("id"))
+	if g == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "User group not found", "code": "not_found"})
+	}
+	return g, string(body), g != nil
 }
 
-func TestFindExistingUserGroup_NoMatch(t *testing.T) {
-	ctx := context.Background()
-	reconciler := &Reconciler{}
-
-	mockClient := &mockPocketIDUserGroupClient{
-		listUserGroupsFunc: func(ctx context.Context, search string) ([]*pocketid.UserGroup, error) {
-			return []*pocketid.UserGroup{}, nil
-		},
-	}
-
-	existingGroup, err := reconciler.FindExistingUserGroup(ctx, mockClient, "newgroup")
-	if err != nil {
-		t.Fatalf("FindExistingUserGroup returned unexpected error: %v", err)
-	}
-	if existingGroup != nil {
-		t.Fatalf("expected no existing group, got: %+v", existingGroup)
-	}
-}
-
-func TestFindExistingUserGroup_MatchByName(t *testing.T) {
-	ctx := context.Background()
-	reconciler := &Reconciler{}
-
-	expectedGroup := &pocketid.UserGroup{
-		ID:           "existing-group-id",
-		Name:         "admins",
-		FriendlyName: "Administrators",
-	}
-
-	mockClient := &mockPocketIDUserGroupClient{
-		listUserGroupsFunc: func(ctx context.Context, search string) ([]*pocketid.UserGroup, error) {
-			if search == "admins" {
-				return []*pocketid.UserGroup{expectedGroup}, nil
+func (f *fakeGroups) handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/admin/user-groups", func(w http.ResponseWriter, r *http.Request) {
+		search := r.URL.Query().Get("search")
+		f.calls = append(f.calls, "list groups "+search)
+		matches := []map[string]any{}
+		for _, g := range f.groups {
+			if strings.Contains(g["name"].(string), search) {
+				matches = append(matches, g)
 			}
-			return []*pocketid.UserGroup{}, nil
-		},
-	}
-
-	existingGroup, err := reconciler.FindExistingUserGroup(ctx, mockClient, "admins")
-	if err != nil {
-		t.Fatalf("FindExistingUserGroup returned unexpected error: %v", err)
-	}
-	if existingGroup == nil {
-		t.Fatal("expected to find existing group, got nil")
-		return
-	}
-	if existingGroup.ID != expectedGroup.ID {
-		t.Fatalf("expected group ID %q, got %q", expectedGroup.ID, existingGroup.ID)
-	}
-}
-
-func TestFindExistingUserGroup_MultipleGroupsInResponse(t *testing.T) {
-	ctx := context.Background()
-	reconciler := &Reconciler{}
-
-	targetGroup := &pocketid.UserGroup{
-		ID:           "target-group-id",
-		Name:         "developers",
-		FriendlyName: "Developers",
-	}
-
-	otherGroup := &pocketid.UserGroup{
-		ID:           "other-group-id",
-		Name:         "developers-readonly",
-		FriendlyName: "Read-only Developers",
-	}
-
-	mockClient := &mockPocketIDUserGroupClient{
-		listUserGroupsFunc: func(ctx context.Context, search string) ([]*pocketid.UserGroup, error) {
-			if search == "developers" {
-				return []*pocketid.UserGroup{otherGroup, targetGroup}, nil
-			}
-			return []*pocketid.UserGroup{}, nil
-		},
-	}
-
-	existingGroup, err := reconciler.FindExistingUserGroup(ctx, mockClient, "developers")
-	if err != nil {
-		t.Fatalf("FindExistingUserGroup returned unexpected error: %v", err)
-	}
-	if existingGroup == nil {
-		t.Fatal("expected to find existing group, got nil")
-		return
-	}
-	if existingGroup.ID != targetGroup.ID {
-		t.Fatalf("expected target group ID %q, got %q", targetGroup.ID, existingGroup.ID)
-	}
-}
-
-func TestUserGroupAdoption_ExistingGroupByName(t *testing.T) {
-	ctx := context.Background()
-
-	existingGroup := &pocketid.UserGroup{
-		ID:           "existing-group-id",
-		Name:         "admins",
-		FriendlyName: "Administrators",
-	}
-
-	createCalled := false
-	mockClient := &mockPocketIDUserGroupClient{
-		listUserGroupsFunc: func(ctx context.Context, search string) ([]*pocketid.UserGroup, error) {
-			if search == "admins" {
-				return []*pocketid.UserGroup{existingGroup}, nil
-			}
-			return []*pocketid.UserGroup{}, nil
-		},
-		createUserGroupFunc: func(ctx context.Context, name, friendlyName string) (*pocketid.UserGroup, error) {
-			createCalled = true
-			t.Fatal("CreateUserGroup should not be called when group exists")
-			return nil, nil
-		},
-	}
-
-	reconciler := &Reconciler{}
-
-	foundGroup, err := reconciler.FindExistingUserGroup(ctx, mockClient, "admins")
-	if err != nil {
-		t.Fatalf("FindExistingUserGroup returned error: %v", err)
-	}
-	if foundGroup == nil {
-		t.Fatal("expected to find existing group")
-		return
-	}
-	if foundGroup.ID != existingGroup.ID {
-		t.Fatalf("expected group ID %q, got %q", existingGroup.ID, foundGroup.ID)
-	}
-	if createCalled {
-		t.Fatal("CreateUserGroup should not have been called for existing group")
-	}
-}
-
-// --- Username Resolution Tests ---
-// These test the resolveUsername logic which requires exact matching
-
-// userListerAPI defines the interface for username lookup
-type userListerAPI interface {
-	ListUsers(ctx context.Context, search string) ([]*pocketid.User, error)
-}
-
-// resolveUsernameForTest mirrors the controller's resolveUsername logic for testing
-func resolveUsernameForTest(ctx context.Context, client userListerAPI, username string) (string, error) {
-	users, err := client.ListUsers(ctx, username)
-	if err != nil {
-		return "", err
-	}
-
-	for _, user := range users {
-		if user.Username == username {
-			return user.ID, nil
 		}
-	}
-
-	return "", errors.New("user not found")
+		writeJSON(w, http.StatusOK, page(matches))
+	})
+	mux.HandleFunc("POST /api/admin/user-groups", func(w http.ResponseWriter, r *http.Request) {
+		f.calls = append(f.calls, "create")
+		if f.createStatus != 0 {
+			writeJSON(w, f.createStatus, map[string]string{"error": "Name is already in use", "code": "already_in_use"})
+			return
+		}
+		var g map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&g)
+		g["id"] = "new-group-id"
+		f.groups = append(f.groups, g)
+		writeJSON(w, http.StatusCreated, g)
+	})
+	mux.HandleFunc("PATCH /api/admin/user-groups/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if g, body, ok := f.write(w, r, "patch"); ok {
+			var patch map[string]any
+			_ = json.Unmarshal([]byte(body), &patch)
+			f.patches = append(f.patches, patch)
+			maps.Copy(g, patch)
+			writeJSON(w, http.StatusOK, g)
+		}
+	})
+	mux.HandleFunc("PUT /api/admin/custom-claims/user-group/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if _, body, ok := f.write(w, r, "claims"); ok {
+			writeJSON(w, http.StatusOK, json.RawMessage(body))
+		}
+	})
+	mux.HandleFunc("PUT /api/admin/user-groups/{id}/users", func(w http.ResponseWriter, r *http.Request) {
+		if g, body, ok := f.write(w, r, "members"); ok {
+			var members struct {
+				UserIDs []string `json:"userIds"`
+			}
+			_ = json.Unmarshal([]byte(body), &members)
+			users := []map[string]any{}
+			for _, id := range members.UserIDs {
+				users = append(users, map[string]any{"id": id})
+			}
+			g["users"] = users
+			writeJSON(w, http.StatusOK, g)
+		}
+	})
+	mux.HandleFunc("GET /api/admin/users", func(w http.ResponseWriter, r *http.Request) {
+		search := r.URL.Query().Get("search")
+		f.calls = append(f.calls, "list users "+search)
+		if f.listUsersStatus != 0 {
+			writeJSON(w, f.listUsersStatus, map[string]string{"error": "failed"})
+			return
+		}
+		matches := []map[string]any{}
+		for _, u := range f.users {
+			if strings.Contains(u["username"].(string), search) {
+				matches = append(matches, u)
+			}
+		}
+		writeJSON(w, http.StatusOK, page(matches))
+	})
+	return mux
 }
 
-func TestResolveUsername_ExactMatch(t *testing.T) {
-	ctx := context.Background()
+func (f *fakeGroups) client(t *testing.T) *pocketid.Client {
+	return pocketidtest.NewClient(t, f.handler())
+}
 
-	mockClient := &mockPocketIDUserGroupClient{
-		listUsersFunc: func(ctx context.Context, search string) ([]*pocketid.User, error) {
-			return []*pocketid.User{
-				{ID: "user-123", Username: "john.doe"},
-			}, nil
-		},
-	}
+func testScheme() *runtime.Scheme {
+	scheme := runtime.NewScheme()
+	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+	return scheme
+}
 
-	userID, err := resolveUsernameForTest(ctx, mockClient, "john.doe")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestFindExistingUserGroup(t *testing.T) {
+	tests := []struct {
+		name   string
+		groups []map[string]any
+		wantID string
+	}{
+		{name: "no match"},
+		{name: "matches by name", groups: []map[string]any{{"id": "gid", "name": "admins"}}, wantID: "gid"},
+		// The search is server-side and partial, so only an exact name is adopted.
+		{name: "picks the exact name among partial matches",
+			groups: []map[string]any{{"id": "other", "name": "admins-old"}, {"id": "gid", "name": "admins"}}, wantID: "gid"},
+		{name: "ignores partial matches only", groups: []map[string]any{{"id": "other", "name": "admins-old"}}},
 	}
-	if userID != "user-123" {
-		t.Fatalf("expected 'user-123', got %q", userID)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &fakeGroups{groups: tt.groups}
+			found, err := (&Reconciler{}).FindExistingUserGroup(context.Background(), f.client(t), "admins")
+			if err != nil {
+				t.Fatalf("FindExistingUserGroup: %v", err)
+			}
+			gotID := ""
+			if found != nil {
+				gotID = found.ID
+			}
+			if gotID != tt.wantID {
+				t.Errorf("found ID = %q, want %q", gotID, tt.wantID)
+			}
+		})
 	}
 }
 
-func TestResolveUsername_MultipleUsersReturned_SelectsExactMatch(t *testing.T) {
-	ctx := context.Background()
-
-	// API search may return partial matches - we must select the exact one
-	mockClient := &mockPocketIDUserGroupClient{
-		listUsersFunc: func(ctx context.Context, search string) ([]*pocketid.User, error) {
-			return []*pocketid.User{
-				{ID: "user-456", Username: "john"},
-				{ID: "user-123", Username: "john.doe"},
-				{ID: "user-789", Username: "john.doe.smith"},
-			}, nil
-		},
+func TestCreateOrAdoptUserGroup(t *testing.T) {
+	tests := []struct {
+		name         string
+		groups       []map[string]any
+		createStatus int
+		wantID       string
+		wantCalls    []string
+		wantCreated  map[string]any
+	}{
+		{name: "creates the group with its names", wantID: "new-group-id", wantCalls: []string{"create"},
+			wantCreated: map[string]any{"id": "new-group-id", "name": "admins", "friendlyName": "Administrators"}},
+		{name: "adopts by name when the create conflicts", createStatus: http.StatusConflict,
+			groups: []map[string]any{{"id": "existing-id", "name": "admins"}}, wantID: "existing-id",
+			wantCalls: []string{"create", "list groups admins"}},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			group := &pocketidinternalv1alpha1.PocketIDUserGroup{
+				ObjectMeta: metav1.ObjectMeta{Name: "admins", Namespace: testNamespace},
+				Spec:       pocketidinternalv1alpha1.PocketIDUserGroupSpec{FriendlyName: "Administrators"},
+			}
+			fc := fake.NewClientBuilder().WithScheme(testScheme()).WithObjects(group).WithStatusSubresource(group).Build()
+			f := &fakeGroups{groups: tt.groups, createStatus: tt.createStatus}
 
-	userID, err := resolveUsernameForTest(ctx, mockClient, "john.doe")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if userID != "user-123" {
-		t.Fatalf("expected 'user-123' (exact match), got %q", userID)
-	}
-}
-
-func TestResolveUsername_NoExactMatch(t *testing.T) {
-	ctx := context.Background()
-
-	mockClient := &mockPocketIDUserGroupClient{
-		listUsersFunc: func(ctx context.Context, search string) ([]*pocketid.User, error) {
-			return []*pocketid.User{
-				{ID: "user-456", Username: "janedoe"},
-				{ID: "user-789", Username: "jane.smith"},
-			}, nil
-		},
-	}
-
-	_, err := resolveUsernameForTest(ctx, mockClient, "jane.doe")
-	if err == nil {
-		t.Fatal("expected error when no exact match found")
-	}
-}
-
-func TestResolveUsername_APIError(t *testing.T) {
-	ctx := context.Background()
-
-	mockClient := &mockPocketIDUserGroupClient{
-		listUsersFunc: func(ctx context.Context, search string) ([]*pocketid.User, error) {
-			return nil, errors.New("API connection failed")
-		},
-	}
-
-	_, err := resolveUsernameForTest(ctx, mockClient, "api.test.user")
-	if err == nil {
-		t.Fatal("expected error on API failure")
+			requeue, err := (&Reconciler{Client: fc}).createOrAdoptUserGroup(context.Background(), group, f.client(t))
+			if err != nil || !requeue {
+				t.Fatalf("createOrAdoptUserGroup = %v, %v; want a requeue", requeue, err)
+			}
+			if !slices.Equal(f.calls, tt.wantCalls) {
+				t.Errorf("calls = %v, want %v", f.calls, tt.wantCalls)
+			}
+			if tt.wantCreated != nil && !maps.Equal(f.groups[0], tt.wantCreated) {
+				t.Errorf("created group = %v, want %v", f.groups[0], tt.wantCreated)
+			}
+			latest := &pocketidinternalv1alpha1.PocketIDUserGroup{}
+			if err := fc.Get(context.Background(), client.ObjectKeyFromObject(group), latest); err != nil {
+				t.Fatalf("get group: %v", err)
+			}
+			if latest.Status.GroupID != tt.wantID {
+				t.Errorf("status.groupID = %q, want %q", latest.Status.GroupID, tt.wantID)
+			}
+		})
 	}
 }
 
-func TestIsNotFoundError_DetectsAPIError404(t *testing.T) {
-	err := runtime.NewAPIError("PutAPIUserGroupsID", nil, http.StatusNotFound)
-
-	if !pocketid.IsNotFoundError(err) {
-		t.Error("expected IsNotFoundError to return true for 404 APIError")
+func TestResolveUsername(t *testing.T) {
+	tests := []struct {
+		name       string
+		users      []map[string]any
+		listStatus int
+		wantID     string
+		wantErr    bool
+	}{
+		{name: "exact match", users: []map[string]any{{"id": "user-123", "username": "john.doe"}}, wantID: "user-123"},
+		// The search may return partial matches, so only the exact one counts.
+		{name: "picks the exact match among partial ones", wantID: "user-123", users: []map[string]any{
+			{"id": "user-456", "username": "john.doe.smith"}, {"id": "user-123", "username": "john.doe"},
+		}},
+		{name: "no exact match", users: []map[string]any{{"id": "user-456", "username": "john.doe.smith"}}, wantErr: true},
+		{name: "API error", listStatus: http.StatusInternalServerError, wantErr: true},
 	}
-}
-
-func TestIsNotFoundError_IgnoresAPIError500(t *testing.T) {
-	err := runtime.NewAPIError("PutAPIUserGroupsID", nil, http.StatusInternalServerError)
-
-	if pocketid.IsNotFoundError(err) {
-		t.Error("expected IsNotFoundError to return false for 500 APIError")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &fakeGroups{users: tt.users, listUsersStatus: tt.listStatus}
+			id, err := (&Reconciler{}).resolveUsername(context.Background(), f.client(t), "john.doe")
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if id != tt.wantID {
+				t.Errorf("ID = %q, want %q", id, tt.wantID)
+			}
+		})
 	}
 }

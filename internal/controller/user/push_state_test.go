@@ -4,405 +4,238 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"reflect"
+	"slices"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
+	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
-	"github.com/aclerici38/pocket-id-operator/internal/pocketid/pocketidtest"
 )
 
-// pocketIDUserAPIResponse is the JSON shape returned by Pocket-ID user endpoints.
-type pocketIDUserAPIResponse struct {
-	ID          string `json:"id"`
-	Username    string `json:"username"`
-	FirstName   string `json:"firstName"`
-	LastName    string `json:"lastName"`
-	Email       string `json:"email"`
-	DisplayName string `json:"displayName"`
-	IsAdmin     bool   `json:"isAdmin"`
-	Disabled    bool   `json:"disabled"`
-	Locale      string `json:"locale"`
-}
-
-// okUserResponse writes a minimal valid user JSON response.
-func okUserResponse(w http.ResponseWriter, id, username string) {
-	resp := pocketIDUserAPIResponse{ID: id, Username: username}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
-}
-
-func newUserPushReconciler(scheme *runtime.Scheme) *Reconciler {
-	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
-	r := &Reconciler{Client: fc, Scheme: scheme}
-	r.EnsureClient(fc)
-	return r
-}
-
-// TestPushUserState_SkipsWhenInSync verifies that pushUserState makes no API calls
-// when the desired state (from the CR spec) already matches the current state in Pocket-ID.
-func TestPushUserState_SkipsWhenInSync(t *testing.T) {
-	ctx := context.Background()
-	scheme := runtime.NewScheme()
-	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
-
-	user := &pocketidinternalv1alpha1.PocketIDUser{
-		ObjectMeta: metav1.ObjectMeta{Name: "alice", Namespace: "default"},
-		Spec: pocketidinternalv1alpha1.PocketIDUserSpec{
-			Username:    pocketidinternalv1alpha1.StringValue{Value: "alice"},
-			FirstName:   pocketidinternalv1alpha1.StringValue{Value: "Alice"},
-			LastName:    pocketidinternalv1alpha1.StringValue{Value: "Smith"},
-			Email:       pocketidinternalv1alpha1.StringValue{Value: "alice@example.com"},
-			DisplayName: pocketidinternalv1alpha1.StringValue{Value: "Alice Smith"},
-		},
-		Status: pocketidinternalv1alpha1.PocketIDUserStatus{UserID: "uid-alice"},
-	}
-
-	// current matches desired exactly — ToInput() must equal buildUserInput output
-	current := &pocketid.User{
-		ID:          "uid-alice",
-		Username:    "alice",
-		FirstName:   "Alice",
-		LastName:    "Smith",
-		Email:       "alice@example.com",
-		DisplayName: "Alice Smith",
-	}
-
-	r := newUserPushReconciler(scheme)
-
-	// Server that fails on any call — verifies no UpdateUser is made.
-	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		t.Error("unexpected API call during in-sync pushUserState")
-		http.Error(w, "unexpected", http.StatusInternalServerError)
-	}))
-
-	if _, err := r.pushUserState(ctx, user, apiClient, current); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-// TestPushUserState_UpdatesWhenFieldChanged verifies that pushUserState calls UpdateUser
-// when a field differs between the desired spec and the current Pocket-ID state.
-func TestPushUserState_UpdatesWhenFieldChanged(t *testing.T) {
-	ctx := context.Background()
-	scheme := runtime.NewScheme()
-	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
-
-	user := &pocketidinternalv1alpha1.PocketIDUser{
-		ObjectMeta: metav1.ObjectMeta{Name: "bob", Namespace: "default"},
-		Spec: pocketidinternalv1alpha1.PocketIDUserSpec{
-			Username:    pocketidinternalv1alpha1.StringValue{Value: "bob"},
-			FirstName:   pocketidinternalv1alpha1.StringValue{Value: "Bob"},
-			Email:       pocketidinternalv1alpha1.StringValue{Value: "bob-new@example.com"},
-			DisplayName: pocketidinternalv1alpha1.StringValue{Value: "Bob"},
-		},
-		Status: pocketidinternalv1alpha1.PocketIDUserStatus{UserID: "uid-bob"},
-	}
-
-	// current has old email — triggers update
-	current := &pocketid.User{
-		ID:          "uid-bob",
-		Username:    "bob",
-		FirstName:   "Bob",
-		Email:       "bob-old@example.com",
-		DisplayName: "Bob",
-	}
-
-	r := newUserPushReconciler(scheme)
-
-	updateCalled := false
-	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if req.Method == http.MethodPut && req.URL.Path == "/api/users/uid-bob" {
-			updateCalled = true
-			okUserResponse(w, "uid-bob", "bob")
-			return
-		}
-		http.NotFound(w, req)
-	}))
-
-	if _, err := r.pushUserState(ctx, user, apiClient, current); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !updateCalled {
-		t.Error("expected UpdateUser to be called when email changed")
-	}
-}
-
-// TestPushUserState_PreservesEmailVerified covers two EmailVerified behaviours:
-//
-//  1. When current.EmailVerified=true and all other spec fields match, no update
-//     is issued — EmailVerified does NOT create a spurious diff.
-//  2. When another field changes and an update is triggered, the payload sent to
-//     Pocket-ID preserves current.EmailVerified rather than resetting it to false.
-func TestPushUserState_PreservesEmailVerified(t *testing.T) {
-	sv := func(v string) pocketidinternalv1alpha1.StringValue {
-		return pocketidinternalv1alpha1.StringValue{Value: v}
-	}
-	baseSpec := pocketidinternalv1alpha1.PocketIDUserSpec{
-		Username: sv("eve"), FirstName: sv("Eve"), LastName: sv("Test"),
-		Email: sv("eve@example.com"), DisplayName: sv("Eve Test"),
-	}
-	baseCurrent := pocketid.User{
-		ID: "uid-eve", Username: "eve", FirstName: "Eve", LastName: "Test",
-		Email: "eve@example.com", DisplayName: "Eve Test",
-		EmailVerified: true,
-	}
-
-	t.Run("no spurious update when only EmailVerified differs from zero", func(t *testing.T) {
-		// Spec has no EmailVerified field (always false/zero). Current has EmailVerified=true.
-		// pushUserState must NOT treat this as a diff — it should preserve and skip.
-		ctx := context.Background()
-		scheme := runtime.NewScheme()
-		_ = pocketidinternalv1alpha1.AddToScheme(scheme)
-
-		userCR := &pocketidinternalv1alpha1.PocketIDUser{
-			ObjectMeta: metav1.ObjectMeta{Name: "eve", Namespace: "default"},
-			Spec:       baseSpec,
-			Status:     pocketidinternalv1alpha1.PocketIDUserStatus{UserID: "uid-eve"},
-		}
-		current := baseCurrent
-
-		r := newUserPushReconciler(scheme)
-		apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			t.Error("unexpected API call: EmailVerified alone must not cause an update")
-			http.Error(w, "unexpected", http.StatusInternalServerError)
-		}))
-
-		if _, err := r.pushUserState(ctx, userCR, apiClient, &current); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-
-	t.Run("update preserves EmailVerified=true when another field changes", func(t *testing.T) {
-		// Email differs from current → update is triggered.
-		// The payload sent to Pocket-ID must carry EmailVerified=true, not false.
-		ctx := context.Background()
-		scheme := runtime.NewScheme()
-		_ = pocketidinternalv1alpha1.AddToScheme(scheme)
-
-		spec := baseSpec
-		spec.Email = sv("eve-new@example.com")
-		userCR := &pocketidinternalv1alpha1.PocketIDUser{
-			ObjectMeta: metav1.ObjectMeta{Name: "eve", Namespace: "default"},
-			Spec:       spec,
-			Status:     pocketidinternalv1alpha1.PocketIDUserStatus{UserID: "uid-eve"},
-		}
-		current := baseCurrent // EmailVerified=true, old email
-
-		r := newUserPushReconciler(scheme)
-
-		var sentVerified *bool
-		apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			if req.Method == http.MethodPut && req.URL.Path == "/api/users/uid-eve" {
-				var body struct {
-					EmailVerified bool `json:"emailVerified"`
-				}
-				_ = json.NewDecoder(req.Body).Decode(&body)
-				v := body.EmailVerified
-				sentVerified = &v
-				okUserResponse(w, "uid-eve", "eve")
-				return
-			}
-			http.NotFound(w, req)
-		}))
-
-		if _, err := r.pushUserState(ctx, userCR, apiClient, &current); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if sentVerified == nil {
-			t.Fatal("expected UpdateUser to be called")
-		}
-		if !*sentVerified {
-			t.Error("expected emailVerified=true to be preserved in update payload, got false")
-		}
-	})
-}
-
-// TestPushUserState_UpdatesForEachField exercises every field of UserInput to verify that a
-// single-field difference between desired and current always triggers UpdateUser.
-// This guards against accidentally missing a field in the equality comparison.
-func TestPushUserState_UpdatesForEachField(t *testing.T) {
-	sv := func(v string) pocketidinternalv1alpha1.StringValue {
-		return pocketidinternalv1alpha1.StringValue{Value: v}
-	}
-
-	// Baseline values shared by spec and current in the "matching" case.
-	const (
-		uid   = "uid-field-test"
-		uname = "fieldtest"
-		fn    = "Field"
-		ln    = "Test"
-		email = "field@example.com"
-		dn    = "Field Test"
-	)
-
-	baseSpec := func() pocketidinternalv1alpha1.PocketIDUserSpec {
-		return pocketidinternalv1alpha1.PocketIDUserSpec{
-			Username:    sv(uname),
-			FirstName:   sv(fn),
-			LastName:    sv(ln),
-			Email:       sv(email),
-			DisplayName: sv(dn),
-		}
-	}
-	baseCurrent := func() pocketid.User {
-		return pocketid.User{
-			ID: uid, Username: uname, FirstName: fn, LastName: ln,
-			Email: email, DisplayName: dn,
-		}
-	}
-
-	cases := []struct {
-		name    string
-		spec    pocketidinternalv1alpha1.PocketIDUserSpec
-		current pocketid.User
+// A field left out of a PATCH keeps its value in Pocket-ID, so every managed field has to be
+// sent every time, empty ones included. emailVerified, userGroupIds and id are left to Pocket-ID.
+func TestUserPatch(t *testing.T) {
+	full := &pocketidinternalv1alpha1.PocketIDUser{Spec: pocketidinternalv1alpha1.PocketIDUserSpec{Admin: true, Disabled: true, Locale: "de"}}
+	tests := map[string]struct {
+		user  *pocketidinternalv1alpha1.PocketIDUser
+		input userInput
+		want  map[string]any
 	}{
-		{
-			name: "FirstName changed",
-			spec: func() pocketidinternalv1alpha1.PocketIDUserSpec {
-				s := baseSpec()
-				s.FirstName = sv("NewFirst")
-				return s
-			}(),
-			current: baseCurrent(),
+		"every field set": {
+			user:  full,
+			input: userInput{username: "alice", firstName: "Alice", lastName: "Smith", email: "alice@example.com", displayName: "Alice Smith"},
+			want: map[string]any{
+				"username": "alice", "firstName": "Alice", "lastName": "Smith", "email": "alice@example.com",
+				"displayName": "Alice Smith", "isAdmin": true, "disabled": true, "locale": "de",
+			},
 		},
-		{
-			name: "LastName changed",
-			spec: func() pocketidinternalv1alpha1.PocketIDUserSpec {
-				s := baseSpec()
-				s.LastName = sv("NewLast")
-				return s
-			}(),
-			current: baseCurrent(),
-		},
-		{
-			name: "DisplayName changed",
-			spec: func() pocketidinternalv1alpha1.PocketIDUserSpec {
-				s := baseSpec()
-				s.DisplayName = sv("New Name")
-				return s
-			}(),
-			current: baseCurrent(),
-		},
-		{
-			name: "IsAdmin set to true",
-			spec: func() pocketidinternalv1alpha1.PocketIDUserSpec {
-				s := baseSpec()
-				s.Admin = true
-				return s
-			}(),
-			current: baseCurrent(), // IsAdmin defaults to false
-		},
-		{
-			name: "IsAdmin cleared to false",
-			spec: baseSpec(), // Admin defaults to false
-			current: func() pocketid.User {
-				c := baseCurrent()
-				c.IsAdmin = true
-				return c
-			}(),
-		},
-		{
-			name: "Disabled set to true",
-			spec: func() pocketidinternalv1alpha1.PocketIDUserSpec {
-				s := baseSpec()
-				s.Disabled = true
-				return s
-			}(),
-			current: baseCurrent(), // Disabled defaults to false
-		},
-		{
-			name: "Locale changed",
-			spec: func() pocketidinternalv1alpha1.PocketIDUserSpec {
-				s := baseSpec()
-				s.Locale = "de"
-				return s
-			}(),
-			current: func() pocketid.User {
-				c := baseCurrent()
-				c.Locale = "en"
-				return c
-			}(),
+		// An empty email collides on the unique index, so it goes out as null, like locale.
+		"every field empty": {
+			user: &pocketidinternalv1alpha1.PocketIDUser{},
+			want: map[string]any{
+				"username": "", "firstName": "", "lastName": "", "email": nil,
+				"displayName": "", "isAdmin": false, "disabled": false, "locale": nil,
+			},
 		},
 	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			ctx := context.Background()
-			scheme := runtime.NewScheme()
-			_ = pocketidinternalv1alpha1.AddToScheme(scheme)
-
-			userCR := &pocketidinternalv1alpha1.PocketIDUser{
-				ObjectMeta: metav1.ObjectMeta{Name: uname, Namespace: "default"},
-				Spec:       tc.spec,
-				Status:     pocketidinternalv1alpha1.PocketIDUserStatus{UserID: uid},
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			raw, err := json.Marshal(userPatch(tt.user, tt.input))
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
 			}
-			current := tc.current
-
-			r := newUserPushReconciler(scheme)
-
-			updateCalled := false
-			apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-				if req.Method == http.MethodPut && req.URL.Path == "/api/users/"+uid {
-					updateCalled = true
-					okUserResponse(w, uid, uname)
-					return
-				}
-				http.NotFound(w, req)
-			}))
-
-			if _, err := r.pushUserState(ctx, userCR, apiClient, &current); err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if !updateCalled {
-				t.Errorf("expected UpdateUser to be called when %q changed, but it was not", tc.name)
+			var got map[string]any
+			_ = json.Unmarshal(raw, &got)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("patch = %v\nwant    %v", got, tt.want)
 			}
 		})
 	}
 }
 
-// TestPushUserState_SkipsWhenAllFieldsMatch verifies that no update is made when all
-// UserInput fields — including booleans and locale — already match current state.
-func TestPushUserState_SkipsWhenAllFieldsMatch(t *testing.T) {
-	ctx := context.Background()
-	scheme := runtime.NewScheme()
-	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
-
-	sv := func(v string) pocketidinternalv1alpha1.StringValue {
-		return pocketidinternalv1alpha1.StringValue{Value: v}
+// An unset email stays empty, so it goes out as null and Pocket-ID's REQUIRE_USER_EMAIL is
+// enforced rather than worked around with a made-up address.
+func TestBuildUserInputLeavesEmailUnset(t *testing.T) {
+	fc := fake.NewClientBuilder().WithScheme(userTestScheme()).Build()
+	user := &pocketidinternalv1alpha1.PocketIDUser{ObjectMeta: metav1.ObjectMeta{Name: "alice", Namespace: "default"}}
+	input, err := (&Reconciler{Client: fc, APIReader: fc}).buildUserInput(context.Background(), user)
+	if err != nil {
+		t.Fatalf("buildUserInput: %v", err)
 	}
+	if input.email != "" {
+		t.Errorf("email = %q, want empty", input.email)
+	}
+}
 
-	user := &pocketidinternalv1alpha1.PocketIDUser{
-		ObjectMeta: metav1.ObjectMeta{Name: "full-match", Namespace: "default"},
-		Spec: pocketidinternalv1alpha1.PocketIDUserSpec{
-			Username:    sv("full-match"),
-			FirstName:   sv("Full"),
-			LastName:    sv("Match"),
-			Email:       sv("full@example.com"),
-			DisplayName: sv("Full Match"),
-			Admin:       true,
-			Disabled:    true,
-			Locale:      "fr",
+func TestPushUserState(t *testing.T) {
+	tests := []struct {
+		name       string
+		users      []map[string]any
+		claims     []pocketidinternalv1alpha1.CustomClaim
+		wantCalls  []string
+		wantClaims string
+		wantErr    func(error) bool
+	}{
+		{
+			name:       "writes the profile and the full set of claims",
+			users:      []map[string]any{pocketIDUser("uid", "old-name", "old@example.com")},
+			claims:     []pocketidinternalv1alpha1.CustomClaim{{Key: "team", Value: "infra"}},
+			wantCalls:  []string{"patch uid", "claims uid"},
+			wantClaims: `[{"key":"team","value":"infra"}]`,
 		},
-		Status: pocketidinternalv1alpha1.PocketIDUserStatus{UserID: "uid-full"},
+		// The endpoint replaces the full set, so no claims has to be sent as [] to clear them.
+		{
+			name:       "clears claims the spec no longer has",
+			users:      []map[string]any{pocketIDUser("uid", "alice", "alice@example.com")},
+			wantCalls:  []string{"patch uid", "claims uid"},
+			wantClaims: `[]`,
+		},
+		{
+			name:      "a user deleted outside the operator reads as not found",
+			wantCalls: []string{"patch uid"},
+			wantErr:   pocketid.IsNotFoundError,
+		},
 	}
-	current := &pocketid.User{
-		ID: "uid-full", Username: "full-match", FirstName: "Full", LastName: "Match",
-		Email: "full@example.com", DisplayName: "Full Match",
-		IsAdmin: true, Disabled: true, Locale: "fr",
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			user := &pocketidinternalv1alpha1.PocketIDUser{
+				ObjectMeta: metav1.ObjectMeta{Name: "alice", Namespace: "default"},
+				Spec: pocketidinternalv1alpha1.PocketIDUserSpec{
+					Email:        pocketidinternalv1alpha1.StringValue{Value: "alice@example.com"},
+					CustomClaims: tt.claims,
+				},
+				Status: pocketidinternalv1alpha1.PocketIDUserStatus{UserID: "uid"},
+			}
+			fc := fake.NewClientBuilder().WithScheme(userTestScheme()).Build()
+			f := &fakeUsers{users: tt.users}
+
+			got, err := (&Reconciler{Client: fc, APIReader: fc}).pushUserState(context.Background(), user, f.client(t))
+			if tt.wantErr != nil {
+				if !tt.wantErr(err) {
+					t.Fatalf("error = %v", err)
+				}
+			} else if err != nil {
+				t.Fatalf("pushUserState: %v", err)
+			}
+			if !slices.Equal(f.calls, tt.wantCalls) {
+				t.Errorf("calls = %v, want %v", f.calls, tt.wantCalls)
+			}
+			if tt.wantErr != nil {
+				return
+			}
+			if f.claimsBody[0] != tt.wantClaims {
+				t.Errorf("claims body = %s, want %s", f.claimsBody[0], tt.wantClaims)
+			}
+			// Status comes from the responses: the profile from the PATCH, the claims from their PUT.
+			if got.Username != "alice" || len(got.CustomClaims) != len(tt.claims) {
+				t.Errorf("returned user = %+v", got)
+			}
+		})
+	}
+}
+
+// externalInstance returns a Ready instance adopting the Pocket-ID served by handler, and the
+// Secret holding its API key.
+func externalInstance(t *testing.T, handler http.Handler) []client.Object {
+	ts := httptest.NewTestServer(t, handler)
+	ts.Start()
+	return []client.Object{
+		&pocketidinternalv1alpha1.PocketIDInstance{
+			ObjectMeta: metav1.ObjectMeta{Name: "instance", Namespace: "default"},
+			Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{External: &pocketidinternalv1alpha1.ExternalInstanceConfig{
+				URL: ts.URL,
+				APIKeySecretRef: corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: "admin-token"}, Key: "token",
+				},
+			}},
+			Status: pocketidinternalv1alpha1.PocketIDInstanceStatus{Conditions: []metav1.Condition{{Type: "Ready", Status: metav1.ConditionTrue}}},
+		},
+		&corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "admin-token", Namespace: "default"},
+			Data:       map[string][]byte{"token": []byte("key")},
+		},
+	}
+}
+
+// A PATCH answering 404 means the user was deleted outside the operator, so status is cleared
+// for the next reconcile to recreate it.
+func TestReconcile_UserDeletedExternally(t *testing.T) {
+	ctx := context.Background()
+	user := &pocketidinternalv1alpha1.PocketIDUser{
+		ObjectMeta: metav1.ObjectMeta{Name: "alice", Namespace: "default", Finalizers: []string{UserFinalizer}},
+		Status:     pocketidinternalv1alpha1.PocketIDUserStatus{UserID: "gone"},
+	}
+	f := &fakeUsers{}
+	objs := append(externalInstance(t, f.handler()), user)
+	fc := fake.NewClientBuilder().WithScheme(userTestScheme()).WithObjects(objs...).WithStatusSubresource(objs...).Build()
+	r := &Reconciler{Client: fc, BaseReconciler: common.BaseReconciler{Client: fc, APIReader: fc}, APIReader: fc, Scheme: userTestScheme()}
+
+	result, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(user)})
+	if err != nil || result.RequeueAfter != common.RequeueImmediate {
+		t.Fatalf("Reconcile = %+v, %v; want an immediate requeue", result, err)
+	}
+	if !slices.Equal(f.calls, []string{"patch gone"}) {
+		t.Errorf("calls = %v, want only the PATCH", f.calls)
+	}
+	latest := &pocketidinternalv1alpha1.PocketIDUser{}
+	if err := fc.Get(ctx, client.ObjectKeyFromObject(user), latest); err != nil {
+		t.Fatalf("get user: %v", err)
+	}
+	if latest.Status.UserID != "" {
+		t.Errorf("status.userID = %q, want it cleared", latest.Status.UserID)
+	}
+}
+
+func TestUpdateUserStatus(t *testing.T) {
+	ctx := context.Background()
+	user := &pocketidinternalv1alpha1.PocketIDUser{
+		ObjectMeta: metav1.ObjectMeta{Name: "alice", Namespace: "default"},
+		Status: pocketidinternalv1alpha1.PocketIDUserStatus{
+			CustomClaims: []pocketidinternalv1alpha1.CustomClaim{{Key: "stale", Value: "x"}},
+		},
+	}
+	fc := fake.NewClientBuilder().WithScheme(userTestScheme()).WithObjects(user).WithStatusSubresource(user).Build()
+	r := &Reconciler{Client: fc, APIReader: fc, Scheme: userTestScheme()}
+
+	pUser := pid.UserDto{
+		ID: "uid", Username: "alice", FirstName: "Alice", Email: "alice@example.com", DisplayName: "Alice",
+		IsAdmin: true, Locale: "de", EmailVerified: true,
+		CustomClaims: []pid.CustomClaimDto{{Key: "team", Value: "infra"}, {Key: "dept", Value: "eng"}},
+	}
+	if err := r.updateUserStatus(ctx, user, pUser); err != nil {
+		t.Fatalf("updateUserStatus: %v", err)
 	}
 
-	r := newUserPushReconciler(scheme)
+	latest := &pocketidinternalv1alpha1.PocketIDUser{}
+	if err := fc.Get(ctx, client.ObjectKeyFromObject(user), latest); err != nil {
+		t.Fatalf("get user: %v", err)
+	}
+	status := latest.Status
+	if status.UserID != "uid" || !status.IsAdmin || status.Locale != "de" || !status.EmailVerified {
+		t.Errorf("status = %+v", status)
+	}
+	// Pocket-ID returns claims unordered, so status sorts them to stay stable.
+	wantClaims := []pocketidinternalv1alpha1.CustomClaim{{Key: "dept", Value: "eng"}, {Key: "team", Value: "infra"}}
+	if !reflect.DeepEqual(status.CustomClaims, wantClaims) {
+		t.Errorf("status.customClaims = %v, want %v", status.CustomClaims, wantClaims)
+	}
 
-	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		t.Error("unexpected API call: all fields match, no update should occur")
-		http.Error(w, "unexpected", http.StatusInternalServerError)
-	}))
-
-	if _, err := r.pushUserState(ctx, user, apiClient, current); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	secret := &corev1.Secret{}
+	if err := fc.Get(ctx, types.NamespacedName{Name: status.UserInfoSecretName, Namespace: "default"}, secret); err != nil {
+		t.Fatalf("get user info secret: %v", err)
+	}
+	if got := string(secret.Data[UserInfoSecretKeyEmail]); got != "alice@example.com" {
+		t.Errorf("user info email = %q", got)
 	}
 }

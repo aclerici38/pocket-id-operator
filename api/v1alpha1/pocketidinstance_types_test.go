@@ -27,6 +27,18 @@ func TestEffectiveAppURL_ExternalPrefersOverAppURL(t *testing.T) {
 	}
 }
 
+func TestEffectiveAppURL_ExternalIgnoresAPIURL(t *testing.T) {
+	// Published issuer and endpoint URLs must stay public when the API is reached privately.
+	i := &PocketIDInstance{}
+	i.Spec.External = &ExternalInstanceConfig{
+		URL:    "https://auth.example.com",
+		APIURL: "https://pocket-id.pocket-id.svc:1411",
+	}
+	if got := i.EffectiveAppURL(); got != "https://auth.example.com" {
+		t.Errorf("got %q, want %q", got, "https://auth.example.com")
+	}
+}
+
 func TestEffectiveAppURL_NoTrailingSlash(t *testing.T) {
 	i := &PocketIDInstance{}
 	i.Spec.AppURL = "https://id.example.com"

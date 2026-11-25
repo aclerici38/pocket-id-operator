@@ -2,7 +2,6 @@ package oidcclient
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"reflect"
 	"testing"
@@ -12,8 +11,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
-	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
-	"github.com/aclerici38/pocket-id-operator/internal/pocketid/pocketidtest"
 )
 
 func apiAccessScheme(t *testing.T) *runtime.Scheme {
@@ -69,13 +66,13 @@ func TestResolveAPIAccess_MapsKeysToIDs(t *testing.T) {
 	if !ok {
 		t.Fatalf("no grant for api-1: %+v", got)
 	}
-	if !reflect.DeepEqual(grant.UserDelegatedPermissionIDs, []string{"p-read"}) {
+	if !reflect.DeepEqual(grant.UserDelegatedPermissionIDs.MustGet(), []string{"p-read"}) {
 		t.Fatalf("delegated = %v", grant.UserDelegatedPermissionIDs)
 	}
-	if !reflect.DeepEqual(grant.ClientPermissionIDs, []string{"p-sync"}) {
+	if !reflect.DeepEqual(grant.ClientPermissionIDs.MustGet(), []string{"p-sync"}) {
 		t.Fatalf("client = %v", grant.ClientPermissionIDs)
 	}
-	if !grant.UserDelegatedAccess || !grant.ClientAccess {
+	if !*grant.UserDelegatedAccess || !*grant.ClientAccess {
 		t.Fatalf("expected both access flags set: %+v", grant)
 	}
 }
@@ -127,7 +124,7 @@ func TestResolveAPIAccess_ExplicitAccessWithoutPermissions(t *testing.T) {
 	if !ok {
 		t.Fatalf("a scopeless grant must still be a grant: %+v", got)
 	}
-	if !grant.UserDelegatedAccess || len(grant.UserDelegatedPermissionIDs) != 0 {
+	if !*grant.UserDelegatedAccess || len(grant.UserDelegatedPermissionIDs.MustGet()) != 0 {
 		t.Fatalf("unexpected grant: %+v", grant)
 	}
 }
@@ -150,223 +147,87 @@ func TestResolveAPIAccess_OmitsEntryGrantingNothing(t *testing.T) {
 	}
 }
 
-func TestReconcileAPIAccess_NoSpecNoManaged_Skips(t *testing.T) {
-	s := apiAccessScheme(t)
-	oidcClient := clientWithAccess(nil)
-	called := false
-	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		called = true
-		w.WriteHeader(http.StatusOK)
-	}))
-
-	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(oidcClient).WithStatusSubresource(oidcClient).Build()}
-
-	if err := r.ReconcileAPIAccess(context.Background(), oidcClient, apiClient); err != nil {
-		t.Fatalf("ReconcileAPIAccess: %v", err)
+// The operator owns every grant the client holds: spec grants are written every reconcile,
+// any other grant of the client's own is revoked, and access the client only reaches through
+// an API's CIMD setting belongs to the API, so it is reported rather than revoked.
+func TestReconcileAPIAccess(t *testing.T) {
+	ownGrant := map[string]any{"api": map[string]any{"id": "api-ui"}, "userDelegatedAccess": true}
+	scopelessGrant := map[string]any{"api": map[string]any{"id": "api-scopeless"}, "clientAccess": true}
+	cimdOnly := map[string]any{
+		"api":                      map[string]any{"id": "api-cimd", "resource": "https://cimd.example.com"},
+		"cimdGrantedAccess":        true,
+		"cimdGrantedPermissionIds": []string{"p-cimd"},
 	}
-	if called {
-		t.Fatal("should not call Pocket-ID when apiAccess unset and nothing managed")
-	}
-}
-
-func TestReconcileAPIAccess_PushesOnDrift(t *testing.T) {
-	s := apiAccessScheme(t)
-	api := readyAPI([]pocketidinternalv1alpha1.ObservedAPIPermission{
-		{ID: "p-read", Key: "read:orders"},
-	})
-	oidcClient := clientWithAccess([]pocketidinternalv1alpha1.OIDCClientAPIAccess{{
+	specced := map[string]any{"api": map[string]any{"id": "api-1"}, "userDelegatedAccess": true}
+	readOrders := []pocketidinternalv1alpha1.OIDCClientAPIAccess{{
 		APIRef:               pocketidinternalv1alpha1.NamespacedAPIReference{Name: "orders"},
 		DelegatedPermissions: []string{"read:orders"},
-	}})
+	}}
 
-	var putPath string
-	var putBody grantBody
-	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet: // no current access
-			writeJSON(w, []any{})
-		case http.MethodPut:
-			putPath = r.URL.Path
-			_ = json.NewDecoder(r.Body).Decode(&putBody)
-			writeJSON(w, putBody)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
+	for _, tc := range []struct {
+		name        string
+		spec        []pocketidinternalv1alpha1.OIDCClientAPIAccess
+		current     []map[string]any
+		wantPuts    []string
+		wantDeletes []string
+		wantCIMD    []string
+	}{
+		{name: "nothing to do still lists"},
+		{name: "writes spec grants", spec: readOrders, current: []map[string]any{specced}, wantPuts: []string{"api-1"}},
+		{
+			name:        "revokes grants made outside the operator",
+			current:     []map[string]any{ownGrant, scopelessGrant},
+			wantDeletes: []string{"api-ui", "api-scopeless"},
+		},
+		{
+			name:     "keeps CIMD-only access and reports it",
+			spec:     readOrders,
+			current:  []map[string]any{cimdOnly},
+			wantPuts: []string{"api-1"},
+			wantCIMD: []string{"https://cimd.example.com"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := apiAccessScheme(t)
+			api := readyAPI([]pocketidinternalv1alpha1.ObservedAPIPermission{{ID: "p-read", Key: "read:orders"}})
+			oidcClient := clientWithAccess(tc.spec)
+			oidcClient.Status.CIMDGrantedAPIs = []string{"stale"}
 
-	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(api, oidcClient).WithStatusSubresource(oidcClient).Build()}
+			var puts, deletes []string
+			encoded := encodedID("client-1")
+			apiClient := fakeAPI(t, map[string]http.HandlerFunc{
+				"GET /api/admin/api-access/" + encoded + "/apis": func(w http.ResponseWriter, _ *http.Request) {
+					writeJSON(w, append([]map[string]any{}, tc.current...))
+				},
+				"PUT /api/admin/apis/{id}/clients/" + encoded: func(w http.ResponseWriter, r *http.Request) {
+					var body map[string]any
+					decodeBody(t, r, &body)
+					if body["userDelegatedAccess"] != true || !reflect.DeepEqual(body["userDelegatedPermissionIds"], []any{"p-read"}) {
+						t.Errorf("unexpected grant body %v", body)
+					}
+					puts = append(puts, r.PathValue("id"))
+					writeJSON(w, body)
+				},
+				"DELETE /api/admin/apis/{id}/clients/" + encoded: func(w http.ResponseWriter, r *http.Request) {
+					deletes = append(deletes, r.PathValue("id"))
+					w.WriteHeader(http.StatusNoContent)
+				},
+			})
+			r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(api, oidcClient).WithStatusSubresource(oidcClient).Build()}
 
-	if err := r.ReconcileAPIAccess(context.Background(), oidcClient, apiClient); err != nil {
-		t.Fatalf("ReconcileAPIAccess: %v", err)
-	}
-	if putPath != "/api/apis/api-1/clients/client-1" {
-		t.Fatalf("unexpected PUT path %q", putPath)
-	}
-	if !putBody.UserDelegatedAccess || !reflect.DeepEqual(putBody.UserDelegatedPermissionIDs, []string{"p-read"}) {
-		t.Fatalf("expected delegated push of p-read, got %+v", putBody)
-	}
-	if !reflect.DeepEqual(oidcClient.Status.ManagedAPIPermissionIDs, []string{"p-read"}) {
-		t.Fatalf("expected managed status p-read, got %v", oidcClient.Status.ManagedAPIPermissionIDs)
-	}
-	if !reflect.DeepEqual(oidcClient.Status.ManagedAPIs, []string{"api-1"}) {
-		t.Fatalf("expected managed API api-1, got %v", oidcClient.Status.ManagedAPIs)
-	}
-}
-
-func TestReconcileAPIAccess_RevokesDroppedAPI(t *testing.T) {
-	s := apiAccessScheme(t)
-	oidcClient := clientWithAccess(nil)
-	oidcClient.Status.ManagedAPIPermissionIDs = []string{"p-read"}
-	oidcClient.Status.ManagedAPIs = []string{"api-1"}
-
-	deleted := ""
-	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			writeJSON(w, []map[string]any{{
-				"api":                        map[string]any{"id": "api-1"},
-				"userDelegatedAccess":        true,
-				"userDelegatedPermissionIds": []string{"p-read"},
-			}})
-		case http.MethodDelete:
-			deleted = r.URL.Path
-			w.WriteHeader(http.StatusNoContent)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-
-	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(oidcClient).WithStatusSubresource(oidcClient).Build()}
-
-	if err := r.ReconcileAPIAccess(context.Background(), oidcClient, apiClient); err != nil {
-		t.Fatalf("ReconcileAPIAccess: %v", err)
-	}
-	if deleted != "/api/apis/api-1/clients/client-1" {
-		t.Fatalf("expected the dropped API grant to be revoked, got %q", deleted)
-	}
-	if oidcClient.Status.ManagedAPIPermissionIDs != nil || oidcClient.Status.ManagedAPIs != nil {
-		t.Fatalf("expected managed state cleared, got %v / %v",
-			oidcClient.Status.ManagedAPIPermissionIDs, oidcClient.Status.ManagedAPIs)
-	}
-}
-
-// A grant that conveys a flow without selecting permissions records no permission IDs, so
-// only the managed API IDs can tell the operator it still owns the grant once spec drops it.
-func TestReconcileAPIAccess_RevokesDroppedScopelessGrant(t *testing.T) {
-	s := apiAccessScheme(t)
-	oidcClient := clientWithAccess(nil)
-	oidcClient.Status.ManagedAPIs = []string{"api-1"}
-
-	deleted := ""
-	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			writeJSON(w, []map[string]any{{
-				"api":                 map[string]any{"id": "api-1"},
-				"userDelegatedAccess": true,
-			}})
-		case http.MethodDelete:
-			deleted = r.URL.Path
-			w.WriteHeader(http.StatusNoContent)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-
-	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(oidcClient).WithStatusSubresource(oidcClient).Build()}
-
-	if err := r.ReconcileAPIAccess(context.Background(), oidcClient, apiClient); err != nil {
-		t.Fatalf("ReconcileAPIAccess: %v", err)
-	}
-	if deleted != "/api/apis/api-1/clients/client-1" {
-		t.Fatalf("expected the scopeless grant to be revoked, got %q", deleted)
-	}
-	if oidcClient.Status.ManagedAPIs != nil {
-		t.Fatalf("expected managed APIs cleared, got %v", oidcClient.Status.ManagedAPIs)
-	}
-}
-
-// A CIMD-granted API belongs to the API, not the client, so it must not be revoked, and it
-// is reported in status so a dropped apiAccess entry does not look like revoked access.
-func TestReconcileAPIAccess_LeavesCIMDGrantedAPIAlone(t *testing.T) {
-	s := apiAccessScheme(t)
-	oidcClient := clientWithAccess(nil)
-	oidcClient.Status.ManagedAPIPermissionIDs = []string{"p-read"}
-
-	deleted := false
-	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			writeJSON(w, []map[string]any{{
-				"api":                      map[string]any{"id": "api-1", "resource": "https://orders.example.com"},
-				"cimdGrantedAccess":        true,
-				"cimdGrantedPermissionIds": []string{"p-read"},
-			}})
-		case http.MethodDelete:
-			deleted = true
-			w.WriteHeader(http.StatusNoContent)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-
-	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(oidcClient).WithStatusSubresource(oidcClient).Build()}
-
-	if err := r.ReconcileAPIAccess(context.Background(), oidcClient, apiClient); err != nil {
-		t.Fatalf("ReconcileAPIAccess: %v", err)
-	}
-	if deleted {
-		t.Fatal("revoked an API the client only reaches through its CIMD setting")
-	}
-	if !reflect.DeepEqual(oidcClient.Status.CIMDGrantedAPIs, []string{"https://orders.example.com"}) {
-		t.Fatalf("cimdGrantedAPIs = %v", oidcClient.Status.CIMDGrantedAPIs)
-	}
-}
-
-// With no apiAccess and nothing managed there is nothing to reconcile, but a cimd client can
-// still hold access granted by an API, so status has to keep reporting it.
-func TestReconcileAPIAccess_ReportsCIMDGrantWhenNothingManaged(t *testing.T) {
-	s := apiAccessScheme(t)
-	oidcClient := clientWithAccess(nil)
-	oidcClient.Status.ClientType = pocketid.ClientTypeCIMD
-
-	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			t.Errorf("unexpected %s to %s", r.Method, r.URL.Path)
-		}
-		writeJSON(w, []map[string]any{{
-			"api":               map[string]any{"id": "api-1", "resource": "https://orders.example.com"},
-			"cimdGrantedAccess": true,
-		}})
-	}))
-
-	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(oidcClient).WithStatusSubresource(oidcClient).Build()}
-
-	if err := r.ReconcileAPIAccess(context.Background(), oidcClient, apiClient); err != nil {
-		t.Fatalf("ReconcileAPIAccess: %v", err)
-	}
-	if !reflect.DeepEqual(oidcClient.Status.CIMDGrantedAPIs, []string{"https://orders.example.com"}) {
-		t.Fatalf("cimdGrantedAPIs = %v", oidcClient.Status.CIMDGrantedAPIs)
-	}
-}
-
-// A standard client can never hold CIMD-granted access, so it must not cost an extra call.
-func TestReconcileAPIAccess_StandardClientNotFetchedWhenNothingManaged(t *testing.T) {
-	s := apiAccessScheme(t)
-	oidcClient := clientWithAccess(nil)
-	called := false
-	apiClient := pocketidtest.NewClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		called = true
-		writeJSON(w, []any{})
-	}))
-
-	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(oidcClient).WithStatusSubresource(oidcClient).Build()}
-
-	if err := r.ReconcileAPIAccess(context.Background(), oidcClient, apiClient); err != nil {
-		t.Fatalf("ReconcileAPIAccess: %v", err)
-	}
-	if called {
-		t.Fatal("a standard client with nothing managed must not reach Pocket-ID")
+			if err := r.ReconcileAPIAccess(context.Background(), oidcClient, apiClient); err != nil {
+				t.Fatalf("ReconcileAPIAccess: %v", err)
+			}
+			if !reflect.DeepEqual(puts, tc.wantPuts) {
+				t.Errorf("PUTs = %v, want %v", puts, tc.wantPuts)
+			}
+			if !reflect.DeepEqual(deletes, tc.wantDeletes) {
+				t.Errorf("DELETEs = %v, want %v", deletes, tc.wantDeletes)
+			}
+			if !reflect.DeepEqual(oidcClient.Status.CIMDGrantedAPIs, tc.wantCIMD) {
+				t.Errorf("cimdGrantedAPIs = %v, want %v", oidcClient.Status.CIMDGrantedAPIs, tc.wantCIMD)
+			}
+		})
 	}
 }
 
@@ -481,27 +342,4 @@ func TestResolveAPITokenParams_ErrorsWhenAPIMissing(t *testing.T) {
 	if _, err := r.resolveAPITokenParams(context.Background(), oidcClient); err == nil {
 		t.Fatal("expected error when the referenced API does not exist")
 	}
-}
-
-func TestMergeSorted(t *testing.T) {
-	got := mergeSorted([]string{"b", "a"}, []string{"a", "c"})
-	if !reflect.DeepEqual(got, []string{"a", "b", "c"}) {
-		t.Fatalf("mergeSorted = %v", got)
-	}
-	if mergeSorted(nil, nil) != nil {
-		t.Fatal("mergeSorted of empties should be nil")
-	}
-}
-
-// grantBody mirrors the per-API grant DTO exchanged with Pocket-ID.
-type grantBody struct {
-	ClientAccess               bool     `json:"clientAccess"`
-	UserDelegatedAccess        bool     `json:"userDelegatedAccess"`
-	ClientPermissionIDs        []string `json:"clientPermissionIds"`
-	UserDelegatedPermissionIDs []string `json:"userDelegatedPermissionIds"`
-}
-
-func writeJSON(w http.ResponseWriter, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(v)
 }

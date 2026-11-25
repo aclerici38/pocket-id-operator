@@ -4,131 +4,59 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/base64"
-	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
-	"strings"
 	"testing"
+
+	"github.com/aclerici38/pocket-id-go-client/v3/client"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
+	"github.com/aclerici38/pocket-id-operator/internal/metrics"
 )
 
-const allowedUserGroupsPath = "/api/oidc/clients/test-id/allowed-user-groups"
-
-// oidcClientResponse is the JSON shape returned by pocket-id for OIDC client endpoints.
-type oidcClientResponse struct {
-	ID                 string   `json:"id"`
-	Name               string   `json:"name"`
-	CallbackURLs       []string `json:"callbackURLs"`
-	LogoutCallbackURLs []string `json:"logoutCallbackURLs"`
-	HasLogo            bool     `json:"hasLogo"`
-	HasDarkLogo        bool     `json:"hasDarkLogo"`
-	IsPublic           bool     `json:"isPublic"`
-	IsGroupRestricted  bool     `json:"isGroupRestricted"`
-	PkceEnabled        bool     `json:"pkceEnabled"`
-	ClientType         string   `json:"clientType"`
-	AllowedUserGroups  []any    `json:"allowedUserGroups"`
-
-	AccessTokenDurationMinutes  int64 `json:"accessTokenDurationMinutes"`
-	RefreshTokenDurationMinutes int64 `json:"refreshTokenDurationMinutes"`
+// newTestClient returns a client whose requests are all served by handler over httptest's
+// in-memory network. It mirrors pocketidtest.NewClient, which this package can't import.
+func newTestClient(t *testing.T, handler http.Handler) *Client {
+	t.Helper()
+	ts := httptest.NewTestServer(t, handler)
+	// Server.URL is only populated by the first Client call.
+	hc := ts.Client()
+	c, err := NewClient(ts.URL, "", WithHTTPClient(hc))
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	return c
 }
 
-// Pocket-ID always returns a concrete token lifetime, so the read mapping has to
-// pick it up for ToInput to compare it against the spec.
-func TestGetOIDCClient_ReadsTokenDurations(t *testing.T) {
-	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != "/api/oidc/clients/test-id" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(oidcClientResponse{
-			ID:                          "test-id",
-			Name:                        "test-client",
-			AllowedUserGroups:           []any{},
-			AccessTokenDurationMinutes:  15,
-			RefreshTokenDurationMinutes: 1440,
+// SecretPrefix has to agree with Pocket-ID's clientSecretPrefix exactly. The operator matches a
+// stored credential against these prefixes to decide what to retire, so a divergence here would
+// make it delete the wrong secret rather than fail visibly.
+func TestSecretPrefix(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		want  string
+	}{
+		{name: "takes the leading characters", value: "abcdefgh", want: "abcd"},
+		{name: "one longer than the prefix", value: "abcde", want: "abcd"},
+		{name: "exactly the prefix length is not recorded", value: "abcd", want: ""},
+		{name: "shorter than the prefix length", value: "abc", want: ""},
+		{name: "empty", value: "", want: ""},
+		// Pocket-ID slices bytes too, so a rune-aware "fix" here would silently disagree with it.
+		{name: "slices bytes, as Pocket-ID does", value: "√ab", want: "√a"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := SecretPrefix(tt.value); got != tt.want {
+				t.Fatalf("SecretPrefix(%q) = %q, want %q", tt.value, got, tt.want)
+			}
 		})
-	}))
-
-	got, err := client.GetOIDCClient(context.Background(), "test-id")
-	if err != nil {
-		t.Fatalf("GetOIDCClient: %v", err)
-	}
-	if got.AccessTokenDurationMinutes != 15 {
-		t.Errorf("AccessTokenDurationMinutes: got %d, want 15", got.AccessTokenDurationMinutes)
-	}
-	if got.RefreshTokenDurationMinutes != 1440 {
-		t.Errorf("RefreshTokenDurationMinutes: got %d, want 1440", got.RefreshTokenDurationMinutes)
 	}
 }
 
-// clientType decides which fields the operator may push, so both read paths used for
-// adoption have to carry it through.
-func TestOIDCClientReads_CarryClientType(t *testing.T) {
-	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.NotFound(w, r)
-			return
-		}
-		cimd := oidcClientResponse{
-			ID:                "https://apps.example.com/meta.json",
-			Name:              "metadata-app",
-			ClientType:        ClientTypeCIMD,
-			AllowedUserGroups: []any{},
-		}
-		w.Header().Set("Content-Type", "application/json")
-		switch r.URL.Path {
-		case "/api/oidc/clients/test-id":
-			_ = json.NewEncoder(w).Encode(cimd)
-		case "/api/oidc/clients":
-			_ = json.NewEncoder(w).Encode(map[string]any{"data": []oidcClientResponse{cimd}})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-
-	got, err := client.GetOIDCClient(context.Background(), "test-id")
-	if err != nil {
-		t.Fatalf("GetOIDCClient: %v", err)
-	}
-	if !got.IsCIMD() {
-		t.Errorf("GetOIDCClient clientType: got %q, want %q", got.ClientType, ClientTypeCIMD)
-	}
-
-	listed, err := client.ListOIDCClients(context.Background(), "")
-	if err != nil {
-		t.Fatalf("ListOIDCClients: %v", err)
-	}
-	if len(listed) != 1 {
-		t.Fatalf("expected 1 listed client, got %d", len(listed))
-	}
-	if !listed[0].IsCIMD() {
-		t.Errorf("ListOIDCClients clientType: got %q, want %q", listed[0].ClientType, ClientTypeCIMD)
-	}
-}
-
-// A CIMD client ID is a full https URL. Raw, its slashes become extra path segments and
-// gin never matches the route, so Pocket-ID takes it base64url-encoded behind a "~" and
-// decodes it in middleware. Every client-ID path param has to go through that encoding.
-func TestClientIDPathParam_EncodesMetadataDocumentURLs(t *testing.T) {
-	const metadataURL = "https://apps.example.com/myapp/client-metadata.json"
-	want := "~" + base64.RawURLEncoding.EncodeToString([]byte(metadataURL))
-
-	if got := clientIDPathParam(metadataURL); got != want {
-		t.Errorf("clientIDPathParam(%q) = %q, want %q", metadataURL, got, want)
-	}
-	if got := clientIDPathParam("grafana"); got != "grafana" {
-		t.Errorf("an ordinary client ID must pass through untouched, got %q", got)
-	}
-}
-
-// LooksLikeCIMDID has to agree with the CRD's CEL rules and upstream's
-// fosite.LooksLikeCIMDURL, both of which require the https scheme. A looser test (any
-// "://") would route a mistyped "http://" client ID down the adopt-only path, where it
-// waits forever for a client Pocket-ID will never materialize, while admission had already
-// waved through the metadata-owned fields the CEL rules exist to reject.
+// A looser test (any "://") would route a mistyped "http://" client ID down the adopt-only
+// path, where it waits forever for a client Pocket-ID will never materialize.
 func TestLooksLikeCIMDID_RequiresHTTPSScheme(t *testing.T) {
 	for id, want := range map[string]bool{
 		"https://apps.example.com/myapp/client-metadata.json": true,
@@ -143,1011 +71,204 @@ func TestLooksLikeCIMDID_RequiresHTTPSScheme(t *testing.T) {
 	}
 }
 
-// Exercises the encoding through the real request path: the stub only answers the encoded
-// route, so a regression in any client-ID path param shows up as a 404 here.
-func TestOIDCClientOperations_UseEncodedPathForMetadataDocumentIDs(t *testing.T) {
-	const metadataURL = "https://apps.example.com/myapp/client-metadata.json"
-	encoded := "~" + base64.RawURLEncoding.EncodeToString([]byte(metadataURL))
-
-	seen := map[string]bool{}
-	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.EscapedPath()
-		w.Header().Set("Content-Type", "application/json")
-
-		// API access lives on its own route prefix, so it needs encoding independently of
-		// the /api/oidc/clients ones.
-		if path == "/api/api-access/"+encoded+"/apis" {
-			seen[r.Method+" api-access"] = true
-			_ = json.NewEncoder(w).Encode([]any{})
-			return
-		}
-		if path == "/api/apis/api-1/clients/"+encoded {
-			seen[r.Method+" api-clients"] = true
-			if r.Method == http.MethodDelete {
-				w.WriteHeader(http.StatusNoContent)
-				return
-			}
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"userDelegatedAccess":        true,
-				"userDelegatedPermissionIds": []string{"perm-1"},
-			})
-			return
-		}
-
-		prefix := "/api/oidc/clients/" + encoded
-		if !strings.HasPrefix(path, prefix) {
-			http.NotFound(w, r)
-			return
-		}
-		suffix := strings.TrimPrefix(path, prefix)
-		seen[r.Method+" "+suffix] = true
-		switch {
-		case r.Method == http.MethodDelete:
-			w.WriteHeader(http.StatusNoContent)
-		case suffix == "/secrets" && r.Method == http.MethodPost:
-			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id": "secret-1", "prefix": "a-de", "secret": "a-declared-secret-value", "isActive": true,
-			})
-		case suffix == "/secrets":
-			_ = json.NewEncoder(w).Encode([]any{map[string]any{"id": "secret-1", "isActive": true}})
-		case suffix == "/scim-service-provider":
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": "scim-1", "endpoint": "https://scim.example.com"})
-		default:
-			_ = json.NewEncoder(w).Encode(oidcClientResponse{
-				ID: metadataURL, Name: "My App", ClientType: ClientTypeCIMD, AllowedUserGroups: []any{},
-			})
-		}
-	}))
-
-	ctx := context.Background()
-
-	if _, err := client.GetOIDCClient(ctx, metadataURL); err != nil {
-		t.Errorf("GetOIDCClient: %v", err)
-	}
-	if err := client.RefreshOIDCClientMetadata(ctx, metadataURL); err != nil {
-		t.Errorf("RefreshOIDCClientMetadata: %v", err)
-	}
-	if _, err := client.UpdateOIDCClient(ctx, metadataURL, OIDCClientInput{Name: "My App"}); err != nil {
-		t.Errorf("UpdateOIDCClient: %v", err)
-	}
-	if err := client.UpdateOIDCClientAllowedGroups(ctx, metadataURL, []string{"g1"}); err != nil {
-		t.Errorf("UpdateOIDCClientAllowedGroups: %v", err)
-	}
-	// ReconcileSCIM calls this on the first reconcile of every client, SCIM spec or not,
-	// so it is on the adoption path for every CIMD client.
-	if _, err := client.GetOIDCClientSCIMServiceProvider(ctx, metadataURL); err != nil {
-		t.Errorf("GetOIDCClientSCIMServiceProvider: %v", err)
-	}
-	if _, _, err := client.CreateOIDCClientSecret(ctx, metadataURL, "a-declared-secret-value"); err != nil {
-		t.Errorf("CreateOIDCClientSecret: %v", err)
-	}
-	if err := client.DeleteOIDCClientSecret(ctx, metadataURL, "secret-1"); err != nil {
-		t.Errorf("DeleteOIDCClientSecret: %v", err)
-	}
-	// Reachable for CIMD: admission allows apiAccess.delegatedPermissions on one.
-	if _, err := client.ListAPIClientGrants(ctx, metadataURL); err != nil {
-		t.Errorf("ListAPIClientGrants: %v", err)
-	}
-	if _, err := client.SetAPIClientGrant(ctx, "api-1", metadataURL, APIClientGrant{
-		UserDelegatedAccess:        true,
-		UserDelegatedPermissionIDs: []string{"perm-1"},
-	}); err != nil {
-		t.Errorf("SetAPIClientGrant: %v", err)
-	}
-	if err := client.RemoveAPIClientGrant(ctx, "api-1", metadataURL); err != nil {
-		t.Errorf("RemoveAPIClientGrant: %v", err)
-	}
-	if err := client.DeleteOIDCClient(ctx, metadataURL); err != nil {
-		t.Errorf("DeleteOIDCClient: %v", err)
-	}
-
-	for _, want := range []string{
-		"GET ", "POST /refresh", "PUT ", "PUT /allowed-user-groups", "DELETE ",
-		"GET /scim-service-provider", "POST /secrets", "DELETE /secrets/secret-1",
-		"GET api-access", "PUT api-clients", "DELETE api-clients",
-	} {
-		if !seen[want] {
-			t.Errorf("no request reached the encoded route for %q (seen: %v)", want, seen)
-		}
-	}
+func versionHandler(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write([]byte(`{"currentVersion":"2.14.0"}`))
 }
 
-func TestRefreshOIDCClientMetadata_PostsToRefreshEndpoint(t *testing.T) {
-	var calls int
-
-	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/api/oidc/clients/test-id/refresh" {
-			http.NotFound(w, r)
-			return
-		}
-		calls++
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(oidcClientResponse{
-			ID:                "test-id",
-			Name:              "metadata-app",
-			ClientType:        ClientTypeCIMD,
-			AllowedUserGroups: []any{},
-		})
-	}))
-
-	if err := client.RefreshOIDCClientMetadata(context.Background(), "test-id"); err != nil {
-		t.Fatalf("RefreshOIDCClientMetadata: %v", err)
-	}
-	if calls != 1 {
-		t.Errorf("expected 1 call to the refresh endpoint, got %d", calls)
-	}
+func getVersion(c *Client) error {
+	_, err := client.Decode[client.CurrentVersionDto](c.GetCurrentDeployedVersionOfPocketID(context.Background()))
+	return err
 }
 
-func TestRefreshOIDCClientMetadata_PropagatesError(t *testing.T) {
-	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusBadRequest)
-	}))
-
-	if err := client.RefreshOIDCClientMetadata(context.Background(), "test-id"); err == nil {
-		t.Fatal("expected an error when the refresh is rejected")
-	}
-}
-
-func TestUpdateOIDCClient_SendsCallbackURLsAsProvided(t *testing.T) {
-	var sentCallbackURLs, sentLogoutCallbackURLs []string
-
-	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodPut && r.URL.Path == "/api/oidc/clients/test-id":
-			var body map[string]any
-			_ = json.NewDecoder(r.Body).Decode(&body)
-
-			sentCallbackURLs = jsonStringSlice(body, "callbackURLs")
-			sentLogoutCallbackURLs = jsonStringSlice(body, "logoutCallbackURLs")
-
-			resp := oidcClientResponse{
-				ID:                 "test-id",
-				Name:               "test-client",
-				CallbackURLs:       sentCallbackURLs,
-				LogoutCallbackURLs: sentLogoutCallbackURLs,
-				AllowedUserGroups:  []any{},
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(resp)
-
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-
-	_, err := client.UpdateOIDCClient(context.Background(), "test-id", OIDCClientInput{
-		Name:               "test-client",
-		CallbackURLs:       []string{"https://new.example.com/callback"},
-		LogoutCallbackURLs: []string{"https://new.example.com/logout"},
-	})
-	if err != nil {
-		t.Fatalf("UpdateOIDCClient: %v", err)
-	}
-
-	if len(sentCallbackURLs) != 1 || sentCallbackURLs[0] != "https://new.example.com/callback" {
-		t.Errorf("expected callback URLs [https://new.example.com/callback], got %v", sentCallbackURLs)
-	}
-	if len(sentLogoutCallbackURLs) != 1 || sentLogoutCallbackURLs[0] != "https://new.example.com/logout" {
-		t.Errorf("expected logout callback URLs [https://new.example.com/logout], got %v", sentLogoutCallbackURLs)
-	}
-}
-
-func TestUpdateOIDCClient_SendsRequiresPushedAuthorizationRequests(t *testing.T) {
-	var body map[string]any
-
-	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPut || r.URL.Path != "/api/oidc/clients/test-id" {
-			http.NotFound(w, r)
-			return
-		}
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(oidcClientResponse{ID: "test-id", Name: "test-client", AllowedUserGroups: []any{}})
-	}))
-
-	_, err := client.UpdateOIDCClient(context.Background(), "test-id", OIDCClientInput{
-		Name:                                "test-client",
-		RequiresPushedAuthorizationRequests: true,
-	})
-	if err != nil {
-		t.Fatalf("UpdateOIDCClient: %v", err)
-	}
-
-	if got, _ := body["requiresPushedAuthorizationRequests"].(bool); !got {
-		t.Errorf("expected requiresPushedAuthorizationRequests true in payload, got %v", body["requiresPushedAuthorizationRequests"])
-	}
-}
-
-func TestUpdateOIDCClient_SendsFederatedIdentityReplayProtection(t *testing.T) {
-	var body map[string]any
-
-	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPut || r.URL.Path != "/api/oidc/clients/test-id" {
-			http.NotFound(w, r)
-			return
-		}
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(oidcClientResponse{ID: "test-id", Name: "test-client", AllowedUserGroups: []any{}})
-	}))
-
-	_, err := client.UpdateOIDCClient(context.Background(), "test-id", OIDCClientInput{
-		Name: "test-client",
-		Credentials: &OIDCClientCredentials{
-			FederatedIdentities: []OIDCClientFederatedIdentity{{
-				Issuer:           "https://issuer.example.com",
-				ReplayProtection: true,
-			}},
-		},
-	})
-	if err != nil {
-		t.Fatalf("UpdateOIDCClient: %v", err)
-	}
-
-	identity := firstFederatedIdentity(t, body)
-	if got, _ := identity["replayProtection"].(bool); !got {
-		t.Errorf("expected replayProtection true in payload, got %v", identity["replayProtection"])
-	}
-}
-
-// Pocket-ID returns a client's federated identities, which is what lets reconcile diff them.
-func TestGetOIDCClient_CarriesFederatedIdentities(t *testing.T) {
-	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"client-123","name":"Test","credentials":{"federatedIdentities":[
-			{"issuer":"https://issuer.example.com","subject":"sub","audience":"aud","jwks":"https://issuer.example.com/jwks","replayProtection":true},
-			{"issuer":"https://keys.example.com","publicKeys":[{"kty":"OKP","kid":"k1","crv":"Ed25519","x":"abc"}]}
-		]}}`))
-	}))
-
-	got, err := client.GetOIDCClient(context.Background(), "client-123")
-	if err != nil {
-		t.Fatalf("GetOIDCClient: %v", err)
-	}
-
-	want := []OIDCClientFederatedIdentity{
-		{Issuer: "https://issuer.example.com", Subject: "sub", Audience: "aud", JWKS: "https://issuer.example.com/jwks", ReplayProtection: true},
-		{Issuer: "https://keys.example.com", PublicKeys: []json.RawMessage{json.RawMessage(`{"crv":"Ed25519","kid":"k1","kty":"OKP","x":"abc"}`)}},
-	}
-	if !reflect.DeepEqual(got.FederatedIdentities, want) {
-		t.Errorf("FederatedIdentities = %+v, want %+v", got.FederatedIdentities, want)
-	}
-}
-
-func TestUpdateOIDCClientAllowedGroups_RetriesOn500(t *testing.T) {
-	attempts := 0
-	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPut && r.URL.Path == allowedUserGroupsPath {
-			attempts++
-			if attempts < 3 {
-				// Simulate a DB deadlock 500 on the first two attempts.
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		http.NotFound(w, r)
-	}))
-
-	if err := c.UpdateOIDCClientAllowedGroups(context.Background(), "test-id", []string{"group-1"}); err != nil {
-		t.Fatalf("expected success after retries, got: %v", err)
-	}
-	if attempts != 3 {
-		t.Errorf("expected 3 attempts (2 failures + 1 success), got %d", attempts)
-	}
-}
-
-func TestUpdateOIDCClientAllowedGroups_ReturnsErrAfterAllRetries(t *testing.T) {
-	attempts := 0
-	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPut && r.URL.Path == allowedUserGroupsPath {
-			attempts++
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		http.NotFound(w, r)
-	}))
-
-	if err := c.UpdateOIDCClientAllowedGroups(context.Background(), "test-id", []string{"group-1"}); err == nil {
-		t.Fatal("expected error after exhausting all retries, got nil")
-	}
-	if attempts != 3 {
-		t.Errorf("expected 3 attempts, got %d", attempts)
-	}
-}
-
-func TestUpdateOIDCClientAllowedGroups_NoRetryOnNon500(t *testing.T) {
-	attempts := 0
-	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPut && r.URL.Path == allowedUserGroupsPath {
-			attempts++
-			// 400 Bad Request — should not be retried.
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		http.NotFound(w, r)
-	}))
-
-	if err := c.UpdateOIDCClientAllowedGroups(context.Background(), "test-id", []string{"group-1"}); err == nil {
-		t.Fatal("expected error for 400 response, got nil")
-	}
-	if attempts != 1 {
-		t.Errorf("expected exactly 1 attempt for non-500 error, got %d", attempts)
-	}
-}
-
-// --- OIDCClient.ToInput() ---
-
-func TestOIDCClientToInput_MapsAllFields(t *testing.T) {
-	c := &OIDCClient{
-		ID:                                  "should-be-excluded",
-		Name:                                "test-client",
-		CallbackURLs:                        []string{"https://a.example.com/cb"},
-		LogoutCallbackURLs:                  []string{"https://a.example.com/logout"},
-		BackchannelLogoutURL:                "https://a.example.com/backchannel",
-		LaunchURL:                           "https://app.example.com",
-		HasLogo:                             true,
-		HasDarkLogo:                         true,
-		IsPublic:                            true,
-		IsGroupRestricted:                   true,
-		PKCEEnabled:                         true,
-		RequiresReauthentication:            true,
-		RequiresPushedAuthorizationRequests: true,
-		AccessTokenDurationMinutes:          15,
-		RefreshTokenDurationMinutes:         1440,
-		AllowedUserGroupIDs:                 []string{"group-1"},
-		FederatedIdentities:                 []OIDCClientFederatedIdentity{{Issuer: "https://issuer.example.com"}},
-	}
-	input := c.ToInput()
-	if input.Name != "test-client" {
-		t.Errorf("Name: got %q, want %q", input.Name, "test-client")
-	}
-	if len(input.CallbackURLs) != 1 || input.CallbackURLs[0] != "https://a.example.com/cb" {
-		t.Errorf("CallbackURLs: got %v", input.CallbackURLs)
-	}
-	if len(input.LogoutCallbackURLs) != 1 || input.LogoutCallbackURLs[0] != "https://a.example.com/logout" {
-		t.Errorf("LogoutCallbackURLs: got %v", input.LogoutCallbackURLs)
-	}
-	if input.BackchannelLogoutURL != "https://a.example.com/backchannel" {
-		t.Errorf("BackchannelLogoutURL: got %q", input.BackchannelLogoutURL)
-	}
-	if input.LaunchURL != "https://app.example.com" {
-		t.Errorf("LaunchURL: got %q", input.LaunchURL)
-	}
-	if !input.IsPublic {
-		t.Error("IsPublic: expected true")
-	}
-	if !input.IsGroupRestricted {
-		t.Error("IsGroupRestricted: expected true")
-	}
-	if !input.PKCEEnabled {
-		t.Error("PKCEEnabled: expected true")
-	}
-	if !input.RequiresReauthentication {
-		t.Error("RequiresReauthentication: expected true")
-	}
-	if !input.RequiresPushedAuthorizationRequests {
-		t.Error("RequiresPushedAuthorizationRequests: expected true")
-	}
-	if input.AccessTokenDurationMinutes != 15 {
-		t.Errorf("AccessTokenDurationMinutes: got %d, want 15", input.AccessTokenDurationMinutes)
-	}
-	if input.RefreshTokenDurationMinutes != 1440 {
-		t.Errorf("RefreshTokenDurationMinutes: got %d, want 1440", input.RefreshTokenDurationMinutes)
-	}
-	if input.Credentials == nil || !reflect.DeepEqual(input.Credentials.FederatedIdentities, c.FederatedIdentities) {
-		t.Errorf("Credentials: got %+v", input.Credentials)
-	}
-	// Fields excluded from ToInput: ID, LogoURL, DarkLogoURL
-	if input.ID != nil {
-		t.Error("ID: expected nil")
-	}
-	if input.LogoURL != "" {
-		t.Errorf("LogoURL: expected empty, got %q", input.LogoURL)
-	}
-	if input.DarkLogoURL != "" {
-		t.Errorf("DarkLogoURL: expected empty, got %q", input.DarkLogoURL)
-	}
-}
-
-// --- User.ToInput() ---
-
-func TestUserToInput_MapsAllFields(t *testing.T) {
-	u := &User{
-		ID:          "user-id",
-		Username:    "alice",
-		FirstName:   "Alice",
-		LastName:    "Smith",
-		Email:       "alice@example.com",
-		DisplayName: "Alice Smith",
-		IsAdmin:     true,
-		Disabled:    true,
-		Locale:      "en",
-	}
-	input := u.ToInput()
-	if input.ID != "user-id" {
-		t.Errorf("ID: got %q", input.ID)
-	}
-	if input.Username != "alice" {
-		t.Errorf("Username: got %q", input.Username)
-	}
-	if input.FirstName != "Alice" {
-		t.Errorf("FirstName: got %q", input.FirstName)
-	}
-	if input.LastName != "Smith" {
-		t.Errorf("LastName: got %q", input.LastName)
-	}
-	if input.Email != "alice@example.com" {
-		t.Errorf("Email: got %q", input.Email)
-	}
-	if input.DisplayName != "Alice Smith" {
-		t.Errorf("DisplayName: got %q", input.DisplayName)
-	}
-	if !input.IsAdmin {
-		t.Error("IsAdmin: expected true")
-	}
-	if !input.Disabled {
-		t.Error("Disabled: expected true")
-	}
-	if input.Locale != "en" {
-		t.Errorf("Locale: got %q", input.Locale)
-	}
-}
-
-// --- UserInput.Equal() ---
-
-func TestUserInputEqual_IgnoresID(t *testing.T) {
-	base := UserInput{Username: "alice", FirstName: "Alice", Email: "alice@example.com"}
-
-	withID := base
-	withID.ID = "18f3c2f6-2c4b-4f26-9d1c-4b7f6e0a1b2c"
-
-	otherID := base
-	otherID.ID = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
-
-	if !base.Equal(withID) {
-		t.Error("expected inputs differing only by ID to be equal")
-	}
-	if !withID.Equal(otherID) {
-		t.Error("expected inputs with different IDs but identical fields to be equal")
-	}
-	if !withID.Equal(withID) {
-		t.Error("expected an input to equal itself")
-	}
-}
-
-func TestUserInputEqual_DetectsFieldChanges(t *testing.T) {
-	base := UserInput{
-		ID:          "18f3c2f6-2c4b-4f26-9d1c-4b7f6e0a1b2c",
-		Username:    "alice",
-		FirstName:   "Alice",
-		LastName:    "Smith",
-		Email:       "alice@example.com",
-		DisplayName: "Alice Smith",
-		IsAdmin:     true,
-		Disabled:    true,
-		Locale:      "en",
-	}
-
-	mutations := map[string]func(*UserInput){
-		"Username":      func(i *UserInput) { i.Username = "bob" },
-		"FirstName":     func(i *UserInput) { i.FirstName = "Bob" },
-		"LastName":      func(i *UserInput) { i.LastName = "Jones" },
-		"Email":         func(i *UserInput) { i.Email = "bob@example.com" },
-		"DisplayName":   func(i *UserInput) { i.DisplayName = "Bob Jones" },
-		"IsAdmin":       func(i *UserInput) { i.IsAdmin = false },
-		"Disabled":      func(i *UserInput) { i.Disabled = false },
-		"Locale":        func(i *UserInput) { i.Locale = "de" },
-		"EmailVerified": func(i *UserInput) { i.EmailVerified = true },
-	}
-
-	for field, mutate := range mutations {
-		t.Run(field, func(t *testing.T) {
-			changed := base
-			mutate(&changed)
-			if base.Equal(changed) {
-				t.Errorf("expected a change to %s to be detected", field)
-			}
-		})
-	}
-}
-
-// --- CreateUser ID propagation ---
-
-func TestCreateUser_SendsDeclarativeID(t *testing.T) {
-	const declaredID = "18f3c2f6-2c4b-4f26-9d1c-4b7f6e0a1b2c"
-
-	var sentBody map[string]any
-	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/api/users" {
-			http.NotFound(w, r)
-			return
-		}
-		_ = json.NewDecoder(r.Body).Decode(&sentBody)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(w).Encode(map[string]any{"id": declaredID, "username": "alice"})
-	}))
-
-	user, err := client.CreateUser(context.Background(), UserInput{ID: declaredID, Username: "alice"})
-	if err != nil {
-		t.Fatalf("CreateUser: %v", err)
-	}
-
-	if sentBody["id"] != declaredID {
-		t.Errorf("expected request body id %q, got %v", declaredID, sentBody["id"])
-	}
-	if user.ID != declaredID {
-		t.Errorf("expected returned user ID %q, got %q", declaredID, user.ID)
-	}
-}
-
-func TestCreateUser_OmitsEmptyID(t *testing.T) {
-	var sentBody map[string]any
-	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/api/users" {
-			http.NotFound(w, r)
-			return
-		}
-		_ = json.NewDecoder(r.Body).Decode(&sentBody)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(w).Encode(map[string]any{"id": "generated-by-pocket-id", "username": "alice"})
-	}))
-
-	user, err := client.CreateUser(context.Background(), UserInput{Username: "alice"})
-	if err != nil {
-		t.Fatalf("CreateUser: %v", err)
-	}
-
-	// Pocket-ID rejects an empty id (binding "omitempty,uuid"), so it must not be sent at all.
-	if _, present := sentBody["id"]; present {
-		t.Errorf("expected id to be omitted from the request body, got %v", sentBody["id"])
-	}
-	if user.ID != "generated-by-pocket-id" {
-		t.Errorf("expected the autogenerated ID to be returned, got %q", user.ID)
-	}
-}
-
-func TestUpdateUser_NeverSendsID(t *testing.T) {
-	var sentBody map[string]any
-	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPut || r.URL.Path != "/api/users/uid-alice" {
-			http.NotFound(w, r)
-			return
-		}
-		_ = json.NewDecoder(r.Body).Decode(&sentBody)
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"id": "uid-alice", "username": "alice"})
-	}))
-
-	// Pocket-ID takes the user ID from the URL and ignores it in the body on update.
-	input := UserInput{ID: "18f3c2f6-2c4b-4f26-9d1c-4b7f6e0a1b2c", Username: "alice"}
-	if _, err := client.UpdateUser(context.Background(), "uid-alice", input); err != nil {
-		t.Fatalf("UpdateUser: %v", err)
-	}
-
-	if _, present := sentBody["id"]; present {
-		t.Errorf("expected id to be omitted from the update body, got %v", sentBody["id"])
-	}
-}
-
-// --- User custom claims ---
-
-// Custom claims come back on the user read paths, and the controller diffs against
-// them, so dropping them would make every reconcile push the same claims again.
-func TestGetUser_ReadsCustomClaims(t *testing.T) {
-	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != "/api/users/uid-alice" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"id":       "uid-alice",
-			"username": "alice",
-			"customClaims": []map[string]string{
-				{"key": "department", "value": "engineering"},
-			},
-		})
-	}))
-
-	user, err := client.GetUser(context.Background(), "uid-alice")
-	if err != nil {
-		t.Fatalf("GetUser: %v", err)
-	}
-
-	want := []CustomClaim{{Key: "department", Value: "engineering"}}
-	if !CustomClaimsEqual(user.CustomClaims, want) {
-		t.Errorf("CustomClaims: got %v, want %v", user.CustomClaims, want)
-	}
-}
-
-func TestUpdateUserCustomClaims_PutsFullSetToUserEndpoint(t *testing.T) {
-	var sentBody []map[string]string
-	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPut || r.URL.Path != "/api/custom-claims/user/uid-alice" {
-			http.NotFound(w, r)
-			return
-		}
-		_ = json.NewDecoder(r.Body).Decode(&sentBody)
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(sentBody)
-	}))
-
-	claims := []CustomClaim{{Key: "department", Value: "engineering"}, {Key: "level", Value: "3"}}
-	got, err := client.UpdateUserCustomClaims(context.Background(), "uid-alice", claims)
-	if err != nil {
-		t.Fatalf("UpdateUserCustomClaims: %v", err)
-	}
-
-	if len(sentBody) != 2 || sentBody[0]["key"] != "department" || sentBody[1]["value"] != "3" {
-		t.Errorf("request body: got %v", sentBody)
-	}
-	if !CustomClaimsEqual(got, claims) {
-		t.Errorf("returned claims: got %v, want %v", got, claims)
-	}
-}
-
-// An empty set is how the operator clears claims, so it has to reach the API as an
-// empty JSON array rather than null.
-func TestUpdateUserCustomClaims_SendsEmptyArrayToClearClaims(t *testing.T) {
-	var rawBody string
-	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPut || r.URL.Path != "/api/custom-claims/user/uid-alice" {
-			http.NotFound(w, r)
-			return
-		}
-		body, _ := io.ReadAll(r.Body)
-		rawBody = strings.TrimSpace(string(body))
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte("[]"))
-	}))
-
-	got, err := client.UpdateUserCustomClaims(context.Background(), "uid-alice", nil)
-	if err != nil {
-		t.Fatalf("UpdateUserCustomClaims: %v", err)
-	}
-
-	if rawBody != "[]" {
-		t.Errorf("request body: got %q, want %q", rawBody, "[]")
-	}
-	if got != nil {
-		t.Errorf("returned claims: got %v, want nil", got)
-	}
-}
-
-// --- UserGroup.ToInput() ---
-
-func TestUserGroupToInput_MapsAllFields(t *testing.T) {
-	g := &UserGroup{
-		ID:           "group-id",
-		Name:         "my-group",
-		FriendlyName: "My Group",
-		UserIDs:      []string{"u1", "u2"},
-		CustomClaims: []CustomClaim{{Key: "k1", Value: "v1"}},
-	}
-	input := g.ToInput()
-	if input.Name != "my-group" {
-		t.Errorf("Name: got %q", input.Name)
-	}
-	if input.FriendlyName != "My Group" {
-		t.Errorf("FriendlyName: got %q", input.FriendlyName)
-	}
-	if len(input.UserIDs) != 2 || input.UserIDs[0] != "u1" || input.UserIDs[1] != "u2" {
-		t.Errorf("UserIDs: got %v", input.UserIDs)
-	}
-	if len(input.CustomClaims) != 1 || input.CustomClaims[0].Key != "k1" || input.CustomClaims[0].Value != "v1" {
-		t.Errorf("CustomClaims: got %v", input.CustomClaims)
-	}
-}
-
-// --- OIDCClientInput.Equal() ---
-
-func TestOIDCClientInputEqual_IdenticalInputsAreEqual(t *testing.T) {
-	a := OIDCClientInput{Name: "test", CallbackURLs: []string{"https://a.example.com/cb"}}
-	b := a
-	if !a.Equal(b) {
-		t.Error("expected identical inputs to be equal")
-	}
-}
-
-func TestOIDCClientInputEqual_DifferentNameNotEqual(t *testing.T) {
-	a := OIDCClientInput{Name: "a"}
-	b := OIDCClientInput{Name: "b"}
-	if a.Equal(b) {
-		t.Error("expected different names to not be equal")
-	}
-}
-
-func TestOIDCClientInputEqual_DifferentPushedAuthorizationRequestsNotEqual(t *testing.T) {
-	a := OIDCClientInput{Name: "test", RequiresPushedAuthorizationRequests: true}
-	b := OIDCClientInput{Name: "test"}
-	if a.Equal(b) {
-		t.Error("expected different RequiresPushedAuthorizationRequests to not be equal")
-	}
-}
-
-func TestOIDCClientInputEqual_DifferentTokenDurationsNotEqual(t *testing.T) {
-	a := OIDCClientInput{Name: "test", AccessTokenDurationMinutes: 15, RefreshTokenDurationMinutes: 1440}
-	if a.Equal(OIDCClientInput{Name: "test", AccessTokenDurationMinutes: 60, RefreshTokenDurationMinutes: 1440}) {
-		t.Error("expected different AccessTokenDurationMinutes to not be equal")
-	}
-	if a.Equal(OIDCClientInput{Name: "test", AccessTokenDurationMinutes: 15, RefreshTokenDurationMinutes: 43200}) {
-		t.Error("expected different RefreshTokenDurationMinutes to not be equal")
-	}
-}
-
-func TestOIDCClientInputEqual_DifferentBackchannelLogoutURLNotEqual(t *testing.T) {
-	a := OIDCClientInput{Name: "test", BackchannelLogoutURL: "https://a.example.com/backchannel"}
-	b := OIDCClientInput{Name: "test"}
-	if a.Equal(b) {
-		t.Error("expected different BackchannelLogoutURL to not be equal")
-	}
-}
-
-func TestOIDCClientInputEqual_CallbackURLOrderMatters(t *testing.T) {
-	// CallbackURLs use orderedEqual — different order is not equal.
-	a := OIDCClientInput{CallbackURLs: []string{"https://a.example.com/cb", "https://b.example.com/cb"}}
-	b := OIDCClientInput{CallbackURLs: []string{"https://b.example.com/cb", "https://a.example.com/cb"}}
-	if a.Equal(b) {
-		t.Error("expected different callback URL order to not be equal")
-	}
-}
-
-func TestOIDCClientInputEqual_LogoutCallbackURLOrderMatters(t *testing.T) {
-	a := OIDCClientInput{LogoutCallbackURLs: []string{"https://a.example.com/logout", "https://b.example.com/logout"}}
-	b := OIDCClientInput{LogoutCallbackURLs: []string{"https://b.example.com/logout", "https://a.example.com/logout"}}
-	if a.Equal(b) {
-		t.Error("expected different logout callback URL order to not be equal")
-	}
-}
-
-func TestOIDCClientInputEqual_SameCallbackURLOrderIsEqual(t *testing.T) {
-	a := OIDCClientInput{CallbackURLs: []string{"https://a.example.com/cb", "https://b.example.com/cb"}}
-	b := OIDCClientInput{CallbackURLs: []string{"https://a.example.com/cb", "https://b.example.com/cb"}}
-	if !a.Equal(b) {
-		t.Error("expected same callback URLs in same order to be equal")
-	}
-}
-
-func TestOIDCClientInputEqual_BothEmptyCallbackURLsEqual(t *testing.T) {
-	a := OIDCClientInput{Name: "test"}
-	b := OIDCClientInput{Name: "test"}
-	if !a.Equal(b) {
-		t.Error("expected both-empty callback URLs to be equal")
-	}
-}
-
-func TestOIDCClientInputEqual_LogoURLIgnoredInComparison(t *testing.T) {
-	// LogoURL and DarkLogoURL are write-only; excluded from Equal.
-	a := OIDCClientInput{Name: "test", LogoURL: "https://logo.example.com", DarkLogoURL: "https://dark.example.com"}
-	b := OIDCClientInput{Name: "test"}
-	if !a.Equal(b) {
-		t.Error("expected LogoURL/DarkLogoURL to be ignored in Equal")
-	}
-}
-
-func TestOIDCClientInputEqual_FederatedIdentities(t *testing.T) {
-	identity := OIDCClientFederatedIdentity{
-		Issuer:     "https://issuer.example.com",
-		PublicKeys: []json.RawMessage{json.RawMessage(`{"kty":"RSA","kid":"k1","e":"AQAB"}`)},
-	}
-	other := OIDCClientFederatedIdentity{Issuer: "https://other.example.com"}
-	withIdentities := func(identities ...OIDCClientFederatedIdentity) OIDCClientInput {
-		return OIDCClientInput{Name: "test", Credentials: &OIDCClientCredentials{FederatedIdentities: identities}}
-	}
-	reformatted := identity
-	reformatted.PublicKeys = []json.RawMessage{json.RawMessage(`{ "e": "AQAB", "kid": "k1", "kty": "RSA" }`)}
-	rotated := identity
-	rotated.PublicKeys = []json.RawMessage{json.RawMessage(`{"kty":"RSA","kid":"k2","e":"AQAB"}`)}
-	changed := func(mutate func(*OIDCClientFederatedIdentity)) OIDCClientInput {
-		c := identity
-		mutate(&c)
-		return withIdentities(c)
-	}
-
-	for _, tc := range []struct {
-		name string
-		a, b OIDCClientInput
-		want bool
-	}{
-		{"nil and empty credentials", OIDCClientInput{Name: "test"}, withIdentities(), true},
-		{"same identities", withIdentities(identity, other), withIdentities(identity, other), true},
-		{"key formatting and member order", withIdentities(identity), withIdentities(reformatted), true},
-		{"identity removed", withIdentities(identity), OIDCClientInput{Name: "test"}, false},
-		{"identity order", withIdentities(identity, other), withIdentities(other, identity), false},
-		{"different key", withIdentities(identity), withIdentities(rotated), false},
-		{"different issuer", withIdentities(identity), changed(func(c *OIDCClientFederatedIdentity) { c.Issuer = "https://x.example.com" }), false},
-		{"different subject", withIdentities(identity), changed(func(c *OIDCClientFederatedIdentity) { c.Subject = "sub" }), false},
-		{"different audience", withIdentities(identity), changed(func(c *OIDCClientFederatedIdentity) { c.Audience = "aud" }), false},
-		{"different jwks", withIdentities(identity), changed(func(c *OIDCClientFederatedIdentity) { c.JWKS = "https://x.example.com/jwks" }), false},
-		{"different replayProtection", withIdentities(identity), changed(func(c *OIDCClientFederatedIdentity) { c.ReplayProtection = true }), false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := tc.a.Equal(tc.b); got != tc.want {
-				t.Errorf("Equal = %v, want %v", got, tc.want)
-			}
-		})
-	}
-}
-
-// --- SortedEqual() ---
-
-func TestSortedEqual_SameElementsDifferentOrder(t *testing.T) {
-	if !SortedEqual([]string{"b", "a"}, []string{"a", "b"}) {
-		t.Error("expected different-order slices with same elements to be equal")
-	}
-}
-
-func TestSortedEqual_BothNil(t *testing.T) {
-	if !SortedEqual(nil, nil) {
-		t.Error("expected nil == nil")
-	}
-}
-
-func TestSortedEqual_EmptyEqualsNil(t *testing.T) {
-	if !SortedEqual([]string{}, nil) {
-		t.Error("expected empty slice == nil")
-	}
-}
-
-func TestSortedEqual_DifferentElementsNotEqual(t *testing.T) {
-	if SortedEqual([]string{"a"}, []string{"b"}) {
-		t.Error("expected different elements to not be equal")
-	}
-}
-
-func TestSortedEqual_DifferentLengthsNotEqual(t *testing.T) {
-	if SortedEqual([]string{"a", "b"}, []string{"a"}) {
-		t.Error("expected different lengths to not be equal")
-	}
-}
-
-// --- CustomClaimsEqual() ---
-
-func TestCustomClaimsEqual_SameClaimsDifferentOrder(t *testing.T) {
-	a := []CustomClaim{{Key: "b", Value: "2"}, {Key: "a", Value: "1"}}
-	b := []CustomClaim{{Key: "a", Value: "1"}, {Key: "b", Value: "2"}}
-	if !CustomClaimsEqual(a, b) {
-		t.Error("expected claims in different order to be equal")
-	}
-}
-
-func TestCustomClaimsEqual_BothNil(t *testing.T) {
-	if !CustomClaimsEqual(nil, nil) {
-		t.Error("expected nil == nil")
-	}
-}
-
-func TestCustomClaimsEqual_EmptyEqualsNil(t *testing.T) {
-	if !CustomClaimsEqual([]CustomClaim{}, nil) {
-		t.Error("expected empty == nil")
-	}
-}
-
-func TestCustomClaimsEqual_DifferentValueNotEqual(t *testing.T) {
-	a := []CustomClaim{{Key: "k", Value: "v1"}}
-	b := []CustomClaim{{Key: "k", Value: "v2"}}
-	if CustomClaimsEqual(a, b) {
-		t.Error("expected different values to not be equal")
-	}
-}
-
-func TestCustomClaimsEqual_DifferentKeyNotEqual(t *testing.T) {
-	a := []CustomClaim{{Key: "k1", Value: "v"}}
-	b := []CustomClaim{{Key: "k2", Value: "v"}}
-	if CustomClaimsEqual(a, b) {
-		t.Error("expected different keys to not be equal")
-	}
-}
-
-func TestCustomClaimsEqual_ExtraKeyNotEqual(t *testing.T) {
-	a := []CustomClaim{{Key: "k1", Value: "v"}, {Key: "k2", Value: "v"}}
-	b := []CustomClaim{{Key: "k1", Value: "v"}}
-	if CustomClaimsEqual(a, b) {
-		t.Error("expected extra key to not be equal")
-	}
-}
-
-// jsonStringSlice extracts a []string from a JSON-decoded map.
-// firstFederatedIdentity returns credentials.federatedIdentities[0] from a
-// decoded OIDC client write payload.
-func firstFederatedIdentity(t *testing.T, body map[string]any) map[string]any {
-	t.Helper()
-
-	credentials, ok := body["credentials"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected credentials object in payload, got %v", body["credentials"])
-	}
-	identities, ok := credentials["federatedIdentities"].([]any)
-	if !ok || len(identities) == 0 {
-		t.Fatalf("expected a federated identity in payload, got %v", credentials["federatedIdentities"])
-	}
-	identity, ok := identities[0].(map[string]any)
-	if !ok {
-		t.Fatalf("expected federated identity object, got %v", identities[0])
-	}
-	return identity
-}
-
-func jsonStringSlice(m map[string]any, key string) []string {
-	raw, ok := m[key]
-	if !ok || raw == nil {
-		return nil
-	}
-	arr, ok := raw.([]any)
-	if !ok {
-		return nil
-	}
-	result := make([]string, 0, len(arr))
-	for _, v := range arr {
-		if s, ok := v.(string); ok {
-			result = append(result, s)
-		}
-	}
-	return result
-}
-
-// TLS-terminating instances are reached over HTTPS with a certificate the system
-// trust store does not know, so the caller-supplied config has to reach the
-// transport that actually performs requests.
-func TestWithTLSConfig_UsesSuppliedTrustStore(t *testing.T) {
-	ts := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"currentVersion":"2.14.0"}`))
-	}))
+// TLS-terminating instances are reached over HTTPS with a certificate the system trust store
+// does not know, so the caller-supplied config has to reach the transport that performs requests.
+func TestWithTLSConfig(t *testing.T) {
+	ts := httptest.NewTestServer(t, http.HandlerFunc(versionHandler))
 	ts.StartTLS()
 
 	roots := x509.NewCertPool()
 	roots.AddCert(ts.Certificate())
-	tlsConfig := &tls.Config{RootCAs: roots, ServerName: "example.com", MinVersion: tls.VersionTLS12}
+	// httptest's certificate is issued for example.com, so the handshake only succeeds if both
+	// RootCAs and ServerName made it through.
+	trusted := &tls.Config{RootCAs: roots, ServerName: "example.com", MinVersion: tls.VersionTLS12}
 
-	client, err := NewClient(ts.URL, "", WithTLSConfig(tlsConfig))
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
-
-	// httptest's certificate is issued for example.com, so the handshake only
-	// succeeds if both RootCAs and ServerName made it through.
-	if _, err := client.GetCurrentVersion(context.Background()); err != nil {
-		t.Fatalf("GetCurrentVersion over TLS: %v", err)
+	for name, tt := range map[string]struct {
+		cfg     *tls.Config
+		wantErr bool
+	}{
+		"uses the supplied trust store":    {cfg: trusted},
+		"nil keeps the system trust store": {wantErr: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c, err := NewClient(ts.URL, "", WithTLSConfig(tt.cfg))
+			if err != nil {
+				t.Fatalf("NewClient: %v", err)
+			}
+			if err := getVersion(c); (err != nil) != tt.wantErr {
+				t.Fatalf("request error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
 	}
 }
 
-func TestWithTLSConfig_RejectsUntrustedCertificate(t *testing.T) {
-	ts := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"currentVersion":"2.14.0"}`))
+func TestMetricsTransport_LabelsOperationAndResult(t *testing.T) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/version/current":
+			versionHandler(w, r)
+		case "/api/admin/users/gone":
+			w.WriteHeader(http.StatusNotFound)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 	}))
-	ts.StartTLS()
 
-	client, err := NewClient(ts.URL, "")
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
+	count := func(operation, result string) float64 {
+		return testutil.ToFloat64(metrics.PocketIDAPIRequests.WithLabelValues(operation, result))
+	}
+	before := []float64{
+		count("GetCurrentDeployedVersionOfPocketID", "success"),
+		count("GetUserByID", "not_found"),
+		count("DeleteUserGroup", "error"),
 	}
 
-	if _, err := client.GetCurrentVersion(context.Background()); err == nil {
-		t.Fatal("expected the default trust store to reject the test certificate")
+	_ = getVersion(c)
+	_ = client.Check(c.GetUserByID(context.Background(), "gone"))
+	_ = client.Check(c.DeleteUserGroup(context.Background(), "group"))
+
+	after := []float64{
+		count("GetCurrentDeployedVersionOfPocketID", "success"),
+		count("GetUserByID", "not_found"),
+		count("DeleteUserGroup", "error"),
+	}
+	for i := range before {
+		if after[i] != before[i]+1 {
+			t.Errorf("metric %d: got %v, want %v", i, after[i], before[i]+1)
+		}
 	}
 }
 
-func TestWithTLSConfig_NilIsNoOp(t *testing.T) {
-	ts := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func TestWithUserSession_EndsSession(t *testing.T) {
+	const (
+		tokenPath    = "/api/admin/users/user-1/one-time-access-token"
+		exchangePath = "/api/one-time-access-token"
+		keysPath     = "/api/api-keys"
+		logoutPath   = "/api/webauthn/logout"
+	)
+	inSession := []string{tokenPath, exchangePath, keysPath, logoutPath}
+
+	tests := []struct {
+		name           string
+		exchangeStatus int
+		logoutStatus   int
+		fnErr          bool
+		cancelDuringFn bool
+		wantCalls      []string
+		wantErr        bool
+	}{
+		{name: "after fn returns", wantCalls: inSession},
+		{name: "when fn fails", fnErr: true, wantCalls: inSession, wantErr: true},
+		{name: "when ctx is cancelled mid-call", cancelDuringFn: true, wantCalls: inSession, wantErr: true},
+		{name: "without failing the call when logout fails", logoutStatus: http.StatusInternalServerError, wantCalls: inSession},
+		{
+			name:           "not when no session was started",
+			exchangeStatus: http.StatusUnauthorized,
+			wantCalls:      []string{tokenPath, exchangePath},
+			wantErr:        true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+
+			var calls []string
+			var logoutCookie string
+			// Holds the list response so the client can only see the cancellation.
+			release := make(chan struct{})
+			c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls = append(calls, r.URL.Path)
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case tokenPath:
+					w.WriteHeader(http.StatusCreated)
+					_, _ = w.Write([]byte(`{"token":"one-time"}`))
+				case exchangePath:
+					if tt.exchangeStatus != 0 {
+						w.WriteHeader(tt.exchangeStatus)
+						return
+					}
+					http.SetCookie(w, &http.Cookie{Name: "session", Value: "s1", Path: "/"})
+					_, _ = w.Write([]byte(`{}`))
+				case keysPath:
+					if tt.cancelDuringFn {
+						cancel()
+						<-release
+						return
+					}
+					if tt.fnErr {
+						w.WriteHeader(http.StatusBadRequest)
+						return
+					}
+					_, _ = w.Write([]byte(`{"data":[],"pagination":{"currentPage":1,"totalPages":1}}`))
+				case logoutPath:
+					if cookie, err := r.Cookie("session"); err == nil {
+						logoutCookie = cookie.Value
+					}
+					w.WriteHeader(max(tt.logoutStatus, http.StatusNoContent))
+				}
+			}))
+
+			err := c.WithUserSession(ctx, "user-1", 0, func(session *client.Client) error {
+				for _, err := range client.All[client.APIKeyDto](func(page int) (*http.Response, error) {
+					return session.ListAPIKeys(ctx, &client.ListAPIKeysParams{PaginationPage: &page})
+				}) {
+					return err
+				}
+				return nil
+			})
+			close(release)
+
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !reflect.DeepEqual(calls, tt.wantCalls) {
+				t.Errorf("calls = %v, want %v", calls, tt.wantCalls)
+			}
+			if len(tt.wantCalls) == len(inSession) && logoutCookie != "s1" {
+				t.Errorf("logout cookie = %q, want the exchange's session cookie", logoutCookie)
+			}
+		})
+	}
+}
+
+// After a throttled exchange, sessions fail without a request until Retry-After passes.
+func TestWithUserSession_WaitsOutRateLimit(t *testing.T) {
+	calls := 0
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"currentVersion":"2.14.0"}`))
+		if r.URL.Path == "/api/one-time-access-token" {
+			w.Header().Set("Retry-After", "10")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"error":"Too many requests","code":"rate_limited"}`))
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"token":"one-time"}`))
 	}))
-	ts.Start()
+	fn := func(*client.Client) error { return nil }
 
-	client, err := NewClient(ts.URL, "", WithTLSConfig(nil))
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
+	if err := c.WithUserSession(t.Context(), "user-1", 0, fn); !IsRateLimitedError(err) {
+		t.Fatalf("first call: got %v, want rate limited", err)
 	}
-	if client.httpClient != nil {
-		t.Error("a nil config must leave the default transport in place")
+	err := c.WithUserSession(t.Context(), "user-1", 0, fn)
+	if !IsRateLimitedError(err) || AsAPIError(err).RetryAfter <= 0 {
+		t.Fatalf("second call: got %v, want rate limited with a wait", err)
 	}
-	if _, err := client.GetCurrentVersion(context.Background()); err != nil {
-		t.Fatalf("GetCurrentVersion: %v", err)
+	if calls != 2 {
+		t.Errorf("calls = %d, want 2 (none after the 429)", calls)
 	}
 }

@@ -38,7 +38,7 @@ jobs:
       - name: Generate GitHub App token
         id: app-token
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           client-id: ${{ secrets.APP_CLIENT_ID }}
           private-key: ${{ secrets.APP_KEY }}
@@ -59,18 +59,12 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
 
-      - name: Setup Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: true
-          cache-dependency-path: go.sum
-
       - name: Setup mise
-        uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        uses: jdx/mise-action@924e7c586e33d7d4bae9c14e26c5d22e2beb6e78 # v5.3.0
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: "2026.11.5"
+          version: "2026.11.12"
+          cache_save: ${{ github.ref == 'refs/heads/main' }}
           install_args: "go go:sigs.k8s.io/controller-tools/cmd/controller-gen kustomize aqua:sholdee/crd-schema-publisher go:github.com/elastic/crd-ref-docs yq"
 
       - name: Regenerate manifests

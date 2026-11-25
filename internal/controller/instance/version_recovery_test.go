@@ -93,7 +93,7 @@ func managedInstance(image string) *pocketidinternalv1alpha1.PocketIDInstance {
 // with no way out through the CR.
 func TestReconcile_AppliesImageBeforeHaltingOnOldVersion(t *testing.T) {
 	ctx := context.Background()
-	const newImage = "ghcr.io/pocket-id/pocket-id:v3.0.0-distroless"
+	const newImage = "ghcr.io/pocket-id/pocket-id:v3.0.0"
 
 	inst := managedInstance(newImage)
 	r := newManagedReconciler(t, inst, "2.19.2")
@@ -117,7 +117,7 @@ func TestReconcile_AppliesImageBeforeHaltingOnOldVersion(t *testing.T) {
 func TestReconcile_NoHaltOnceVersionIsSupported(t *testing.T) {
 	ctx := context.Background()
 
-	inst := managedInstance("ghcr.io/pocket-id/pocket-id:v3.0.0-distroless")
+	inst := managedInstance("ghcr.io/pocket-id/pocket-id:v3.0.0")
 	r := newManagedReconciler(t, inst, "3.0.0")
 
 	if runReconcile(t, r, inst) {

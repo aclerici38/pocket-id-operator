@@ -2,9 +2,10 @@ package oidcclient
 
 import (
 	"context"
+	"maps"
 	"net/http"
 	"net/http/httptest"
-	"sync"
+	"slices"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -18,55 +19,36 @@ import (
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 )
 
-// reconcileCalls records what a single Reconcile asked of Pocket-ID.
-type reconcileCalls struct {
-	mu          sync.Mutex
-	grantPushed bool
-	clientGETs  int
-}
-
-func (c *reconcileCalls) snapshot() (grantPushed bool, clientGETs int) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.grantPushed, c.clientGETs
-}
-
 // reconcileFixture builds a reconciler whose whole dependency chain — instance, API key,
-// referenced API and a fake Pocket-ID — is satisfied, so Reconcile can run end to end.
-// The fake client renames itself on the write, so status can only carry the new name if
-// the reconcile read the write back.
-func reconcileFixture(t *testing.T, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) (*Reconciler, *reconcileCalls) {
+// referenced API and a fake Pocket-ID holding the client — is satisfied, so Reconcile can run
+// end to end. extra adds or overrides routes. It returns the fake client and the API IDs granted to it.
+func reconcileFixture(t *testing.T, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, extra map[string]http.HandlerFunc) (*Reconciler, *fakeOIDCClient, *[]string) {
 	t.Helper()
 
-	calls := &reconcileCalls{}
-	name := "app-before-write"
+	f := newFakeOIDCClient(t, "client-1", "app-before-write")
+	var granted []string
+	routes := f.routes()
+	routes["GET /api/admin/api-access/"+encodedID("client-1")+"/apis"] = func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, []any{})
+	}
+	routes["PUT /api/admin/apis/{id}/clients/"+encodedID("client-1")] = func(w http.ResponseWriter, r *http.Request) {
+		granted = append(granted, r.PathValue("id"))
+		writeJSON(w, map[string]any{"userDelegatedAccess": true, "userDelegatedPermissionIds": []string{"p-read"}})
+	}
+	maps.Copy(routes, extra)
 
-	ts := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		calls.mu.Lock()
-		defer calls.mu.Unlock()
-		w.Header().Set("Content-Type", "application/json")
-		switch {
-		case req.Method == http.MethodGet && req.URL.Path == "/api/oidc/clients/client-1":
-			calls.clientGETs++
-			okOIDCClientResponse(w, "client-1", name)
-		case req.Method == http.MethodPut && req.URL.Path == "/api/oidc/clients/client-1":
-			name = "app-after-write"
-			okOIDCClientResponse(w, "client-1", name)
-		case req.URL.Path == "/api/oidc/clients/client-1/scim-service-provider":
-			http.NotFound(w, req)
-		case req.Method == http.MethodGet && req.URL.Path == "/api/api-access/client-1/apis":
-			_, _ = w.Write([]byte(`[]`))
-		case req.Method == http.MethodPut && req.URL.Path == "/api/apis/api-1/clients/client-1":
-			calls.grantPushed = true
-			_, _ = w.Write([]byte(`{"clientAccess":false,"userDelegatedAccess":true,"clientPermissionIds":[],"userDelegatedPermissionIds":["p-read"]}`))
-		default:
-			t.Errorf("unstubbed request: %s %s", req.Method, req.URL.Path)
-			http.NotFound(w, req)
-		}
-	}))
+	mux := http.NewServeMux()
+	for pattern, handler := range routes {
+		mux.HandleFunc(pattern, handler)
+	}
+	// Anything else, the SCIM provider lookup included, is missing.
+	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+		writeStatus(w, http.StatusNotFound, map[string]string{"code": "not_found"})
+	})
+	ts := httptest.NewTestServer(t, mux)
 	ts.Start()
 
-	return reconcilerAgainst(t, ts.URL, oidcClient), calls
+	return reconcilerAgainst(t, ts.URL, oidcClient), f, &granted
 }
 
 // reconcilerAgainst builds a reconciler whose instance, API key and referenced API all
@@ -147,41 +129,62 @@ func adoptedClient(generation int64) *pocketidinternalv1alpha1.PocketIDOIDCClien
 
 // Ready stamps observedGeneration, so anything gating on it — a GitOps sync check, a
 // dependent controller, a human reading kubectl get — reads Ready as "this generation is
-// live in Pocket-ID". One reconcile must therefore push the generation's state, read the
-// write back into status, and only then report Ready.
+// live in Pocket-ID". One reconcile must therefore push the generation's state, take status
+// from the write, and only then report Ready.
 func TestReconcile_ReadyOnlyAfterStateIsPushedAndObserved(t *testing.T) {
 	ctx := context.Background()
 	oidcClient := adoptedClient(2)
-	r, calls := reconcileFixture(t, oidcClient)
+	r, f, granted := reconcileFixture(t, oidcClient, nil)
 
 	result, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(oidcClient)})
 	if err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
 
-	grantPushed, clientGETs := calls.snapshot()
-	if !grantPushed {
-		t.Error("expected the generation's API access to be pushed")
+	if !slices.Equal(*granted, []string{"api-1"}) {
+		t.Errorf("expected the generation's API access to be pushed, got %v", *granted)
 	}
-	if clientGETs != 2 {
-		t.Errorf("expected the write to be read back in the same pass, got %d client GETs", clientGETs)
+	if len(f.patches) != 1 {
+		t.Errorf("expected one client PATCH, got %v", f.calls)
 	}
 
 	var got pocketidinternalv1alpha1.PocketIDOIDCClient
 	if err := r.Get(ctx, client.ObjectKeyFromObject(oidcClient), &got); err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	if got.Status.Name != "app-after-write" {
-		t.Errorf("status should carry the post-write state, got %q", got.Status.Name)
+	if got.Status.Name != "app" {
+		t.Errorf("status should carry the written state, got %q", got.Status.Name)
 	}
 	if !readyForGeneration(&got, 2) {
 		t.Errorf("expected Ready=True observing generation 2, got %+v", got.Status.Conditions)
 	}
-
-	// A follow-up reconcile is what used to let Ready run ahead of the push. Settling on the
-	// resync interval instead keeps every generation's Ready backed by an observed write.
 	if result.RequeueAfter < common.ResyncInterval {
 		t.Errorf("expected the pass to settle on the resync interval, got %v", result.RequeueAfter)
+	}
+}
+
+// Without a GET first, a 404 on the client's own write is how an out-of-band deletion shows up.
+func TestReconcile_ClientDeletedExternallyClearsStatus(t *testing.T) {
+	ctx := context.Background()
+	oidcClient := adoptedClient(1)
+	r, f, _ := reconcileFixture(t, oidcClient, nil)
+	f.fail = func(r *http.Request, _ map[string]any) (int, any) {
+		return http.StatusNotFound, map[string]string{"code": "not_found"}
+	}
+
+	result, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(oidcClient)})
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	var got pocketidinternalv1alpha1.PocketIDOIDCClient
+	if err := r.Get(ctx, client.ObjectKeyFromObject(oidcClient), &got); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status.ClientID != "" {
+		t.Errorf("expected status.clientID cleared for recreation, got %q", got.Status.ClientID)
+	}
+	if result.RequeueAfter != common.RequeueImmediate {
+		t.Errorf("RequeueAfter = %v, want %v", result.RequeueAfter, common.RequeueImmediate)
 	}
 }
 
@@ -192,4 +195,48 @@ func readyForGeneration(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient,
 		}
 	}
 	return false
+}
+
+// Every pass syncs the SCIM provider itself, since each write the operator makes postpones
+// Pocket-ID's debounced sync, and the client is only Ready once the endpoint took the sync.
+func TestReconcile_SCIMSyncGatesReady(t *testing.T) {
+	for name, tc := range map[string]struct {
+		status int
+		ready  bool
+	}{
+		"synced":         {http.StatusOK, true},
+		"endpoint error": {http.StatusBadGateway, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			oidcClient := adoptedClient(1)
+			oidcClient.Spec.SCIM = &pocketidinternalv1alpha1.SCIMSpec{Endpoint: "https://scim.example.com/v2"}
+			oidcClient.Status.SCIMProviderID = "scim-1"
+			var synced []string
+			r, _, _ := reconcileFixture(t, oidcClient, map[string]http.HandlerFunc{
+				"PUT /api/admin/scim/service-provider/{id}": func(w http.ResponseWriter, r *http.Request) {
+					writeJSON(w, map[string]string{"id": r.PathValue("id")})
+				},
+				"POST /api/admin/scim/service-provider/{id}/sync": func(w http.ResponseWriter, r *http.Request) {
+					synced = append(synced, r.PathValue("id"))
+					w.WriteHeader(tc.status)
+				},
+			})
+
+			if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(oidcClient)}); err != nil {
+				t.Fatalf("Reconcile: %v", err)
+			}
+
+			if !slices.Equal(synced, []string{"scim-1"}) {
+				t.Errorf("expected one sync of the tracked provider, got %v", synced)
+			}
+			var got pocketidinternalv1alpha1.PocketIDOIDCClient
+			if err := r.Get(ctx, client.ObjectKeyFromObject(oidcClient), &got); err != nil {
+				t.Fatalf("get: %v", err)
+			}
+			if readyForGeneration(&got, 1) != tc.ready {
+				t.Errorf("expected Ready=%v, got %+v", tc.ready, got.Status.Conditions)
+			}
+		})
+	}
 }

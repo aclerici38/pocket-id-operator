@@ -24,7 +24,7 @@ type pocketIDUser struct {
 // getUserFromPocketID reads a user straight out of Pocket-ID by ID. getFromPocketID
 // requires a 2xx, so a successful decode also proves the ID exists in Pocket-ID.
 func getUserFromPocketID(userID string) pocketIDUser {
-	body := getFromPocketID("/api/users/" + userID)
+	body := getFromPocketID("/api/admin/users/" + userID)
 	Expect(body).NotTo(BeEmpty(), "Pocket-ID should return a user for ID %s", userID)
 
 	var user pocketIDUser

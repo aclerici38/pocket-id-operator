@@ -19,113 +19,65 @@ package oidcclient
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+	"github.com/oapi-codegen/nullable"
+
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/helpers"
-	"github.com/aclerici38/pocket-id-operator/internal/metrics"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
-// ReconcileAPIAccess ensures this client's API access in Pocket-ID matches spec.apiAccess.
-// The client is the sole owner of its API access: when spec.apiAccess is set the operator
-// keeps it in sync and clears it once emptied. When it was never set, existing access
-// configured out-of-band is left untouched.
+// ReconcileAPIAccess makes this client's API access in Pocket-ID exactly spec.apiAccess. The
+// operator owns every grant the client holds, so access granted outside the operator is revoked.
 func (r *Reconciler) ReconcileAPIAccess(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client) error {
 	log := logf.FromContext(ctx)
-
-	// A cimd client is fetched even when nothing is managed, so status keeps reporting the
-	// access its APIs grant it. Only a cimd client can hold that access.
-	// ManagedAPIPermissionIDs is still consulted so a client reconciled by an older operator
-	// version, which recorded no ManagedAPIs, stays under management across the upgrade.
-	manage := len(oidcClient.Spec.APIAccess) > 0 ||
-		len(oidcClient.Status.ManagedAPIs) > 0 ||
-		len(oidcClient.Status.ManagedAPIPermissionIDs) > 0
-	isCIMD := oidcClient.Status.ClientType == pocketid.ClientTypeCIMD
-	if !manage && !isCIMD {
-		return nil
-	}
 
 	desired, err := r.resolveAPIAccess(ctx, oidcClient)
 	if err != nil {
 		return err
 	}
 
-	all, err := apiClient.ListAPIClientGrants(ctx, oidcClient.Status.ClientID)
+	id := pid.OIDCClientID(oidcClient.Status.ClientID)
+	current, err := pid.Decode[[]pid.ClientAPIGrantDto](apiClient.ListAPIsClientMayAccess(ctx, id))
 	if err != nil {
 		return fmt.Errorf("list API client grants: %w", err)
 	}
 
-	// An entry with no grant of its own is reachable only through the API's CIMD setting,
-	// which the API owns: reconciling it from here would revoke it on every pass.
-	var current []pocketid.APIClientGrant
-	var cimdGranted []string
-	for _, grant := range all {
-		if !grant.IsEmpty() {
-			current = append(current, grant)
-		}
-		if grant.CIMDGranted {
-			cimdGranted = append(cimdGranted, grant.Resource)
-		}
-	}
-	sort.Strings(cimdGranted)
-
-	currentByAPI := make(map[string]pocketid.APIClientGrant, len(current))
-	for _, grant := range current {
-		currentByAPI[grant.APIID] = grant
-	}
-
-	changed := false
-	if !manage {
-		return r.patchAPIAccessStatus(ctx, oidcClient, oidcClient.Status.ManagedAPIPermissionIDs,
-			oidcClient.Status.ManagedAPIs, cimdGranted)
-	}
-
-	for _, apiID := range sortedKeysOfGrants(desired) {
-		if grantsEqual(currentByAPI[apiID], desired[apiID]) {
-			continue
-		}
-		log.Info("Updating client API access", "name", oidcClient.Name, "apiID", apiID)
-		if _, err := apiClient.SetAPIClientGrant(ctx, apiID, oidcClient.Status.ClientID, desired[apiID]); err != nil {
+	for _, apiID := range slices.Sorted(maps.Keys(desired)) {
+		if err := pid.Check(apiClient.UpdateClientAccessToAPI(ctx, apiID, id, desired[apiID])); err != nil {
 			return fmt.Errorf("set API client grant: %w", err)
 		}
-		changed = true
 	}
+
+	var cimdGranted []string
 	for _, grant := range current {
-		if _, ok := desired[grant.APIID]; ok {
+		if grant.CIMDGrantedAccess || len(grant.CIMDGrantedPermissionIDs) > 0 {
+			cimdGranted = append(cimdGranted, grant.API.Resource)
+		}
+		// An entry with no grant of its own is reachable only through the API's CIMD setting,
+		// which the API owns.
+		ownGrant := grant.ClientAccess || grant.UserDelegatedAccess ||
+			len(grant.ClientPermissionIDs) > 0 || len(grant.UserDelegatedPermissionIDs) > 0
+		if _, wanted := desired[grant.API.ID]; wanted || !ownGrant {
 			continue
 		}
-		log.Info("Revoking client API access", "name", oidcClient.Name, "apiID", grant.APIID)
-		if err := apiClient.RemoveAPIClientGrant(ctx, grant.APIID, oidcClient.Status.ClientID); err != nil {
+		log.Info("Revoking client API access", "name", oidcClient.Name, "apiID", grant.API.ID)
+		if err := pid.Check(apiClient.RevokeClientAccessToAPI(ctx, grant.API.ID, id)); err != nil && !pocketid.IsNotFoundError(err) {
 			return fmt.Errorf("remove API client grant: %w", err)
 		}
-		changed = true
-	}
-	if changed {
-		metrics.ResourceOperations.WithLabelValues("PocketIDOIDCClient", "updated").Inc()
 	}
 
-	// Persist what was granted so the access can be revoked if spec.apiAccess is emptied.
-	return r.patchAPIAccessStatus(ctx, oidcClient, managedPermissionIDs(desired),
-		sortedKeysOfGrants(desired), cimdGranted)
-}
-
-// patchAPIAccessStatus records what the operator manages and what the client reaches through
-// its APIs' CIMD setting, in one patch.
-func (r *Reconciler) patchAPIAccessStatus(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, managed, managedAPIs, cimdGranted []string) error {
-	if pocketid.SortedEqual(managed, oidcClient.Status.ManagedAPIPermissionIDs) &&
-		pocketid.SortedEqual(managedAPIs, oidcClient.Status.ManagedAPIs) &&
-		pocketid.SortedEqual(cimdGranted, oidcClient.Status.CIMDGrantedAPIs) {
-		return nil
-	}
+	slices.Sort(cimdGranted)
 	base := oidcClient.DeepCopy()
-	oidcClient.Status.ManagedAPIPermissionIDs = managed
-	oidcClient.Status.ManagedAPIs = managedAPIs
 	oidcClient.Status.CIMDGrantedAPIs = cimdGranted
 	if err := common.PatchStatus(ctx, r.Client, oidcClient, base); err != nil {
 		return fmt.Errorf("update API access status: %w", err)
@@ -135,10 +87,9 @@ func (r *Reconciler) patchAPIAccessStatus(ctx context.Context, oidcClient *pocke
 
 // resolveAPIAccess resolves spec.apiAccess into the desired grant per Pocket-ID API ID by
 // looking up each referenced PocketIDAPI and mapping permission keys to their Pocket-ID IDs.
-// Entries that grant nothing are omitted: Pocket-ID stores no row for them, so keeping them
-// would leave the reconcile permanently drifted. A flow granted with no permissions is still
-// a grant, and is kept.
-func (r *Reconciler) resolveAPIAccess(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) (map[string]pocketid.APIClientGrant, error) {
+// Entries that grant nothing are omitted: Pocket-ID stores no row for them. A flow granted with
+// no permissions is still a grant, and is kept.
+func (r *Reconciler) resolveAPIAccess(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) (map[string]pid.APIClientGrantUpdateDto, error) {
 	delegatedIDs := make(map[string]map[string]struct{})
 	clientIDs := make(map[string]map[string]struct{})
 	delegatedAccess := make(map[string]bool)
@@ -185,21 +136,19 @@ func (r *Reconciler) resolveAPIAccess(ctx context.Context, oidcClient *pocketidi
 		}
 	}
 
-	desired := make(map[string]pocketid.APIClientGrant, len(delegatedIDs))
+	desired := make(map[string]pid.APIClientGrantUpdateDto, len(delegatedIDs))
 	for apiID := range delegatedIDs {
 		delegated := sortedKeys(delegatedIDs[apiID])
 		clientPerms := sortedKeys(clientIDs[apiID])
-		grant := pocketid.APIClientGrant{
-			APIID:                      apiID,
-			ClientAccess:               clientAccess[apiID],
-			UserDelegatedAccess:        delegatedAccess[apiID],
-			ClientPermissionIDs:        clientPerms,
-			UserDelegatedPermissionIDs: delegated,
-		}
-		if grant.IsEmpty() {
+		if !clientAccess[apiID] && !delegatedAccess[apiID] && len(delegated) == 0 && len(clientPerms) == 0 {
 			continue
 		}
-		desired[apiID] = grant
+		desired[apiID] = pid.APIClientGrantUpdateDto{
+			ClientAccess:               new(clientAccess[apiID]),
+			UserDelegatedAccess:        new(delegatedAccess[apiID]),
+			ClientPermissionIDs:        nullable.NewNullableWithValue(clientPerms),
+			UserDelegatedPermissionIDs: nullable.NewNullableWithValue(delegated),
+		}
 	}
 	return desired, nil
 }
@@ -318,33 +267,6 @@ func accessRequested(explicit *bool, permissions []string) bool {
 	return len(permissions) > 0
 }
 
-// grantsEqual reports whether two grants convey the same access.
-func grantsEqual(a, b pocketid.APIClientGrant) bool {
-	return a.ClientAccess == b.ClientAccess &&
-		a.UserDelegatedAccess == b.UserDelegatedAccess &&
-		pocketid.SortedEqual(a.ClientPermissionIDs, b.ClientPermissionIDs) &&
-		pocketid.SortedEqual(a.UserDelegatedPermissionIDs, b.UserDelegatedPermissionIDs)
-}
-
-// managedPermissionIDs returns the sorted union of every permission ID across the grants.
-func managedPermissionIDs(grants map[string]pocketid.APIClientGrant) []string {
-	all := make([][]string, 0, 2*len(grants))
-	for _, grant := range grants {
-		all = append(all, grant.ClientPermissionIDs, grant.UserDelegatedPermissionIDs)
-	}
-	return mergeSorted(all...)
-}
-
-// sortedKeysOfGrants returns the API IDs of the grants, sorted.
-func sortedKeysOfGrants(grants map[string]pocketid.APIClientGrant) []string {
-	keys := make([]string, 0, len(grants))
-	for k := range grants {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
 // collectPermissionIDs resolves permission keys to IDs via keyToID and adds them to dst.
 func collectPermissionIDs(keys []string, keyToID map[string]string, apiName string, dst map[string]struct{}) error {
 	for _, key := range keys {
@@ -364,18 +286,4 @@ func sortedKeys(set map[string]struct{}) []string {
 	}
 	sort.Strings(keys)
 	return keys
-}
-
-// mergeSorted returns the sorted union of the given string slices.
-func mergeSorted(slices ...[]string) []string {
-	set := make(map[string]struct{})
-	for _, s := range slices {
-		for _, v := range s {
-			set[v] = struct{}{}
-		}
-	}
-	if len(set) == 0 {
-		return nil
-	}
-	return sortedKeys(set)
 }

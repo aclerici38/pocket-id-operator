@@ -8,13 +8,13 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+	"github.com/oapi-codegen/nullable"
 )
 
 var _ = Describe("OIDC Client Federated Identity", Ordered, func() {
-	// The operator diffs federated identities against what Pocket-ID returns, so the round
-	// trip must be exact: any field Pocket-ID changes on the way back would re-push the client
-	// on every reconcile, with nothing in Pocket-ID looking wrong while it happened.
+	// The operator writes federated identities every reconcile, so what Pocket-ID stores must be
+	// exactly what the spec declares.
 
 	const clientName = "test-federated-identity"
 
@@ -46,7 +46,7 @@ var _ = Describe("OIDC Client Federated Identity", Ordered, func() {
 		})
 		clientID = waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
 
-		Expect(federatedIdentities(clientID)).To(Equal([]pocketid.OIDCClientFederatedIdentity{{
+		Expect(federatedIdentities(clientID)).To(Equal([]pid.OIDCClientFederatedIdentityDto{{
 			Issuer:           "https://issuer.example.com",
 			Subject:          "test-subject",
 			Audience:         "test-audience",
@@ -61,7 +61,7 @@ var _ = Describe("OIDC Client Federated Identity", Ordered, func() {
 		Expect(patchObject("pocketidoidcclient", clientName, userNS,
 			`{"spec":{"federatedIdentities":null}}`)).To(Succeed())
 
-		Eventually(func() []pocketid.OIDCClientFederatedIdentity {
+		Eventually(func() []pid.OIDCClientFederatedIdentityDto {
 			return federatedIdentities(clientID)
 		}).Should(BeEmpty())
 	})
@@ -83,17 +83,17 @@ var _ = Describe("OIDC Client Federated Identity", Ordered, func() {
 			By("creating a client with a federated identity directly in Pocket-ID")
 			ctx, cancel := testCtx()
 			defer cancel()
-			id := adoptClientID
-			_, err := pid.CreateOIDCClient(ctx, pocketid.OIDCClientInput{
-				ID:           &id,
+			err := pid.Check(pocketID.CreateOIDCClient(ctx, pid.OIDCClientCreateDto{
+				ID:           new(adoptClientID),
 				Name:         "Federated Identity Adopt",
-				CallbackURLs: []string{"https://federated-identity-adopt.example.com/callback"},
-				Credentials: &pocketid.OIDCClientCredentials{FederatedIdentities: []pocketid.OIDCClientFederatedIdentity{{
-					Issuer: "https://issuer.example.com",
-					PublicKeys: []json.RawMessage{json.RawMessage(
-						`{"kty":"OKP","crv":"Ed25519","kid":"e2e-key","use":"sig","x":"fxAuz6i2oJCZM8blM5bge1smljJn8qL-yysBgwHBnDA"}`)},
-				}}},
-			})
+				CallbackURLs: nullable.NewNullableWithValue([]string{"https://federated-identity-adopt.example.com/callback"}),
+				Credentials: &pid.OIDCClientCredentialsInputDto{FederatedIdentities: nullable.NewNullableWithValue(
+					[]pid.OIDCClientFederatedIdentityInputDto{{
+						Issuer: new("https://issuer.example.com"),
+						PublicKeys: nullable.NewNullableWithValue([]any{json.RawMessage(
+							`{"kty":"OKP","crv":"Ed25519","kid":"e2e-key","use":"sig","x":"fxAuz6i2oJCZM8blM5bge1smljJn8qL-yysBgwHBnDA"}`)}),
+					}})},
+			}))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(federatedIdentities(adoptClientID)).To(ConsistOf(
 				HaveField("PublicKeys", HaveLen(1))))
@@ -105,7 +105,7 @@ var _ = Describe("OIDC Client Federated Identity", Ordered, func() {
 				CallbackURLs: []string{"https://federated-identity-adopt.example.com/callback"},
 			})
 
-			Eventually(func() []pocketid.OIDCClientFederatedIdentity {
+			Eventually(func() []pid.OIDCClientFederatedIdentityDto {
 				return federatedIdentities(adoptClientID)
 			}).Should(BeEmpty())
 		})

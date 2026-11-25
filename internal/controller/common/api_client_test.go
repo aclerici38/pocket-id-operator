@@ -167,6 +167,21 @@ func TestResolveAPIClientCredentials_External(t *testing.T) {
 	}
 }
 
+func TestResolveAPIClientCredentials_ExternalAPIURL(t *testing.T) {
+	ctx := context.Background()
+	reader := fakeReader(t, apiKeySecret("pocket-id", "admin-token", "token", "ext-key"))
+	inst := externalInstance("admin-token", "token")
+	inst.Spec.External.APIURL = "https://pocket-id.pocket-id.svc:1411"
+
+	url, _, err := resolveAPIClientCredentials(ctx, reader, inst)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if want := "https://pocket-id.pocket-id.svc:1411"; url != want {
+		t.Errorf("url: got %q, want %q", url, want)
+	}
+}
+
 func TestResolveAPIClientCredentials_ExternalPropagatesSecretError(t *testing.T) {
 	ctx := context.Background()
 	reader := fakeReader(t) // secret absent

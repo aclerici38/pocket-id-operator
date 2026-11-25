@@ -2,7 +2,9 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
   "ignorePaths": [".mise/locks/**"],
-  "dependencyDashboard": true,
+  "dependencyDashboard": {
+    "enabled": true
+  },
   "prConcurrentLimit": 0,
   "prHourlyLimit": 0,
   "automerge": true,
@@ -52,6 +54,12 @@
     {
       "matchPackageNames": ["kubernetes/kubernetes", "/^k8s\\.io//", "/^sigs\\.k8s\\.io//"],
       "groupName": "kubernetes"
+    },
+    {
+      "description": "pocket-id-go-client dev builds are bumped manually; only track tagged releases",
+      "matchPackageNames": ["github.com/aclerici38/pocket-id-go-client/v3"],
+      "matchUpdateTypes": ["digest"],
+      "enabled": false
     },
     {
       "groupName": "go-openapi",

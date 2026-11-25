@@ -43,5 +43,5 @@ var _ = Describe("OIDC Client Skip Consent", Ordered, func() {
 // getOIDCClientFromPocketID returns the raw JSON body Pocket-ID reports for a client.
 func getOIDCClientFromPocketID(clientID string) string {
 	GinkgoHelper()
-	return getFromPocketID("/api/oidc/clients/" + clientID)
+	return getFromPocketID("/api/admin/oidc/clients/" + clientID)
 }

@@ -19,6 +19,8 @@ package api
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -31,6 +33,9 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+	"github.com/oapi-codegen/nullable"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
@@ -117,8 +122,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return common.ApplyResync(ctrl.Result{}), nil
 	}
 
-	// Fetch current state from Pocket ID.
-	current, err := apiClient.GetAPI(ctx, api.Status.APIID)
+	current, err := r.pushAPIState(ctx, api, apiClient)
 	if err != nil {
 		if pocketid.IsNotFoundError(err) {
 			log.Info("API was deleted externally, will recreate", "apiID", api.Status.APIID)
@@ -128,7 +132,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			}
 			return ctrl.Result{RequeueAfter: common.RequeueImmediate}, nil
 		}
-		_ = r.SetReadyCondition(ctx, api, metav1.ConditionFalse, "GetError", err.Error())
+		log.Error(err, "Failed to push API state")
+		_ = r.SetReadyCondition(ctx, api, metav1.ConditionFalse, "ReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 	}
 
@@ -137,50 +142,25 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
-	updated, err := r.pushAPIState(ctx, api, apiClient, current)
-	if err != nil {
-		log.Error(err, "Failed to push API state")
-		_ = r.SetReadyCondition(ctx, api, metav1.ConditionFalse, "ReconcileError", err.Error())
-		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
-	}
-
-	// Read the write back in this same pass, so Ready below never stamps observedGeneration
-	// against state the operator has not observed yet.
-	if updated {
-		if current, err = apiClient.GetAPI(ctx, api.Status.APIID); err != nil {
-			_ = r.SetReadyCondition(ctx, api, metav1.ConditionFalse, "GetError", err.Error())
-			return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
-		}
-		if err := r.updateAPIStatus(ctx, api, current); err != nil {
-			log.Error(err, "Failed to update API status")
-			return ctrl.Result{RequeueAfter: common.Requeue}, nil
-		}
-	}
-
 	_ = r.SetReadyCondition(ctx, api, metav1.ConditionTrue, "Reconciled", "API is in sync")
 
 	return common.ApplyResync(ctrl.Result{}), nil
 }
 
-// PocketIDAPIClient defines the minimal interface needed to look up existing APIs.
-type PocketIDAPIClient interface {
-	ListAPIs(ctx context.Context, search string) ([]*pocketid.API, error)
-}
-
 // FindExistingAPI returns an existing API in Pocket-ID matching the resource, or nil.
-func (r *Reconciler) FindExistingAPI(ctx context.Context, apiClient PocketIDAPIClient, resource string) (*pocketid.API, error) {
+func (r *Reconciler) FindExistingAPI(ctx context.Context, apiClient *pocketid.Client, resource string) (*pid.APIResponseDto, error) {
 	log := logf.FromContext(ctx)
 
 	log.Info("Checking if API exists in Pocket-ID", "resource", resource)
-	existing, err := apiClient.ListAPIs(ctx, resource)
-	if err != nil {
-		return nil, fmt.Errorf("list APIs: %w", err)
-	}
-
-	for _, candidate := range existing {
+	for candidate, err := range pid.All[pid.APIResponseDto](func(page int) (*http.Response, error) {
+		return apiClient.ListAPIs(ctx, &pid.ListAPIsParams{Search: &resource, PaginationPage: &page})
+	}) {
+		if err != nil {
+			return nil, fmt.Errorf("list APIs: %w", err)
+		}
 		if candidate.Resource == resource {
 			log.Info("Found existing API with matching resource", "resource", resource, "apiID", candidate.ID)
-			return candidate, nil
+			return &candidate, nil
 		}
 	}
 
@@ -206,16 +186,16 @@ func (r *Reconciler) createOrAdoptAPI(ctx context.Context, api *pocketidinternal
 		return true, r.setAPIID(ctx, api, existing.ID)
 	}
 
-	result, err := common.CreateOrAdopt(ctx, common.CreateOrAdoptConfig[*pocketid.API]{
+	result, err := common.CreateOrAdopt(ctx, common.CreateOrAdoptConfig[*pid.APIResponseDto]{
 		ResourceKind: "API",
 		ResourceID:   resource,
-		Create: func() (*pocketid.API, error) {
-			return apiClient.CreateAPI(ctx, pocketid.APIInput{Name: name, Resource: resource})
+		Create: func() (*pid.APIResponseDto, error) {
+			return pid.Decode[*pid.APIResponseDto](apiClient.CreateAPI(ctx, pid.APICreateDto{Name: name, Resource: resource}))
 		},
-		FindExisting: func() (*pocketid.API, error) {
+		FindExisting: func() (*pid.APIResponseDto, error) {
 			return r.FindExistingAPI(ctx, apiClient, resource)
 		},
-		IsNil: func(a *pocketid.API) bool { return a == nil },
+		IsNil: func(a *pid.APIResponseDto) bool { return a == nil },
 	})
 	if err != nil {
 		return false, err
@@ -233,50 +213,34 @@ func (r *Reconciler) createOrAdoptAPI(ctx context.Context, api *pocketidinternal
 	return true, r.setAPIID(ctx, api, result.Resource.ID)
 }
 
-// pushAPIState reconciles the API name and permissions to match the spec. The
-// operator is the sole owner: the permission set is replaced with exactly the
-// spec's permissions, so permissions added out-of-band are removed.
-func (r *Reconciler) pushAPIState(ctx context.Context, api *pocketidinternalv1alpha1.PocketIDAPI, apiClient *pocketid.Client, current *pocketid.API) (bool, error) {
-	log := logf.FromContext(ctx)
-
-	desiredName := apiName(api)
-	desiredPerms := buildPermissionInputs(api.Spec.Permissions)
-
-	nameChanged := desiredName != current.Name
-	permsChanged := !permissionsEqual(desiredPerms, current.Permissions)
-	cimdDrift, _, _ := cimdAccessDrift(api, current)
-	if !nameChanged && !permsChanged && !cimdDrift {
-		log.V(1).Info("API state is in sync, skipping update")
-		return false, nil
+// pushAPIState writes the spec's name, permissions and CIMD access, and returns the API as it
+// stands afterwards. The operator is the sole owner: the permission set is replaced with
+// exactly the spec's permissions, so permissions added out-of-band are removed.
+func (r *Reconciler) pushAPIState(ctx context.Context, api *pocketidinternalv1alpha1.PocketIDAPI, apiClient *pocketid.Client) (pid.APIResponseDto, error) {
+	id := api.Status.APIID
+	if err := pid.Check(apiClient.PatchAPI(ctx, id, pid.PatchAPIJSONRequestBody{Name: new(apiName(api))})); err != nil {
+		return pid.APIResponseDto{}, fmt.Errorf("update API: %w", err)
 	}
 
-	log.Info("Updating API", "name", api.Name)
-	if nameChanged {
-		if _, err := apiClient.UpdateAPI(ctx, api.Status.APIID, desiredName); err != nil {
-			return false, fmt.Errorf("update API: %w", err)
-		}
-	}
-	if permsChanged {
-		updated, err := apiClient.UpdateAPIPermissions(ctx, api.Status.APIID, desiredPerms)
-		if err != nil {
-			return false, fmt.Errorf("update API permissions: %w", err)
-		}
-		// Permissions created just now carry no CIMD flag and have IDs only Pocket-ID knows,
-		// so the CIMD state has to be resolved against the API as it stands after the update.
-		current = updated
+	// Pocket-ID matches permissions by key, so their IDs survive the replacement.
+	current, err := pid.Decode[pid.APIResponseDto](apiClient.UpdateAPIPermissions(ctx, id, pid.APIPermissionsUpdateDto{
+		Permissions: nullable.NewNullableWithValue(buildPermissionInputs(api.Spec.Permissions)),
+	}))
+	if err != nil {
+		return pid.APIResponseDto{}, fmt.Errorf("update API permissions: %w", err)
 	}
 
-	// Pocket-ID leaves allowedForCimdClients false on permissions it just created, so this
-	// runs after the permission update rather than alongside it.
-	if drift, enabled, permissionIDs := cimdAccessDrift(api, current); drift {
-		if _, err := apiClient.SetAPICIMDAccess(ctx, api.Status.APIID, enabled, permissionIDs); err != nil {
-			return false, fmt.Errorf("set API CIMD access: %w", err)
-		}
+	// A permission created just now has an ID only Pocket-ID knows, so CIMD access is resolved
+	// against the permissions response.
+	enabled, permissionIDs := cimdAccess(api, current)
+	current, err = pid.Decode[pid.APIResponseDto](apiClient.UpdateMetadataDocumentClientAccess(ctx, id, pid.APICIMDAccessUpdateDto{
+		Enabled:       &enabled,
+		PermissionIDs: nullable.NewNullableWithValue(permissionIDs),
+	}))
+	if err != nil {
+		return pid.APIResponseDto{}, fmt.Errorf("set API CIMD access: %w", err)
 	}
-
-	metrics.ResourceOperations.WithLabelValues("PocketIDAPI", "updated").Inc()
-
-	return true, nil
+	return current, nil
 }
 
 // apiName returns the Pocket-ID name for the API: spec.name if set, else metadata.name.
@@ -299,15 +263,12 @@ func (r *Reconciler) clearAPIStatus(ctx context.Context, api *pocketidinternalv1
 	})
 }
 
-func (r *Reconciler) updateAPIStatus(ctx context.Context, api *pocketidinternalv1alpha1.PocketIDAPI, current *pocketid.API) error {
-	if current == nil {
-		return nil
-	}
+func (r *Reconciler) updateAPIStatus(ctx context.Context, api *pocketidinternalv1alpha1.PocketIDAPI, current pid.APIResponseDto) error {
 	base := api.DeepCopy()
 	api.Status.APIID = current.ID
 	api.Status.Name = current.Name
 	api.Status.Resource = current.Resource
-	api.Status.CreatedAt = current.CreatedAt
+	api.Status.CreatedAt = current.CreatedAt.Format(time.RFC3339)
 	api.Status.CIMDAccess = current.AllowCIMDClients
 	api.Status.Permissions = observedPermissions(current.Permissions)
 	return common.PatchStatus(ctx, r.Client, api, base)
@@ -391,7 +352,7 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, api *pocketidinternalv
 		api.Spec.InstanceSelector,
 		APIFinalizer,
 		func(ctx context.Context, apiClient *pocketid.Client, id string) error {
-			if err := apiClient.DeleteAPI(ctx, id); err != nil {
+			if err := pid.Check(apiClient.DeleteAPI(ctx, id)); err != nil {
 				return err
 			}
 			metrics.ResourceOperations.WithLabelValues("PocketIDAPI", "deleted").Inc()

@@ -142,7 +142,7 @@
                     ]
                   },
                   "cimdUrlAllowlist": {
-                    "description": "Allowed OAuth Client ID Metadata Document URLs. The operator sets UI_CONFIG_DISABLED=true when this field is set.\nJSON-encoded into CIMD_URL_ALLOWLIST. See https://pocket-id.org/docs/configuration/environment-variables.",
+                    "description": "Allowed OAuth Client ID Metadata Document URLs.\nJSON-encoded into CIMD_URL_ALLOWLIST. See https://pocket-id.org/docs/configuration/environment-variables.",
                     "items": {
                       "type": "string"
                     },
@@ -579,7 +579,7 @@
                   },
                   "emailNotifications": {
                     "additionalProperties": false,
-                    "description": "Email notification settings. Requires smtp. The operator sets UI_CONFIG_DISABLED=true when this section is configured.",
+                    "description": "Email notification settings. Requires smtp.",
                     "properties": {
                       "apiKeyExpiration": {
                         "description": "API key expiration notifications.\nSets EMAIL_API_KEY_EXPIRATION_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables.",
@@ -648,7 +648,7 @@
                     ]
                   },
                   "enabledFeatures": {
-                    "description": "Optional features to show in the admin UI. The operator sets UI_CONFIG_DISABLED=true when this field is set.\nJSON-encoded into ENABLED_FEATURES. Requires a Pocket-ID release that supports it. See https://pocket-id.org/docs/configuration/environment-variables.",
+                    "description": "Optional features to show in the admin UI.\nJSON-encoded into ENABLED_FEATURES. Requires a Pocket-ID release that supports it. See https://pocket-id.org/docs/configuration/environment-variables.",
                     "items": {
                       "type": "string"
                     },
@@ -1091,6 +1091,14 @@
                         ],
                         "type": "object",
                         "x-kubernetes-map-type": "atomic"
+                      },
+                      "apiUrl": {
+                        "description": "APIURL is the base URL the operator calls for the Pocket-ID API, e.g. an in-cluster Service (http://pocket-id.pocket-id.svc:1411). Defaults to url. Issuer, endpoint, and login URLs the operator publishes always use url. TLS is verified against the operator's system trust store.",
+                        "pattern": "^https?://",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
                       },
                       "url": {
                         "description": "URL is the base URL of the existing Pocket-ID instance (e.g. https://auth.example.com).",
@@ -1555,7 +1563,7 @@
                   },
                   "ldap": {
                     "additionalProperties": false,
-                    "description": "LDAP authentication. When present, the operator sets LDAP_ENABLED=true and UI_CONFIG_DISABLED=true.",
+                    "description": "LDAP authentication. When present, the operator sets LDAP_ENABLED=true.",
                     "properties": {
                       "adminGroupName": {
                         "description": "Group that grants admin privileges.\nSets LDAP_ADMIN_GROUP_NAME. See https://pocket-id.org/docs/configuration/environment-variables.",
@@ -3507,7 +3515,7 @@
                   },
                   "smtp": {
                     "additionalProperties": false,
-                    "description": "SMTP email transport. When present, the operator sets UI_CONFIG_DISABLED=true.",
+                    "description": "SMTP email transport.",
                     "properties": {
                       "from": {
                         "description": "Sender email address.\nSets SMTP_FROM. See https://pocket-id.org/docs/configuration/environment-variables.",
@@ -4062,7 +4070,7 @@
                   },
                   "ui": {
                     "additionalProperties": false,
-                    "description": "UI settings. The operator sets UI_CONFIG_DISABLED=true when this section is configured.",
+                    "description": "UI settings.",
                     "properties": {
                       "accentColor": {
                         "description": "Deprecated: use colorTheme instead.",
@@ -4115,7 +4123,7 @@
                   },
                   "userManagement": {
                     "additionalProperties": false,
-                    "description": "User registration and account settings. The operator sets UI_CONFIG_DISABLED=true when this section is configured.",
+                    "description": "User registration and account settings.",
                     "properties": {
                       "allowOwnAccountEdit": {
                         "description": "Allow users to edit their own account.\nSets ALLOW_OWN_ACCOUNT_EDIT. See https://pocket-id.org/docs/configuration/environment-variables.",
@@ -4177,7 +4185,7 @@
                   },
                   "webauthn": {
                     "additionalProperties": false,
-                    "description": "Passkey restrictions. The operator sets UI_CONFIG_DISABLED=true when this section is configured.",
+                    "description": "Passkey restrictions.",
                     "properties": {
                       "allowSyncedPasskeys": {
                         "description": "Allow synced passkeys.\nSets WEBAUTHN_ALLOW_SYNCED_PASSKEYS. See https://pocket-id.org/docs/configuration/environment-variables.",
@@ -4409,7 +4417,7 @@
                   },
                   "email": {
                     "additionalProperties": false,
-                    "description": "Email of the user. Defaults to \"<username>@placeholder.local\". Can be a plain value or reference a secret.",
+                    "description": "Email of the user. Can be a plain value or reference a secret.\nLeave it unset only if the instance sets userManagement.requireUserEmail to false.",
                     "properties": {
                       "value": {
                         "description": "Plain text value.",
@@ -4881,7 +4889,7 @@
                   },
                   "users": {
                     "additionalProperties": false,
-                    "description": "Users defines the members the operator manages in this group. Members added outside the operator are left in place.",
+                    "description": "Users is the group's full member list. When set, members added outside the operator are removed; when unset, membership is left alone.",
                     "properties": {
                       "userIDs": {
                         "description": "UserIDs are Pocket-ID user IDs to add to this group, for users not managed by a PocketIDUser.",
@@ -5051,7 +5059,7 @@
                     ]
                   },
                   "apiAccess": {
-                    "description": "APIAccess grants this client permission to request scoped access on the referenced PocketIDAPIs.",
+                    "description": "APIAccess grants this client permission to request scoped access on the referenced PocketIDAPIs. The operator owns all of the client's grants: access granted outside the operator is revoked.",
                     "items": {
                       "additionalProperties": false,
                       "description": "OIDCClientAPIAccess grants a client scoped permissions on a referenced PocketIDAPI.\nPermissions are referenced by their key and the operator resolves them to Pocket-ID permission IDs via the PocketIDAPI status.\nThe access flags grant a flow that selects no permissions, so setting one to false alongside a permission list is rejected rather than silently ignoring the list.",
@@ -5140,7 +5148,7 @@
                     ]
                   },
                   "callbackUrls": {
-                    "description": "Callback URLs for the client.",
+                    "description": "Callback URLs for the client. Pocket-ID only redirects to registered URLs; unset clears any set outside the operator.",
                     "items": {
                       "type": "string"
                     },
@@ -5568,7 +5576,7 @@
                     ]
                   },
                   "logoutCallbackUrls": {
-                    "description": "Logout callback URLs for the client.",
+                    "description": "Logout callback URLs for the client. Unset clears any set outside the operator.",
                     "items": {
                       "type": "string"
                     },
@@ -5621,7 +5629,7 @@
                   },
                   "scim": {
                     "additionalProperties": false,
-                    "description": "SCIM configures SCIM provisioning for this OIDC client. Pocket ID will push user/group changes to the configured endpoint.",
+                    "description": "SCIM configures SCIM provisioning for this OIDC client. The operator syncs users and groups to the endpoint every reconcile, and the client is only Ready once the sync succeeds.",
                     "properties": {
                       "endpoint": {
                         "description": "Endpoint is the URL of the external SCIM service provider.",
@@ -6218,7 +6226,7 @@
                 ]
               },
               "cimdUrlAllowlist": {
-                "description": "Allowed OAuth Client ID Metadata Document URLs. The operator sets UI_CONFIG_DISABLED=true when this field is set.\nJSON-encoded into CIMD_URL_ALLOWLIST. See https://pocket-id.org/docs/configuration/environment-variables.",
+                "description": "Allowed OAuth Client ID Metadata Document URLs.\nJSON-encoded into CIMD_URL_ALLOWLIST. See https://pocket-id.org/docs/configuration/environment-variables.",
                 "items": {
                   "type": "string"
                 },
@@ -6655,7 +6663,7 @@
               },
               "emailNotifications": {
                 "additionalProperties": false,
-                "description": "Email notification settings. Requires smtp. The operator sets UI_CONFIG_DISABLED=true when this section is configured.",
+                "description": "Email notification settings. Requires smtp.",
                 "properties": {
                   "apiKeyExpiration": {
                     "description": "API key expiration notifications.\nSets EMAIL_API_KEY_EXPIRATION_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables.",
@@ -6724,7 +6732,7 @@
                 ]
               },
               "enabledFeatures": {
-                "description": "Optional features to show in the admin UI. The operator sets UI_CONFIG_DISABLED=true when this field is set.\nJSON-encoded into ENABLED_FEATURES. Requires a Pocket-ID release that supports it. See https://pocket-id.org/docs/configuration/environment-variables.",
+                "description": "Optional features to show in the admin UI.\nJSON-encoded into ENABLED_FEATURES. Requires a Pocket-ID release that supports it. See https://pocket-id.org/docs/configuration/environment-variables.",
                 "items": {
                   "type": "string"
                 },
@@ -7167,6 +7175,14 @@
                     ],
                     "type": "object",
                     "x-kubernetes-map-type": "atomic"
+                  },
+                  "apiUrl": {
+                    "description": "APIURL is the base URL the operator calls for the Pocket-ID API, e.g. an in-cluster Service (http://pocket-id.pocket-id.svc:1411). Defaults to url. Issuer, endpoint, and login URLs the operator publishes always use url. TLS is verified against the operator's system trust store.",
+                    "pattern": "^https?://",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "url": {
                     "description": "URL is the base URL of the existing Pocket-ID instance (e.g. https://auth.example.com).",
@@ -7631,7 +7647,7 @@
               },
               "ldap": {
                 "additionalProperties": false,
-                "description": "LDAP authentication. When present, the operator sets LDAP_ENABLED=true and UI_CONFIG_DISABLED=true.",
+                "description": "LDAP authentication. When present, the operator sets LDAP_ENABLED=true.",
                 "properties": {
                   "adminGroupName": {
                     "description": "Group that grants admin privileges.\nSets LDAP_ADMIN_GROUP_NAME. See https://pocket-id.org/docs/configuration/environment-variables.",
@@ -9583,7 +9599,7 @@
               },
               "smtp": {
                 "additionalProperties": false,
-                "description": "SMTP email transport. When present, the operator sets UI_CONFIG_DISABLED=true.",
+                "description": "SMTP email transport.",
                 "properties": {
                   "from": {
                     "description": "Sender email address.\nSets SMTP_FROM. See https://pocket-id.org/docs/configuration/environment-variables.",
@@ -10138,7 +10154,7 @@
               },
               "ui": {
                 "additionalProperties": false,
-                "description": "UI settings. The operator sets UI_CONFIG_DISABLED=true when this section is configured.",
+                "description": "UI settings.",
                 "properties": {
                   "accentColor": {
                     "description": "Deprecated: use colorTheme instead.",
@@ -10191,7 +10207,7 @@
               },
               "userManagement": {
                 "additionalProperties": false,
-                "description": "User registration and account settings. The operator sets UI_CONFIG_DISABLED=true when this section is configured.",
+                "description": "User registration and account settings.",
                 "properties": {
                   "allowOwnAccountEdit": {
                     "description": "Allow users to edit their own account.\nSets ALLOW_OWN_ACCOUNT_EDIT. See https://pocket-id.org/docs/configuration/environment-variables.",
@@ -10253,7 +10269,7 @@
               },
               "webauthn": {
                 "additionalProperties": false,
-                "description": "Passkey restrictions. The operator sets UI_CONFIG_DISABLED=true when this section is configured.",
+                "description": "Passkey restrictions.",
                 "properties": {
                   "allowSyncedPasskeys": {
                     "description": "Allow synced passkeys.\nSets WEBAUTHN_ALLOW_SYNCED_PASSKEYS. See https://pocket-id.org/docs/configuration/environment-variables.",
@@ -10485,7 +10501,7 @@
               },
               "email": {
                 "additionalProperties": false,
-                "description": "Email of the user. Defaults to \"<username>@placeholder.local\". Can be a plain value or reference a secret.",
+                "description": "Email of the user. Can be a plain value or reference a secret.\nLeave it unset only if the instance sets userManagement.requireUserEmail to false.",
                 "properties": {
                   "value": {
                     "description": "Plain text value.",
@@ -10957,7 +10973,7 @@
               },
               "users": {
                 "additionalProperties": false,
-                "description": "Users defines the members the operator manages in this group. Members added outside the operator are left in place.",
+                "description": "Users is the group's full member list. When set, members added outside the operator are removed; when unset, membership is left alone.",
                 "properties": {
                   "userIDs": {
                     "description": "UserIDs are Pocket-ID user IDs to add to this group, for users not managed by a PocketIDUser.",
@@ -11107,6 +11123,12 @@
           "type": "string",
           "description": "Sets the TZ env var on the operator container, controlling the local timezone for clientSecretRotation.window cron expressions. Defaults to UTC when unset.",
           "default": ""
+        },
+        "resyncInterval": {
+          "type": "string",
+          "description": "How often every resource is re-reconciled against Pocket-ID, as a Go duration (e.g. \"5m\", \"1h\"). Up to 25% jitter is added. Sets RESYNC_INTERVAL.",
+          "default": "10m",
+          "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$"
         },
         "autoGenerateLogos": {
           "type": "boolean",

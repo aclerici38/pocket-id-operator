@@ -49,7 +49,7 @@ instance:
     # Common extras
     # appUrl: https://auth.example.com
     # 
-    # databaseUrl: /app/data/pocket-id.db
+    # databaseUrl: /app/data   # SQLite folder (the default)
     # OR
     # databaseUrl: "postgres://localhost/pocket-id"
     #

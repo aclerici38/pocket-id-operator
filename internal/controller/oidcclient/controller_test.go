@@ -2,6 +2,8 @@ package oidcclient
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"net/http"
@@ -13,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	openapiruntime "github.com/go-openapi/runtime"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,6 +24,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
@@ -34,12 +37,10 @@ import (
 
 const testNamespace = "default"
 
-func TestOidcClientInput(t *testing.T) {
-	reconciler := &Reconciler{}
+// The spec maps onto the PATCH body field for field, and onto the create body with its client ID.
+func TestOIDCClientPatch_MapsSpec(t *testing.T) {
 	oidc := &pocketidinternalv1alpha1.PocketIDOIDCClient{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "fallback-name",
-		},
+		ObjectMeta: metav1.ObjectMeta{Name: "fallback-name"},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			ClientID:                            "client-id",
 			Description:                         "a test client",
@@ -54,67 +55,39 @@ func TestOidcClientInput(t *testing.T) {
 			SkipConsent:                         true,
 			AccessTokenDurationMinutes:          15,
 			RefreshTokenDurationMinutes:         1440,
-			FederatedIdentities: []pocketidinternalv1alpha1.OIDCClientFederatedIdentity{
-				{
-					Issuer:           "https://issuer.example.com",
-					Subject:          "subject",
-					Audience:         "audience",
-					JWKS:             "https://issuer.example.com/jwks",
-					ReplayProtection: true,
-				},
-			},
-			AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
-				{Name: "group"},
-			},
+			FederatedIdentities: []pocketidinternalv1alpha1.OIDCClientFederatedIdentity{{
+				Issuer:           "https://issuer.example.com",
+				Subject:          "subject",
+				Audience:         "audience",
+				JWKS:             "https://issuer.example.com/jwks",
+				ReplayProtection: true,
+			}},
 		},
 	}
+	identities, err := (&Reconciler{}).federatedIdentities(context.Background(), oidc)
+	if err != nil {
+		t.Fatalf("federatedIdentities: %v", err)
+	}
+	patch := oidcClientPatch(oidc, true, identities)
 
-	input := reconciler.OidcClientInput(oidc, nil, "https://example.com/logo.png", "https://example.com/logo-dark.png")
-	if input.Name != "fallback-name" {
-		t.Errorf("expected Name %q, got %q", "fallback-name", input.Name)
+	want := `{"accessTokenDurationMinutes":15,"backchannelLogoutURL":"https://example.com/backchannel",` +
+		`"callbackURLs":["https://example.com/callback"],"credentials":{"federatedIdentities":[{"audience":"audience",` +
+		`"issuer":"https://issuer.example.com","jwks":"https://issuer.example.com/jwks","publicKeys":null,` +
+		`"replayProtection":true,"subject":"subject"}]},"isGroupRestricted":true,"isPublic":true,` +
+		`"launchURL":"https://example.com","logoutCallbackURLs":["https://example.com/logout"],"name":"fallback-name",` +
+		`"notes":"a test client","pkceEnabled":true,"refreshTokenDurationMinutes":1440,` +
+		`"requiresPushedAuthorizationRequests":true,"requiresReauthentication":true,"skipConsent":true}`
+	if got, _ := json.Marshal(patch); string(got) != want {
+		t.Errorf("patch:\n got %s\nwant %s", got, want)
 	}
-	if input.Description != "a test client" {
-		t.Errorf("expected Description %q, got %q", "a test client", input.Description)
+
+	create := oidcClientCreate(oidc, patch)
+	if create.ID == nil || *create.ID != "client-id" || create.Name != "fallback-name" || !*create.IsGroupRestricted {
+		t.Errorf("create body = %+v", create)
 	}
-	if input.BackchannelLogoutURL != "https://example.com/backchannel" {
-		t.Errorf("expected BackchannelLogoutURL %q, got %q", "https://example.com/backchannel", input.BackchannelLogoutURL)
-	}
-	if input.LogoURL != "https://example.com/logo.png" {
-		t.Errorf("expected LogoURL to pass through, got %q", input.LogoURL)
-	}
-	if input.DarkLogoURL != "https://example.com/logo-dark.png" {
-		t.Errorf("expected DarkLogoURL to pass through, got %q", input.DarkLogoURL)
-	}
-	if !input.IsGroupRestricted {
-		t.Error("expected IsGroupRestricted to be true")
-	}
-	if !input.SkipConsent {
-		t.Error("expected SkipConsent to be true")
-	}
-	if !input.RequiresPushedAuthorizationRequests {
-		t.Error("expected RequiresPushedAuthorizationRequests to be true")
-	}
-	if input.AccessTokenDurationMinutes != 15 {
-		t.Errorf("expected AccessTokenDurationMinutes 15, got %d", input.AccessTokenDurationMinutes)
-	}
-	if input.RefreshTokenDurationMinutes != 1440 {
-		t.Errorf("expected RefreshTokenDurationMinutes 1440, got %d", input.RefreshTokenDurationMinutes)
-	}
-	if input.Credentials == nil {
-		t.Fatal("expected Credentials to not be nil")
-	}
-	if len(input.Credentials.FederatedIdentities) != 1 {
-		t.Fatalf("expected 1 federated identity, got %d", len(input.Credentials.FederatedIdentities))
-	}
-	expected := pocketid.OIDCClientFederatedIdentity{
-		Issuer:           "https://issuer.example.com",
-		Subject:          "subject",
-		Audience:         "audience",
-		JWKS:             "https://issuer.example.com/jwks",
-		ReplayProtection: true,
-	}
-	if !reflect.DeepEqual(input.Credentials.FederatedIdentities[0], expected) {
-		t.Errorf("expected federated identity %+v, got %+v", expected, input.Credentials.FederatedIdentities[0])
+	oidc.Spec.ClientID = ""
+	if create := oidcClientCreate(oidc, patch); create.ID != nil {
+		t.Errorf("expected Pocket-ID to generate the ID, got %q", *create.ID)
 	}
 }
 
@@ -136,20 +109,6 @@ func TestOidcClientName_UsesSpecName(t *testing.T) {
 	}
 	if got := oidcClientName(oidcClient); got != "display-name" {
 		t.Errorf("expected spec.name %q, got %q", "display-name", got)
-	}
-}
-
-func TestOidcClientInput_UsesSpecNameWhenSet(t *testing.T) {
-	reconciler := &Reconciler{}
-	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
-		ObjectMeta: metav1.ObjectMeta{Name: "k8s-name"},
-		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-			Name: "display-name",
-		},
-	}
-	input := reconciler.OidcClientInput(oidcClient, nil, "", "")
-	if input.Name != "display-name" {
-		t.Errorf("expected spec.name %q in OIDCClientInput.Name, got %q", "display-name", input.Name)
 	}
 }
 
@@ -1016,8 +975,8 @@ func TestReconcileSecret_StoreClientSecretDisabled(t *testing.T) {
 		existingSecret  *corev1.Secret
 		regenAnnotation bool
 		pendingMint     bool
-		generated       *pocketid.CreatedOIDCClientSecret // secret Pocket-ID generated with the client
-		wantKey         string                            // expected client_secret value; empty means the key must be absent
+		generated       *pid.OIDCClientSecretCreatedDto // secret Pocket-ID generated with the client
+		wantKey         string                          // expected client_secret value; empty means the key must be absent
 		wantRegenCalls  int
 	}{
 		{name: "adopted client never mints"},
@@ -1027,10 +986,8 @@ func TestReconcileSecret_StoreClientSecretDisabled(t *testing.T) {
 		{
 			name:        "newly created client stores the secret Pocket-ID generated",
 			pendingMint: true,
-			generated: &pocketid.CreatedOIDCClientSecret{
-				OIDCClientSecret: pocketid.OIDCClientSecret{ID: "generated", Prefix: pocketid.SecretPrefix("generated-secret"), IsActive: true},
-				Value:            "generated-secret",
-			},
+			generated: createdSecret(pid.OIDCClientSecretDto{ID: "generated", Prefix: pocketid.SecretPrefix("generated-secret"), IsActive: true},
+				"generated-secret"),
 			wantKey: "generated-secret",
 		},
 	} {
@@ -1083,7 +1040,7 @@ func TestReconcileSecret_StoreClientSecretDisabled(t *testing.T) {
 
 			key := client.ObjectKeyFromObject(oidcClient)
 			if tc.pendingMint {
-				reconciler.pendingInitialMint = map[types.NamespacedName]*pocketid.CreatedOIDCClientSecret{key: tc.generated}
+				reconciler.pendingInitialMint = map[types.NamespacedName]*pid.OIDCClientSecretCreatedDto{key: tc.generated}
 			}
 
 			// Only the pending-mint case gets a working API client; the others use nil,
@@ -1094,9 +1051,9 @@ func TestReconcileSecret_StoreClientSecretDisabled(t *testing.T) {
 				apiClient = clientSecretClient(t, "rotated-secret", &regenCalls)
 			}
 
-			var observed []pocketid.OIDCClientSecret
+			var observed []pid.OIDCClientSecretDto
 			if tc.generated != nil {
-				observed = []pocketid.OIDCClientSecret{tc.generated.OIDCClientSecret}
+				observed = []pid.OIDCClientSecretDto{secretOf(*tc.generated)}
 			}
 			if err := reconciler.ReconcileSecret(ctx, oidcClient, instance, apiClient, observed); err != nil {
 				t.Fatalf("ReconcileSecret returned error: %v", err)
@@ -1205,10 +1162,10 @@ func TestCreateOrAdoptOIDCClient_PendingInitialMint(t *testing.T) {
 			name: "created client is marked for initial mint",
 			handler: func(w http.ResponseWriter, req *http.Request) {
 				switch {
-				case req.Method == http.MethodGet && req.URL.Path == "/api/oidc/clients":
+				case req.Method == http.MethodGet && req.URL.Path == "/api/admin/oidc/clients":
 					w.Header().Set("Content-Type", "application/json")
 					_, _ = w.Write([]byte(`{"data":[]}`))
-				case req.Method == http.MethodPost && req.URL.Path == "/api/oidc/clients":
+				case req.Method == http.MethodPost && req.URL.Path == "/api/admin/oidc/clients":
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusCreated)
 					_, _ = w.Write([]byte(`{"id":"new-id","name":"mint-client","callbackURLs":[],"logoutCallbackURLs":[],"createdSecret":{"id":"generated","secret":"generated-value"}}`))
@@ -1224,9 +1181,9 @@ func TestCreateOrAdoptOIDCClient_PendingInitialMint(t *testing.T) {
 			handler: func(w http.ResponseWriter, req *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				switch {
-				case req.Method == http.MethodGet && req.URL.Path == "/api/oidc/clients":
+				case req.Method == http.MethodGet && req.URL.Path == "/api/admin/oidc/clients":
 					_, _ = w.Write([]byte(`{"data":[]}`))
-				case req.Method == http.MethodPost && req.URL.Path == "/api/oidc/clients":
+				case req.Method == http.MethodPost && req.URL.Path == "/api/admin/oidc/clients":
 					w.WriteHeader(http.StatusCreated)
 					_, _ = w.Write([]byte(`{"id":"new-id","name":"mint-client","createdSecret":{"id":"generated","secret":""}}`))
 				default:
@@ -1238,7 +1195,7 @@ func TestCreateOrAdoptOIDCClient_PendingInitialMint(t *testing.T) {
 		{
 			name: "adopted client is not marked for initial mint",
 			handler: func(w http.ResponseWriter, req *http.Request) {
-				if req.Method == http.MethodGet && req.URL.Path == "/api/oidc/clients" {
+				if req.Method == http.MethodGet && req.URL.Path == "/api/admin/oidc/clients" {
 					w.Header().Set("Content-Type", "application/json")
 					_, _ = w.Write([]byte(`{"data":[{"id":"existing-id","name":"mint-client","callbackURLs":[],"logoutCallbackURLs":[]}]}`))
 					return
@@ -1273,7 +1230,7 @@ func TestCreateOrAdoptOIDCClient_PendingInitialMint(t *testing.T) {
 			if got != tc.wantPending {
 				t.Errorf("pendingInitialMint = %v, want %v", got, tc.wantPending)
 			}
-			if (initial == nil) != (tc.wantValue == "") || (initial != nil && initial.Value != tc.wantValue) {
+			if (initial == nil) != (tc.wantValue == "") || (initial != nil && initial.Secret != tc.wantValue) {
 				t.Errorf("pending secret = %+v, want value %q", initial, tc.wantValue)
 			}
 		})
@@ -2495,27 +2452,28 @@ func TestAggregateAllowedUserGroupIDs_NilWhenNoRefs(t *testing.T) {
 	}
 }
 
-// staticUserGroupLookup resolves groups that have no PocketIDUserGroup in this cluster.
-type staticUserGroupLookup struct {
-	groups []*pocketid.UserGroup
-}
-
-func (s staticUserGroupLookup) ListUserGroups(_ context.Context, search string) ([]*pocketid.UserGroup, error) {
-	for _, group := range s.groups {
-		if group.Name == search {
-			return []*pocketid.UserGroup{group}, nil
-		}
-	}
-	return nil, nil
-}
-
-func (s staticUserGroupLookup) GetUserGroup(_ context.Context, id string) (*pocketid.UserGroup, error) {
-	for _, group := range s.groups {
-		if group.ID == id {
-			return group, nil
-		}
-	}
-	return nil, openapiruntime.NewAPIError("getUserGroup", nil, http.StatusNotFound)
+// groupLookup serves groups that have no PocketIDUserGroup in this cluster.
+func groupLookup(t *testing.T, groups ...pid.UserGroupMinimalDto) *pocketid.Client {
+	return fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /api/admin/user-groups": func(w http.ResponseWriter, r *http.Request) {
+			var matches []pid.UserGroupMinimalDto
+			for _, group := range groups {
+				if strings.Contains(group.Name, r.URL.Query().Get("search")) {
+					matches = append(matches, group)
+				}
+			}
+			writeJSON(w, pid.PaginatedDtoUserGroupMinimalDto{Data: matches})
+		},
+		"GET /api/admin/user-groups/{id}": func(w http.ResponseWriter, r *http.Request) {
+			for _, group := range groups {
+				if group.ID == r.PathValue("id") {
+					writeJSON(w, pid.UserGroupDto{ID: group.ID, Name: group.Name})
+					return
+				}
+			}
+			writeStatus(w, http.StatusNotFound, map[string]string{"code": "not_found"})
+		},
+	})
 }
 
 func TestAggregateAllowedUserGroupIDs_ExternalGroupNeedsNoCR(t *testing.T) {
@@ -2534,7 +2492,7 @@ func TestAggregateAllowedUserGroupIDs_ExternalGroupNeedsNoCR(t *testing.T) {
 
 	fc := newAggregationFakeClient(scheme, oidcClient)
 	reconciler := &Reconciler{Client: fc, Scheme: scheme}
-	lookup := staticUserGroupLookup{groups: []*pocketid.UserGroup{{ID: "gid-dev", Name: "developers"}}}
+	lookup := groupLookup(t, pid.UserGroupMinimalDto{ID: "gid-dev", Name: "developers"})
 
 	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient, lookup)
 	if err != nil {
@@ -2566,7 +2524,7 @@ func TestAggregateAllowedUserGroupIDs_UnionsCRAndExternalRefs(t *testing.T) {
 
 	fc := newAggregationFakeClient(scheme, group, oidcClient)
 	reconciler := &Reconciler{Client: fc, Scheme: scheme}
-	lookup := staticUserGroupLookup{groups: []*pocketid.UserGroup{{ID: "gid-dev", Name: "developers"}}}
+	lookup := groupLookup(t, pid.UserGroupMinimalDto{ID: "gid-dev", Name: "developers"})
 
 	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient, lookup)
 	if err != nil {
@@ -2604,7 +2562,7 @@ func TestAggregateAllowedUserGroupIDs_MissingGroupKeepsSentinelThroughWrapping(t
 	fc := newAggregationFakeClient(scheme, oidcClient)
 	reconciler := &Reconciler{Client: fc, Scheme: scheme}
 
-	_, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient, staticUserGroupLookup{})
+	_, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient, groupLookup(t))
 	if err == nil {
 		t.Fatal("expected an error for an unresolvable group name")
 	}
@@ -2637,7 +2595,7 @@ func TestAggregateAllowedUserGroupIDs_DedupesSameGroupNamedThreeWays(t *testing.
 
 	fc := newAggregationFakeClient(scheme, group, oidcClient)
 	reconciler := &Reconciler{Client: fc, Scheme: scheme}
-	lookup := staticUserGroupLookup{groups: []*pocketid.UserGroup{{ID: "gid-dev", Name: "developers"}}}
+	lookup := groupLookup(t, pid.UserGroupMinimalDto{ID: "gid-dev", Name: "developers"})
 
 	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient, lookup)
 	if err != nil {
@@ -2672,7 +2630,7 @@ func TestAggregateAllowedUserGroupIDs_UnionsExternalAndReverseRefs(t *testing.T)
 
 	fc := newAggregationFakeClient(scheme, reverse, oidcClient)
 	reconciler := &Reconciler{Client: fc, Scheme: scheme}
-	lookup := staticUserGroupLookup{groups: []*pocketid.UserGroup{{ID: "gid-dev", Name: "developers"}}}
+	lookup := groupLookup(t, pid.UserGroupMinimalDto{ID: "gid-dev", Name: "developers"})
 
 	ids, err := reconciler.aggregateAllowedUserGroupIDs(ctx, oidcClient, lookup)
 	if err != nil {
@@ -2680,28 +2638,6 @@ func TestAggregateAllowedUserGroupIDs_UnionsExternalAndReverseRefs(t *testing.T)
 	}
 	if len(ids) != 2 || ids[0] != "gid-dev" || ids[1] != "gid-rev" {
 		t.Errorf("expected sorted [gid-dev gid-rev], got %v", ids)
-	}
-}
-
-func TestOidcClientInput_IsGroupRestrictedForExternalOnlyRefs(t *testing.T) {
-	scheme := runtime.NewScheme()
-	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
-
-	// spec.allowedUserGroups holds only external refs, so a count of the list is
-	// still the right signal for group restriction.
-	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
-		ObjectMeta: metav1.ObjectMeta{Name: "client-restricted", Namespace: testNamespace},
-		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-			AllowedUserGroups: []pocketidinternalv1alpha1.NamespacedUserGroupReference{
-				{GroupName: "developers"},
-				{GroupID: "gid-ops"},
-			},
-		},
-	}
-
-	reconciler := &Reconciler{Scheme: scheme}
-	if !reconciler.OidcClientInput(oidcClient, nil, "", "").IsGroupRestricted {
-		t.Error("expected IsGroupRestricted to be true for external-only refs")
 	}
 }
 
@@ -2806,74 +2742,56 @@ func TestReconcileDelete_KeepFinalizerWhenAPIClientNotReady(t *testing.T) {
 
 // --- SCIM unit tests ---
 
-// fakeSCIMAPI is a minimal implementation of PocketIDOIDCClientAPI for SCIM tests.
-// Only SCIM-related methods are used; the rest panic if called unexpectedly.
+// fakeSCIMAPI is a Pocket-ID holding at most one SCIM service provider, recording every call.
 type fakeSCIMAPI struct {
-	existingProvider   *pocketid.SCIMServiceProvider // returned by GetOIDCClientSCIMServiceProvider
-	getProviderErr     error
-	createErr          error
-	updateErr          error
-	deleteErr          error
-	created            *pocketid.SCIMServiceProviderInput
-	updated            map[string]pocketid.SCIMServiceProviderInput // keyed by SCIM provider ID
-	deleted            []string                                     // SCIM provider IDs passed to Delete
-	getProviderCallIDs []string                                     // oidcClientIDs passed to GetOIDCClientSCIMServiceProvider
+	existingProvider   *pid.SCIMServiceProviderDTO // the client's provider, if any
+	storedToken        bool                        // whether existingProvider has a token
+	created            *pid.SCIMServiceProviderCreateDTO
+	updated            map[string]pid.SCIMServiceProviderCreateDTO // keyed by SCIM provider ID
+	deleted            []string                                    // SCIM provider IDs deleted
+	getProviderCallIDs []string                                    // OIDC client IDs looked up
 }
 
-func (f *fakeSCIMAPI) ListOIDCClients(_ context.Context, _ string) ([]*pocketid.OIDCClient, error) {
-	panic("not implemented")
-}
-func (f *fakeSCIMAPI) CreateOIDCClient(_ context.Context, _ pocketid.OIDCClientInput) (*pocketid.OIDCClient, error) {
-	panic("not implemented")
-}
-func (f *fakeSCIMAPI) GetOIDCClient(_ context.Context, _ string) (*pocketid.OIDCClient, error) {
-	panic("not implemented")
-}
-func (f *fakeSCIMAPI) UpdateOIDCClient(_ context.Context, _ string, _ pocketid.OIDCClientInput) (*pocketid.OIDCClient, error) {
-	panic("not implemented")
-}
-func (f *fakeSCIMAPI) UpdateOIDCClientAllowedGroups(_ context.Context, _ string, _ []string) error {
-	panic("not implemented")
-}
-func (f *fakeSCIMAPI) RefreshOIDCClientMetadata(_ context.Context, _ string) error {
-	panic("not implemented")
-}
-func (f *fakeSCIMAPI) CreateOIDCClientSecret(_ context.Context, _, _ string) (pocketid.OIDCClientSecret, string, error) {
-	panic("not implemented")
-}
-func (f *fakeSCIMAPI) DeleteOIDCClientSecret(_ context.Context, _, _ string) error {
-	panic("not implemented")
-}
-func (f *fakeSCIMAPI) DeleteOIDCClientLogo(_ context.Context, _ string, _ bool) error {
-	panic("not implemented")
-}
-func (f *fakeSCIMAPI) GetOIDCClientSCIMServiceProvider(_ context.Context, oidcClientID string) (*pocketid.SCIMServiceProvider, error) {
-	f.getProviderCallIDs = append(f.getProviderCallIDs, oidcClientID)
-	return f.existingProvider, f.getProviderErr
-}
-func (f *fakeSCIMAPI) CreateSCIMServiceProvider(_ context.Context, input pocketid.SCIMServiceProviderInput) (*pocketid.SCIMServiceProvider, error) {
-	if f.createErr != nil {
-		return nil, f.createErr
-	}
-	f.created = &input
-	return &pocketid.SCIMServiceProvider{ID: "new-scim-id", Endpoint: input.Endpoint, Token: input.Token}, nil
-}
-func (f *fakeSCIMAPI) UpdateSCIMServiceProvider(_ context.Context, id string, input pocketid.SCIMServiceProviderInput) (*pocketid.SCIMServiceProvider, error) {
-	if f.updateErr != nil {
-		return nil, f.updateErr
-	}
-	if f.updated == nil {
-		f.updated = make(map[string]pocketid.SCIMServiceProviderInput)
-	}
-	f.updated[id] = input
-	return &pocketid.SCIMServiceProvider{ID: id, Endpoint: input.Endpoint, Token: input.Token}, nil
-}
-func (f *fakeSCIMAPI) DeleteSCIMServiceProvider(_ context.Context, id string) error {
-	if f.deleteErr != nil {
-		return f.deleteErr
-	}
-	f.deleted = append(f.deleted, id)
-	return nil
+func (f *fakeSCIMAPI) serve(t *testing.T) *pocketid.Client {
+	return fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /api/admin/oidc/clients/{id}/scim-service-provider": func(w http.ResponseWriter, r *http.Request) {
+			id, _ := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(r.PathValue("id"), "~"))
+			f.getProviderCallIDs = append(f.getProviderCallIDs, string(id))
+			if f.existingProvider == nil {
+				writeStatus(w, http.StatusNotFound, map[string]string{"code": "not_found"})
+				return
+			}
+			writeJSON(w, f.existingProvider)
+		},
+		"POST /api/admin/scim/service-provider": func(w http.ResponseWriter, r *http.Request) {
+			var body pid.SCIMServiceProviderCreateDTO
+			decodeBody(t, r, &body)
+			f.created = &body
+			writeStatus(w, http.StatusCreated, pid.SCIMServiceProviderDTO{ID: "new-scim-id", Endpoint: body.Endpoint})
+		},
+		"PUT /api/admin/scim/service-provider/{id}": func(w http.ResponseWriter, r *http.Request) {
+			if f.existingProvider == nil || f.existingProvider.ID != r.PathValue("id") {
+				writeStatus(w, http.StatusNotFound, map[string]string{"code": "not_found"})
+				return
+			}
+			var body pid.SCIMServiceProviderCreateDTO
+			decodeBody(t, r, &body)
+			// Upstream refuses to send a stored token to a new endpoint unless it's given again.
+			if f.storedToken && body.Endpoint != f.existingProvider.Endpoint && !body.Token.IsSpecified() {
+				writeStatus(w, http.StatusBadRequest, map[string]string{"error": "Enter the token again when you change the endpoint"})
+				return
+			}
+			if f.updated == nil {
+				f.updated = make(map[string]pid.SCIMServiceProviderCreateDTO)
+			}
+			f.updated[r.PathValue("id")] = body
+			writeJSON(w, pid.SCIMServiceProviderDTO{ID: r.PathValue("id"), Endpoint: body.Endpoint})
+		},
+		"DELETE /api/admin/scim/service-provider/{id}": func(w http.ResponseWriter, r *http.Request) {
+			f.deleted = append(f.deleted, r.PathValue("id"))
+			w.WriteHeader(http.StatusNoContent)
+		},
+	})
 }
 
 // newSCIMReconciler creates a Reconciler with a fake K8s client and the given objects.
@@ -2913,7 +2831,7 @@ func TestReconcileSCIM_NoSpec_NoTrackedID_NoExisting(t *testing.T) {
 	r := newSCIMReconciler(t, oidcClient)
 	api := &fakeSCIMAPI{existingProvider: nil}
 
-	if err := r.ReconcileSCIM(ctx, oidcClient, api); err != nil {
+	if err := r.ReconcileSCIM(ctx, oidcClient, api.serve(t)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(api.getProviderCallIDs) == 0 {
@@ -2935,7 +2853,7 @@ func TestReconcileSCIM_NoSpec_NoTrackedID_SkipsCheckWhenReady(t *testing.T) {
 	r := newSCIMReconciler(t, oidcClient)
 	api := &fakeSCIMAPI{}
 
-	if err := r.ReconcileSCIM(ctx, oidcClient, api); err != nil {
+	if err := r.ReconcileSCIM(ctx, oidcClient, api.serve(t)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(api.getProviderCallIDs) > 0 {
@@ -2953,7 +2871,7 @@ func TestReconcileSCIM_NoSpec_WithTrackedID_DeletesIt(t *testing.T) {
 	r := newSCIMReconciler(t, oidcClient)
 	api := &fakeSCIMAPI{}
 
-	if err := r.ReconcileSCIM(ctx, oidcClient, api); err != nil {
+	if err := r.ReconcileSCIM(ctx, oidcClient, api.serve(t)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(api.deleted) != 1 || api.deleted[0] != "existing-scim-id" {
@@ -2971,10 +2889,10 @@ func TestReconcileSCIM_NoSpec_NoTrackedID_StaleInPocketID_DeletesIt(t *testing.T
 	oidcClient := oidcClientWithSCIM(nil, "") // no conditions → not ready, triggers stale check
 	r := newSCIMReconciler(t, oidcClient)
 	api := &fakeSCIMAPI{
-		existingProvider: &pocketid.SCIMServiceProvider{ID: "stale-scim-id", Endpoint: "https://old.example.com/scim"},
+		existingProvider: &pid.SCIMServiceProviderDTO{ID: "stale-scim-id", Endpoint: "https://old.example.com/scim"},
 	}
 
-	if err := r.ReconcileSCIM(ctx, oidcClient, api); err != nil {
+	if err := r.ReconcileSCIM(ctx, oidcClient, api.serve(t)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(api.getProviderCallIDs) == 0 {
@@ -2994,7 +2912,7 @@ func TestReconcileSCIM_WithSpec_NoTrackedID_NoExisting_Creates(t *testing.T) {
 	r := newSCIMReconciler(t, oidcClient)
 	api := &fakeSCIMAPI{existingProvider: nil}
 
-	if err := r.ReconcileSCIM(ctx, oidcClient, api); err != nil {
+	if err := r.ReconcileSCIM(ctx, oidcClient, api.serve(t)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if api.created == nil {
@@ -3019,10 +2937,10 @@ func TestReconcileSCIM_WithSpec_NoTrackedID_ExistingInPocketID_Adopts(t *testing
 	}, "")
 	r := newSCIMReconciler(t, oidcClient)
 	api := &fakeSCIMAPI{
-		existingProvider: &pocketid.SCIMServiceProvider{ID: "adopt-scim-id", Endpoint: "https://old.example.com/scim"},
+		existingProvider: &pid.SCIMServiceProviderDTO{ID: "adopt-scim-id", Endpoint: "https://old.example.com/scim"},
 	}
 
-	if err := r.ReconcileSCIM(ctx, oidcClient, api); err != nil {
+	if err := r.ReconcileSCIM(ctx, oidcClient, api.serve(t)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if api.created != nil {
@@ -3036,45 +2954,75 @@ func TestReconcileSCIM_WithSpec_NoTrackedID_ExistingInPocketID_Adopts(t *testing
 	}
 }
 
-func TestReconcileSCIM_WithSpec_WithTrackedID_Updates(t *testing.T) {
-	// spec.scim set, tracked ID exists, endpoint changed → update
-	ctx := context.Background()
-	oidcClient := oidcClientWithSCIM(&pocketidinternalv1alpha1.SCIMSpec{
-		Endpoint: "https://scim.example.com/v2",
-	}, "tracked-scim-id")
+// A tracked provider is PUT by ID every reconcile without being looked up, and with no
+// tokenSecretRef the token is cleared.
+func TestReconcileSCIM_WithSpec_WithTrackedID_PutsByID(t *testing.T) {
+	oidcClient := oidcClientWithSCIM(&pocketidinternalv1alpha1.SCIMSpec{Endpoint: "https://scim.example.com/v2"}, "tracked-scim-id")
+	r := newSCIMReconciler(t, oidcClient)
+	api := &fakeSCIMAPI{existingProvider: &pid.SCIMServiceProviderDTO{ID: "tracked-scim-id", Endpoint: "https://scim.example.com/v2"}}
+
+	if err := r.ReconcileSCIM(context.Background(), oidcClient, api.serve(t)); err != nil {
+		t.Fatalf("ReconcileSCIM: %v", err)
+	}
+	body, ok := api.updated["tracked-scim-id"]
+	if !ok || len(api.updated) != 1 || api.created != nil {
+		t.Fatalf("expected only a PUT of tracked-scim-id, updated %v, created %v", api.updated, api.created)
+	}
+	if token, err := body.Token.Get(); body.Endpoint != "https://scim.example.com/v2" || err != nil || token != "" {
+		t.Errorf("expected the spec endpoint and an empty token, got %+v", body)
+	}
+	if len(api.getProviderCallIDs) != 0 {
+		t.Errorf("expected no lookup, got %v", api.getProviderCallIDs)
+	}
+}
+
+// Changing the endpoint of a provider with a stored token and no tokenSecretRef clears the token
+// rather than being rejected by upstream.
+func TestReconcileSCIM_EndpointChange_NoTokenRef_ClearsToken(t *testing.T) {
+	oidcClient := oidcClientWithSCIM(&pocketidinternalv1alpha1.SCIMSpec{Endpoint: "https://new.example.com/v2"}, "tracked-scim-id")
 	r := newSCIMReconciler(t, oidcClient)
 	api := &fakeSCIMAPI{
-		existingProvider: &pocketid.SCIMServiceProvider{ID: "tracked-scim-id", Endpoint: "https://old.example.com/scim"},
+		existingProvider: &pid.SCIMServiceProviderDTO{ID: "tracked-scim-id", Endpoint: "https://old.example.com/v2"},
+		storedToken:      true,
 	}
 
-	if err := r.ReconcileSCIM(ctx, oidcClient, api); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err := r.ReconcileSCIM(context.Background(), oidcClient, api.serve(t)); err != nil {
+		t.Fatalf("ReconcileSCIM: %v", err)
 	}
-	if api.created != nil {
-		t.Error("expected no create call")
+	if token, err := api.updated["tracked-scim-id"].Token.Get(); err != nil || token != "" {
+		t.Errorf("expected an empty token, got %q (%v)", token, err)
 	}
-	input, ok := api.updated["tracked-scim-id"]
-	if !ok {
-		t.Fatalf("expected update of tracked-scim-id, updated map: %v", api.updated)
+}
+
+func TestReconcileSCIM_TrackedIDGone_Recreates(t *testing.T) {
+	oidcClient := oidcClientWithSCIM(&pocketidinternalv1alpha1.SCIMSpec{Endpoint: "https://scim.example.com/v2"}, "gone-id")
+	r := newSCIMReconciler(t, oidcClient)
+	api := &fakeSCIMAPI{}
+
+	if err := r.ReconcileSCIM(context.Background(), oidcClient, api.serve(t)); err != nil {
+		t.Fatalf("ReconcileSCIM: %v", err)
 	}
-	if input.Endpoint != "https://scim.example.com/v2" {
-		t.Errorf("expected endpoint %q, got %q", "https://scim.example.com/v2", input.Endpoint)
+	if api.created == nil {
+		t.Fatal("expected the provider to be recreated")
+	}
+	if oidcClient.Status.SCIMProviderID != "new-scim-id" {
+		t.Errorf("expected SCIMProviderID %q, got %q", "new-scim-id", oidcClient.Status.SCIMProviderID)
 	}
 }
 
 func TestReconcileSCIM_StaleStatusID_UsesCurrentID(t *testing.T) {
-	// status.SCIMProviderID is stale; GetOIDCClientSCIMServiceProvider returns a provider
-	// with a different ID. The update must use current.ID, and status must be patched.
+	// The PUT to the stale status.SCIMProviderID 404s and the client's provider has a different
+	// ID, as after deleting and re-adding SCIM in the UI. It must be adopted, not duplicated.
 	ctx := context.Background()
 	oidcClient := oidcClientWithSCIM(&pocketidinternalv1alpha1.SCIMSpec{
 		Endpoint: "https://scim.example.com/v2",
 	}, "stale-id")
 	r := newSCIMReconciler(t, oidcClient)
 	api := &fakeSCIMAPI{
-		existingProvider: &pocketid.SCIMServiceProvider{ID: "real-id", Endpoint: "https://old.example.com/scim"},
+		existingProvider: &pid.SCIMServiceProviderDTO{ID: "real-id", Endpoint: "https://old.example.com/scim"},
 	}
 
-	if err := r.ReconcileSCIM(ctx, oidcClient, api); err != nil {
+	if err := r.ReconcileSCIM(ctx, oidcClient, api.serve(t)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if api.created != nil {
@@ -3108,14 +3056,14 @@ func TestReconcileSCIM_TokenFromSecret(t *testing.T) {
 	r := newSCIMReconciler(t, oidcClient, secret)
 	api := &fakeSCIMAPI{existingProvider: nil}
 
-	if err := r.ReconcileSCIM(ctx, oidcClient, api); err != nil {
+	if err := r.ReconcileSCIM(ctx, oidcClient, api.serve(t)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if api.created == nil {
 		t.Fatal("expected CreateSCIMServiceProvider to be called")
 	}
-	if api.created.Token != "super-secret-token" {
-		t.Errorf("expected token %q, got %q", "super-secret-token", api.created.Token)
+	if got := api.created.Token.GetOrEmpty(); got != "super-secret-token" {
+		t.Errorf("expected token %q, got %q", "super-secret-token", got)
 	}
 }
 
@@ -3132,7 +3080,7 @@ func TestReconcileSCIM_TokenFromSecret_MissingSecret_ReturnsError(t *testing.T) 
 	r := newSCIMReconciler(t, oidcClient)
 	api := &fakeSCIMAPI{}
 
-	err := r.ReconcileSCIM(ctx, oidcClient, api)
+	err := r.ReconcileSCIM(ctx, oidcClient, api.serve(t))
 	if err == nil {
 		t.Fatal("expected error for missing secret, got nil")
 	}
@@ -3155,7 +3103,7 @@ func TestReconcileSCIM_TokenFromSecret_MissingKey_ReturnsError(t *testing.T) {
 	r := newSCIMReconciler(t, oidcClient, secret)
 	api := &fakeSCIMAPI{}
 
-	err := r.ReconcileSCIM(ctx, oidcClient, api)
+	err := r.ReconcileSCIM(ctx, oidcClient, api.serve(t))
 	if err == nil {
 		t.Fatal("expected error for missing key, got nil")
 	}

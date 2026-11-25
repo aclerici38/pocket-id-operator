@@ -22,6 +22,8 @@ import (
 	stderrors "errors"
 	"fmt"
 	"maps"
+	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -41,6 +43,9 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+	"github.com/oapi-codegen/nullable"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
@@ -67,6 +72,8 @@ const (
 
 	// failedLogoURLTTL is how long a URL Pocket-ID refused stays suppressed.
 	failedLogoURLTTL = 24 * time.Hour
+	// scimSyncTimeout bounds the inline SCIM sync, so a slow endpoint can't stall the controller.
+	scimSyncTimeout = 30 * time.Second
 )
 
 // errAwaitingCIMD reports that a metadata-document client does not exist in Pocket-ID yet.
@@ -102,7 +109,7 @@ type Reconciler struct {
 	// initial mint for brand-new clients while never regenerating pre-existing credentials.
 	// The value is the secret Pocket-ID generated with the client, if any, which the initial
 	// mint adopts rather than minting another.
-	pendingInitialMint map[types.NamespacedName]*pocketid.CreatedOIDCClientSecret
+	pendingInitialMint map[types.NamespacedName]*pid.OIDCClientSecretCreatedDto
 }
 
 // +kubebuilder:rbac:groups=pocketid.internal,resources=pocketidoidcclients,verbs=get;list;watch;create;update;patch;delete
@@ -192,8 +199,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return common.ApplyResync(ctrl.Result{}), nil
 	}
 
-	// Fetch current state from Pocket ID
-	current, err := apiClient.GetOIDCClient(ctx, oidcClient.Status.ClientID)
+	current, err := r.pushOIDCClientState(ctx, oidcClient, apiClient)
 	if err != nil {
 		if pocketid.IsNotFoundError(err) {
 			log.Info("OIDC client was deleted externally, will recreate", "clientID", oidcClient.Status.ClientID)
@@ -203,7 +209,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			}
 			return ctrl.Result{RequeueAfter: common.RequeueImmediate}, nil
 		}
-		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "GetError", err.Error())
+		log.Error(err, "Failed to push OIDC client state")
+		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, reconcileErrorReason(err), err.Error())
 		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 	}
 
@@ -212,28 +219,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
 	}
 
+	secrets := current.Credentials.Secrets
 	if !isPublicClient(oidcClient) {
-		metrics.OIDCClientSecretCount.WithLabelValues(oidcClient.Namespace, oidcClient.Name).Set(float64(len(current.Secrets)))
-	}
-
-	updated, err := r.pushOIDCClientState(ctx, oidcClient, apiClient, current)
-	if err != nil {
-		log.Error(err, "Failed to push OIDC client state")
-		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, reconcileErrorReason(err), err.Error())
-		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
-	}
-
-	// Read the write back in this same pass. Ready below stamps observedGeneration, so status
-	// has to already describe what Pocket-ID holds for that generation.
-	if updated {
-		if current, err = apiClient.GetOIDCClient(ctx, oidcClient.Status.ClientID); err != nil {
-			_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "GetError", err.Error())
-			return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
-		}
-		if err := r.UpdateOIDCClientStatus(ctx, oidcClient, current); err != nil {
-			log.Error(err, "Failed to update OIDC client status")
-			return ctrl.Result{RequeueAfter: common.Requeue}, nil
-		}
+		metrics.OIDCClientSecretCount.WithLabelValues(oidcClient.Namespace, oidcClient.Name).Set(float64(len(secrets)))
 	}
 
 	if err := r.ReconcileSCIM(ctx, oidcClient, apiClient); err != nil {
@@ -248,13 +236,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 	}
 
-	if err := r.SyncDeclaredClientSecret(ctx, oidcClient, apiClient, current.Secrets); err != nil {
+	if err := r.SyncDeclaredClientSecret(ctx, oidcClient, apiClient, secrets); err != nil {
 		log.Error(err, "Failed to sync declared client secret")
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "ClientSecretSyncError", err.Error())
 		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
 	}
 
-	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient, current.Secrets); err != nil {
+	if err := r.ReconcileSecret(ctx, oidcClient, instance, apiClient, secrets); err != nil {
 		log.Error(err, "Failed to reconcile OIDC client secret")
 		_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "SecretReconcileError", err.Error())
 		return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
@@ -263,6 +251,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err := r.clearRegenerateClientSecretAnnotation(ctx, oidcClient); err != nil {
 		log.Error(err, "Failed to remove regenerate-client-secret annotation")
 		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+	}
+
+	if oidcClient.Spec.SCIM != nil {
+		if err := syncSCIM(ctx, apiClient, oidcClient.Status.SCIMProviderID); err != nil {
+			log.Error(err, "Failed to sync SCIM service provider")
+			_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionFalse, "SCIMSyncError", err.Error())
+			return ctrl.Result{RequeueAfter: common.RequeueAfterFor(err)}, nil
+		}
 	}
 
 	_ = r.SetReadyCondition(ctx, oidcClient, metav1.ConditionTrue, "Reconciled", "OIDC client is in sync")
@@ -295,26 +291,9 @@ func (r *Reconciler) clearRegenerateClientSecretAnnotation(ctx context.Context, 
 	return nil
 }
 
-// PocketIDOIDCClientAPI defines the minimal interface needed for OIDC client operations
-type PocketIDOIDCClientAPI interface {
-	ListOIDCClients(ctx context.Context, search string) ([]*pocketid.OIDCClient, error)
-	CreateOIDCClient(ctx context.Context, input pocketid.OIDCClientInput) (*pocketid.OIDCClient, error)
-	GetOIDCClient(ctx context.Context, id string) (*pocketid.OIDCClient, error)
-	UpdateOIDCClient(ctx context.Context, id string, input pocketid.OIDCClientInput) (*pocketid.OIDCClient, error)
-	UpdateOIDCClientAllowedGroups(ctx context.Context, id string, groupIDs []string) error
-	RefreshOIDCClientMetadata(ctx context.Context, id string) error
-	CreateOIDCClientSecret(ctx context.Context, id, secret string) (pocketid.OIDCClientSecret, string, error)
-	DeleteOIDCClientSecret(ctx context.Context, id, secretID string) error
-	DeleteOIDCClientLogo(ctx context.Context, id string, light bool) error
-	GetOIDCClientSCIMServiceProvider(ctx context.Context, oidcClientID string) (*pocketid.SCIMServiceProvider, error)
-	CreateSCIMServiceProvider(ctx context.Context, input pocketid.SCIMServiceProviderInput) (*pocketid.SCIMServiceProvider, error)
-	UpdateSCIMServiceProvider(ctx context.Context, id string, input pocketid.SCIMServiceProviderInput) (*pocketid.SCIMServiceProvider, error)
-	DeleteSCIMServiceProvider(ctx context.Context, id string) error
-}
-
 // refreshClientMetadata services the refresh-client-metadata annotation by forcing an
 // adopted CIMD client to re-fetch its metadata document ahead of the cache TTL.
-func (r *Reconciler) refreshClientMetadata(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient PocketIDOIDCClientAPI) error {
+func (r *Reconciler) refreshClientMetadata(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client) error {
 	removed, err := helpers.CheckAndRemoveAnnotation(ctx, r.Client, oidcClient, refreshClientMetadataAnnotation, "true")
 	if err != nil || !removed {
 		return err
@@ -325,74 +304,70 @@ func (r *Reconciler) refreshClientMetadata(ctx context.Context, oidcClient *pock
 		return stderrors.New("cannot refresh client metadata: the client has not been adopted yet")
 	}
 
-	if err := apiClient.RefreshOIDCClientMetadata(ctx, id); err != nil {
-		return err
+	if err := pid.Check(apiClient.RefreshClientMetadataDocument(ctx, pid.OIDCClientID(id))); err != nil {
+		return fmt.Errorf("refresh client metadata document: %w", err)
 	}
 
 	logf.FromContext(ctx).Info("Refreshed client metadata document", "clientID", id)
 	return nil
 }
 
-// FindExistingOIDCClient checks if an OIDC client already exists in Pocket-ID.
-// If specClientID is non-empty, it looks up by client ID directly.
-// Otherwise, it searches by name and returns an exact match.
-// Returns the existing client if found, or nil if no matching client exists.
-// A CIMD client is only ever adopted through an explicit spec.clientID: name matches skip
-// them so a document-supplied client_name colliding with a CR name cannot silently pull an
-// unrelated self-registered client under management.
-func (r *Reconciler) FindExistingOIDCClient(ctx context.Context, apiClient PocketIDOIDCClientAPI, specClientID, name string) (*pocketid.OIDCClient, error) {
+// findExistingOIDCClient returns the ID of the client to adopt, or "" if there is none.
+// With specClientID set it looks the client up directly; otherwise it takes an exact name
+// match. A CIMD client is only ever adopted through an explicit spec.clientID: name matches
+// skip them so a document-supplied client_name colliding with a CR name cannot silently pull
+// an unrelated self-registered client under management.
+func (r *Reconciler) findExistingOIDCClient(ctx context.Context, apiClient *pocketid.Client, specClientID, name string) (string, error) {
 	log := logf.FromContext(ctx)
 
 	if specClientID != "" {
 		log.Info("Looking up OIDC client by ID", "clientID", specClientID)
-		existingClient, err := apiClient.GetOIDCClient(ctx, specClientID)
+		existing, err := pid.Decode[pid.OIDCClientWithAllowedUserGroupsDto](apiClient.GetOIDCClient(ctx, pid.OIDCClientID(specClientID)))
 		if err != nil {
 			if pocketid.IsNotFoundError(err) {
 				log.Info("OIDC client not found in Pocket-ID", "clientID", specClientID)
-				return nil, nil
+				return "", nil
 			}
-			return nil, fmt.Errorf("get OIDC client: %w", err)
+			return "", fmt.Errorf("get OIDC client: %w", err)
 		}
 		log.Info("Found existing OIDC client in Pocket-ID", "clientID", specClientID)
-		return existingClient, nil
+		return existing.ID, nil
 	}
 
 	log.Info("Searching for OIDC client by name", "name", name)
-	clients, err := apiClient.ListOIDCClients(ctx, name)
-	if err != nil {
-		return nil, fmt.Errorf("list OIDC clients: %w", err)
-	}
-
-	for _, c := range clients {
+	for c, err := range pid.All[pid.OIDCClientWithAllowedGroupsDto](func(page int) (*http.Response, error) {
+		return apiClient.ListOIDCClients(ctx, &pid.ListOIDCClientsParams{Search: &name, PaginationPage: &page})
+	}) {
+		if err != nil {
+			return "", fmt.Errorf("list OIDC clients: %w", err)
+		}
 		if c.Name != name {
 			continue
 		}
 		// A CIMD client's name comes from a document the app publishes about itself, so a
 		// collision is not the operator's to resolve: skipping keeps a self-registered app
 		// from blocking an unrelated client that only ever wanted to be created by name.
-		if c.IsCIMD() {
+		if c.ClientType == pocketid.ClientTypeCIMD {
 			log.Info("Skipping CIMD client with matching name; set spec.clientID to its metadata document URL to manage it",
 				"name", name, "clientID", c.ID)
 			continue
 		}
 		log.Info("Found existing OIDC client with matching name", "name", name, "clientID", c.ID)
-		return c, nil
+		return c.ID, nil
 	}
 
 	log.Info("No OIDC client found with matching name", "name", name)
-	return nil, nil
+	return "", nil
 }
 
 // createOrAdoptOIDCClient handles creation or adoption when no ID exists in the status.
-// Returns (requeue, error). On success, sets the status ID and signals a requeue
-// so the next reconcile loop can GET the canonical state.
+// Returns (requeue, error). On success, sets the status ID and signals a requeue so the
+// next reconcile pushes the spec.
 func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client) (bool, error) {
 	log := logf.FromContext(ctx)
 
-	// No logo is sent at creation: Pocket-ID downloads it only after the client row is
-	// committed, so a rejected URL would fail the response that carries the new client's ID.
-	input := r.OidcClientInput(oidcClient, nil, "", "")
-	if err := r.resolvePublicKeys(ctx, oidcClient, input.Credentials.FederatedIdentities); err != nil {
+	identities, err := r.federatedIdentities(ctx, oidcClient)
+	if err != nil {
 		return false, err
 	}
 
@@ -401,7 +376,6 @@ func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *po
 	if err != nil {
 		return false, fmt.Errorf("aggregate allowed user groups: %w", err)
 	}
-	input.IsGroupRestricted = len(groupIDs) > 0
 
 	resourceID := oidcClient.Spec.ClientID
 	if resourceID == "" {
@@ -413,14 +387,14 @@ func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *po
 	// When spec.clientID is not set, search by name first to adopt
 	if oidcClient.Spec.ClientID == "" {
 		log.Info("No clientID specified, searching for existing OIDC client by name", "name", name)
-		existing, err := r.FindExistingOIDCClient(ctx, apiClient, "", name)
+		existingID, err := r.findExistingOIDCClient(ctx, apiClient, "", name)
 		if err != nil {
 			return false, fmt.Errorf("search for existing OIDC client by name: %w", err)
 		}
-		if existing != nil {
-			log.Info("Found existing OIDC client by name, adopting", "name", name, "clientID", existing.ID)
+		if existingID != "" {
+			log.Info("Found existing OIDC client by name, adopting", "name", name, "clientID", existingID)
 			metrics.ResourceOperations.WithLabelValues("PocketIDOIDCClient", "adopted").Inc()
-			if err := r.setClientID(ctx, oidcClient, existing.ID); err != nil {
+			if err := r.setClientID(ctx, oidcClient, existingID); err != nil {
 				return false, err
 			}
 			return true, nil
@@ -432,31 +406,37 @@ func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *po
 	// authorization request; the operator can only ever adopt one. Falling through to
 	// CreateOrAdopt would try to register a standard client under the document URL.
 	if pocketid.LooksLikeCIMDID(oidcClient.Spec.ClientID) {
-		existing, err := r.FindExistingOIDCClient(ctx, apiClient, oidcClient.Spec.ClientID, name)
+		existingID, err := r.findExistingOIDCClient(ctx, apiClient, oidcClient.Spec.ClientID, name)
 		if err != nil {
 			return false, err
 		}
-		if existing == nil {
+		if existingID == "" {
 			return false, errAwaitingCIMD
 		}
-		log.Info("Adopting CIMD client", "clientID", existing.ID)
+		log.Info("Adopting CIMD client", "clientID", existingID)
 		metrics.ResourceOperations.WithLabelValues("PocketIDOIDCClient", "adopted").Inc()
-		if err := r.setClientID(ctx, oidcClient, existing.ID); err != nil {
+		if err := r.setClientID(ctx, oidcClient, existingID); err != nil {
 			return false, err
 		}
 		return true, nil
 	}
 
-	result, err := common.CreateOrAdopt(ctx, common.CreateOrAdoptConfig[*pocketid.OIDCClient]{
+	result, err := common.CreateOrAdopt(ctx, common.CreateOrAdoptConfig[*pid.OIDCClientCreatedDto]{
 		ResourceKind: "OIDC client",
 		ResourceID:   resourceID,
-		Create: func() (*pocketid.OIDCClient, error) {
-			return apiClient.CreateOIDCClient(ctx, input)
+		Create: func() (*pid.OIDCClientCreatedDto, error) {
+			return pid.Decode[*pid.OIDCClientCreatedDto](apiClient.CreateOIDCClient(ctx,
+				oidcClientCreate(oidcClient, oidcClientPatch(oidcClient, len(groupIDs) > 0, identities))))
 		},
-		FindExisting: func() (*pocketid.OIDCClient, error) {
-			return r.FindExistingOIDCClient(ctx, apiClient, oidcClient.Spec.ClientID, name)
+		// Only the ID of an adopted client is used.
+		FindExisting: func() (*pid.OIDCClientCreatedDto, error) {
+			id, err := r.findExistingOIDCClient(ctx, apiClient, oidcClient.Spec.ClientID, name)
+			if id == "" {
+				return nil, err
+			}
+			return &pid.OIDCClientCreatedDto{ID: id}, nil
 		},
-		IsNil: func(c *pocketid.OIDCClient) bool {
+		IsNil: func(c *pid.OIDCClientCreatedDto) bool {
 			return c == nil
 		},
 	})
@@ -476,9 +456,14 @@ func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *po
 		// by SyncDeclaredClientSecret instead, so one must never be minted for it.
 		if !hasDeclaredClientSecret(oidcClient) {
 			if r.pendingInitialMint == nil {
-				r.pendingInitialMint = make(map[types.NamespacedName]*pocketid.CreatedOIDCClientSecret)
+				r.pendingInitialMint = make(map[types.NamespacedName]*pid.OIDCClientSecretCreatedDto)
 			}
-			r.pendingInitialMint[client.ObjectKeyFromObject(oidcClient)] = result.Resource.CreatedSecret
+			// The generated secret is only adopted when its value came back with it.
+			initial := result.Resource.CreatedSecret
+			if initial != nil && initial.Secret == "" {
+				initial = nil
+			}
+			r.pendingInitialMint[client.ObjectKeyFromObject(oidcClient)] = initial
 		}
 	}
 	metrics.ResourceOperations.WithLabelValues("PocketIDOIDCClient", operation).Inc()
@@ -489,131 +474,79 @@ func (r *Reconciler) createOrAdoptOIDCClient(ctx context.Context, oidcClient *po
 	return true, nil
 }
 
-// preserveMetadataOwnedFields adopts the observed values for the fields Pocket-ID refuses
-// to write on a CIMD client, whose metadata document owns them. Without this the operator
-// would diff against values the server discards and re-push them on every reconcile.
-// Admission rejects these fields in the spec, so this only overwrites CRD defaults.
-func preserveMetadataOwnedFields(desired *pocketid.OIDCClientInput, current *pocketid.OIDCClient) {
-	desired.Name = current.Name
-	desired.CallbackURLs = current.CallbackURLs
-	desired.LogoutCallbackURLs = current.LogoutCallbackURLs
-	desired.BackchannelLogoutURL = current.BackchannelLogoutURL
-	desired.IsPublic = current.IsPublic
-	desired.PKCEEnabled = current.PKCEEnabled
-	desired.Credentials = &pocketid.OIDCClientCredentials{FederatedIdentities: current.FederatedIdentities}
-}
-
-// pushOIDCClientState compares the desired state from the CR spec against the current
-// state fetched from Pocket ID and only pushes updates if they differ.
-func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client, current *pocketid.OIDCClient) (bool, error) {
-	log := logf.FromContext(ctx)
-
-	// Aggregate allowed groups before building input so IsGroupRestricted is correct
+// pushOIDCClientState writes the spec's configuration, allowed groups and logos, and returns
+// the client as it stands afterwards. A CIMD client gets the same update: Pocket-ID ignores
+// the columns its metadata document owns.
+func (r *Reconciler) pushOIDCClientState(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client) (pid.OIDCClientWithAllowedUserGroupsDto, error) {
 	groupIDs, err := r.aggregateAllowedUserGroupIDs(ctx, oidcClient, apiClient)
 	if err != nil {
-		return false, fmt.Errorf("aggregate allowed user groups: %w", err)
+		return pid.OIDCClientWithAllowedUserGroupsDto{}, fmt.Errorf("aggregate allowed user groups: %w", err)
 	}
 	metrics.OIDCClientAllowedGroupCount.WithLabelValues(oidcClient.Namespace, oidcClient.Name).Set(float64(len(groupIDs)))
 
-	logos, err := r.reconcileLogos(ctx, oidcClient, apiClient, current)
+	identities, err := r.federatedIdentities(ctx, oidcClient)
 	if err != nil {
-		return false, fmt.Errorf("reconcile logos: %w", err)
+		return pid.OIDCClientWithAllowedUserGroupsDto{}, err
 	}
 
-	desired := r.OidcClientInput(oidcClient, current, logos.pushLight, logos.pushDark)
-	if err := r.resolvePublicKeys(ctx, oidcClient, desired.Credentials.FederatedIdentities); err != nil {
-		return false, err
+	// Pocket-ID clears groups when a PATCH leaves the client unrestricted. Write the
+	// desired groups before enabling restriction so allowed users stay signed in.
+	// For an already restricted client, skip a matching groups write because even
+	// an unchanged write logs out users outside the allowed groups.
+	id := pid.OIDCClientID(oidcClient.Status.ClientID)
+	restricted := len(groupIDs) > 0
+	patch := oidcClientPatch(oidcClient, restricted, identities)
+	if restricted {
+		patch.IsGroupRestricted = nil
 	}
-	desired.IsGroupRestricted = len(groupIDs) > 0
-	if current.IsCIMD() {
-		preserveMetadataOwnedFields(&desired, current)
-	}
-
-	clientChanged := !desired.Equal(current.ToInput())
-	groupsChanged := !pocketid.SortedEqual(groupIDs, current.AllowedUserGroupIDs)
-
-	if !clientChanged && !groupsChanged && !logos.hasPush() {
-		log.V(1).Info("OIDC client state is in sync, skipping update")
-		return false, nil
+	current, err := pid.Decode[pid.OIDCClientWithAllowedUserGroupsDto](apiClient.PatchOIDCClient(ctx, id, patch))
+	if err != nil {
+		return current, fmt.Errorf("update OIDC client: %w", err)
 	}
 
-	log.Info("Updating OIDC client", "name", oidcClient.Name)
-
-	// Pocket-ID fetches the light logo first and gives up before the
-	// dark one, reporting both under the same code, so an update carrying both cannot say
-	// which side failed. A dark URL that 404s would disown a light logo that landed.
-	desired.DarkLogoURL = ""
-
-	// Pocket-ID sends back-channel logouts to users outside the allowed groups whenever a
-	// restricted client's groups or restriction change, so the groups must be in place before
-	// restriction is turned on, and restriction off before the groups are cleared.
-	pushGroups := func() error {
-		if !groupsChanged {
-			return nil
+	if restricted && (!current.IsGroupRestricted || !hasAllowedGroups(current, groupIDs)) {
+		if err := updateAllowedGroups(ctx, apiClient, id, groupIDs); err != nil {
+			return current, err
 		}
-		if groupIDs == nil {
-			groupIDs = []string{}
-		}
-		return apiClient.UpdateOIDCClientAllowedGroups(ctx, oidcClient.Status.ClientID, groupIDs)
-	}
-	if desired.IsGroupRestricted {
-		if err := pushGroups(); err != nil {
-			return false, err
-		}
-	}
-
-	if clientChanged || logos.pushLight != "" {
-		ok, err := r.pushClientUpdate(ctx, apiClient, oidcClient.Status.ClientID, desired)
+		// The groups write doesn't answer with the groups; restricting afterwards does.
+		current, err = pid.Decode[pid.OIDCClientWithAllowedUserGroupsDto](apiClient.PatchOIDCClient(ctx, id,
+			pid.PatchOIDCClientJSONRequestBody{IsGroupRestricted: new(true)}))
 		if err != nil {
-			return false, err
-		}
-		if !ok {
-			logos.pushLight = ""
+			return current, fmt.Errorf("restrict OIDC client: %w", err)
 		}
 	}
 
-	if logos.pushDark != "" {
-		desired.LogoURL, desired.DarkLogoURL = "", logos.pushDark
-		ok, err := r.pushClientUpdate(ctx, apiClient, oidcClient.Status.ClientID, desired)
-		if err != nil {
-			return false, err
-		}
-		if !ok {
-			logos.pushDark = ""
-		}
-	}
-	logos.commit()
-
-	if !desired.IsGroupRestricted {
-		if err := pushGroups(); err != nil {
-			return false, err
-		}
-	}
-
-	if err := r.applyLogoStatus(ctx, oidcClient, logos); err != nil {
-		return true, fmt.Errorf("record applied logos: %w", err)
-	}
-
-	metrics.ResourceOperations.WithLabelValues("PocketIDOIDCClient", "updated").Inc()
-
-	return true, nil
+	return r.reconcileLogos(ctx, oidcClient, apiClient, current)
 }
 
-// pushClientUpdate issues the client update and reports whether the logo it carried was
-// accepted. Pocket-ID commits the configuration before fetching the logo, so a rejected logo
-// leaves the client correctly configured; failing the reconcile would re-push every resync
-// and never let the CR go Ready.
-func (r *Reconciler) pushClientUpdate(ctx context.Context, apiClient *pocketid.Client, id string, desired pocketid.OIDCClientInput) (bool, error) {
-	if _, err := apiClient.UpdateOIDCClient(ctx, id, desired); err != nil {
-		if !pocketid.IsLogoError(err) {
-			return false, fmt.Errorf("update OIDC client: %w", err)
+// hasAllowedGroups reports whether the client allows exactly groupIDs, which must be sorted and
+// unique, as aggregateAllowedUserGroupIDs returns them.
+func hasAllowedGroups(c pid.OIDCClientWithAllowedUserGroupsDto, groupIDs []string) bool {
+	return len(c.AllowedUserGroups) == len(groupIDs) && !slices.ContainsFunc(c.AllowedUserGroups, func(g pid.UserGroupMinimalDto) bool {
+		_, found := slices.BinarySearch(groupIDs, g.ID)
+		return !found
+	})
+}
+
+// updateAllowedGroups replaces the client's allowed groups, retrying a 500, which is usually
+// transient.
+func updateAllowedGroups(ctx context.Context, apiClient *pocketid.Client, id pid.OIDCClientID, groupIDs []string) error {
+	var err error
+	for _, delay := range []time.Duration{0, 150 * time.Millisecond, 350 * time.Millisecond} {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(delay):
 		}
-		logf.FromContext(ctx).Info("Pocket-ID rejected the logo; the client was configured without it",
-			"error", err.Error(), "logoUrl", desired.LogoURL, "darkLogoUrl", desired.DarkLogoURL)
-		r.markLogoURLsFailed(desired.LogoURL, desired.DarkLogoURL)
-		return false, nil
+		err = pid.Check(apiClient.UpdateAllowedUserGroups(ctx, id, pid.OIDCUpdateAllowedUserGroupsDto{UserGroupIDs: groupIDs}))
+		if !pocketid.IsServerError(err) {
+			break
+		}
 	}
-	return true, nil
+	if err != nil {
+		return fmt.Errorf("update OIDC client allowed groups: %w", err)
+	}
+	return nil
 }
 
 // aggregateAllowedUserGroupIDs returns the union of:
@@ -623,7 +556,7 @@ func (r *Reconciler) pushClientUpdate(ctx context.Context, apiClient *pocketid.C
 //
 // The reverse direction can only come from a PocketIDUserGroup in this cluster, so
 // only the direct refs need lookup to resolve groups that have no CR here.
-func (r *Reconciler) aggregateAllowedUserGroupIDs(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, lookup helpers.UserGroupLookup) ([]string, error) {
+func (r *Reconciler) aggregateAllowedUserGroupIDs(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, lookup *pocketid.Client) ([]string, error) {
 	// Find UserGroups whose spec.allowedOIDCClients references this client
 	clientKey := fmt.Sprintf("%s/%s", oidcClient.Namespace, oidcClient.Name)
 	userGroups := &pocketidinternalv1alpha1.PocketIDUserGroupList{}
@@ -707,64 +640,69 @@ func oidcClientName(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) str
 	return oidcClient.Name
 }
 
-// OidcClientInput builds an OIDCClientInput from the CR spec.
-// logoURL/darkLogoURL are attach-only instructions: empty leaves the stored logo alone.
-// When current is provided, it is used as the fallback for callback URLs not set in the spec.
-func (r *Reconciler) OidcClientInput(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, current *pocketid.OIDCClient, logoURL, darkLogoURL string) pocketid.OIDCClientInput {
-	name := oidcClientName(oidcClient)
-
-	// Only set client ID if in spec
-	var clientID *string
-	if oidcClient.Spec.ClientID != "" {
-		clientID = &oidcClient.Spec.ClientID
-	}
-
-	identities := make([]pocketid.OIDCClientFederatedIdentity, 0, len(oidcClient.Spec.FederatedIdentities))
-	for _, identity := range oidcClient.Spec.FederatedIdentities {
-		identities = append(identities, pocketid.OIDCClientFederatedIdentity{
-			Issuer:           identity.Issuer,
-			Subject:          identity.Subject,
-			Audience:         identity.Audience,
-			JWKS:             identity.JWKS,
-			ReplayProtection: identity.ReplayProtection,
-		})
-	}
-
-	// When callback URLs are not in the spec, preserve the server-side values
-	// so out-of-band changes made in pocket-id are not overwritten.
-	callbackURLs := oidcClient.Spec.CallbackURLs
-	if len(callbackURLs) == 0 && current != nil {
-		callbackURLs = current.CallbackURLs
-	}
-	logoutCallbackURLs := oidcClient.Spec.LogoutCallbackURLs
-	if len(logoutCallbackURLs) == 0 && current != nil {
-		logoutCallbackURLs = current.LogoutCallbackURLs
-	}
-
-	return pocketid.OIDCClientInput{
-		ID:                                  clientID,
-		Name:                                name,
-		Description:                         oidcClient.Spec.Description,
-		CallbackURLs:                        callbackURLs,
-		LogoutCallbackURLs:                  logoutCallbackURLs,
-		BackchannelLogoutURL:                oidcClient.Spec.BackchannelLogoutURL,
-		LaunchURL:                           oidcClient.Spec.LaunchURL,
-		LogoURL:                             logoURL,
-		DarkLogoURL:                         darkLogoURL,
-		IsPublic:                            oidcClient.Spec.IsPublic,
-		IsGroupRestricted:                   len(oidcClient.Spec.AllowedUserGroups) > 0,
-		PKCEEnabled:                         oidcClient.Spec.PKCEEnabled,
-		RequiresReauthentication:            oidcClient.Spec.RequiresReauthentication,
-		RequiresPushedAuthorizationRequests: oidcClient.Spec.RequiresPushedAuthorizationRequests,
-		SkipConsent:                         oidcClient.Spec.SkipConsent,
-		AccessTokenDurationMinutes:          oidcClient.Spec.AccessTokenDurationMinutes,
-		RefreshTokenDurationMinutes:         oidcClient.Spec.RefreshTokenDurationMinutes,
-		Credentials:                         &pocketid.OIDCClientCredentials{FederatedIdentities: identities},
+// oidcClientPatch is every client field the operator manages. Logos are pushed separately by
+// reconcileLogos, and disabled and the claim mapping policy are left to Pocket-ID.
+func oidcClientPatch(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, groupRestricted bool, identities []pid.OIDCClientFederatedIdentityInputDto) pid.PatchOIDCClientJSONRequestBody {
+	spec := oidcClient.Spec
+	return pid.PatchOIDCClientJSONRequestBody{
+		Name:                                new(oidcClientName(oidcClient)),
+		Notes:                               &spec.Description,
+		BackchannelLogoutURL:                &spec.BackchannelLogoutURL,
+		LaunchURL:                           pocketid.NullIfEmpty(spec.LaunchURL),
+		IsPublic:                            &spec.IsPublic,
+		IsGroupRestricted:                   &groupRestricted,
+		PKCEEnabled:                         &spec.PKCEEnabled,
+		RequiresReauthentication:            &spec.RequiresReauthentication,
+		RequiresPushedAuthorizationRequests: &spec.RequiresPushedAuthorizationRequests,
+		SkipConsent:                         &spec.SkipConsent,
+		AccessTokenDurationMinutes:          &spec.AccessTokenDurationMinutes,
+		RefreshTokenDurationMinutes:         &spec.RefreshTokenDurationMinutes,
+		// Unset callback URLs clear any set in Pocket-ID. It no longer registers them on first
+		// login, so clients with no callbacks (client credentials, device code) stay valid.
+		CallbackURLs:       nullable.NewNullableWithValue(orEmpty(spec.CallbackURLs)),
+		LogoutCallbackURLs: nullable.NewNullableWithValue(orEmpty(spec.LogoutCallbackURLs)),
+		// Secrets are left out, since they have their own endpoints.
+		Credentials: &pid.OIDCClientCredentialsInputDto{FederatedIdentities: nullable.NewNullableWithValue(identities)},
 	}
 }
 
-// logoPlan is the outcome of reconcileLogos: the URLs to attach to the client update and
-// the record of what the operator has applied.
+// orEmpty sends an unset list as [] rather than null.
+func orEmpty(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
+}
+
+// oidcClientCreate is the patch as a new client, with the spec's client ID when it sets one.
+// No logo is sent at creation: Pocket-ID downloads it only after the client row is committed,
+// so a rejected URL would fail the response that carries the new client's ID.
+func oidcClientCreate(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, patch pid.PatchOIDCClientJSONRequestBody) pid.OIDCClientCreateDto {
+	create := pid.OIDCClientCreateDto{
+		Name:                                *patch.Name,
+		Notes:                               patch.Notes,
+		CallbackURLs:                        patch.CallbackURLs,
+		LogoutCallbackURLs:                  patch.LogoutCallbackURLs,
+		BackchannelLogoutURL:                patch.BackchannelLogoutURL,
+		LaunchURL:                           patch.LaunchURL,
+		IsPublic:                            patch.IsPublic,
+		IsGroupRestricted:                   patch.IsGroupRestricted,
+		PKCEEnabled:                         patch.PKCEEnabled,
+		RequiresReauthentication:            patch.RequiresReauthentication,
+		RequiresPushedAuthorizationRequests: patch.RequiresPushedAuthorizationRequests,
+		SkipConsent:                         patch.SkipConsent,
+		AccessTokenDurationMinutes:          patch.AccessTokenDurationMinutes,
+		RefreshTokenDurationMinutes:         patch.RefreshTokenDurationMinutes,
+		Credentials:                         patch.Credentials,
+	}
+	if oidcClient.Spec.ClientID != "" {
+		create.ID = &oidcClient.Spec.ClientID
+	}
+	return create
+}
+
+// logoPlan is the outcome of reconcileLogos: the URLs to push and the record of what the
+// operator has applied.
 type logoPlan struct {
 	resolvedLight, resolvedDark string
 	pushLight, pushDark         string
@@ -779,22 +717,12 @@ func logoReachable(resolved, applied string) *bool {
 	return new(applied == resolved)
 }
 
-func (p *logoPlan) hasPush() bool { return p.pushLight != "" || p.pushDark != "" }
-
-func (p *logoPlan) commit() {
-	if p.pushLight != "" {
-		p.appliedLight = p.pushLight
-	}
-	if p.pushDark != "" {
-		p.appliedDark = p.pushDark
-	}
-}
-
-// reconcileLogos decides what each logo side needs and issues any deletion. Ownership is
-// per side and lasts only as long as a URL resolves for it, so a logo uploaded through the
-// UI — which never gets an applied record — is never deleted, and a client that resolves
-// only a light URL keeps its uploaded dark logo.
-func (r *Reconciler) reconcileLogos(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient PocketIDOIDCClientAPI, current *pocketid.OIDCClient) (logoPlan, error) {
+// reconcileLogos decides what each logo side needs, issues any deletion and pushes any logo,
+// returning the client as it stands afterwards. Ownership is per side and lasts only as long as
+// a URL resolves for it, so a logo uploaded through the UI — which never gets an applied
+// record — is never deleted, and a client that resolves only a light URL keeps its uploaded
+// dark logo.
+func (r *Reconciler) reconcileLogos(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client, current pid.OIDCClientWithAllowedUserGroupsDto) (pid.OIDCClientWithAllowedUserGroupsDto, error) {
 	r.expireFailedLogoURLs()
 	light, dark := r.resolveLogoURLs(oidcClient)
 
@@ -816,13 +744,47 @@ func (r *Reconciler) reconcileLogos(ctx context.Context, oidcClient *pocketidint
 	if statusErr := r.applyLogoStatus(ctx, oidcClient, plan); statusErr != nil {
 		err = stderrors.Join(err, statusErr)
 	}
-	return plan, err
+	if err != nil {
+		return current, err
+	}
+
+	// Pocket-ID fetches the light logo first and gives up before the dark one, reporting both
+	// under the same code, so an update carrying both could not say which side failed.
+	for _, side := range []struct {
+		url     string
+		applied *string
+		patch   pid.PatchOIDCClientJSONRequestBody
+	}{
+		{plan.pushLight, &plan.appliedLight, pid.PatchOIDCClientJSONRequestBody{LogoURL: nullable.NewNullableWithValue(plan.pushLight)}},
+		{plan.pushDark, &plan.appliedDark, pid.PatchOIDCClientJSONRequestBody{DarkLogoURL: nullable.NewNullableWithValue(plan.pushDark)}},
+	} {
+		if side.url == "" {
+			continue
+		}
+		updated, err := pid.Decode[pid.OIDCClientWithAllowedUserGroupsDto](apiClient.PatchOIDCClient(ctx, pid.OIDCClientID(current.ID), side.patch))
+		switch {
+		case err == nil:
+			current, *side.applied = updated, side.url
+		// A refused logo leaves the client as it was; failing the reconcile would re-push every
+		// resync and never let the CR go Ready.
+		case pocketid.IsLogoError(err):
+			logf.FromContext(ctx).Info("Pocket-ID rejected the logo", "error", err.Error(), "url", side.url)
+			r.markLogoURLsFailed(side.url)
+		default:
+			return current, fmt.Errorf("update OIDC client logo: %w", err)
+		}
+	}
+
+	if err := r.applyLogoStatus(ctx, oidcClient, plan); err != nil {
+		return current, fmt.Errorf("record applied logos: %w", err)
+	}
+	return current, nil
 }
 
 // reconcileLogoSide resolves one side of the logo state, deleting a logo the operator
 // applied that no later pass can replace. It returns the URL to send with the client
 // update ("" sends nothing) and the applied record as it stands after any deletion.
-func (r *Reconciler) reconcileLogoSide(ctx context.Context, apiClient PocketIDOIDCClientAPI, clientID string, light bool, resolved, applied string, serverHasLogo bool) (push, stillApplied string, err error) {
+func (r *Reconciler) reconcileLogoSide(ctx context.Context, apiClient *pocketid.Client, clientID string, light bool, resolved, applied string, serverHasLogo bool) (push, stillApplied string, err error) {
 	switch {
 	case resolved == "" || r.logoURLFailed(resolved):
 		// Nothing will be pushed here: the spec asks for no logo, or for a URL Pocket-ID already refused
@@ -830,7 +792,9 @@ func (r *Reconciler) reconcileLogoSide(ctx context.Context, apiClient PocketIDOI
 			return "", applied, nil
 		}
 		logf.FromContext(ctx).Info("Removing logo the spec no longer asks for", "url", applied, "light", light)
-		if err := apiClient.DeleteOIDCClientLogo(ctx, clientID, light); err != nil {
+		// One already gone counts as deleted, so a retried removal converges.
+		err := pid.Check(apiClient.DeleteClientLogo(ctx, pid.OIDCClientID(clientID), &pid.DeleteClientLogoParams{Light: &light}))
+		if err != nil && !pocketid.IsNotFoundError(err) {
 			return "", applied, fmt.Errorf("delete OIDC client logo: %w", err)
 		}
 		return "", "", nil
@@ -868,16 +832,11 @@ func (r *Reconciler) logoURLFailed(url string) bool {
 	return failed
 }
 
-func (r *Reconciler) markLogoURLsFailed(urls ...string) {
-	for _, url := range urls {
-		if url == "" {
-			continue
-		}
-		if r.failedLogoURLs == nil {
-			r.failedLogoURLs = make(map[string]struct{})
-		}
-		r.failedLogoURLs[url] = struct{}{}
+func (r *Reconciler) markLogoURLsFailed(url string) {
+	if r.failedLogoURLs == nil {
+		r.failedLogoURLs = make(map[string]struct{})
 	}
+	r.failedLogoURLs[url] = struct{}{}
 }
 
 // applyLogoStatus records which logo URLs the operator has successfully applied.
@@ -954,31 +913,27 @@ func (r *Reconciler) clearClientStatus(ctx context.Context, oidcClient *pocketid
 }
 
 // ReconcileSCIM ensures the SCIM service provider in pocket-id matches the desired spec.
-func (r *Reconciler) ReconcileSCIM(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient PocketIDOIDCClientAPI) error {
+func (r *Reconciler) ReconcileSCIM(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client) error {
 	log := logf.FromContext(ctx)
 
 	// If SCIM is not desired, delete any existing provider
 	if oidcClient.Spec.SCIM == nil {
 		if oidcClient.Status.SCIMProviderID != "" {
 			log.Info("SCIM removed from spec, deleting service provider", "scimProviderID", oidcClient.Status.SCIMProviderID)
-			if err := apiClient.DeleteSCIMServiceProvider(ctx, oidcClient.Status.SCIMProviderID); err != nil {
-				if !pocketid.IsNotFoundError(err) {
-					return fmt.Errorf("delete SCIM service provider: %w", err)
-				}
+			if err := deleteSCIMProvider(ctx, apiClient, oidcClient.Status.SCIMProviderID); err != nil {
+				return err
 			}
 			return r.clearSCIMProviderID(ctx, oidcClient)
 		}
 		// Clean up stale providers only on first reconcile.
 		if !helpers.IsResourceReady(oidcClient.Status.Conditions) {
-			existing, err := apiClient.GetOIDCClientSCIMServiceProvider(ctx, oidcClient.Status.ClientID)
-			if err != nil && !pocketid.IsNotFoundError(err) {
-				return fmt.Errorf("get SCIM service provider: %w", err)
+			existing, err := getSCIMProvider(ctx, apiClient, oidcClient.Status.ClientID)
+			if err != nil {
+				return err
 			}
 			if existing != nil {
 				log.Info("Deleting untracked SCIM service provider found on adopted OIDC client", "scimProviderID", existing.ID)
-				if err := apiClient.DeleteSCIMServiceProvider(ctx, existing.ID); err != nil && !pocketid.IsNotFoundError(err) {
-					return fmt.Errorf("delete untracked SCIM service provider: %w", err)
-				}
+				return deleteSCIMProvider(ctx, apiClient, existing.ID)
 			}
 		}
 		return nil
@@ -989,60 +944,70 @@ func (r *Reconciler) ReconcileSCIM(ctx context.Context, oidcClient *pocketidinte
 		return fmt.Errorf("resolve SCIM token secret: %w", err)
 	}
 
-	input := pocketid.SCIMServiceProviderInput{
+	// Always send the token: the spec owns it, and upstream rejects an endpoint change that omits a stored one.
+	body := pid.SCIMServiceProviderCreateDTO{
 		Endpoint:     oidcClient.Spec.SCIM.Endpoint,
 		OIDCClientID: oidcClient.Status.ClientID,
-		Token:        token,
+		Token:        nullable.NewNullableWithValue(token),
 	}
 
-	if oidcClient.Status.SCIMProviderID == "" {
-		existing, err := apiClient.GetOIDCClientSCIMServiceProvider(ctx, oidcClient.Status.ClientID)
-		if err != nil {
-			return fmt.Errorf("get SCIM service provider: %w", err)
+	if id := oidcClient.Status.SCIMProviderID; id != "" {
+		err := pid.Check(apiClient.UpdateSCIMServiceProvider(ctx, id, body))
+		if err == nil {
+			return nil
 		}
-		if existing != nil {
-			log.Info("Adopting existing SCIM service provider", "scimProviderID", existing.ID)
-			if _, err := apiClient.UpdateSCIMServiceProvider(ctx, existing.ID, input); err != nil {
-				return fmt.Errorf("update adopted SCIM service provider: %w", err)
-			}
-			return r.setSCIMProviderID(ctx, oidcClient, existing.ID)
+		if !pocketid.IsNotFoundError(err) {
+			return fmt.Errorf("update SCIM service provider: %w", err)
 		}
-		log.Info("Creating SCIM service provider", "endpoint", input.Endpoint)
-		created, err := apiClient.CreateSCIMServiceProvider(ctx, input)
-		if err != nil {
-			return fmt.Errorf("create SCIM service provider: %w", err)
-		}
-		return r.setSCIMProviderID(ctx, oidcClient, created.ID)
 	}
 
-	// Fetch current state to detect changes and handle external deletion.
-	// GetOIDCClientSCIMServiceProvider returns nil, nil on 404.
-	current, err := apiClient.GetOIDCClientSCIMServiceProvider(ctx, oidcClient.Status.ClientID)
+	// Look up the client's provider before creating one, since pocket-id allows several per client.
+	current, err := getSCIMProvider(ctx, apiClient, oidcClient.Status.ClientID)
 	if err != nil {
-		return fmt.Errorf("get SCIM service provider: %w", err)
+		return err
 	}
-	if current == nil {
-		staleID := oidcClient.Status.SCIMProviderID
-		log.Info("SCIM service provider not found externally, clearing status for recreation", "scimProviderID", staleID)
-		if err := r.clearSCIMProviderID(ctx, oidcClient); err != nil {
-			return err
+	if current != nil {
+		log.Info("Adopting existing SCIM service provider", "scimProviderID", current.ID)
+		if err := pid.Check(apiClient.UpdateSCIMServiceProvider(ctx, current.ID, body)); err != nil {
+			return fmt.Errorf("update adopted SCIM service provider: %w", err)
 		}
-		return fmt.Errorf("SCIM service provider %s not found, will recreate on next reconcile", staleID)
-	}
-
-	// Token is write-only and cannot be read back from the API, so always push
-	// when one is configured. Otherwise only update if the endpoint changed.
-	hasToken := token != ""
-	if !hasToken && current.Endpoint == input.Endpoint {
-		log.V(1).Info("SCIM service provider is in sync, skipping update")
-		return nil
-	}
-
-	if _, err := apiClient.UpdateSCIMServiceProvider(ctx, current.ID, input); err != nil {
-		return fmt.Errorf("update SCIM service provider: %w", err)
-	}
-	if current.ID != oidcClient.Status.SCIMProviderID {
 		return r.setSCIMProviderID(ctx, oidcClient, current.ID)
+	}
+	log.Info("Creating SCIM service provider", "endpoint", body.Endpoint)
+	created, err := pid.Decode[pid.SCIMServiceProviderDTO](apiClient.CreateSCIMServiceProvider(ctx, body))
+	if err != nil {
+		return fmt.Errorf("create SCIM service provider: %w", err)
+	}
+	return r.setSCIMProviderID(ctx, oidcClient, created.ID)
+}
+
+// syncSCIM pushes users and groups to the SCIM endpoint now. Pocket-ID's own debounced sync is
+// postponed by every user, group and membership write, which the operator makes each reconcile.
+func syncSCIM(ctx context.Context, apiClient *pocketid.Client, id string) error {
+	ctx, cancel := context.WithTimeout(ctx, scimSyncTimeout)
+	defer cancel()
+	if err := pid.Check(apiClient.SyncSCIMServiceProvider(ctx, id)); err != nil {
+		return fmt.Errorf("sync SCIM service provider: %w", err)
+	}
+	return nil
+}
+
+// getSCIMProvider returns the client's SCIM service provider, or nil if it has none.
+func getSCIMProvider(ctx context.Context, apiClient *pocketid.Client, clientID string) (*pid.SCIMServiceProviderDTO, error) {
+	provider, err := pid.Decode[*pid.SCIMServiceProviderDTO](apiClient.GetSCIMServiceProvider(ctx, pid.OIDCClientID(clientID)))
+	if pocketid.IsNotFoundError(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get SCIM service provider: %w", err)
+	}
+	return provider, nil
+}
+
+// deleteSCIMProvider deletes a SCIM service provider, treating one already gone as deleted.
+func deleteSCIMProvider(ctx context.Context, apiClient *pocketid.Client, id string) error {
+	if err := pid.Check(apiClient.DeleteSCIMServiceProvider(ctx, id)); err != nil && !pocketid.IsNotFoundError(err) {
+		return fmt.Errorf("delete SCIM service provider: %w", err)
 	}
 	return nil
 }
@@ -1060,17 +1025,21 @@ func (r *Reconciler) clearSCIMProviderID(ctx context.Context, oidcClient *pocket
 }
 
 // UpdateOIDCClientStatus updates the OIDCClient status with values returned from pocket-id
-func (r *Reconciler) UpdateOIDCClientStatus(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, current *pocketid.OIDCClient) error {
-	if current == nil {
-		return nil
+func (r *Reconciler) UpdateOIDCClientStatus(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, current pid.OIDCClientWithAllowedUserGroupsDto) error {
+	var groupIDs []string
+	for _, group := range current.AllowedUserGroups {
+		groupIDs = append(groupIDs, group.ID)
 	}
+	// Pocket-ID returns relations unordered; sort so status stays stable.
+	slices.Sort(groupIDs)
+
 	base := oidcClient.DeepCopy()
 	oidcClient.Status.ClientID = current.ID
 	oidcClient.Status.Name = current.Name
 	oidcClient.Status.ClientType = current.ClientType
 	oidcClient.Status.CallbackURLs = current.CallbackURLs
 	oidcClient.Status.LogoutCallbackURLs = current.LogoutCallbackURLs
-	oidcClient.Status.AllowedUserGroupIDs = current.AllowedUserGroupIDs
+	oidcClient.Status.AllowedUserGroupIDs = groupIDs
 	// Pocket-ID keeps PKCESupported set even after PKCE is enabled, so gate on
 	// PKCEEnabled to mean "PKCE can be enabled". Only surface the status field when
 	// the recommendation is active.
@@ -1163,7 +1132,7 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, oidcClient *pocketidin
 		oidcClient.Spec.InstanceSelector,
 		oidcClientFinalizer,
 		func(ctx context.Context, apiClient *pocketid.Client, id string) error {
-			if err := apiClient.DeleteOIDCClient(ctx, id); err != nil {
+			if err := pid.Check(apiClient.DeleteOIDCClient(ctx, pid.OIDCClientID(id))); err != nil {
 				return err
 			}
 			metrics.ResourceOperations.WithLabelValues("PocketIDOIDCClient", "deleted").Inc()
@@ -1179,7 +1148,7 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, oidcClient *pocketidin
 	return result, err
 }
 
-func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, instance *pocketidinternalv1alpha1.PocketIDInstance, apiClient *pocketid.Client, observed []pocketid.OIDCClientSecret) error {
+func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, instance *pocketidinternalv1alpha1.PocketIDInstance, apiClient *pocketid.Client, observed []pid.OIDCClientSecretDto) error {
 	enabled := true
 	if oidcClient.Spec.Secret != nil && oidcClient.Spec.Secret.Enabled != nil {
 		enabled = *oidcClient.Spec.Secret.Enabled
@@ -1214,7 +1183,7 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 
 	// Include client_secret for non-public clients that store it.
 	// Only regenerate if the secret doesn't exist yet or if explicitly requested via annotation.
-	var minted *pocketid.OIDCClientSecret
+	var minted *pid.OIDCClientSecretDto
 	var scheduledRotation bool
 	if !isPublicClient(oidcClient) && oidcClient.Status.ClientID != "" {
 		var err error
@@ -1447,11 +1416,11 @@ func (r *Reconciler) reconcileClientSecretData(
 	oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient,
 	instance *pocketidinternalv1alpha1.PocketIDInstance,
 	apiClient *pocketid.Client,
-	observed []pocketid.OIDCClientSecret,
+	observed []pid.OIDCClientSecretDto,
 	secretName string,
 	keys pocketidinternalv1alpha1.OIDCClientSecretKeys,
 	secretData map[string][]byte,
-) (minted *pocketid.OIDCClientSecret, scheduledRotation bool, err error) {
+) (minted *pid.OIDCClientSecretDto, scheduledRotation bool, err error) {
 	if hasDeclaredClientSecret(oidcClient) {
 		// SyncDeclaredClientSecret owns the value in Pocket-ID; here it only needs mirroring
 		// into the managed Secret. Rotation never applies, so report the schedule as disabled
@@ -1552,7 +1521,7 @@ func (r *Reconciler) reconcileClientSecretData(
 
 // rotationTimestamp stamps a rotation for the Secret's annotations and the instance aggregate. A
 // rotation is exactly a mint, so there is nothing to record when the stored credential was reused.
-func rotationTimestamp(minted *pocketid.OIDCClientSecret) *metav1.Time {
+func rotationTimestamp(minted *pid.OIDCClientSecretDto) *metav1.Time {
 	if minted == nil {
 		return nil
 	}

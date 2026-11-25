@@ -23,6 +23,8 @@ spec:
 
 List every redirect URI the client uses under `spec.callbackUrls`, and any post-logout redirect URIs under `spec.logoutCallbackUrls`. Pocket-ID only redirects to URLs registered on the client, so an authorization request whose `redirect_uri` is not listed is rejected. Wildcards are supported.
 
+The spec owns both lists: leaving one unset clears any URLs set in Pocket-ID's UI or API. A client that never redirects, such as one using only client credentials or the device code flow, can leave them unset.
+
 ## Credentials Secret
 
 Unless `spec.secret.enabled` is `false`, the operator writes a Secret named `<client>-oidc-credentials` (override with `spec.secret.name`) containing:
@@ -65,7 +67,7 @@ While `clientSecretRef` is set, the operator never generates or rotates the secr
 - The `pocketid.internal/regenerate-client-secret` annotation is ignored. It is still removed, and the reason is logged.
 - The value is always pushed to Pocket-ID, even with `spec.secret.storeClientSecret: false` (which only omits `client_secret` from the credentials Secret) or `spec.secret.enabled: false`.
 
-Pocket-ID stores client secrets hashed and never returns them, so the operator cannot read back what is set. Instead it records the source Secret's revision in `status.clientSecretSourceVersion` and pushes again whenever that revision changes. The referenced Secret is not watched, so edits are picked up on the next resync (default 2 minutes).
+Pocket-ID stores client secrets hashed and never returns them, so the operator cannot read back what is set. Instead it records the source Secret's revision in `status.clientSecretSourceVersion` and pushes again whenever that revision changes. The referenced Secret is not watched, so edits are picked up on the next resync (default 10 minutes, chart: `operator.resyncInterval`).
 
 If `clientSecretRef` is removed later, the declared value stays in place until something else replaces it. Enabling `clientSecretRotation` at that point will usually rotate immediately, since the rotation anchor falls back to the client's creation time.
 
@@ -80,7 +82,7 @@ Replacing a client secret invalidates the old one immediately, breaking any cons
 - It applies to every replacement: scheduled rotations, the `regenerate-client-secret` annotation, and `clientSecretRef` updates.
 - The window is measured from when the **replacement** was created, so a superseded secret always gets the full window however long it had been in service.
 - Unset or `0` (the default) deletes the previous secret as soon as the replacement is written to the credentials Secret, so only one is ever valid.
-- Retirement happens on a reconcile, so a secret is deleted within one resync interval (default 2 minutes) of its overlap elapsing.
+- Retirement happens on a reconcile, so a secret is deleted within one resync interval (default 10 minutes) of its overlap elapsing.
 - The maximum is `168h`, and it may not exceed `clientSecretRotation.interval` when set, since an overlap outlasting the rotation period would accumulate secrets. A client that reaches the limit anyway has its oldest superseded secrets retired early rather than blocking rotation.
 
 ## Client Secret Rotation
@@ -228,4 +230,4 @@ A URL Pocket-ID rejects is remembered in memory and not attempted again for 24 h
 
 ## SCIM Provisioning
 
-`spec.scim` configures a SCIM service provider for the client, so Pocket-ID pushes user and group changes to the external endpoint at `spec.scim.endpoint`. `spec.scim.tokenSecretRef` optionally references a Secret key holding the bearer token sent to the endpoint; without it no `Authorization` header is sent. `status.scimProviderID` is populated once the provider is created, and removing `spec.scim` deletes it from Pocket-ID. See [example](../examples/pocketidoidcclient.md#scim-provisioning).
+`spec.scim` configures a SCIM service provider for the client, so Pocket-ID pushes user and group changes to the external endpoint at `spec.scim.endpoint`. `spec.scim.tokenSecretRef` optionally references a Secret key holding the bearer token sent to the endpoint. The spec owns the token: without a ref no `Authorization` header is sent, and any token set in Pocket-ID's UI or API is cleared. `status.scimProviderID` is populated once the provider is created, and removing `spec.scim` deletes it from Pocket-ID. Every reconcile also syncs the provider, rather than waiting for Pocket-ID's debounced sync, which each user and group write postpones. A failed sync sets `Ready=False` with reason `SCIMSyncError`. See [example](../examples/pocketidoidcclient.md#scim-provisioning).

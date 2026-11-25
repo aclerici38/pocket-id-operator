@@ -79,7 +79,7 @@ spec:
                 type: integer
               cimdUrlAllowlist:
                 description: |-
-                  Allowed OAuth Client ID Metadata Document URLs. The operator sets UI_CONFIG_DISABLED=true when this field is set.
+                  Allowed OAuth Client ID Metadata Document URLs.
                   JSON-encoded into CIMD_URL_ALLOWLIST. See https://pocket-id.org/docs/configuration/environment-variables.
                 items:
                   type: string
@@ -422,8 +422,7 @@ spec:
                 - StatefulSet
                 type: string
               emailNotifications:
-                description: Email notification settings. Requires smtp. The operator
-                  sets UI_CONFIG_DISABLED=true when this section is configured.
+                description: Email notification settings. Requires smtp.
                 properties:
                   apiKeyExpiration:
                     description: |-
@@ -469,7 +468,7 @@ spec:
                 type: object
               enabledFeatures:
                 description: |-
-                  Optional features to show in the admin UI. The operator sets UI_CONFIG_DISABLED=true when this field is set.
+                  Optional features to show in the admin UI.
                   JSON-encoded into ENABLED_FEATURES. Requires a Pocket-ID release that supports it. See https://pocket-id.org/docs/configuration/environment-variables.
                 items:
                   type: string
@@ -805,6 +804,14 @@ spec:
                     - key
                     type: object
                     x-kubernetes-map-type: atomic
+                  apiUrl:
+                    description: APIURL is the base URL the operator calls for the
+                      Pocket-ID API, e.g. an in-cluster Service (http://pocket-id.pocket-id.svc:1411).
+                      Defaults to url. Issuer, endpoint, and login URLs the operator
+                      publishes always use url. TLS is verified against the operator's
+                      system trust store.
+                    pattern: ^https?://
+                    type: string
                   url:
                     description: URL is the base URL of the existing Pocket-ID instance
                       (e.g. https://auth.example.com).
@@ -1128,7 +1135,7 @@ spec:
                 type: object
               ldap:
                 description: LDAP authentication. When present, the operator sets
-                  LDAP_ENABLED=true and UI_CONFIG_DISABLED=true.
+                  LDAP_ENABLED=true.
                 properties:
                   adminGroupName:
                     description: |-
@@ -2725,8 +2732,7 @@ spec:
                   Operator-managed fields (the selector and the number, protocol, and appProtocol of the http/metrics ports) always take precedence.
                 x-kubernetes-preserve-unknown-fields: true
               smtp:
-                description: SMTP email transport. When present, the operator sets
-                  UI_CONFIG_DISABLED=true.
+                description: SMTP email transport.
                 properties:
                   from:
                     description: |-
@@ -3129,8 +3135,7 @@ spec:
                 - enabled
                 type: object
               ui:
-                description: UI settings. The operator sets UI_CONFIG_DISABLED=true
-                  when this section is configured.
+                description: UI settings.
                 properties:
                   accentColor:
                     description: 'Deprecated: use colorTheme instead.'
@@ -3163,8 +3168,7 @@ spec:
                     type: integer
                 type: object
               userManagement:
-                description: User registration and account settings. The operator
-                  sets UI_CONFIG_DISABLED=true when this section is configured.
+                description: User registration and account settings.
                 properties:
                   allowOwnAccountEdit:
                     description: |-
@@ -3205,8 +3209,7 @@ spec:
                   Sets VERSION_CHECK_DISABLED. See https://pocket-id.org/docs/configuration/environment-variables.
                 type: boolean
               webauthn:
-                description: Passkey restrictions. The operator sets UI_CONFIG_DISABLED=true
-                  when this section is configured.
+                description: Passkey restrictions.
                 properties:
                   allowSyncedPasskeys:
                     description: |-

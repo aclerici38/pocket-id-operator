@@ -34,7 +34,7 @@ func TestResolveImage_DefaultsWhenUnset(t *testing.T) {
 
 // An explicit pin is still honoured verbatim; the fallback must never override it.
 func TestResolveImage_ExplicitPinWins(t *testing.T) {
-	const pinned = "ghcr.io/pocket-id/pocket-id:v2.19.3-distroless"
+	const pinned = "ghcr.io/pocket-id/pocket-id:v2.19.3"
 
 	inst := minimalInstance()
 	inst.Spec.Image = pinned
@@ -62,7 +62,7 @@ func TestBuildPodTemplate_DefaultsImageWhenUnset(t *testing.T) {
 func TestDefaultPocketIDImage_TracksLatestTestedVersion(t *testing.T) {
 	tag := imageVersion(t, DefaultPocketIDImage)
 
-	if tag != latestTestedPocketIDVersion && !strings.HasPrefix(tag, latestTestedPocketIDVersion+"-") {
+	if tag != latestTestedPocketIDVersion {
 		t.Errorf("default image tag %q does not match latestTestedPocketIDVersion %q; bump both together",
 			tag, latestTestedPocketIDVersion)
 	}

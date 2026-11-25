@@ -9,7 +9,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-var ResyncInterval = 2 * time.Minute
+var ResyncInterval = 10 * time.Minute
 
 // Percentage of ResyncInterval to use as max jitter
 var JitterFactor = 0.25

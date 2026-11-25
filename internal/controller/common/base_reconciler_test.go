@@ -3,10 +3,10 @@ package common
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
-	runtimeclient "github.com/go-openapi/runtime"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -68,7 +68,7 @@ func TestReconcileDeleteWithPocketID_TolerantOfMissingResource(t *testing.T) {
 	group := deletingUserGroup()
 	reconciler, k8s := deleteReconciler(t, group)
 
-	notFound := runtimeclient.NewAPIError("DeleteAPIUserGroupsID", nil, http.StatusNotFound)
+	notFound := &pocketid.APIError{StatusCode: http.StatusNotFound}
 	called := false
 	result, err := reconciler.ReconcileDeleteWithPocketID(
 		context.Background(), group, group.Status.GroupID, nil, testFinalizer,
@@ -101,7 +101,7 @@ func TestReconcileDeleteWithPocketID_KeepsFinalizerOnRealFailure(t *testing.T) {
 	group := deletingUserGroup()
 	reconciler, k8s := deleteReconciler(t, group)
 
-	serverError := runtimeclient.NewAPIError("DeleteAPIUserGroupsID", nil, http.StatusInternalServerError)
+	serverError := &pocketid.APIError{StatusCode: http.StatusInternalServerError}
 	_, err := reconciler.ReconcileDeleteWithPocketID(
 		context.Background(), group, group.Status.GroupID, nil, testFinalizer,
 		func(context.Context, *pocketid.Client, string) error { return serverError },
@@ -126,8 +126,8 @@ func TestRequeueAfterFor(t *testing.T) {
 		want string
 	}{
 		{name: "plain failure", err: errors.New("boom"), want: "standard"},
-		{name: "not found", err: runtimeclient.NewAPIError("op", nil, http.StatusNotFound), want: "standard"},
-		{name: "throttled without a delay", err: runtimeclient.NewAPIError("op", nil, http.StatusTooManyRequests), want: "standard"},
+		{name: "not found", err: &pocketid.APIError{StatusCode: http.StatusNotFound}, want: "standard"},
+		{name: "throttled without a delay", err: &pocketid.APIError{StatusCode: http.StatusTooManyRequests}, want: "standard"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -152,6 +152,28 @@ func TestRequeueAfterFor_HonorsRetryAfter(t *testing.T) {
 	throttled.RetryAfter = 2 * MaxRateLimitRequeue
 	if got := RequeueAfterFor(throttled); got != MaxRateLimitRequeue {
 		t.Errorf("RequeueAfterFor: got %v, want the cap %v", got, MaxRateLimitRequeue)
+	}
+}
+
+// A throttled call must not report the caller's failure reason, or a reconcile Pocket-ID
+// never evaluated reads as one it rejected.
+func TestErrorReason(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "plain failure", err: errors.New("boom"), want: "APIKeyError"},
+		{name: "rejected request", err: &pocketid.APIError{StatusCode: http.StatusBadRequest}, want: "APIKeyError"},
+		{name: "throttled", err: &pocketid.APIError{StatusCode: http.StatusTooManyRequests, Code: "rate_limited"}, want: ReasonRateLimited},
+		{name: "throttled and wrapped", err: fmt.Errorf("exchange one-time access token: %w", &pocketid.APIError{StatusCode: http.StatusTooManyRequests}), want: ReasonRateLimited},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := ErrorReason(test.err, "APIKeyError"); got != test.want {
+				t.Errorf("ErrorReason: got %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 

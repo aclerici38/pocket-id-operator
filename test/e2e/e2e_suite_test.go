@@ -16,6 +16,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+
 	pocketidv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 	"github.com/aclerici38/pocket-id-operator/test/utils"
@@ -28,6 +30,8 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
@@ -51,10 +55,10 @@ var (
 	// clientSet backs the one read the typed client cannot do: pod logs.
 	clientSet *kubernetes.Clientset
 
-	// pid is the Pocket-ID API client for the shared instance, reached over the published
+	// pocketID is the Pocket-ID API client for the shared instance, reached over the published
 	// NodePort. It is the same client the operator uses, so the suite exercises the real
 	// code path rather than a shell reimplementation of it.
-	pid *pocketid.Client
+	pocketID *pocketid.Client
 )
 
 // pocketIDNodePort is the host port the shared instance is published on. It is read from
@@ -103,6 +107,8 @@ func newK8sClient() (client.Client, error) {
 
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
+	// Silences controller-runtime's "SetLogger was never called" warning.
+	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 	// One place to tune the suite's timing. Specs no longer pass their own timeout and
 	// interval: 2 minutes matches what the overwhelming majority used, and polling at
 	// 250ms costs one extra API GET per tick against a local apiserver while removing
@@ -131,9 +137,16 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 		By("skipping build because IMG is set")
 	}
 
-	By("loading the operator image into Kind")
-	err := utils.LoadImageToKindClusterWithName(projectImage)
-	Expect(err).NotTo(HaveOccurred(), "Failed to load operator image into Kind")
+	// Images that only exist in a registry are pulled by the cluster itself. That avoids
+	// `kind load` on Docker's containerd image store, where a pulled multi-arch image keeps
+	// index entries for platforms that were never downloaded and the import fails.
+	if utils.ImageExistsLocally(projectImage) {
+		By("loading the operator image into Kind")
+		err := utils.LoadImageToKindClusterWithName(projectImage)
+		Expect(err).NotTo(HaveOccurred(), "Failed to load operator image into Kind")
+	} else {
+		By(fmt.Sprintf("image %s is not local; the cluster will pull it", projectImage))
+	}
 
 	By("building the Kubernetes client")
 	var kErr error
@@ -147,7 +160,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 
 	By("installing CRDs")
 	cmd := exec.Command("mise", "run", "install")
-	_, err = utils.Run(cmd)
+	_, err := utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
 
 	By("deploying the operator with e2e config (faster resync)")
@@ -182,6 +195,10 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 		Labels:           sharedInstanceLabels,
 		CIMDURLAllowlist: []string{cimdMetadataURL},
 		NodePort:         pocketIDNodePort,
+		EmailOptional:    true,
+		// Most specs share this instance, so the limit on starting user sessions would
+		// serialize every API key spec.
+		RateLimitingDisabled: true,
 	})
 
 	By("waiting for the shared instance to be Ready")
@@ -204,12 +221,11 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 
 	// The NodePort is a fixed address, so each parallel process builds an identical
 	// client and there is nothing to hand across from process 1.
-	pid, err = pocketid.NewClient(pocketIDBaseURL(), staticAPIKey())
+	pocketID, err = pocketid.NewClient(pocketIDBaseURL(), staticAPIKey())
 	Expect(err).NotTo(HaveOccurred(), "Failed to build Pocket-ID client")
 
 	Eventually(func() error {
-		_, vErr := pid.GetCurrentVersion(context.Background())
-		return vErr
+		return pid.Check(pocketID.GetCurrentDeployedVersionOfPocketID(context.Background()))
 	}).Should(Succeed(),
 		"Pocket-ID should be reachable on the published NodePort")
 })
