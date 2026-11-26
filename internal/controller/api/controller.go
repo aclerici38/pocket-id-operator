@@ -158,7 +158,8 @@ func (r *Reconciler) FindExistingAPI(ctx context.Context, apiClient *pocketid.Cl
 		if err != nil {
 			return nil, fmt.Errorf("list APIs: %w", err)
 		}
-		if candidate.Resource == resource {
+		// The built-in API is read-only, so a spec claiming its resource is left for Create to reject.
+		if candidate.Resource == resource && candidate.ID != pocketid.BuiltInAPIID {
 			log.Info("Found existing API with matching resource", "resource", resource, "apiID", candidate.ID)
 			return &candidate, nil
 		}

@@ -8,6 +8,8 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
 // permIDFromStatus returns the Pocket-ID permission ID that the operator resolved for a
@@ -603,9 +605,11 @@ var _ = Describe("PocketIDAPI Multi-API Grants", Ordered, func() {
 		}).Should(Succeed())
 	})
 
-	// The operator owns every grant the client holds, so access granted in the UI is revoked.
+	// The operator owns every grant the client holds except on the built-in API, so other access
+	// granted in the UI is revoked.
 	It("should revoke access granted outside the operator", func() {
 		grantAPIAccessInPocketID(billingID, clientID, billingPermID)
+		grantAPIAccessInPocketID(pocketid.BuiltInAPIID, clientID)
 		Expect(getFromPocketID("/api/admin/api-access/" + clientID + "/apis")).To(ContainSubstring(billingPermID))
 
 		Expect(annotateObject("pocketidoidcclient", clientName, userNS, "test/trigger=ui-grant")).To(Succeed())
@@ -614,6 +618,7 @@ var _ = Describe("PocketIDAPI Multi-API Grants", Ordered, func() {
 			body := getFromPocketID("/api/admin/api-access/" + clientID + "/apis")
 			g.Expect(body).NotTo(ContainSubstring(billingPermID), "the grant made in the UI should be revoked")
 			g.Expect(body).To(ContainSubstring(ordersPermID), "the spec's grant must stay")
+			g.Expect(body).To(ContainSubstring(pocketid.BuiltInAPIID), "the built-in API's grant must stay")
 		}).Should(Succeed())
 	})
 
@@ -734,6 +739,18 @@ var _ = Describe("PocketIDAPI Adoption", Ordered, func() {
 		body := getFromPocketID("/api/admin/apis/" + existingID)
 		Expect(body).To(ContainSubstring("Adopted API"))
 		Expect(body).To(ContainSubstring("read:adopt"))
+	})
+
+	It("should not adopt the built-in Pocket ID API", func() {
+		const builtInName = "builtin-api"
+		appURL := getField("pocketidinstance", instanceName, instanceNS, ".spec.appUrl")
+		createAPI(APIOptions{Name: builtInName, Resource: appURL + "/api"})
+
+		By("verifying Pocket-ID rejects the reserved resource and nothing was adopted")
+		waitForConditionReason("pocketidapi", builtInName, userNS, "Ready", "ReconcileError")
+		Expect(getField("pocketidapi", builtInName, userNS, ".status.apiID")).To(BeEmpty())
+
+		Expect(deleteObjectAndWait("pocketidapi", builtInName, userNS, time.Minute)).To(Succeed())
 	})
 
 	AfterAll(func() {
