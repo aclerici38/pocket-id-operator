@@ -392,6 +392,11 @@ type WebAuthnConfig struct {
 	// Sets WEBAUTHN_AUTHENTICATOR_ATTACHMENT. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	AuthenticatorAttachment string `json:"authenticatorAttachment,omitempty"`
+
+	// Origins that may embed Pocket-ID in an iframe and sign in with a passkey there.
+	// Sets ALLOWED_FRAME_ANCESTORS. See https://pocket-id.org/docs/configuration/environment-variables.
+	// +optional
+	AllowedFrameAncestors []string `json:"allowedFrameAncestors,omitempty"`
 }
 
 // GeoIPConfig configures GeoIP/MaxMind integration for audit log geolocation.

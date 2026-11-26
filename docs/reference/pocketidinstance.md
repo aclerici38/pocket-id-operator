@@ -350,6 +350,7 @@ WebAuthnConfig restricts which passkeys Pocket-ID accepts.
 | `userVerification` | string |  |  | Passkey user verification requirement.<br />Sets WEBAUTHN_USER_VERIFICATION. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `allowSyncedPasskeys` | boolean |  |  | Allow synced passkeys.<br />Sets WEBAUTHN_ALLOW_SYNCED_PASSKEYS. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `authenticatorAttachment` | string |  |  | Accepted authenticator type.<br />Sets WEBAUTHN_AUTHENTICATOR_ATTACHMENT. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `allowedFrameAncestors` | string array |  |  | Origins that may embed Pocket-ID in an iframe and sign in with a passkey there.<br />Sets ALLOWED_FRAME_ANCESTORS. See https://pocket-id.org/docs/configuration/environment-variables. |
 
 ## `PocketIDInstance.spec.geoip`
 

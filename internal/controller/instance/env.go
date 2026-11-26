@@ -399,6 +399,9 @@ func buildWebAuthnEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []cor
 	if wa.AuthenticatorAttachment != "" {
 		env = append(env, corev1.EnvVar{Name: "WEBAUTHN_AUTHENTICATOR_ATTACHMENT", Value: wa.AuthenticatorAttachment})
 	}
+	if len(wa.AllowedFrameAncestors) > 0 {
+		env = append(env, corev1.EnvVar{Name: "ALLOWED_FRAME_ANCESTORS", Value: strings.Join(wa.AllowedFrameAncestors, ",")})
+	}
 	return env
 }
 

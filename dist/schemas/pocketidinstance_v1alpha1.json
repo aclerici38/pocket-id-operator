@@ -4133,6 +4133,16 @@
                 "null"
               ]
             },
+            "allowedFrameAncestors": {
+              "description": "Origins that may embed Pocket-ID in an iframe and sign in with a passkey there.\nSets ALLOWED_FRAME_ANCESTORS. See https://pocket-id.org/docs/configuration/environment-variables.",
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
             "authenticatorAttachment": {
               "description": "Accepted authenticator type.\nSets WEBAUTHN_AUTHENTICATOR_ATTACHMENT. See https://pocket-id.org/docs/configuration/environment-variables.",
               "type": [

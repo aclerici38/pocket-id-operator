@@ -135,6 +135,7 @@ spec:
     userVerification: "preferred"
     allowSyncedPasskeys: false
     authenticatorAttachment: "cross-platform"
+    allowedFrameAncestors: ["https://dashboard.example.com", "http://portal.example.com:8080"]
   smtp:
     host: "smtp.invalid"
     port: 587
