@@ -1566,6 +1566,13 @@
                       "null"
                     ]
                   },
+                  "allowProfilePictureOverride": {
+                    "description": "Let LDAP users override their profile picture.\nSets LDAP_ALLOW_PROFILE_PICTURE_OVERRIDE. See https://pocket-id.org/docs/configuration/environment-variables.",
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
                   "attributeMapping": {
                     "additionalProperties": false,
                     "description": "LDAP attribute mappings.",
@@ -1607,6 +1614,13 @@
                       },
                       "userFirstName": {
                         "description": "First name attribute.\nSets LDAP_ATTRIBUTE_USER_FIRST_NAME. See https://pocket-id.org/docs/configuration/environment-variables.",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "userLanguage": {
+                        "description": "Language attribute.\nSets LDAP_ATTRIBUTE_USER_LANGUAGE. See https://pocket-id.org/docs/configuration/environment-variables.",
                         "type": [
                           "string",
                           "null"
@@ -4198,8 +4212,22 @@
                       "null"
                     ]
                   },
+                  "attestation": {
+                    "description": "Passkey attestation requirement.\nSets WEBAUTHN_ATTESTATION. See https://pocket-id.org/docs/configuration/environment-variables.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "authenticatorAttachment": {
                     "description": "Accepted authenticator type.\nSets WEBAUTHN_AUTHENTICATOR_ATTACHMENT. See https://pocket-id.org/docs/configuration/environment-variables.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "fidoMdsUrl": {
+                    "description": "FIDO metadata source for passkey attestation, or disabled.\nSets FIDO_MDS_URL. See https://pocket-id.org/docs/configuration/environment-variables.",
                     "type": [
                       "string",
                       "null"

@@ -203,7 +203,7 @@ See [example](../examples/pocketidinstance.md#external-instance).
   - `OTEL_METRICS_EXPORTER=prometheus` + `OTEL_*` (from `spec.metrics`)
   - `APP_NAME`, `SESSION_DURATION`, `HOME_PAGE_URL`, `DISABLE_ANIMATIONS`, `ACCENT_COLOR`, `COLOR_THEME` (from `spec.ui`)
   - `EMAILS_VERIFIED`, `ALLOW_OWN_ACCOUNT_EDIT`, `REQUIRE_USER_EMAIL`, `ALLOW_USER_SIGNUPS`, `SIGNUP_DEFAULT_*` (from `spec.userManagement`)
-  - `WEBAUTHN_USER_VERIFICATION`, `WEBAUTHN_ALLOW_SYNCED_PASSKEYS`, `WEBAUTHN_AUTHENTICATOR_ATTACHMENT`, `ALLOWED_FRAME_ANCESTORS` (from `spec.webauthn`)
+  - `WEBAUTHN_USER_VERIFICATION`, `WEBAUTHN_ALLOW_SYNCED_PASSKEYS`, `WEBAUTHN_AUTHENTICATOR_ATTACHMENT`, `WEBAUTHN_ATTESTATION`, `FIDO_MDS_URL`, `ALLOWED_FRAME_ANCESTORS` (from `spec.webauthn`)
   - `CIMD_URL_ALLOWLIST` (JSON-encoded from `spec.cimdUrlAllowlist`)
   - `ENABLED_FEATURES` (JSON-encoded from `spec.enabledFeatures`)
   - `OUTBOUND_ALLOWED_HOSTS_*` (comma-joined from `spec.outboundAllowedHosts`)

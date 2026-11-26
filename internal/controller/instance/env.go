@@ -248,6 +248,9 @@ func buildLDAPEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.
 	if ldap.SoftDeleteUsers != nil {
 		env = append(env, corev1.EnvVar{Name: "LDAP_SOFT_DELETE_USERS", Value: fmt.Sprintf("%t", *ldap.SoftDeleteUsers)})
 	}
+	if ldap.AllowProfilePictureOverride != nil {
+		env = append(env, corev1.EnvVar{Name: "LDAP_ALLOW_PROFILE_PICTURE_OVERRIDE", Value: fmt.Sprintf("%t", *ldap.AllowProfilePictureOverride)})
+	}
 	if ldap.AdminGroupName != "" {
 		env = append(env, corev1.EnvVar{Name: "LDAP_ADMIN_GROUP_NAME", Value: ldap.AdminGroupName})
 	}
@@ -285,6 +288,9 @@ func buildLDAPAttributeMappingEnv(am *pocketidinternalv1alpha1.LDAPAttributeMapp
 	}
 	if am.UserProfilePicture != "" {
 		env = append(env, corev1.EnvVar{Name: "LDAP_ATTRIBUTE_USER_PROFILE_PICTURE", Value: am.UserProfilePicture})
+	}
+	if am.UserLanguage != "" {
+		env = append(env, corev1.EnvVar{Name: "LDAP_ATTRIBUTE_USER_LANGUAGE", Value: am.UserLanguage})
 	}
 	if am.GroupMember != "" {
 		env = append(env, corev1.EnvVar{Name: "LDAP_ATTRIBUTE_GROUP_MEMBER", Value: am.GroupMember})
@@ -398,6 +404,12 @@ func buildWebAuthnEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []cor
 	}
 	if wa.AuthenticatorAttachment != "" {
 		env = append(env, corev1.EnvVar{Name: "WEBAUTHN_AUTHENTICATOR_ATTACHMENT", Value: wa.AuthenticatorAttachment})
+	}
+	if wa.Attestation != "" {
+		env = append(env, corev1.EnvVar{Name: "WEBAUTHN_ATTESTATION", Value: wa.Attestation})
+	}
+	if wa.FidoMDSURL != "" {
+		env = append(env, corev1.EnvVar{Name: "FIDO_MDS_URL", Value: wa.FidoMDSURL})
 	}
 	if len(wa.AllowedFrameAncestors) > 0 {
 		env = append(env, corev1.EnvVar{Name: "ALLOWED_FRAME_ANCESTORS", Value: strings.Join(wa.AllowedFrameAncestors, ",")})

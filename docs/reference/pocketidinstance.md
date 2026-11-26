@@ -251,6 +251,7 @@ LDAPConfig configures LDAP authentication. When present, the operator sets LDAP_
 | `base` | string | yes |  | Search base DN.<br />Sets LDAP_BASE. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `skipCertVerify` | boolean |  |  | Skip LDAP certificate verification.<br />Sets LDAP_SKIP_CERT_VERIFY. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `softDeleteUsers` | boolean |  |  | Disable removed users instead of deleting them.<br />Sets LDAP_SOFT_DELETE_USERS. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `allowProfilePictureOverride` | boolean |  |  | Let LDAP users override their profile picture.<br />Sets LDAP_ALLOW_PROFILE_PICTURE_OVERRIDE. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `adminGroupName` | string |  |  | Group that grants admin privileges.<br />Sets LDAP_ADMIN_GROUP_NAME. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `userSearchFilter` | string |  |  | User search filter.<br />Sets LDAP_USER_SEARCH_FILTER. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `userGroupSearchFilter` | string |  |  | Group search filter.<br />Sets LDAP_USER_GROUP_SEARCH_FILTER. See https://pocket-id.org/docs/configuration/environment-variables. |
@@ -282,6 +283,7 @@ LDAPAttributeMappingConfig maps LDAP attributes to Pocket-ID user/group fields.
 | `userLastName` | string |  |  | Last name attribute.<br />Sets LDAP_ATTRIBUTE_USER_LAST_NAME. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `userDisplayName` | string |  |  | Display name attribute.<br />Sets LDAP_ATTRIBUTE_USER_DISPLAY_NAME. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `userProfilePicture` | string |  |  | Profile picture attribute.<br />Sets LDAP_ATTRIBUTE_USER_PROFILE_PICTURE. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `userLanguage` | string |  |  | Language attribute.<br />Sets LDAP_ATTRIBUTE_USER_LANGUAGE. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `groupMember` | string |  |  | Group membership attribute.<br />Sets LDAP_ATTRIBUTE_GROUP_MEMBER. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `groupUniqueIdentifier` | string |  |  | Group unique identifier attribute.<br />Sets LDAP_ATTRIBUTE_GROUP_UNIQUE_IDENTIFIER. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `groupName` | string |  |  | Group name attribute.<br />Sets LDAP_ATTRIBUTE_GROUP_NAME. See https://pocket-id.org/docs/configuration/environment-variables. |
@@ -350,6 +352,8 @@ WebAuthnConfig restricts which passkeys Pocket-ID accepts.
 | `userVerification` | string |  |  | Passkey user verification requirement.<br />Sets WEBAUTHN_USER_VERIFICATION. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `allowSyncedPasskeys` | boolean |  |  | Allow synced passkeys.<br />Sets WEBAUTHN_ALLOW_SYNCED_PASSKEYS. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `authenticatorAttachment` | string |  |  | Accepted authenticator type.<br />Sets WEBAUTHN_AUTHENTICATOR_ATTACHMENT. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `attestation` | string |  |  | Passkey attestation requirement.<br />Sets WEBAUTHN_ATTESTATION. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `fidoMdsUrl` | string |  |  | FIDO metadata source for passkey attestation, or disabled.<br />Sets FIDO_MDS_URL. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `allowedFrameAncestors` | string array |  |  | Origins that may embed Pocket-ID in an iframe and sign in with a passkey there.<br />Sets ALLOWED_FRAME_ANCESTORS. See https://pocket-id.org/docs/configuration/environment-variables. |
 
 ## `PocketIDInstance.spec.geoip`

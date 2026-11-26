@@ -274,6 +274,11 @@ func (in *LDAPConfig) DeepCopyInto(out *LDAPConfig) {
 		*out = new(bool)
 		**out = **in
 	}
+	if in.AllowProfilePictureOverride != nil {
+		in, out := &in.AllowProfilePictureOverride, &out.AllowProfilePictureOverride
+		*out = new(bool)
+		**out = **in
+	}
 	if in.AttributeMapping != nil {
 		in, out := &in.AttributeMapping, &out.AttributeMapping
 		*out = new(LDAPAttributeMappingConfig)

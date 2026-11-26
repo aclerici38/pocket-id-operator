@@ -433,12 +433,13 @@ func TestBuildEnvVars_LDAP(t *testing.T) {
 				},
 			},
 		},
-		Base:                  "dc=example,dc=com",
-		SkipCertVerify:        new(true),
-		SoftDeleteUsers:       new(true),
-		AdminGroupName:        "admins",
-		UserSearchFilter:      "(objectClass=inetOrgPerson)",
-		UserGroupSearchFilter: "(objectClass=groupOfNames)",
+		Base:                        "dc=example,dc=com",
+		SkipCertVerify:              new(true),
+		SoftDeleteUsers:             new(true),
+		AllowProfilePictureOverride: new(true),
+		AdminGroupName:              "admins",
+		UserSearchFilter:            "(objectClass=inetOrgPerson)",
+		UserGroupSearchFilter:       "(objectClass=groupOfNames)",
 		AttributeMapping: &pocketidinternalv1alpha1.LDAPAttributeMappingConfig{
 			UserUniqueIdentifier: "entryUUID",
 			UserUsername:         "uid",
@@ -446,6 +447,7 @@ func TestBuildEnvVars_LDAP(t *testing.T) {
 			UserFirstName:        "givenName",
 			UserLastName:         "sn",
 			UserDisplayName:      "displayName",
+			UserLanguage:         "preferredLanguage",
 			GroupMember:          "member",
 			GroupName:            "cn",
 		},
@@ -459,6 +461,7 @@ func TestBuildEnvVars_LDAP(t *testing.T) {
 	requireEnv(t, env, "LDAP_BASE", "dc=example,dc=com")
 	requireEnv(t, env, "LDAP_SKIP_CERT_VERIFY", "true")
 	requireEnv(t, env, "LDAP_SOFT_DELETE_USERS", "true")
+	requireEnv(t, env, "LDAP_ALLOW_PROFILE_PICTURE_OVERRIDE", "true")
 	requireEnv(t, env, "LDAP_ADMIN_GROUP_NAME", "admins")
 	requireEnv(t, env, "LDAP_USER_SEARCH_FILTER", "(objectClass=inetOrgPerson)")
 	requireEnv(t, env, "LDAP_USER_GROUP_SEARCH_FILTER", "(objectClass=groupOfNames)")
@@ -468,6 +471,7 @@ func TestBuildEnvVars_LDAP(t *testing.T) {
 	requireEnv(t, env, "LDAP_ATTRIBUTE_USER_FIRST_NAME", "givenName")
 	requireEnv(t, env, "LDAP_ATTRIBUTE_USER_LAST_NAME", "sn")
 	requireEnv(t, env, "LDAP_ATTRIBUTE_USER_DISPLAY_NAME", "displayName")
+	requireEnv(t, env, "LDAP_ATTRIBUTE_USER_LANGUAGE", "preferredLanguage")
 	requireEnv(t, env, "LDAP_ATTRIBUTE_GROUP_MEMBER", "member")
 	requireEnv(t, env, "LDAP_ATTRIBUTE_GROUP_NAME", "cn")
 }
@@ -622,6 +626,8 @@ func TestBuildEnvVars_WebAuthn(t *testing.T) {
 		UserVerification:        "preferred",
 		AllowSyncedPasskeys:     &allowSynced,
 		AuthenticatorAttachment: "cross-platform",
+		Attestation:             "verified",
+		FidoMDSURL:              "disabled",
 		AllowedFrameAncestors:   []string{"https://a.example.com", "https://b.example.com"},
 	}
 
@@ -629,6 +635,8 @@ func TestBuildEnvVars_WebAuthn(t *testing.T) {
 	requireEnv(t, env, "WEBAUTHN_USER_VERIFICATION", "preferred")
 	requireEnv(t, env, "WEBAUTHN_ALLOW_SYNCED_PASSKEYS", "false")
 	requireEnv(t, env, "WEBAUTHN_AUTHENTICATOR_ATTACHMENT", "cross-platform")
+	requireEnv(t, env, "WEBAUTHN_ATTESTATION", "verified")
+	requireEnv(t, env, "FIDO_MDS_URL", "disabled")
 	requireEnv(t, env, "ALLOWED_FRAME_ANCESTORS", "https://a.example.com,https://b.example.com")
 }
 
