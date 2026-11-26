@@ -10,6 +10,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 )
 
@@ -58,7 +60,7 @@ func TestResolveAPIAccess_MapsKeysToIDs(t *testing.T) {
 
 	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(api).Build()}
 
-	got, err := r.resolveAPIAccess(context.Background(), oidcClient, nil)
+	got, err := r.resolveAPIAccess(context.Background(), oidcClient, pid.APIResponseDto{})
 	if err != nil {
 		t.Fatalf("resolveAPIAccess: %v", err)
 	}
@@ -86,7 +88,7 @@ func TestResolveAPIAccess_ErrorsWhenAPINotReady(t *testing.T) {
 	}})
 
 	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(api).Build()}
-	if _, err := r.resolveAPIAccess(context.Background(), oidcClient, nil); err == nil {
+	if _, err := r.resolveAPIAccess(context.Background(), oidcClient, pid.APIResponseDto{}); err == nil {
 		t.Fatal("expected error when API not ready")
 	}
 }
@@ -100,7 +102,7 @@ func TestResolveAPIAccess_ErrorsOnUnknownPermissionKey(t *testing.T) {
 	}})
 
 	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(api).Build()}
-	if _, err := r.resolveAPIAccess(context.Background(), oidcClient, nil); err == nil {
+	if _, err := r.resolveAPIAccess(context.Background(), oidcClient, pid.APIResponseDto{}); err == nil {
 		t.Fatal("expected error for unknown permission key")
 	}
 }
@@ -116,7 +118,7 @@ func TestResolveAPIAccess_ExplicitAccessWithoutPermissions(t *testing.T) {
 
 	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(api).Build()}
 
-	got, err := r.resolveAPIAccess(context.Background(), oidcClient, nil)
+	got, err := r.resolveAPIAccess(context.Background(), oidcClient, pid.APIResponseDto{})
 	if err != nil {
 		t.Fatalf("resolveAPIAccess: %v", err)
 	}
@@ -138,7 +140,7 @@ func TestResolveAPIAccess_OmitsEntryGrantingNothing(t *testing.T) {
 
 	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(api).Build()}
 
-	got, err := r.resolveAPIAccess(context.Background(), oidcClient, nil)
+	got, err := r.resolveAPIAccess(context.Background(), oidcClient, pid.APIResponseDto{})
 	if err != nil {
 		t.Fatalf("resolveAPIAccess: %v", err)
 	}
@@ -250,7 +252,7 @@ func TestResolveAPITokenParams_MergesEntriesForOneAPI(t *testing.T) {
 
 	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(api).Build()}
 
-	params, err := r.resolveAPITokenParams(context.Background(), oidcClient, "")
+	params, err := r.resolveAPITokenParams(context.Background(), oidcClient)
 	if err != nil {
 		t.Fatalf("resolveAPITokenParams: %v", err)
 	}
@@ -278,10 +280,11 @@ func TestResolveAPITokenParams_SortsByReferencedName(t *testing.T) {
 		{APIRef: pocketidinternalv1alpha1.NamespacedAPIReference{Name: "orders"}},
 		{APIRef: pocketidinternalv1alpha1.NamespacedAPIReference{Name: "billing"}},
 	})
+	oidcClient.Status.BuiltInAPIResource = "https://id.example.com/api"
 
 	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(orders, billing).Build()}
 
-	params, err := r.resolveAPITokenParams(context.Background(), oidcClient, "https://id.example.com/api")
+	params, err := r.resolveAPITokenParams(context.Background(), oidcClient)
 	if err != nil {
 		t.Fatalf("resolveAPITokenParams: %v", err)
 	}
@@ -305,7 +308,7 @@ func TestResolveAPITokenParams_FallsBackToSpecResource(t *testing.T) {
 
 	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(api).Build()}
 
-	params, err := r.resolveAPITokenParams(context.Background(), oidcClient, "")
+	params, err := r.resolveAPITokenParams(context.Background(), oidcClient)
 	if err != nil {
 		t.Fatalf("resolveAPITokenParams: %v", err)
 	}
@@ -331,7 +334,7 @@ func TestResolveAPITokenParams_ErrorsOnSameNameInTwoNamespaces(t *testing.T) {
 
 	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(local, shared).Build()}
 	// Both would claim resource_orders.
-	if _, err := r.resolveAPITokenParams(context.Background(), oidcClient, ""); err == nil {
+	if _, err := r.resolveAPITokenParams(context.Background(), oidcClient); err == nil {
 		t.Fatal("expected error when two APIs collide on the same secret key")
 	}
 }
@@ -343,7 +346,7 @@ func TestResolveAPITokenParams_ErrorsWhenAPIMissing(t *testing.T) {
 	}})
 
 	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).Build()}
-	if _, err := r.resolveAPITokenParams(context.Background(), oidcClient, ""); err == nil {
+	if _, err := r.resolveAPITokenParams(context.Background(), oidcClient); err == nil {
 		t.Fatal("expected error when the referenced API does not exist")
 	}
 }

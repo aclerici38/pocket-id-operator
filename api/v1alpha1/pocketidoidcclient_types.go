@@ -515,6 +515,10 @@ type PocketIDOIDCClientStatus struct {
 	// +optional
 	CIMDGrantedAPIs []string `json:"cimdGrantedAPIs,omitempty"`
 
+	// BuiltInAPIResource is the built-in Pocket ID API's resource, as Pocket-ID reports it, while spec.apiAccess grants it. It is the audience the client requests tokens for.
+	// +optional
+	BuiltInAPIResource string `json:"builtInAPIResource,omitempty"`
+
 	// PKCESupported indicates Pocket-ID observed the client using PKCE during an authorization flow while spec.pkceEnabled is false, signalling PKCE can be enabled.
 	// +optional
 	PKCESupported *bool `json:"pkceSupported,omitempty"`

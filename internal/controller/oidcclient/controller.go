@@ -1213,7 +1213,7 @@ func (r *Reconciler) ReconcileSecret(ctx context.Context, oidcClient *pocketidin
 		secretData[keys.LogoutCallbackURLs] = logoutCallbackURLsJSON
 	}
 
-	if err := r.addAPITokenParams(ctx, oidcClient, instance.EffectiveAppURL(), keys, secretData); err != nil {
+	if err := r.addAPITokenParams(ctx, oidcClient, keys, secretData); err != nil {
 		return err
 	}
 

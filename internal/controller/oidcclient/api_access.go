@@ -51,7 +51,7 @@ func (r *Reconciler) ReconcileAPIAccess(ctx context.Context, oidcClient *pocketi
 		return fmt.Errorf("list API client grants: %w", err)
 	}
 
-	builtIn, err := builtInPermissionIDs(ctx, oidcClient, apiClient, current)
+	builtIn, err := builtInAPI(ctx, oidcClient, apiClient, current)
 	if err != nil {
 		return err
 	}
@@ -94,47 +94,46 @@ func (r *Reconciler) ReconcileAPIAccess(ctx context.Context, oidcClient *pocketi
 	slices.Sort(cimdGranted)
 	base := oidcClient.DeepCopy()
 	oidcClient.Status.CIMDGrantedAPIs = cimdGranted
+	oidcClient.Status.BuiltInAPIResource = builtIn.Resource
 	if err := common.PatchStatus(ctx, r.Client, oidcClient, base); err != nil {
 		return fmt.Errorf("update API access status: %w", err)
 	}
 	return nil
 }
 
-// builtInPermissionIDs maps the built-in API's permission keys to their IDs, or returns nil when
-// spec.apiAccess doesn't grant it. A client that already holds access lists the API with its
-// permissions, so the API is only fetched for a first grant.
-func builtInPermissionIDs(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client, current []pid.ClientAPIGrantDto) (map[string]string, error) {
+// builtInAPI returns the built-in API, or the zero value when spec.apiAccess doesn't grant it. A
+// client that already holds access lists the API with its permissions, so the API is only
+// fetched for a first grant.
+func builtInAPI(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client, current []pid.ClientAPIGrantDto) (pid.APIResponseDto, error) {
 	if !slices.ContainsFunc(oidcClient.Spec.APIAccess, func(a pocketidinternalv1alpha1.OIDCClientAPIAccess) bool { return a.BuiltIn }) {
-		return nil, nil
+		return pid.APIResponseDto{}, nil
 	}
-	var api pid.APIResponseDto
 	if i := slices.IndexFunc(current, func(g pid.ClientAPIGrantDto) bool { return g.API.ID == pocketid.BuiltInAPIID }); i >= 0 {
-		api = current[i].API
-	} else {
-		var err error
-		if api, err = pid.Decode[pid.APIResponseDto](apiClient.GetAPIByID(ctx, pocketid.BuiltInAPIID)); err != nil {
-			return nil, fmt.Errorf("get built-in API: %w", err)
-		}
+		return current[i].API, nil
 	}
-	keyToID := make(map[string]string, len(api.Permissions))
-	for _, p := range api.Permissions {
-		keyToID[p.Key] = p.ID
+	api, err := pid.Decode[pid.APIResponseDto](apiClient.GetAPIByID(ctx, pocketid.BuiltInAPIID))
+	if err != nil {
+		return pid.APIResponseDto{}, fmt.Errorf("get built-in API: %w", err)
 	}
-	return keyToID, nil
+	return api, nil
 }
 
 // resolveAPIAccess resolves spec.apiAccess into the desired grant per Pocket-ID API ID by
 // looking up each referenced PocketIDAPI and mapping permission keys to their Pocket-ID IDs.
-// builtIn maps the built-in API's keys. Entries that grant nothing are omitted: Pocket-ID stores
-// no row for them. A flow granted with no permissions is still a grant, and is kept.
-func (r *Reconciler) resolveAPIAccess(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, builtIn map[string]string) (map[string]pid.APIClientGrantUpdateDto, error) {
+// builtIn is the built-in API, for its permissions. Entries that grant nothing are omitted:
+// Pocket-ID stores no row for them. A flow granted with no permissions is still a grant, and is kept.
+func (r *Reconciler) resolveAPIAccess(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, builtIn pid.APIResponseDto) (map[string]pid.APIClientGrantUpdateDto, error) {
 	delegatedIDs := make(map[string]map[string]struct{})
 	clientIDs := make(map[string]map[string]struct{})
 	delegatedAccess := make(map[string]bool)
 	clientAccess := make(map[string]bool)
+	builtInIDs := make(map[string]string, len(builtIn.Permissions))
+	for _, p := range builtIn.Permissions {
+		builtInIDs[p.Key] = p.ID
+	}
 
 	for _, grant := range oidcClient.Spec.APIAccess {
-		apiID, apiName, keyToID := pocketid.BuiltInAPIID, "Pocket ID", builtIn
+		apiID, apiName, keyToID := pocketid.BuiltInAPIID, "Pocket ID", builtInIDs
 		if !grant.BuiltIn {
 			if grant.APIRef.Name == "" {
 				return nil, fmt.Errorf("apiAccess entry has an empty apiRef.name")
@@ -200,8 +199,8 @@ func (r *Reconciler) resolveAPIAccess(ctx context.Context, oidcClient *pocketidi
 // referenced by, because a token is issued for one audience and scopes belong to one API.
 // The unsuffixed pair is written as well while all the grants share an audience. Once they do
 // not, it is dropped rather than made to pick one.
-func (r *Reconciler) addAPITokenParams(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, appURL string, keys pocketidinternalv1alpha1.OIDCClientSecretKeys, secretData map[string][]byte) error {
-	params, err := r.resolveAPITokenParams(ctx, oidcClient, appURL+"/api")
+func (r *Reconciler) addAPITokenParams(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, keys pocketidinternalv1alpha1.OIDCClientSecretKeys, secretData map[string][]byte) error {
+	params, err := r.resolveAPITokenParams(ctx, oidcClient)
 	if err != nil {
 		return err
 	}
@@ -244,8 +243,8 @@ type apiTokenParams struct {
 }
 
 // resolveAPITokenParams returns one entry per API in spec.apiAccess, sorted by name. Entries
-// naming the same API are merged. builtInResource is the built-in API's resource.
-func (r *Reconciler) resolveAPITokenParams(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, builtInResource string) ([]apiTokenParams, error) {
+// naming the same API are merged.
+func (r *Reconciler) resolveAPITokenParams(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) ([]apiTokenParams, error) {
 	byName := make(map[string]*apiTokenParams)
 
 	for _, grant := range oidcClient.Spec.APIAccess {
@@ -263,7 +262,8 @@ func (r *Reconciler) resolveAPITokenParams(ctx context.Context, oidcClient *pock
 				name, entry.namespace, namespace)
 		}
 		if !seen {
-			resource := builtInResource
+			// Status is what Pocket-ID reports for the built-in API.
+			resource := oidcClient.Status.BuiltInAPIResource
 			if !grant.BuiltIn {
 				api := &pocketidinternalv1alpha1.PocketIDAPI{}
 				if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, api); err != nil {

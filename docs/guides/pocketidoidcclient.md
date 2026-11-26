@@ -163,7 +163,7 @@ The credentials Secret carries what a token request needs, so nothing has to be 
 | `scopes_<api>` | The `clientPermissions` it grants, space-delimited. Omitted when the flow is granted no permissions, i.e. a request for the audience alone. |
 | `resource` / `scopes` | The same pair unsuffixed, written only while all the grants share an audience. |
 
-- The suffix is the `apiRef.name` because the audience is usually a URI, and Secret keys allow only letters, digits, `-`, `_` and `.`. Two entries with the same `apiRef.name` in different namespaces would collide on one key and are rejected. The built-in API's keys are suffixed with `pocket_id`.
+- The suffix is the `apiRef.name` because the audience is usually a URI, and Secret keys allow only letters, digits, `-`, `_` and `.`. Two entries with the same `apiRef.name` in different namespaces would collide on one key and are rejected. The built-in API's keys are suffixed with `pocket_id`, and its resource is the one Pocket-ID reports, also shown in `status.builtInAPIResource`.
 - `spec.secret.keys.resource` and `spec.secret.keys.scopes` also set the prefix of the suffixed keys.
 - A token is issued for one audience, so a client granted several APIs makes one token request per API. Granting a second audience removes the unsuffixed pair instead of picking one, so anything reading them fails loudly rather than requesting the wrong audience. Read the suffixed keys to be unaffected either way.
 

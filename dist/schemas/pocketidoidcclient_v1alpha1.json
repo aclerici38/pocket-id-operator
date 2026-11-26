@@ -968,6 +968,13 @@
             "null"
           ]
         },
+        "builtInAPIResource": {
+          "description": "BuiltInAPIResource is the built-in Pocket ID API's resource, as Pocket-ID reports it, while spec.apiAccess grants it. It is the audience the client requests tokens for.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "callbackUrls": {
           "description": "CallbackURLs are the current callback URLs from Pocket-ID",
           "items": {

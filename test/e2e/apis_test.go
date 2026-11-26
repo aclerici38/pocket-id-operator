@@ -590,6 +590,7 @@ var _ = Describe("PocketIDAPI Multi-API Grants", Ordered, func() {
 			// Only billing has a client-credentials permission.
 			g.Expect(secretData(secret, userNS, "scopes_"+ordersName)).To(BeEmpty())
 			g.Expect(secretData(secret, userNS, "scopes_"+billingName)).To(Equal("read:billing"))
+			g.Expect(getField("pocketidoidcclient", clientName, userNS, ".status.builtInAPIResource")).To(Equal(appURL + "/api"))
 			g.Expect(secretData(secret, userNS, "resource_pocket_id")).To(Equal(appURL + "/api"))
 			g.Expect(secretData(secret, userNS, "scopes_pocket_id")).To(Equal("users:read"))
 			// Several audiences, so the bare pair is left out.
@@ -654,6 +655,7 @@ var _ = Describe("PocketIDAPI Multi-API Grants", Ordered, func() {
 				"the dropped API's grant should be gone")
 			g.Expect(body).NotTo(ContainSubstring(pocketid.BuiltInAPIID),
 				"the dropped built-in grant should be gone")
+			g.Expect(getField("pocketidoidcclient", clientName, userNS, ".status.builtInAPIResource")).To(BeEmpty())
 			g.Expect(body).To(ContainSubstring(ordersPermID),
 				"the surviving entry must not be collateral damage")
 		}).Should(Succeed())
@@ -893,7 +895,9 @@ var _ = Describe("Built-in Pocket ID API CIMD Access", Serial, Ordered, func() {
 
 	It("should leave the setting alone once spec.builtInAPI is unset", func() {
 		setBuiltInAPI(`null`)
-		waitForReconciled("pocketidinstance", instanceName, instanceNS)
+		// Not waitForReconciled: an instance's Ready reason is "Ready", not "Reconciled".
+		gen := getField("pocketidinstance", instanceName, instanceNS, ".metadata.generation")
+		waitForStatusField("pocketidinstance", instanceName, instanceNS, ".status.conditions[?(@.type=='Ready')].observedGeneration", gen)
 		Consistently(func(g Gomega) {
 			enabled, keys := cimdAccess(g)
 			g.Expect(enabled).To(BeTrue())

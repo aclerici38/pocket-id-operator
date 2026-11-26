@@ -253,6 +253,7 @@ PocketIDOIDCClientStatus defines the observed state of PocketIDOIDCClient.
 | `logoutCallbackUrls` | string array |  |  | LogoutCallbackURLs are the current logout callback URLs from Pocket-ID |
 | `allowedUserGroupIDs` | string array |  |  | AllowedUserGroupIDs are the resolved group IDs assigned to the client |
 | `cimdGrantedAPIs` | string array |  |  | CIMDGrantedAPIs are the resources of APIs reachable through their cimdAccess setting rather than this client's own grant; revoke it on the PocketIDAPI, not via spec.apiAccess. Only populated for cimd clients. |
+| `builtInAPIResource` | string |  |  | BuiltInAPIResource is the built-in Pocket ID API's resource, as Pocket-ID reports it, while spec.apiAccess grants it. It is the audience the client requests tokens for. |
 | `pkceSupported` | boolean |  |  | PKCESupported indicates Pocket-ID observed the client using PKCE during an authorization flow while spec.pkceEnabled is false, signalling PKCE can be enabled. |
 | `logoUrl` | string |  |  | LogoURL is the light logo URL the operator last successfully applied to Pocket-ID. |
 | `logoReachable` | boolean |  |  | LogoReachable reports whether Pocket-ID could fetch and store the light logo from the URL the spec resolves to. |
