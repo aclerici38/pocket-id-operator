@@ -4,10 +4,14 @@ package e2e
 
 import (
 	"fmt"
+	"net/http"
+	"net/url"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
 
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
@@ -526,10 +530,29 @@ var _ = Describe("PocketIDAPI Multi-API Grants", Ordered, func() {
 		billingName = "multi-billing-api"
 		billingRes  = "https://multi-billing.e2e.example.com"
 	)
-	var clientID, billingID, ordersPermID, billingPermID string
+	var clientID, billingID, ordersPermID, billingPermID, appURL string
+	secret := clientName + "-oidc-credentials"
+
+	// builtInToken requests a client-credentials token with the Secret's built-in API pair.
+	builtInToken := func() string {
+		GinkgoHelper()
+		token, errCode := clientCredentialsToken(secretData(secret, userNS, "client_id"), secretData(secret, userNS, "client_secret"), url.Values{
+			"resource": {secretData(secret, userNS, "resource_pocket_id")},
+			"scope":    {secretData(secret, userNS, "scopes_pocket_id")},
+		})
+		Expect(errCode).To(BeEmpty())
+		return token
+	}
+	builtInGrants := func(scopes ...string) []APIAccessGrant {
+		return []APIAccessGrant{
+			{APIRefName: ordersName, DelegatedPermissions: []string{"read:orders"}},
+			{APIRefName: billingName, ClientPermissions: []string{"read:billing"}},
+			{BuiltIn: true, ClientPermissions: scopes},
+		}
+	}
 
 	BeforeAll(func() {
-		By("creating two APIs and a client granted access to both")
+		By("creating two APIs and a client granted access to both and to the built-in API")
 		createAPIAndWaitReady(APIOptions{
 			Name: ordersName, Resource: ordersRes,
 			Permissions: []APIPermissionOption{{Key: "read:orders", Name: "Read orders"}},
@@ -545,38 +568,78 @@ var _ = Describe("PocketIDAPI Multi-API Grants", Ordered, func() {
 		createOIDCClientAndWaitReady(OIDCClientOptions{
 			Name:         clientName,
 			CallbackURLs: []string{"https://multi.e2e.example.com/callback"},
-			APIAccess: []APIAccessGrant{
-				{APIRefName: ordersName, DelegatedPermissions: []string{"read:orders"}},
-				{APIRefName: billingName, ClientPermissions: []string{"read:billing"}},
-			},
+			APIAccess:    builtInGrants("users:read"),
 		})
 		clientID = waitForStatusFieldNotEmpty("pocketidoidcclient", clientName, userNS, ".status.clientID")
+		appURL = getField("pocketidinstance", instanceName, instanceNS, ".spec.appUrl")
 	})
 
-	It("should grant both APIs independently", func() {
+	It("should grant every API independently", func() {
 		Eventually(func(g Gomega) {
 			body := getFromPocketID("/api/admin/api-access/" + clientID + "/apis")
 			g.Expect(body).To(ContainSubstring(fmt.Sprintf(`"userDelegatedPermissionIds":["%s"]`, ordersPermID)))
 			g.Expect(body).To(ContainSubstring(fmt.Sprintf(`"clientPermissionIds":["%s"]`, billingPermID)))
+			g.Expect(body).To(ContainSubstring(pocketid.BuiltInAPIID))
 		}).Should(Succeed())
 	})
 
 	It("should publish a resource and scopes pair per API in the credentials Secret", func() {
-		secret := clientName + "-oidc-credentials"
 		Eventually(func(g Gomega) {
 			g.Expect(secretData(secret, userNS, "resource_"+ordersName)).To(Equal(ordersRes))
 			g.Expect(secretData(secret, userNS, "resource_"+billingName)).To(Equal(billingRes))
 			// Only billing has a client-credentials permission.
 			g.Expect(secretData(secret, userNS, "scopes_"+ordersName)).To(BeEmpty())
 			g.Expect(secretData(secret, userNS, "scopes_"+billingName)).To(Equal("read:billing"))
-			// Two audiences, so the bare pair is left out.
+			g.Expect(getField("pocketidoidcclient", clientName, userNS, ".status.builtInAPIResource")).To(Equal(appURL + "/api"))
+			g.Expect(secretData(secret, userNS, "resource_pocket_id")).To(Equal(appURL + "/api"))
+			g.Expect(secretData(secret, userNS, "scopes_pocket_id")).To(Equal("users:read"))
+			// Several audiences, so the bare pair is left out.
 			g.Expect(secretData(secret, userNS, "resource")).To(BeEmpty())
 			g.Expect(secretData(secret, userNS, "scopes")).To(BeEmpty())
 		}).Should(Succeed())
+
+		By("calling Pocket ID's admin API with a token for the built-in API's pair")
+		token := builtInToken()
+		Expect(pocketIDStatusForBearer(token, "/api/admin/users")).To(Equal(http.StatusOK))
+		Expect(pocketIDStatusForBearer(token, "/api/admin/user-groups")).To(Equal(http.StatusForbidden), "the token holds only users:read")
+	})
+
+	// After the first grant, the built-in API's permission IDs come from the client's grant
+	// listing instead of a fetch of the API, so a later change exercises that path.
+	It("should follow later changes to the built-in grant", func() {
+		By("adding groups:read")
+		createOIDCClient(OIDCClientOptions{
+			Name:         clientName,
+			CallbackURLs: []string{"https://multi.e2e.example.com/callback"},
+			APIAccess:    builtInGrants("users:read", "groups:read"),
+		})
+		waitForReconciled("pocketidoidcclient", clientName, userNS)
+		Eventually(func(g Gomega) {
+			g.Expect(secretData(secret, userNS, "scopes_pocket_id")).To(Equal("groups:read users:read"))
+		}).Should(Succeed())
+		Expect(pocketIDStatusForBearer(builtInToken(), "/api/admin/user-groups")).To(Equal(http.StatusOK))
+
+		// Pocket-ID drops it from the grant, so the Secret's scopes would be refused at the
+		// token endpoint.
+		By("listing an account scope, which the client-credentials flow can't hold")
+		createOIDCClient(OIDCClientOptions{
+			Name:         clientName,
+			CallbackURLs: []string{"https://multi.e2e.example.com/callback"},
+			APIAccess:    builtInGrants("users:read", "account:read"),
+		})
+		waitForConditionReason("pocketidoidcclient", clientName, userNS, "Ready", "APIAccessReconcileError")
+
+		By("restoring the grant")
+		createOIDCClient(OIDCClientOptions{
+			Name:         clientName,
+			CallbackURLs: []string{"https://multi.e2e.example.com/callback"},
+			APIAccess:    builtInGrants("users:read"),
+		})
+		waitForReconciled("pocketidoidcclient", clientName, userNS)
 	})
 
 	It("should revoke only the dropped API and leave the other grant intact", func() {
-		By("dropping the billing entry and keeping orders")
+		By("dropping the billing and built-in entries and keeping orders")
 		createOIDCClient(OIDCClientOptions{
 			Name:         clientName,
 			CallbackURLs: []string{"https://multi.e2e.example.com/callback"},
@@ -590,12 +653,14 @@ var _ = Describe("PocketIDAPI Multi-API Grants", Ordered, func() {
 			body := getFromPocketID("/api/admin/api-access/" + clientID + "/apis")
 			g.Expect(body).NotTo(ContainSubstring(billingPermID),
 				"the dropped API's grant should be gone")
+			g.Expect(body).NotTo(ContainSubstring(pocketid.BuiltInAPIID),
+				"the dropped built-in grant should be gone")
+			g.Expect(getField("pocketidoidcclient", clientName, userNS, ".status.builtInAPIResource")).To(BeEmpty())
 			g.Expect(body).To(ContainSubstring(ordersPermID),
 				"the surviving entry must not be collateral damage")
 		}).Should(Succeed())
 
 		By("verifying the credentials Secret dropped the billing keys and regained the bare pair")
-		secret := clientName + "-oidc-credentials"
 		Eventually(func(g Gomega) {
 			g.Expect(secretData(secret, userNS, "resource_"+billingName)).To(BeEmpty())
 			g.Expect(secretData(secret, userNS, "scopes_"+billingName)).To(BeEmpty())
@@ -605,8 +670,7 @@ var _ = Describe("PocketIDAPI Multi-API Grants", Ordered, func() {
 		}).Should(Succeed())
 	})
 
-	// The operator owns every grant the client holds except on the built-in API, so other access
-	// granted in the UI is revoked.
+	// The operator owns every grant the client holds, so access granted in the UI is revoked.
 	It("should revoke access granted outside the operator", func() {
 		grantAPIAccessInPocketID(billingID, clientID, billingPermID)
 		grantAPIAccessInPocketID(pocketid.BuiltInAPIID, clientID)
@@ -618,7 +682,7 @@ var _ = Describe("PocketIDAPI Multi-API Grants", Ordered, func() {
 			body := getFromPocketID("/api/admin/api-access/" + clientID + "/apis")
 			g.Expect(body).NotTo(ContainSubstring(billingPermID), "the grant made in the UI should be revoked")
 			g.Expect(body).To(ContainSubstring(ordersPermID), "the spec's grant must stay")
-			g.Expect(body).To(ContainSubstring(pocketid.BuiltInAPIID), "the built-in API's grant must stay")
+			g.Expect(body).NotTo(ContainSubstring(pocketid.BuiltInAPIID), "the built-in grant made in the UI should be revoked")
 		}).Should(Succeed())
 	})
 
@@ -755,5 +819,107 @@ var _ = Describe("PocketIDAPI Adoption", Ordered, func() {
 
 	AfterAll(func() {
 		_ = deleteObjectAndWait("pocketidapi", apiName, userNS, time.Minute)
+	})
+})
+
+// Serial because the built-in API's CIMD access reaches every CIMD client, and the CIMD specs
+// assert exactly which APIs their clients reach.
+var _ = Describe("Built-in Pocket ID API CIMD Access", Serial, Ordered, func() {
+	const clientName = "builtin-cimd-client"
+	var builtInResource string
+
+	setBuiltInAPI := func(value string) {
+		GinkgoHelper()
+		Expect(patchObject("pocketidinstance", instanceName, instanceNS, `{"spec":{"builtInAPI":`+value+`}}`)).To(Succeed())
+	}
+	cimdAccess := func(g Gomega) (bool, []string) {
+		ctx, cancel := testCtx()
+		defer cancel()
+		api, err := pid.Decode[pid.APIResponseDto](pocketID.GetAPIByID(ctx, pocketid.BuiltInAPIID))
+		g.Expect(err).NotTo(HaveOccurred())
+		var keys []string
+		for _, p := range api.Permissions {
+			if p.AllowedForCIMDClients {
+				keys = append(keys, p.Key)
+			}
+		}
+		return api.AllowCIMDClients, keys
+	}
+	cimdGrantedAPIs := func() string {
+		return getField("pocketidoidcclient", clientName, userNS, ".status.cimdGrantedAPIs[*]")
+	}
+	clientGrants := func() string {
+		return getFromPocketID("/api/admin/api-access/" + encodeCIMDClientID(cimdMetadataURL) + "/apis")
+	}
+
+	BeforeAll(func() {
+		builtInResource = getField("pocketidinstance", instanceName, instanceNS, ".spec.appUrl") + "/api"
+		requireCIMDDocumentReachable()
+		materializeCIMDClient()
+		createOIDCClient(OIDCClientOptions{Name: clientName, ClientID: cimdMetadataURL})
+		waitForReady("pocketidoidcclient", clientName, userNS)
+	})
+
+	It("should let every CIMD client request the listed permissions", func() {
+		setBuiltInAPI(`{"cimdPermissions":["users:read"]}`)
+		Eventually(func(g Gomega) {
+			enabled, keys := cimdAccess(g)
+			g.Expect(enabled).To(BeTrue())
+			g.Expect(keys).To(ConsistOf("users:read"))
+		}).Should(Succeed())
+
+		By("verifying the CIMD client reports the built-in API and keeps it")
+		Eventually(func(g Gomega) {
+			g.Expect(cimdGrantedAPIs()).To(Equal(builtInResource))
+		}).Should(Succeed())
+		waitForReady("pocketidoidcclient", clientName, userNS)
+	})
+
+	It("should grant a CIMD client the built-in API through apiAccess", func() {
+		createOIDCClient(OIDCClientOptions{
+			Name:      clientName,
+			ClientID:  cimdMetadataURL,
+			APIAccess: []APIAccessGrant{{BuiltIn: true, DelegatedPermissions: []string{"users:read"}}},
+		})
+		waitForReconciled("pocketidoidcclient", clientName, userNS)
+		Expect(clientGrants()).To(ContainSubstring(`"userDelegatedAccess":true`))
+
+		By("dropping the entry, which revokes the grant but not the CIMD access")
+		createOIDCClient(OIDCClientOptions{Name: clientName, ClientID: cimdMetadataURL})
+		waitForReconciled("pocketidoidcclient", clientName, userNS)
+		Eventually(func(g Gomega) {
+			g.Expect(clientGrants()).NotTo(ContainSubstring(`"userDelegatedAccess":true`))
+		}).Should(Succeed())
+		Expect(cimdGrantedAPIs()).To(Equal(builtInResource))
+	})
+
+	It("should leave the setting alone once spec.builtInAPI is unset", func() {
+		setBuiltInAPI(`null`)
+		// Not waitForReconciled: an instance's Ready reason is "Ready", not "Reconciled".
+		gen := getField("pocketidinstance", instanceName, instanceNS, ".metadata.generation")
+		waitForStatusField("pocketidinstance", instanceName, instanceNS, ".status.conditions[?(@.type=='Ready')].observedGeneration", gen)
+		Consistently(func(g Gomega) {
+			enabled, keys := cimdAccess(g)
+			g.Expect(enabled).To(BeTrue())
+			g.Expect(keys).To(ConsistOf("users:read"))
+		}, 10*time.Second, time.Second).Should(Succeed())
+	})
+
+	It("should turn the access off when no permissions are listed", func() {
+		setBuiltInAPI(`{}`)
+		Eventually(func(g Gomega) {
+			enabled, keys := cimdAccess(g)
+			g.Expect(enabled).To(BeFalse())
+			g.Expect(keys).To(BeEmpty())
+		}).Should(Succeed())
+		Eventually(func(g Gomega) {
+			g.Expect(cimdGrantedAPIs()).To(BeEmpty())
+		}).Should(Succeed())
+	})
+
+	AfterAll(func() {
+		_ = patchObject("pocketidinstance", instanceName, instanceNS, `{"spec":{"builtInAPI":null}}`)
+		deleteObject("pocketidoidcclient", clientName, userNS)
+		waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 	})
 })

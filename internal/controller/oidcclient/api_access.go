@@ -36,16 +36,14 @@ import (
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
+// builtInAPIKeySuffix suffixes the built-in API's Secret keys. The underscore keeps it from
+// colliding with an apiRef.name, which is a DNS-1123 name.
+const builtInAPIKeySuffix = "pocket_id"
+
 // ReconcileAPIAccess makes this client's API access in Pocket-ID exactly spec.apiAccess. The
-// operator owns every grant the client holds except on the built-in API, so other access granted
-// outside the operator is revoked.
+// operator owns every grant the client holds, so access granted outside the operator is revoked.
 func (r *Reconciler) ReconcileAPIAccess(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client) error {
 	log := logf.FromContext(ctx)
-
-	desired, err := r.resolveAPIAccess(ctx, oidcClient)
-	if err != nil {
-		return err
-	}
 
 	id := pid.OIDCClientID(oidcClient.Status.ClientID)
 	current, err := pid.Decode[[]pid.ClientAPIGrantDto](apiClient.ListAPIsClientMayAccess(ctx, id))
@@ -53,9 +51,25 @@ func (r *Reconciler) ReconcileAPIAccess(ctx context.Context, oidcClient *pocketi
 		return fmt.Errorf("list API client grants: %w", err)
 	}
 
+	builtIn, err := builtInAPI(ctx, oidcClient, apiClient, current)
+	if err != nil {
+		return err
+	}
+	desired, err := r.resolveAPIAccess(ctx, oidcClient, builtIn)
+	if err != nil {
+		return err
+	}
+
 	for _, apiID := range slices.Sorted(maps.Keys(desired)) {
-		if err := pid.Check(apiClient.UpdateClientAccessToAPI(ctx, apiID, id, desired[apiID])); err != nil {
+		applied, err := pid.Decode[pid.APIClientGrantDto](apiClient.UpdateClientAccessToAPI(ctx, apiID, id, desired[apiID]))
+		if err != nil {
 			return fmt.Errorf("set API client grant: %w", err)
+		}
+		// Pocket-ID silently drops client permissions it can't grant, such as the built-in API's
+		// account scopes, and the token endpoint would then refuse the Secret's scopes.
+		if want := len(desired[apiID].ClientPermissionIDs.MustGet()); len(applied.ClientPermissionIDs) != want {
+			return fmt.Errorf("only %d of the %d clientPermissions on API %s can be granted to the client-credentials flow",
+				len(applied.ClientPermissionIDs), want, apiID)
 		}
 	}
 
@@ -68,7 +82,7 @@ func (r *Reconciler) ReconcileAPIAccess(ctx context.Context, oidcClient *pocketi
 		// which the API owns.
 		ownGrant := grant.ClientAccess || grant.UserDelegatedAccess ||
 			len(grant.ClientPermissionIDs) > 0 || len(grant.UserDelegatedPermissionIDs) > 0
-		if _, wanted := desired[grant.API.ID]; wanted || !ownGrant || grant.API.ID == pocketid.BuiltInAPIID {
+		if _, wanted := desired[grant.API.ID]; wanted || !ownGrant {
 			continue
 		}
 		log.Info("Revoking client API access", "name", oidcClient.Name, "apiID", grant.API.ID)
@@ -80,59 +94,85 @@ func (r *Reconciler) ReconcileAPIAccess(ctx context.Context, oidcClient *pocketi
 	slices.Sort(cimdGranted)
 	base := oidcClient.DeepCopy()
 	oidcClient.Status.CIMDGrantedAPIs = cimdGranted
+	oidcClient.Status.BuiltInAPIResource = builtIn.Resource
 	if err := common.PatchStatus(ctx, r.Client, oidcClient, base); err != nil {
 		return fmt.Errorf("update API access status: %w", err)
 	}
 	return nil
 }
 
+// builtInAPI returns the built-in API, or the zero value when spec.apiAccess doesn't grant it. A
+// client that already holds access lists the API with its permissions, so the API is only
+// fetched for a first grant.
+func builtInAPI(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client, current []pid.ClientAPIGrantDto) (pid.APIResponseDto, error) {
+	if !slices.ContainsFunc(oidcClient.Spec.APIAccess, func(a pocketidinternalv1alpha1.OIDCClientAPIAccess) bool { return a.BuiltIn }) {
+		return pid.APIResponseDto{}, nil
+	}
+	if i := slices.IndexFunc(current, func(g pid.ClientAPIGrantDto) bool { return g.API.ID == pocketid.BuiltInAPIID }); i >= 0 {
+		return current[i].API, nil
+	}
+	api, err := pid.Decode[pid.APIResponseDto](apiClient.GetAPIByID(ctx, pocketid.BuiltInAPIID))
+	if err != nil {
+		return pid.APIResponseDto{}, fmt.Errorf("get built-in API: %w", err)
+	}
+	return api, nil
+}
+
 // resolveAPIAccess resolves spec.apiAccess into the desired grant per Pocket-ID API ID by
 // looking up each referenced PocketIDAPI and mapping permission keys to their Pocket-ID IDs.
-// Entries that grant nothing are omitted: Pocket-ID stores no row for them. A flow granted with
-// no permissions is still a grant, and is kept.
-func (r *Reconciler) resolveAPIAccess(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) (map[string]pid.APIClientGrantUpdateDto, error) {
+// builtIn is the built-in API, for its permissions. Entries that grant nothing are omitted:
+// Pocket-ID stores no row for them. A flow granted with no permissions is still a grant, and is kept.
+func (r *Reconciler) resolveAPIAccess(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, builtIn pid.APIResponseDto) (map[string]pid.APIClientGrantUpdateDto, error) {
 	delegatedIDs := make(map[string]map[string]struct{})
 	clientIDs := make(map[string]map[string]struct{})
 	delegatedAccess := make(map[string]bool)
 	clientAccess := make(map[string]bool)
+	builtInIDs := make(map[string]string, len(builtIn.Permissions))
+	for _, p := range builtIn.Permissions {
+		builtInIDs[p.Key] = p.ID
+	}
 
 	for _, grant := range oidcClient.Spec.APIAccess {
-		if grant.APIRef.Name == "" {
-			return nil, fmt.Errorf("apiAccess entry has an empty apiRef.name")
-		}
-		namespace := grant.APIRef.Namespace
-		if namespace == "" {
-			namespace = oidcClient.Namespace
+		apiID, apiName, keyToID := pocketid.BuiltInAPIID, "Pocket ID", builtInIDs
+		if !grant.BuiltIn {
+			if grant.APIRef.Name == "" {
+				return nil, fmt.Errorf("apiAccess entry has an empty apiRef.name")
+			}
+			namespace := grant.APIRef.Namespace
+			if namespace == "" {
+				namespace = oidcClient.Namespace
+			}
+
+			api := &pocketidinternalv1alpha1.PocketIDAPI{}
+			if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: grant.APIRef.Name}, api); err != nil {
+				return nil, fmt.Errorf("get API %s: %w", grant.APIRef.Name, err)
+			}
+			if !helpers.IsResourceReady(api.Status.Conditions) {
+				return nil, fmt.Errorf("API %s is not ready (Ready condition not True)", grant.APIRef.Name)
+			}
+			if api.Status.APIID == "" {
+				return nil, fmt.Errorf("API %s has no Pocket-ID ID in status", grant.APIRef.Name)
+			}
+
+			apiID, apiName = api.Status.APIID, grant.APIRef.Name
+			keyToID = make(map[string]string, len(api.Status.Permissions))
+			for _, p := range api.Status.Permissions {
+				keyToID[p.Key] = p.ID
+			}
 		}
 
-		api := &pocketidinternalv1alpha1.PocketIDAPI{}
-		if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: grant.APIRef.Name}, api); err != nil {
-			return nil, fmt.Errorf("get API %s: %w", grant.APIRef.Name, err)
+		if _, ok := delegatedIDs[apiID]; !ok {
+			delegatedIDs[apiID] = make(map[string]struct{})
+			clientIDs[apiID] = make(map[string]struct{})
 		}
-		if !helpers.IsResourceReady(api.Status.Conditions) {
-			return nil, fmt.Errorf("API %s is not ready (Ready condition not True)", grant.APIRef.Name)
-		}
-		if api.Status.APIID == "" {
-			return nil, fmt.Errorf("API %s has no Pocket-ID ID in status", grant.APIRef.Name)
-		}
-
-		keyToID := make(map[string]string, len(api.Status.Permissions))
-		for _, p := range api.Status.Permissions {
-			keyToID[p.Key] = p.ID
-		}
-
-		if _, ok := delegatedIDs[api.Status.APIID]; !ok {
-			delegatedIDs[api.Status.APIID] = make(map[string]struct{})
-			clientIDs[api.Status.APIID] = make(map[string]struct{})
-		}
-		delegatedAccess[api.Status.APIID] = delegatedAccess[api.Status.APIID] ||
+		delegatedAccess[apiID] = delegatedAccess[apiID] ||
 			accessRequested(grant.DelegatedAccess, grant.DelegatedPermissions)
-		clientAccess[api.Status.APIID] = clientAccess[api.Status.APIID] ||
+		clientAccess[apiID] = clientAccess[apiID] ||
 			accessRequested(grant.ClientAccess, grant.ClientPermissions)
-		if err := collectPermissionIDs(grant.DelegatedPermissions, keyToID, grant.APIRef.Name, delegatedIDs[api.Status.APIID]); err != nil {
+		if err := collectPermissionIDs(grant.DelegatedPermissions, keyToID, apiName, delegatedIDs[apiID]); err != nil {
 			return nil, err
 		}
-		if err := collectPermissionIDs(grant.ClientPermissions, keyToID, grant.APIRef.Name, clientIDs[api.Status.APIID]); err != nil {
+		if err := collectPermissionIDs(grant.ClientPermissions, keyToID, apiName, clientIDs[apiID]); err != nil {
 			return nil, err
 		}
 	}
@@ -194,8 +234,8 @@ func setTokenParams(secretData map[string][]byte, resourceKey, scopesKey, resour
 
 // apiTokenParams is what one API contributes to the credentials Secret.
 type apiTokenParams struct {
-	// name is the apiRef.name, used as the Secret key suffix. Resources are usually URIs,
-	// which are not legal Secret keys; a DNS-1123 name always is.
+	// name is the apiRef.name, or builtInAPIKeySuffix, used as the Secret key suffix. Resources
+	// are usually URIs, which are not legal Secret keys; a DNS-1123 name always is.
 	name      string
 	namespace string
 	resource  string
@@ -208,34 +248,40 @@ func (r *Reconciler) resolveAPITokenParams(ctx context.Context, oidcClient *pock
 	byName := make(map[string]*apiTokenParams)
 
 	for _, grant := range oidcClient.Spec.APIAccess {
-		namespace := grant.APIRef.Namespace
-		if namespace == "" {
+		name, namespace := grant.APIRef.Name, grant.APIRef.Namespace
+		if grant.BuiltIn {
+			name = builtInAPIKeySuffix
+		} else if namespace == "" {
 			namespace = oidcClient.Namespace
 		}
 
-		entry, seen := byName[grant.APIRef.Name]
+		entry, seen := byName[name]
 		if seen && entry.namespace != namespace {
 			// Both would claim the same Secret key, so fail instead of letting one win.
 			return nil, fmt.Errorf("apiAccess references two APIs named %q, in namespaces %s and %s, which collide on the same secret key",
-				grant.APIRef.Name, entry.namespace, namespace)
+				name, entry.namespace, namespace)
 		}
 		if !seen {
-			api := &pocketidinternalv1alpha1.PocketIDAPI{}
-			if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: grant.APIRef.Name}, api); err != nil {
-				return nil, fmt.Errorf("get API %s: %w", grant.APIRef.Name, err)
-			}
-			// Status is what Pocket-ID holds. Spec covers a status not written back yet.
-			resource := api.Status.Resource
-			if resource == "" {
-				resource = api.Spec.Resource
+			// Status is what Pocket-ID reports for the built-in API.
+			resource := oidcClient.Status.BuiltInAPIResource
+			if !grant.BuiltIn {
+				api := &pocketidinternalv1alpha1.PocketIDAPI{}
+				if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, api); err != nil {
+					return nil, fmt.Errorf("get API %s: %w", name, err)
+				}
+				// Status is what Pocket-ID holds. Spec covers a status not written back yet.
+				resource = api.Status.Resource
+				if resource == "" {
+					resource = api.Spec.Resource
+				}
 			}
 			entry = &apiTokenParams{
-				name:      grant.APIRef.Name,
+				name:      name,
 				namespace: namespace,
 				resource:  resource,
 				scopes:    make(map[string]struct{}),
 			}
-			byName[grant.APIRef.Name] = entry
+			byName[name] = entry
 		}
 		for _, key := range grant.ClientPermissions {
 			entry.scopes[key] = struct{}{}

@@ -10,6 +10,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 )
 
@@ -58,7 +60,7 @@ func TestResolveAPIAccess_MapsKeysToIDs(t *testing.T) {
 
 	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(api).Build()}
 
-	got, err := r.resolveAPIAccess(context.Background(), oidcClient)
+	got, err := r.resolveAPIAccess(context.Background(), oidcClient, pid.APIResponseDto{})
 	if err != nil {
 		t.Fatalf("resolveAPIAccess: %v", err)
 	}
@@ -86,7 +88,7 @@ func TestResolveAPIAccess_ErrorsWhenAPINotReady(t *testing.T) {
 	}})
 
 	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(api).Build()}
-	if _, err := r.resolveAPIAccess(context.Background(), oidcClient); err == nil {
+	if _, err := r.resolveAPIAccess(context.Background(), oidcClient, pid.APIResponseDto{}); err == nil {
 		t.Fatal("expected error when API not ready")
 	}
 }
@@ -100,7 +102,7 @@ func TestResolveAPIAccess_ErrorsOnUnknownPermissionKey(t *testing.T) {
 	}})
 
 	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(api).Build()}
-	if _, err := r.resolveAPIAccess(context.Background(), oidcClient); err == nil {
+	if _, err := r.resolveAPIAccess(context.Background(), oidcClient, pid.APIResponseDto{}); err == nil {
 		t.Fatal("expected error for unknown permission key")
 	}
 }
@@ -116,7 +118,7 @@ func TestResolveAPIAccess_ExplicitAccessWithoutPermissions(t *testing.T) {
 
 	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(api).Build()}
 
-	got, err := r.resolveAPIAccess(context.Background(), oidcClient)
+	got, err := r.resolveAPIAccess(context.Background(), oidcClient, pid.APIResponseDto{})
 	if err != nil {
 		t.Fatalf("resolveAPIAccess: %v", err)
 	}
@@ -138,7 +140,7 @@ func TestResolveAPIAccess_OmitsEntryGrantingNothing(t *testing.T) {
 
 	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(api).Build()}
 
-	got, err := r.resolveAPIAccess(context.Background(), oidcClient)
+	got, err := r.resolveAPIAccess(context.Background(), oidcClient, pid.APIResponseDto{})
 	if err != nil {
 		t.Fatalf("resolveAPIAccess: %v", err)
 	}
@@ -274,9 +276,11 @@ func TestResolveAPITokenParams_SortsByReferencedName(t *testing.T) {
 	billing.Name = "billing"
 	billing.Status.Resource = "https://billing.example.com"
 	oidcClient := clientWithAccess([]pocketidinternalv1alpha1.OIDCClientAPIAccess{
+		{BuiltIn: true},
 		{APIRef: pocketidinternalv1alpha1.NamespacedAPIReference{Name: "orders"}},
 		{APIRef: pocketidinternalv1alpha1.NamespacedAPIReference{Name: "billing"}},
 	})
+	oidcClient.Status.BuiltInAPIResource = "https://id.example.com/api"
 
 	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(s).WithObjects(orders, billing).Build()}
 
@@ -284,8 +288,11 @@ func TestResolveAPITokenParams_SortsByReferencedName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolveAPITokenParams: %v", err)
 	}
-	if len(params) != 2 || params[0].name != "billing" || params[1].name != "orders" {
+	if len(params) != 3 || params[0].name != "billing" || params[1].name != "orders" || params[2].name != "pocket_id" {
 		t.Fatalf("expected entries sorted by name, got %+v", params)
+	}
+	if params[2].resource != "https://id.example.com/api" {
+		t.Fatalf("built-in resource = %q", params[2].resource)
 	}
 }
 

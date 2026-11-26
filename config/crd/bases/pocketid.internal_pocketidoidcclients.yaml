@@ -96,12 +96,13 @@ spec:
                 type: array
               apiAccess:
                 description: 'APIAccess grants this client permission to request scoped
-                  access on the referenced PocketIDAPIs. The operator owns all of
-                  the client''s grants: access granted outside the operator is revoked.'
+                  access on the referenced PocketIDAPIs or the built-in Pocket ID
+                  API. The operator owns all of the client''s grants: access granted
+                  outside the operator is revoked.'
                 items:
                   description: |-
-                    OIDCClientAPIAccess grants a client scoped permissions on a referenced PocketIDAPI.
-                    Permissions are referenced by their key and the operator resolves them to Pocket-ID permission IDs via the PocketIDAPI status.
+                    OIDCClientAPIAccess grants a client scoped permissions on a referenced PocketIDAPI, or on the built-in Pocket ID API.
+                    Permissions are referenced by their key and the operator resolves them to Pocket-ID permission IDs.
                     The access flags grant a flow that selects no permissions, so setting one to false alongside a permission list is rejected rather than silently ignoring the list.
                   properties:
                     apiRef:
@@ -118,6 +119,11 @@ spec:
                       required:
                       - name
                       type: object
+                    builtIn:
+                      description: BuiltIn grants access to the built-in Pocket ID
+                        API, whose resource is <appUrl>/api and whose permissions
+                        are Pocket ID's own scopes, e.g. "users:read".
+                      type: boolean
                     clientAccess:
                       description: |-
                         ClientAccess grants the client-credentials flow even with no permissions selected.
@@ -142,10 +148,10 @@ spec:
                       items:
                         type: string
                       type: array
-                  required:
-                  - apiRef
                   type: object
                   x-kubernetes-validations:
+                  - message: exactly one of apiRef and builtIn must be set
+                    rule: has(self.apiRef) != (has(self.builtIn) && self.builtIn)
                   - message: 'delegatedAccess: false conflicts with delegatedPermissions;
                       drop the permissions to revoke the flow, or remove the flag
                       to grant them'
@@ -156,6 +162,7 @@ spec:
                       to grant them'
                     rule: '!has(self.clientAccess) || self.clientAccess || !has(self.clientPermissions)
                       || size(self.clientPermissions) == 0'
+                maxItems: 100
                 type: array
               backchannelLogoutUrl:
                 description: Back-channel logout URL Pocket-ID notifies when a user's
@@ -688,6 +695,11 @@ spec:
                 items:
                   type: string
                 type: array
+              builtInAPIResource:
+                description: BuiltInAPIResource is the built-in Pocket ID API's resource,
+                  as Pocket-ID reports it, while spec.apiAccess grants it. It is the
+                  audience the client requests tokens for.
+                type: string
               callbackUrls:
                 description: CallbackURLs are the current callback URLs from Pocket-ID
                 items:

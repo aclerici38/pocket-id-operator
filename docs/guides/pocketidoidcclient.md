@@ -148,6 +148,7 @@ Each `publicKeys` entry is either an inline JWK (`value`) or a ConfigMap or Secr
 
 - To grant a flow without any scopes (MCP client) set `delegatedAccess` or `clientAccess` instead of listing permissions. See [example](../examples/pocketidoidcclient.md#access-without-scopes). Both default to `true` when the matching permission list is non-empty. Setting one to `false` while listing permissions for the same flow is rejected at admission.
 - `clientPermissions` and `clientAccess` require a confidential client (`isPublic: false`).
+- Set `builtIn: true` instead of `apiRef` to grant the [built-in Pocket ID API](pocketidapi.md#granting-the-built-in-pocket-id-api).
 - Removing an entry revokes the grant, since the operator tracks the APIs it granted, not just the permissions.
 
 The client is the sole owner of its API access in Pocket-ID; see [Granting Client Access](pocketidapi.md#granting-client-access) for the full details.
@@ -162,7 +163,7 @@ The credentials Secret carries what a token request needs, so nothing has to be 
 | `scopes_<api>` | The `clientPermissions` it grants, space-delimited. Omitted when the flow is granted no permissions, i.e. a request for the audience alone. |
 | `resource` / `scopes` | The same pair unsuffixed, written only while all the grants share an audience. |
 
-- The suffix is the `apiRef.name` because the audience is usually a URI, and Secret keys allow only letters, digits, `-`, `_` and `.`. Two entries with the same `apiRef.name` in different namespaces would collide on one key and are rejected.
+- The suffix is the `apiRef.name` because the audience is usually a URI, and Secret keys allow only letters, digits, `-`, `_` and `.`. Two entries with the same `apiRef.name` in different namespaces would collide on one key and are rejected. The built-in API's keys are suffixed with `pocket_id`, and its resource is the one Pocket-ID reports, also shown in `status.builtInAPIResource`.
 - `spec.secret.keys.resource` and `spec.secret.keys.scopes` also set the prefix of the suffixed keys.
 - A token is issued for one audience, so a client granted several APIs makes one token request per API. Granting a second audience removes the unsuffixed pair instead of picking one, so anything reading them fails loudly rather than requesting the wrong audience. Read the suffixed keys to be unaffected either way.
 
@@ -170,7 +171,7 @@ See examples for a [machine-to-machine token with External Secrets](../examples/
 
 ### Metadata Document Clients
 
-Clients registered through a [Client ID Metadata Document](#client-id-metadata-documents) often have no custom resource to grant from, so access can instead be granted to every such client at the API with [`spec.cimdAccess`](pocketidapi.md#granting-metadata-document-clients).
+Clients registered through a [Client ID Metadata Document](#client-id-metadata-documents) often have no custom resource to grant from, so access can instead be granted to every such client at the API with [`spec.cimdAccess`](pocketidapi.md#granting-metadata-document-clients), or for the built-in API with the `PocketIDInstance`'s `spec.builtInAPI.cimdPermissions`.
 
 ## Client ID Metadata Documents
 

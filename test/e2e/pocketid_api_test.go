@@ -108,10 +108,22 @@ func getAppConfigFieldFromPocketID(field string) string {
 func clientSecretAuthResult(clientID, clientSecret string) string {
 	GinkgoHelper()
 
+	token, errCode := clientCredentialsToken(clientID, clientSecret, url.Values{})
+	if token != "" {
+		return "ok"
+	}
+	return errCode
+}
+
+// clientCredentialsToken requests a client_credentials token with the extra form values, and
+// returns the access token or the OAuth error code.
+func clientCredentialsToken(clientID, clientSecret string, form url.Values) (string, string) {
+	GinkgoHelper()
+
 	ctx, cancel := testCtx()
 	defer cancel()
 
-	form := url.Values{"grant_type": []string{"client_credentials"}}
+	form.Set("grant_type", "client_credentials")
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		pocketIDBaseURL()+"/api/oidc/token", strings.NewReader(form.Encode()))
 	Expect(err).NotTo(HaveOccurred())
@@ -131,11 +143,23 @@ func clientSecretAuthResult(clientID, clientSecret string) string {
 	}
 	Expect(json.Unmarshal(raw, &decoded)).To(Succeed(),
 		"decoding token response (%d): %s", resp.StatusCode, raw)
+	return decoded.AccessToken, decoded.Error
+}
 
-	if decoded.AccessToken != "" {
-		return "ok"
-	}
-	return decoded.Error
+// pocketIDStatusForBearer reports how a GET of apiPath answers the access token.
+func pocketIDStatusForBearer(token, apiPath string) int {
+	GinkgoHelper()
+
+	ctx, cancel := testCtx()
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pocketIDBaseURL()+apiPath, nil)
+	Expect(err).NotTo(HaveOccurred())
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	Expect(err).NotTo(HaveOccurred(), "calling GET %s", apiPath)
+	defer func() { _ = resp.Body.Close() }()
+	return resp.StatusCode
 }
 
 func pocketIDUsernameForAPIKey(apiKey string) string {

@@ -447,6 +447,8 @@ func federatedIdentitiesFromPocketID(clientID string) []pid.OIDCClientFederatedI
 
 // APIAccessGrant configures a spec.apiAccess entry granting permissions on a PocketIDAPI.
 type APIAccessGrant struct {
+	// BuiltIn grants the built-in Pocket ID API instead of APIRefName.
+	BuiltIn              bool
 	APIRefName           string
 	APIRefNamespace      string
 	DelegatedPermissions []string
@@ -605,7 +607,11 @@ func buildOIDCClientYAML(opts OIDCClientOptions) string {
 	if len(opts.APIAccess) > 0 {
 		spec.WriteString("  apiAccess:\n")
 		for _, grant := range opts.APIAccess {
-			spec.WriteString(fmt.Sprintf("  - apiRef:\n      name: %s\n", grant.APIRefName))
+			if grant.BuiltIn {
+				spec.WriteString("  - builtIn: true\n")
+			} else {
+				spec.WriteString(fmt.Sprintf("  - apiRef:\n      name: %s\n", grant.APIRefName))
+			}
 			if grant.APIRefNamespace != "" {
 				spec.WriteString(fmt.Sprintf("      namespace: %s\n", grant.APIRefNamespace))
 			}
