@@ -622,12 +622,14 @@ func TestBuildEnvVars_WebAuthn(t *testing.T) {
 		UserVerification:        "preferred",
 		AllowSyncedPasskeys:     &allowSynced,
 		AuthenticatorAttachment: "cross-platform",
+		AllowedFrameAncestors:   []string{"https://a.example.com", "https://b.example.com"},
 	}
 
 	env := buildEnvVars(inst)
 	requireEnv(t, env, "WEBAUTHN_USER_VERIFICATION", "preferred")
 	requireEnv(t, env, "WEBAUTHN_ALLOW_SYNCED_PASSKEYS", "false")
 	requireEnv(t, env, "WEBAUTHN_AUTHENTICATOR_ATTACHMENT", "cross-platform")
+	requireEnv(t, env, "ALLOWED_FRAME_ANCESTORS", "https://a.example.com,https://b.example.com")
 }
 
 func TestBuildEnvVars_WebAuthnPartial(t *testing.T) {

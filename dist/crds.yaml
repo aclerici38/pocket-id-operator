@@ -3487,6 +3487,13 @@ spec:
                       Allow synced passkeys.
                       Sets WEBAUTHN_ALLOW_SYNCED_PASSKEYS. See https://pocket-id.org/docs/configuration/environment-variables.
                     type: boolean
+                  allowedFrameAncestors:
+                    description: |-
+                      Origins that may embed Pocket-ID in an iframe and sign in with a passkey there.
+                      Sets ALLOWED_FRAME_ANCESTORS. See https://pocket-id.org/docs/configuration/environment-variables.
+                    items:
+                      type: string
+                    type: array
                   authenticatorAttachment:
                     description: |-
                       Accepted authenticator type.
