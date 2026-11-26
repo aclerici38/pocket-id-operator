@@ -46,7 +46,7 @@ uv = "0.13.10"
 "pypi:zensical" = { version = "0.1.3", python = "3.14" }
 
 # Git hooks
-lefthook = "2.2.3"
+lefthook = "2.2.4"
 
 # Changelog generation
 "aqua:orhun/git-cliff" = "2.14.2"
