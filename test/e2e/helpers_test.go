@@ -286,6 +286,7 @@ type UserGroupOptions struct {
 	Namespace          string
 	GroupName          string
 	FriendlyName       string
+	Notes              string
 	CustomClaims       []CustomClaim
 	UserRefs           []ResourceRef
 	Usernames          []string
@@ -328,6 +329,9 @@ func buildUserGroupYAML(opts UserGroupOptions) string {
 	var spec strings.Builder
 	spec.WriteString(fmt.Sprintf("  name: %s\n", opts.GroupName))
 	spec.WriteString(fmt.Sprintf("  friendlyName: %s\n", opts.FriendlyName))
+	if opts.Notes != "" {
+		spec.WriteString(fmt.Sprintf("  notes: %q\n", opts.Notes))
+	}
 	spec.WriteString(instanceSelectorYAML(opts.InstanceSelector))
 
 	if len(opts.CustomClaims) > 0 {

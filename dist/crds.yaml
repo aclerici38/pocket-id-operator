@@ -4566,6 +4566,11 @@ spec:
                 maxLength: 255
                 minLength: 2
                 type: string
+              notes:
+                description: Notes about the user group. Notes set outside the operator
+                  are overwritten.
+                maxLength: 5000
+                type: string
               users:
                 description: Users is the group's full member list. When set, members
                   added outside the operator are removed; when unset, membership is

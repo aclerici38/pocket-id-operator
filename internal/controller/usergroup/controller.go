@@ -234,6 +234,7 @@ func (r *Reconciler) pushUserGroupState(ctx context.Context, userGroup *pocketid
 	group, err := pid.Decode[pid.UserGroupDto](apiClient.PatchUserGroup(ctx, id, pid.PatchUserGroupJSONRequestBody{
 		Name:         &name,
 		FriendlyName: &friendlyName,
+		Notes:        &userGroup.Spec.Notes,
 	}))
 	if err != nil {
 		return group, fmt.Errorf("update user group: %w", err)

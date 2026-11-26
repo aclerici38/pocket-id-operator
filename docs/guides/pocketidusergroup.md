@@ -17,7 +17,7 @@ metadata:
 spec: {}
 ```
 
-`spec.name` sets the group's name in Pocket-ID and defaults to `metadata.name`. `spec.friendlyName` sets its display name and defaults to the name.
+`spec.name` sets the group's name in Pocket-ID and defaults to `metadata.name`. `spec.friendlyName` sets its display name and defaults to the name. `spec.notes` sets the group's notes, overwriting any set outside the operator.
 
 ## Adopting Existing Groups
 

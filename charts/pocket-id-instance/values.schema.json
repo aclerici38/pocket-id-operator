@@ -4881,6 +4881,14 @@
                   "null"
                 ]
               },
+              "notes": {
+                "description": "Notes about the user group. Notes set outside the operator are overwritten.",
+                "maxLength": 5000,
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "users": {
                 "additionalProperties": false,
                 "description": "Users is the group's full member list. When set, members added outside the operator are removed; when unset, membership is left alone.",

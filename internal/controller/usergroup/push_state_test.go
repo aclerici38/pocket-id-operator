@@ -29,20 +29,19 @@ func existingGroup() []map[string]any {
 	return []map[string]any{{"id": groupID, "name": "old-name", "friendlyName": "Old", "notes": "kept"}}
 }
 
-// A field left out of a PATCH keeps its value in Pocket-ID, so both names are sent every time.
-// Notes are left to Pocket-ID.
+// A field left out of a PATCH keeps its value in Pocket-ID, so every field is sent every time.
 func TestPushUserGroupState_Patch(t *testing.T) {
 	tests := map[string]struct {
 		spec pocketidinternalv1alpha1.PocketIDUserGroupSpec
 		want map[string]any
 	}{
 		"every field set": {
-			spec: pocketidinternalv1alpha1.PocketIDUserGroupSpec{Name: "spec-name", FriendlyName: "Spec Friendly"},
-			want: map[string]any{"name": "spec-name", "friendlyName": "Spec Friendly"},
+			spec: pocketidinternalv1alpha1.PocketIDUserGroupSpec{Name: "spec-name", FriendlyName: "Spec Friendly", Notes: "Spec notes"},
+			want: map[string]any{"name": "spec-name", "friendlyName": "Spec Friendly", "notes": "Spec notes"},
 		},
 		// Both names fall back to metadata.name, so neither is ever sent empty.
 		"every field empty": {
-			want: map[string]any{"name": "resource-name", "friendlyName": "resource-name"},
+			want: map[string]any{"name": "resource-name", "friendlyName": "resource-name", "notes": ""},
 		},
 	}
 	for name, tt := range tests {

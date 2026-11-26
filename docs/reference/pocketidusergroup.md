@@ -13,6 +13,7 @@ PocketIDUserGroupSpec defines the desired state of PocketIDUserGroup.
 | `instanceSelector` | [LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#labelselector-v1-meta) |  |  | InstanceSelector selects the PocketIDInstance to reconcile against.<br />If omitted, the controller expects exactly one instance in the cluster. |
 | `name` | string |  |  | Name of the user group in Pocket-ID. Defaults to metadata.name.<br />_MaxLength: 255_<br />_MinLength: 2_ |
 | `friendlyName` | string |  |  | FriendlyName is the display name of the user group. Defaults to the name.<br />_MaxLength: 50_<br />_MinLength: 2_ |
+| `notes` | string |  |  | Notes about the user group. Notes set outside the operator are overwritten.<br />_MaxLength: 5000_ |
 | [`customClaims`](#pocketidusergroupspeccustomclaims) | []object |  |  | CustomClaims are additional claims to attach to every user in this group. A user's own claim with the same key takes precedence. |
 | [`users`](#pocketidusergroupspecusers) | object |  |  | Users is the group's full member list. When set, members added outside the operator are removed; when unset, membership is left alone. |
 | [`allowedOIDCClients`](#pocketidusergroupspecallowedoidcclients) | []object |  |  | AllowedOIDCClients lists PocketIDOIDCClient CRs that this group grants access to. Each must be Ready. The final set of allowed clients is the union of this field and any PocketIDOIDCClients that reference this group in their allowedUserGroups. |

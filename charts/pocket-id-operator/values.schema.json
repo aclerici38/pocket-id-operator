@@ -4887,6 +4887,14 @@
                       "null"
                     ]
                   },
+                  "notes": {
+                    "description": "Notes about the user group. Notes set outside the operator are overwritten.",
+                    "maxLength": 5000,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "users": {
                     "additionalProperties": false,
                     "description": "Users is the group's full member list. When set, members added outside the operator are removed; when unset, membership is left alone.",
@@ -10966,6 +10974,14 @@
                 "description": "Name of the user group in Pocket-ID. Defaults to metadata.name.",
                 "maxLength": 255,
                 "minLength": 2,
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "notes": {
+                "description": "Notes about the user group. Notes set outside the operator are overwritten.",
+                "maxLength": 5000,
                 "type": [
                   "string",
                   "null"
