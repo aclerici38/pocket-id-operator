@@ -69,7 +69,7 @@ func TestOIDCClientPatch_SendsEveryManagedField(t *testing.T) {
 	full := &pocketidinternalv1alpha1.PocketIDOIDCClient{
 		ObjectMeta: metav1.ObjectMeta{Name: "app"},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-			Name: "App", Description: "notes", BackchannelLogoutURL: "https://app.example.com/bc",
+			Name: "App", Notes: "notes", BackchannelLogoutURL: "https://app.example.com/bc",
 			LaunchURL: "https://app.example.com", IsPublic: true, PKCEEnabled: true,
 			RequiresReauthentication: true, RequiresPushedAuthorizationRequests: true, SkipConsent: true,
 			AccessTokenDurationMinutes: 5, RefreshTokenDurationMinutes: 10,

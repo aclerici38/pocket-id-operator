@@ -43,7 +43,7 @@ func TestOIDCClientPatch_MapsSpec(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "fallback-name"},
 		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
 			ClientID:                            "client-id",
-			Description:                         "a test client",
+			Notes:                               "a test client",
 			CallbackURLs:                        []string{"https://example.com/callback"},
 			LogoutCallbackURLs:                  []string{"https://example.com/logout"},
 			BackchannelLogoutURL:                "https://example.com/backchannel",

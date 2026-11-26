@@ -25,7 +25,7 @@ PocketIDOIDCClientSpec defines the desired state of PocketIDOIDCClient
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `name` | string |  |  | Name of the oidc client to create in Pocket ID. If omitted, defaults to metadata.name of the oidcclient resource. |
-| `description` | string |  |  | Description is an optional description for the client<br />_MaxLength: 150_ |
+| `notes` | string |  |  | Notes about the client, visible only to admins. Notes set outside the operator are overwritten.<br />_MaxLength: 5000_ |
 | `instanceSelector` | [LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#labelselector-v1-meta) |  |  | InstanceSelector selects the PocketIDInstance to reconcile against.<br />If omitted, the controller expects exactly one instance in the cluster. |
 | `clientID` | string |  |  | ClientID is the optional OIDC client ID to use instead of a generated one. The Client ID is immutable and cannot be changed once the oidc client is created.<br />An https:// URL marks the client as an OAuth Client ID Metadata Document (CIMD) client, which the operator adopts but never creates and only partially manages.<br />_MaxLength: 512_<br />_MinLength: 2_ |
 | `callbackUrls` | string array |  |  | Callback URLs for the client. Pocket-ID only redirects to registered URLs; unset clears any set outside the operator. |

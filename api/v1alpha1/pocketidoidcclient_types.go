@@ -313,10 +313,10 @@ type PocketIDOIDCClientSpec struct {
 	// +optional
 	Name string `json:"name,omitempty"`
 
-	// Description is an optional description for the client
-	// +kubebuilder:validation:MaxLength=150
+	// Notes about the client, visible only to admins. Notes set outside the operator are overwritten.
+	// +kubebuilder:validation:MaxLength=5000
 	// +optional
-	Description string `json:"description,omitempty"`
+	Notes string `json:"notes,omitempty"`
 
 	// InstanceSelector selects the PocketIDInstance to reconcile against.
 	// If omitted, the controller expects exactly one instance in the cluster.

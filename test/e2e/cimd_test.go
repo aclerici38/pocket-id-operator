@@ -79,7 +79,7 @@ var _ = Describe("Client ID Metadata Documents", Ordered, func() {
 			createOIDCClient(OIDCClientOptions{
 				Name:                       clientName,
 				ClientID:                   cimdMetadataURL,
-				Description:                "managed by e2e",
+				Notes:                      "managed by e2e",
 				SkipConsent:                true,
 				AccessTokenDurationMinutes: 15,
 			})
