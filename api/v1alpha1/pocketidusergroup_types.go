@@ -79,6 +79,11 @@ type PocketIDUserGroupSpec struct {
 	// +optional
 	FriendlyName string `json:"friendlyName,omitempty"`
 
+	// Notes about the user group. Notes set outside the operator are overwritten.
+	// +kubebuilder:validation:MaxLength=5000
+	// +optional
+	Notes string `json:"notes,omitempty"`
+
 	// CustomClaims are additional claims to attach to every user in this group. A user's own claim with the same key takes precedence.
 	// +optional
 	CustomClaims []CustomClaim `json:"customClaims,omitempty"`
