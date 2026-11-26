@@ -178,7 +178,7 @@ A `cimd` client is created by Pocket-ID from an OAuth Client ID Metadata Documen
 
 ### What the Operator Manages
 
-- The fields Pocket-ID persists on an admin update of a `cimd` client: `description`, `launchUrl`, `skipConsent`, `requiresReauthentication`, `requiresPushedAuthorizationRequests`, `accessTokenDurationMinutes`, and `refreshTokenDurationMinutes`.
+- The fields Pocket-ID persists on an admin update of a `cimd` client: `notes`, `launchUrl`, `skipConsent`, `requiresReauthentication`, `requiresPushedAuthorizationRequests`, `accessTokenDurationMinutes`, and `refreshTokenDurationMinutes`.
 - The parts Pocket-ID applies to any client type: `allowedUserGroups`, `logo`, `scim`, `apiAccess` delegated permissions, and the credentials `secret`.
 
 `name`, `callbackUrls`, `logoutCallbackUrls`, `backchannelLogoutUrl`, `isPublic`, `pkceEnabled`, `federatedIdentities`, `clientSecretRef`, `clientSecretRotation`, and `apiAccess` client permissions are owned by the metadata document or unsupported for a public client, and are rejected at admission. The document-owned ones still appear in `status` as observed values.

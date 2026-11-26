@@ -646,7 +646,7 @@ func oidcClientPatch(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, gr
 	spec := oidcClient.Spec
 	return pid.PatchOIDCClientJSONRequestBody{
 		Name:                                new(oidcClientName(oidcClient)),
-		Notes:                               &spec.Description,
+		Notes:                               &spec.Notes,
 		BackchannelLogoutURL:                &spec.BackchannelLogoutURL,
 		LaunchURL:                           pocketid.NullIfEmpty(spec.LaunchURL),
 		IsPublic:                            &spec.IsPublic,

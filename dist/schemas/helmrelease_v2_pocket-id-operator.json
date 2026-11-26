@@ -6905,14 +6905,6 @@
                               "null"
                             ]
                           },
-                          "description": {
-                            "description": "Description is an optional description for the client",
-                            "maxLength": 150,
-                            "type": [
-                              "string",
-                              "null"
-                            ]
-                          },
                           "federatedIdentities": {
                             "description": "FederatedIdentities configures JWT assertion identities.",
                             "items": {
@@ -7204,6 +7196,14 @@
                           },
                           "name": {
                             "description": "Name of the oidc client to create in Pocket ID. If omitted, defaults to metadata.name of the oidcclient resource.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "notes": {
+                            "description": "Notes about the client, visible only to admins. Notes set outside the operator are overwritten.",
+                            "maxLength": 5000,
                             "type": [
                               "string",
                               "null"

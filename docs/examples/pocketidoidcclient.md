@@ -27,7 +27,7 @@ metadata:
   name: internal-dashboard
   namespace: pocket-id
 spec:
-  description: "Internal admin dashboard"
+  notes: "Internal admin dashboard"
   callbackUrls:
     - "https://internal.example.com/oidc/callback"
   logoutCallbackUrls:
@@ -275,7 +275,7 @@ metadata:
   namespace: pocket-id
 spec:
   clientID: "https://apps.example.com/myapp/client-metadata.json"
-  description: "Self-registered via metadata document"
+  notes: "Self-registered via metadata document"
   launchUrl: "https://apps.example.com/myapp"
   skipConsent: false
   requiresReauthentication: true

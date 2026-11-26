@@ -918,7 +918,7 @@ var _ = Describe("PocketIDOIDCClient Controller", func() {
 
 		It("accepts a CIMD client setting only the fields Pocket-ID persists", func() {
 			resource := newClient("cimd-cel-ok", func(s *pocketidinternalv1alpha1.PocketIDOIDCClientSpec) {
-				s.Description = "Self-registered app"
+				s.Notes = "Self-registered app"
 				s.LaunchURL = "https://apps.example.com/myapp"
 				s.SkipConsent = true
 				s.RequiresReauthentication = true
