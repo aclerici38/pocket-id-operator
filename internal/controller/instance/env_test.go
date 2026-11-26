@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 )
@@ -570,22 +571,17 @@ func TestBuildEnvVars_UI(t *testing.T) {
 	inst := minimalInstance()
 	sessionDuration := int32(1440)
 	inst.Spec.UI = &pocketidinternalv1alpha1.UIConfig{
-		AppName:           "My SSO",
-		SessionDuration:   &sessionDuration,
-		HomePageURL:       "/dashboard",
-		DisableAnimations: new(true),
-		AccentColor:       "#3b82f6", //nolint:staticcheck // testing the deprecated field
-		ColorTheme:        "custom:#3b82f6:dark",
+		Appearance:      &apiextensionsv1.JSON{Raw: []byte(`{"primary":"#3b82f6"}`)},
+		AppName:         "My SSO",
+		SessionDuration: &sessionDuration,
+		HomePageURL:     "/dashboard",
 	}
 
-	// The deprecated field and its replacement pass through untouched; Pocket-ID resolves precedence
 	env := buildEnvVars(inst)
+	requireEnv(t, env, "APPEARANCE", `{"primary":"#3b82f6"}`)
 	requireEnv(t, env, "APP_NAME", "My SSO")
 	requireEnv(t, env, "SESSION_DURATION", "1440")
 	requireEnv(t, env, "HOME_PAGE_URL", "/dashboard")
-	requireEnv(t, env, "DISABLE_ANIMATIONS", "true")
-	requireEnv(t, env, "ACCENT_COLOR", "#3b82f6")
-	requireEnv(t, env, "COLOR_THEME", "custom:#3b82f6:dark")
 }
 
 func TestBuildEnvVars_UIEmpty(t *testing.T) {
@@ -593,8 +589,7 @@ func TestBuildEnvVars_UIEmpty(t *testing.T) {
 	inst.Spec.UI = &pocketidinternalv1alpha1.UIConfig{}
 
 	env := buildEnvVars(inst)
-	requireEnvAbsent(t, env, "ACCENT_COLOR")
-	requireEnvAbsent(t, env, "COLOR_THEME")
+	requireEnvAbsent(t, env, "APPEARANCE")
 }
 
 func TestBuildEnvVars_UserManagement(t *testing.T) {
@@ -822,9 +817,6 @@ func TestBuildEnvVars_OptionalBools(t *testing.T) {
 		}},
 		{"LOG_QUERY_ARGS", func(s *spec, v *bool) {
 			s.Logging = &pocketidinternalv1alpha1.LoggingConfig{QueryArgs: v}
-		}},
-		{"DISABLE_ANIMATIONS", func(s *spec, v *bool) {
-			s.UI = &pocketidinternalv1alpha1.UIConfig{DisableAnimations: v}
 		}},
 		{"EMAILS_VERIFIED", func(s *spec, v *bool) {
 			s.UserManagement = &pocketidinternalv1alpha1.UserManagementConfig{EmailsVerified: v}

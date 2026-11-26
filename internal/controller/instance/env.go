@@ -340,6 +340,9 @@ func buildUIEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.En
 	}
 	ui := instance.Spec.UI
 	var env []corev1.EnvVar
+	if ui.Appearance != nil {
+		env = append(env, corev1.EnvVar{Name: "APPEARANCE", Value: string(ui.Appearance.Raw)})
+	}
 	if ui.AppName != "" {
 		env = append(env, corev1.EnvVar{Name: "APP_NAME", Value: ui.AppName})
 	}
@@ -348,15 +351,6 @@ func buildUIEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.En
 	}
 	if ui.HomePageURL != "" {
 		env = append(env, corev1.EnvVar{Name: "HOME_PAGE_URL", Value: ui.HomePageURL})
-	}
-	if ui.DisableAnimations != nil {
-		env = append(env, corev1.EnvVar{Name: "DISABLE_ANIMATIONS", Value: fmt.Sprintf("%t", *ui.DisableAnimations)})
-	}
-	if ui.AccentColor != "" { //nolint:staticcheck // still honored until the field is removed
-		env = append(env, corev1.EnvVar{Name: "ACCENT_COLOR", Value: ui.AccentColor}) //nolint:staticcheck // still honored until the field is removed
-	}
-	if ui.ColorTheme != "" {
-		env = append(env, corev1.EnvVar{Name: "COLOR_THEME", Value: ui.ColorTheme})
 	}
 	return env
 }

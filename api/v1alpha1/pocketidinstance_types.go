@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -323,6 +324,12 @@ type TracingConfig struct {
 
 // UIConfig configures Pocket-ID UI settings.
 type UIConfig struct {
+	// UI appearance settings, as a YAML object.
+	// Sets APPEARANCE. See https://pocket-id.org/docs/configuration/environment-variables.
+	// +kubebuilder:validation:Type=object
+	// +optional
+	Appearance *apiextensionsv1.JSON `json:"appearance,omitempty"`
+
 	// Application name.
 	// Sets APP_NAME. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
@@ -337,20 +344,6 @@ type UIConfig struct {
 	// Sets HOME_PAGE_URL. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	HomePageURL string `json:"homePageUrl,omitempty"`
-
-	// Disable UI animations.
-	// Sets DISABLE_ANIMATIONS. See https://pocket-id.org/docs/configuration/environment-variables.
-	// +optional
-	DisableAnimations *bool `json:"disableAnimations,omitempty"`
-
-	// Deprecated: use colorTheme instead.
-	// +optional
-	AccentColor string `json:"accentColor,omitempty"`
-
-	// UI color theme. Takes precedence over accentColor.
-	// Sets COLOR_THEME. See https://pocket-id.org/docs/configuration/environment-variables.
-	// +optional
-	ColorTheme string `json:"colorTheme,omitempty"`
 }
 
 // UserManagementConfig configures user registration and account settings.

@@ -320,12 +320,10 @@ UIConfig configures Pocket-ID UI settings.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `appearance` | [JSON](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#json-v1-apiextensions-k8s-io) |  |  | UI appearance settings, as a YAML object.<br />Sets APPEARANCE. See https://pocket-id.org/docs/configuration/environment-variables.<br />_Type: object_ |
 | `appName` | string |  |  | Application name.<br />Sets APP_NAME. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `sessionDuration` | integer |  |  | Session duration in minutes.<br />Sets SESSION_DURATION. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `homePageUrl` | string |  |  | Post-login redirect page.<br />Sets HOME_PAGE_URL. See https://pocket-id.org/docs/configuration/environment-variables. |
-| `disableAnimations` | boolean |  |  | Disable UI animations.<br />Sets DISABLE_ANIMATIONS. See https://pocket-id.org/docs/configuration/environment-variables. |
-| `accentColor` | string |  |  | Deprecated: use colorTheme instead. |
-| `colorTheme` | string |  |  | UI color theme. Takes precedence over accentColor.<br />Sets COLOR_THEME. See https://pocket-id.org/docs/configuration/environment-variables. |
 
 ## `PocketIDInstance.spec.userManagement`
 
