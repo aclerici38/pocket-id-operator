@@ -51,6 +51,7 @@ PocketIDInstanceSpec defines the desired state of PocketIDInstance.
 | [`userManagement`](#pocketidinstancespecusermanagement) | object |  |  | User registration and account settings. |
 | [`webauthn`](#pocketidinstancespecwebauthn) | object |  |  | Passkey restrictions. |
 | [`geoip`](#pocketidinstancespecgeoip) | object |  |  | GeoIP/MaxMind integration for audit log geolocation. |
+| [`builtInAPI`](#pocketidinstancespecbuiltinapi) | object |  |  | Settings of the built-in Pocket ID API. When unset, the operator leaves them to the UI. |
 | `auditLogRetentionDays` | integer |  |  | Audit log retention in days.<br />Sets AUDIT_LOG_RETENTION_DAYS. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `analyticsDisabled` | boolean |  |  | Disable anonymous usage analytics.<br />Sets ANALYTICS_DISABLED. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `versionCheckDisabled` | boolean |  |  | Disable version checks.<br />Sets VERSION_CHECK_DISABLED. See https://pocket-id.org/docs/configuration/environment-variables. |
@@ -389,6 +390,16 @@ SensitiveValue holds a value that can be provided as plain text or from a Kubern
 | --- | --- | --- | --- | --- |
 | `value` | string |  |  | Plain text value. |
 | `valueFrom` | [EnvVarSource](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#envvarsource-v1-core) |  |  | Source for the value (e.g. secretKeyRef, configMapKeyRef). |
+
+## `PocketIDInstance.spec.builtInAPI`
+
+<sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
+
+BuiltInAPIConfig configures the built-in Pocket ID API.
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `cimdPermissions` | string array |  |  | CIMDPermissions are the permission keys every client registered through a Client ID Metadata Document may request on behalf of a user, e.g. "users:read". An empty list turns CIMD access off. |
 
 ## `PocketIDInstance.spec.trustedProxies`
 

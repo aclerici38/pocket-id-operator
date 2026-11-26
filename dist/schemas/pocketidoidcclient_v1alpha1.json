@@ -97,10 +97,10 @@
           ]
         },
         "apiAccess": {
-          "description": "APIAccess grants this client permission to request scoped access on the referenced PocketIDAPIs. The operator owns all of the client's grants: access granted outside the operator is revoked.",
+          "description": "APIAccess grants this client permission to request scoped access on the referenced PocketIDAPIs or the built-in Pocket ID API. The operator owns all of the client's grants: access granted outside the operator is revoked.",
           "items": {
             "additionalProperties": false,
-            "description": "OIDCClientAPIAccess grants a client scoped permissions on a referenced PocketIDAPI.\nPermissions are referenced by their key and the operator resolves them to Pocket-ID permission IDs via the PocketIDAPI status.\nThe access flags grant a flow that selects no permissions, so setting one to false alongside a permission list is rejected rather than silently ignoring the list.",
+            "description": "OIDCClientAPIAccess grants a client scoped permissions on a referenced PocketIDAPI, or on the built-in Pocket ID API.\nPermissions are referenced by their key and the operator resolves them to Pocket-ID permission IDs.\nThe access flags grant a flow that selects no permissions, so setting one to false alongside a permission list is rejected rather than silently ignoring the list.",
             "properties": {
               "apiRef": {
                 "additionalProperties": false,
@@ -121,7 +121,17 @@
                 "required": [
                   "name"
                 ],
-                "type": "object"
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "builtIn": {
+                "description": "BuiltIn grants access to the built-in Pocket ID API, whose resource is \u003cappUrl\u003e/api and whose permissions are Pocket ID's own scopes, e.g. \"users:read\".",
+                "type": [
+                  "boolean",
+                  "null"
+                ]
               },
               "clientAccess": {
                 "description": "ClientAccess grants the client-credentials flow even with no permissions selected.\nDefaults to true when clientPermissions is non-empty, and requires a confidential client.",
@@ -158,11 +168,12 @@
                 ]
               }
             },
-            "required": [
-              "apiRef"
-            ],
             "type": "object",
             "x-kubernetes-validations": [
+              {
+                "message": "exactly one of apiRef and builtIn must be set",
+                "rule": "has(self.apiRef) != (has(self.builtIn) \u0026\u0026 self.builtIn)"
+              },
               {
                 "message": "delegatedAccess: false conflicts with delegatedPermissions; drop the permissions to revoke the flow, or remove the flag to grant them",
                 "rule": "!has(self.delegatedAccess) || self.delegatedAccess || !has(self.delegatedPermissions) || size(self.delegatedPermissions) == 0"
@@ -173,6 +184,7 @@
               }
             ]
           },
+          "maxItems": 100,
           "type": [
             "array",
             "null"

@@ -419,6 +419,13 @@ type WebAuthnConfig struct {
 	AllowedFrameAncestors []string `json:"allowedFrameAncestors,omitempty"`
 }
 
+// BuiltInAPIConfig configures the built-in Pocket ID API.
+type BuiltInAPIConfig struct {
+	// CIMDPermissions are the permission keys every client registered through a Client ID Metadata Document may request on behalf of a user, e.g. "users:read". An empty list turns CIMD access off.
+	// +optional
+	CIMDPermissions []string `json:"cimdPermissions,omitempty"`
+}
+
 // GeoIPConfig configures GeoIP/MaxMind integration for audit log geolocation.
 type GeoIPConfig struct {
 	// MaxMind license key.
@@ -737,6 +744,10 @@ type PocketIDInstanceSpec struct {
 	// GeoIP/MaxMind integration for audit log geolocation.
 	// +optional
 	GeoIP *GeoIPConfig `json:"geoip,omitempty"`
+
+	// Settings of the built-in Pocket ID API. When unset, the operator leaves them to the UI.
+	// +optional
+	BuiltInAPI *BuiltInAPIConfig `json:"builtInAPI,omitempty"`
 
 	// Audit log retention in days.
 	// Sets AUDIT_LOG_RETENTION_DAYS. See https://pocket-id.org/docs/configuration/environment-variables.

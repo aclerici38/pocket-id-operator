@@ -61,11 +61,36 @@ spec:
 
 Notes:
 
-- The client is the **sole owner** of its API access in Pocket-ID: the operator keeps it in sync with `spec.apiAccess` and revokes any access granted outside the operator, including on a client that does not set `spec.apiAccess`. Access to the built-in Pocket ID API is the exception: it can only be granted in the UI, and the operator leaves it alone.
+- The client is the **sole owner** of its API access in Pocket-ID: the operator keeps it in sync with `spec.apiAccess` and revokes any access granted outside the operator, including on a client that does not set `spec.apiAccess`.
 - `delegatedAccess` and `clientAccess` grant a flow with no permissions selected, for a client that requests a resource without any scopes. Both default to true when the matching permission list is non-empty, so existing grants are unaffected.
 - `clientPermissions` and `clientAccess` (machine-to-machine) require a **confidential** client (`spec.isPublic: false`), since M2M needs a client secret. This is enforced at admission.
 - Permission keys are resolved to Pocket-ID permission IDs from the referenced API's status, so the `PocketIDAPI` must be `Ready` before the grant can be applied.
 - A `PocketIDAPI` referenced by a client cannot be deleted until the client removes the reference, preventing dangling grants.
+
+## Granting the Built-in Pocket ID API
+
+Pocket-ID v3 has a built-in API for Pocket ID itself, whose resource is `<appUrl>/api` and whose permissions are Pocket ID's own scopes, e.g. `users:read`. It needs no `PocketIDAPI`: set `builtIn: true` instead of `apiRef` to grant it.
+
+```yaml
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDOIDCClient
+metadata:
+  name: group-sync
+  namespace: pocket-id
+spec:
+  isPublic: false
+  apiAccess:
+    - builtIn: true
+      clientPermissions:
+        - users:read
+        - groups:read
+```
+
+Notes:
+
+- The client-credentials flow can only be granted admin scopes, so an account scope in `clientPermissions` fails the reconcile.
+- A token from the user-delegated flow carries only the scopes the signed-in user holds.
+- To grant the built-in API to every CIMD client, set the `PocketIDInstance`'s `spec.builtInAPI.cimdPermissions`. An empty list turns the access off, and leaving `spec.builtInAPI` unset leaves the setting to the UI.
 
 ## Granting Metadata Document Clients
 
@@ -98,4 +123,4 @@ Notes:
 
 `spec.resource` is the audience (`aud`), which is **globally unique** in Pocket-ID, so on creation a `PocketIDAPI` is matched to an existing API by `spec.resource` and taken over in place.
 
-The built-in Pocket ID API is never adopted. Pocket-ID v3 reserves `<appUrl>`, `<appUrl>/api` and `<appUrl>/api/admin/mcp`, so a `PocketIDAPI` with one of these resources stays not `Ready`.
+The built-in Pocket ID API is never adopted. Pocket-ID v3 reserves `<appUrl>`, `<appUrl>/api` and `<appUrl>/api/admin/mcp`, so a `PocketIDAPI` with one of these resources stays not `Ready`. Grant it with [`builtIn: true`](#granting-the-built-in-pocket-id-api) instead.

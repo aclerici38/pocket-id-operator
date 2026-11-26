@@ -44,7 +44,7 @@ PocketIDOIDCClientSpec defines the desired state of PocketIDOIDCClient
 | `refreshTokenDurationMinutes` | integer |  | `43200` | How long refresh tokens issued to this client stay valid, in minutes.<br />_Maximum: 525600_<br />_Minimum: 1_ |
 | [`federatedIdentities`](#pocketidoidcclientspecfederatedidentities) | []object |  |  | FederatedIdentities configures JWT assertion identities. |
 | [`allowedUserGroups`](#pocketidoidcclientspecallowedusergroups) | []object |  |  | AllowedUserGroups restricts access to the listed user groups.<br />Each entry names either a PocketIDUserGroup CR or, for groups managed outside this cluster, an existing Pocket-ID group by name or ID. |
-| [`apiAccess`](#pocketidoidcclientspecapiaccess) | []object |  |  | APIAccess grants this client permission to request scoped access on the referenced PocketIDAPIs. The operator owns all of the client's grants: access granted outside the operator is revoked. |
+| [`apiAccess`](#pocketidoidcclientspecapiaccess) | []object |  |  | APIAccess grants this client permission to request scoped access on the referenced PocketIDAPIs or the built-in Pocket ID API. The operator owns all of the client's grants: access granted outside the operator is revoked.<br />_MaxItems: 100_ |
 | [`secret`](#pocketidoidcclientspecsecret) | object |  |  | Secret defines how OIDC client credentials should be stored in a Kubernetes Secret. |
 | [`scim`](#pocketidoidcclientspecscim) | object |  |  | SCIM configures SCIM provisioning for this OIDC client. The operator syncs users and groups to the endpoint every reconcile, and the client is only Ready once the sync succeeds. |
 | [`clientSecretRotation`](#pocketidoidcclientspecclientsecretrotation) | object |  |  | ClientSecretRotation configures automatic, scheduled regeneration of the client secret.<br />When unset the secret is only regenerated on create/adopt, on self-heal, or when the regenerate-client-secret annotation is set. |
@@ -132,18 +132,20 @@ NamespacedUserGroupReference selects a Pocket-ID user group, either by the Pocke
 
 <sup>[↩ PocketIDOIDCClient.spec](#pocketidoidcclientspec)</sup>
 
-OIDCClientAPIAccess grants a client scoped permissions on a referenced PocketIDAPI.
-Permissions are referenced by their key and the operator resolves them to Pocket-ID permission IDs via the PocketIDAPI status.
+OIDCClientAPIAccess grants a client scoped permissions on a referenced PocketIDAPI, or on the built-in Pocket ID API.
+Permissions are referenced by their key and the operator resolves them to Pocket-ID permission IDs.
 The access flags grant a flow that selects no permissions, so setting one to false alongside a permission list is rejected rather than silently ignoring the list.
 
 **Validation rules:**
 
+- exactly one of apiRef and builtIn must be set
 - delegatedAccess: false conflicts with delegatedPermissions; drop the permissions to revoke the flow, or remove the flag to grant them
 - clientAccess: false conflicts with clientPermissions; drop the permissions to revoke the flow, or remove the flag to grant them
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| [`apiRef`](#pocketidoidcclientspecapiaccessapiref) | object | yes |  | APIRef references the PocketIDAPI granting access. |
+| [`apiRef`](#pocketidoidcclientspecapiaccessapiref) | object |  |  | APIRef references the PocketIDAPI granting access. |
+| `builtIn` | boolean |  |  | BuiltIn grants access to the built-in Pocket ID API, whose resource is <appUrl>/api and whose permissions are Pocket ID's own scopes, e.g. "users:read". |
 | `delegatedPermissions` | string array |  |  | DelegatedPermissions are permission keys granted for the user-delegated (authorization code) flow, where the client acts on behalf of a user. |
 | `clientPermissions` | string array |  |  | ClientPermissions are permission keys granted for the client-credentials (machine-to-machine) flow. These require a confidential client. |
 | `delegatedAccess` | boolean |  |  | DelegatedAccess grants the user-delegated flow even with no permissions selected, e.g. a client requesting a resource that doesn't need any scopes.<br />Defaults to true when delegatedPermissions is non-empty. |

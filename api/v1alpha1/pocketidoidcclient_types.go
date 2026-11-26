@@ -79,15 +79,20 @@ type NamespacedAPIReference struct {
 	Namespace string `json:"namespace,omitempty"`
 }
 
-// OIDCClientAPIAccess grants a client scoped permissions on a referenced PocketIDAPI.
-// Permissions are referenced by their key and the operator resolves them to Pocket-ID permission IDs via the PocketIDAPI status.
+// OIDCClientAPIAccess grants a client scoped permissions on a referenced PocketIDAPI, or on the built-in Pocket ID API.
+// Permissions are referenced by their key and the operator resolves them to Pocket-ID permission IDs.
 // The access flags grant a flow that selects no permissions, so setting one to false alongside a permission list is rejected rather than silently ignoring the list.
+// +kubebuilder:validation:XValidation:rule="has(self.apiRef) != (has(self.builtIn) && self.builtIn)",message="exactly one of apiRef and builtIn must be set"
 // +kubebuilder:validation:XValidation:rule="!has(self.delegatedAccess) || self.delegatedAccess || !has(self.delegatedPermissions) || size(self.delegatedPermissions) == 0",message="delegatedAccess: false conflicts with delegatedPermissions; drop the permissions to revoke the flow, or remove the flag to grant them"
 // +kubebuilder:validation:XValidation:rule="!has(self.clientAccess) || self.clientAccess || !has(self.clientPermissions) || size(self.clientPermissions) == 0",message="clientAccess: false conflicts with clientPermissions; drop the permissions to revoke the flow, or remove the flag to grant them"
 type OIDCClientAPIAccess struct {
 	// APIRef references the PocketIDAPI granting access.
-	// +kubebuilder:validation:Required
-	APIRef NamespacedAPIReference `json:"apiRef"`
+	// +optional
+	APIRef NamespacedAPIReference `json:"apiRef,omitzero"`
+
+	// BuiltIn grants access to the built-in Pocket ID API, whose resource is <appUrl>/api and whose permissions are Pocket ID's own scopes, e.g. "users:read".
+	// +optional
+	BuiltIn bool `json:"builtIn,omitempty"`
 
 	// DelegatedPermissions are permission keys granted for the user-delegated (authorization code) flow, where the client acts on behalf of a user.
 	// +optional
@@ -406,7 +411,8 @@ type PocketIDOIDCClientSpec struct {
 	// +optional
 	AllowedUserGroups []NamespacedUserGroupReference `json:"allowedUserGroups,omitempty"`
 
-	// APIAccess grants this client permission to request scoped access on the referenced PocketIDAPIs. The operator owns all of the client's grants: access granted outside the operator is revoked.
+	// APIAccess grants this client permission to request scoped access on the referenced PocketIDAPIs or the built-in Pocket ID API. The operator owns all of the client's grants: access granted outside the operator is revoked.
+	// +kubebuilder:validation:MaxItems=100
 	// +optional
 	APIAccess []OIDCClientAPIAccess `json:"apiAccess,omitempty"`
 

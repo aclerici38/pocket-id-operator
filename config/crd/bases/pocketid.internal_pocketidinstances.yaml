@@ -77,6 +77,19 @@ spec:
                   Sets AUDIT_LOG_RETENTION_DAYS. See https://pocket-id.org/docs/configuration/environment-variables.
                 format: int32
                 type: integer
+              builtInAPI:
+                description: Settings of the built-in Pocket ID API. When unset, the
+                  operator leaves them to the UI.
+                properties:
+                  cimdPermissions:
+                    description: CIMDPermissions are the permission keys every client
+                      registered through a Client ID Metadata Document may request
+                      on behalf of a user, e.g. "users:read". An empty list turns
+                      CIMD access off.
+                    items:
+                      type: string
+                    type: array
+                type: object
               cimdUrlAllowlist:
                 description: |-
                   Allowed OAuth Client ID Metadata Document URLs.

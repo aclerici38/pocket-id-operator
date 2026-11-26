@@ -55,6 +55,7 @@ import (
 	gatewayv1apply "sigs.k8s.io/gateway-api/applyconfiguration/apis/v1"
 
 	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
+	"github.com/oapi-codegen/nullable"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
@@ -199,6 +200,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
+	if err := r.reconcileBuiltInAPI(ctx, instance); err != nil {
+		log.Error(err, "Could not set the built-in API's CIMD access")
+	}
+
 	// Fetch and store the deployed PocketID version; also updates InstanceInfo gauge.
 	//
 	// This must stay last: an out-of-range version halts the process, and the workload
@@ -258,6 +263,12 @@ func (r *Reconciler) reconcileExternal(ctx context.Context, instance *pocketidin
 
 	metrics.RecordReadiness("PocketIDInstance", instance.Namespace, instance.Name, ready == metav1.ConditionTrue)
 	metrics.RecordInstanceInfo(instance.Namespace, instance.Name, instance.Status.Version, instance.Status.Version, "External", instance.Spec.External.URL)
+
+	if ready == metav1.ConditionTrue {
+		if err := r.reconcileBuiltInAPI(ctx, instance); err != nil {
+			log.Error(err, "Could not set the built-in API's CIMD access")
+		}
+	}
 
 	r.haltIfUnsupportedVersion(log, instance, instance.Status.Version)
 
@@ -1017,6 +1028,43 @@ func (r *Reconciler) reconcileVersion(ctx context.Context, instance *pocketidint
 
 	r.haltIfUnsupportedVersion(log, instance, version)
 
+	return nil
+}
+
+// reconcileBuiltInAPI sets which permissions of the built-in Pocket ID API every CIMD client may
+// request, when spec.builtInAPI is set.
+func (r *Reconciler) reconcileBuiltInAPI(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
+	if instance.Spec.BuiltInAPI == nil {
+		return nil
+	}
+	apiClient, err := r.apiClientFor(ctx, instance)
+	if err != nil {
+		return err
+	}
+
+	keys := instance.Spec.BuiltInAPI.CIMDPermissions
+	ids := make([]string, 0, len(keys))
+	if len(keys) > 0 {
+		api, err := pid.Decode[pid.APIResponseDto](apiClient.GetAPIByID(ctx, pocketid.BuiltInAPIID))
+		if err != nil {
+			return fmt.Errorf("get built-in API: %w", err)
+		}
+		for _, key := range keys {
+			i := slices.IndexFunc(api.Permissions, func(p pid.APIPermissionResponseDto) bool { return p.Key == key })
+			if i < 0 {
+				return fmt.Errorf("permission %q not found on the built-in API", key)
+			}
+			ids = append(ids, api.Permissions[i].ID)
+		}
+	}
+
+	enabled := len(ids) > 0
+	if err := pid.Check(apiClient.UpdateMetadataDocumentClientAccess(ctx, pocketid.BuiltInAPIID, pid.APICIMDAccessUpdateDto{
+		Enabled:       &enabled,
+		PermissionIDs: nullable.NewNullableWithValue(ids),
+	})); err != nil {
+		return fmt.Errorf("set built-in API CIMD access: %w", err)
+	}
 	return nil
 }
 
