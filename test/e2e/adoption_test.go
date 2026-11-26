@@ -46,6 +46,33 @@ var _ = Describe("Resource Adoption", Ordered, func() {
 		})
 	})
 
+	Context("User Adoption by Email in Another Letter Case", func() {
+		const userName = "test-adopt-email-case"
+
+		It("should adopt the user Pocket-ID matches by email regardless of letter case", func() {
+			By("creating a user directly in Pocket-ID via API")
+			userID := createUserInPocketID("adopt-email-case", "Adopt", "Case", "adopt-email-case@example.local")
+
+			By("creating a PocketIDUser CR with another username and the email in another letter case")
+			createUser(UserOptions{
+				Name:      userName,
+				Username:  "adopt-email-case-renamed",
+				FirstName: "Adopt",
+				LastName:  "Case",
+				Email:     "Adopt-Email-Case@Example.local",
+			})
+
+			By("verifying the operator adopted the existing user (same user ID)")
+			waitForReady("pocketiduser", userName, userNS)
+			Expect(waitForStatusFieldNotEmpty("pocketiduser", userName, userNS, ".status.userID")).To(Equal(userID))
+		})
+
+		AfterAll(func() {
+			deleteObject("pocketiduser", userName, userNS)
+			waitForResourceDeleted("pocketiduser", userName, userNS)
+		})
+	})
+
 	Context("UserGroup Adoption", func() {
 		const groupName = "test-adopt-group"
 		const pocketIDGroupName = "adopt-test-group"
