@@ -3,7 +3,7 @@ module github.com/aclerici38/pocket-id-operator
 go 1.27.4
 
 require (
-	github.com/aclerici38/pocket-id-go-client/v3 v3.0.0-20261118203622-66cc25e935ed
+	github.com/aclerici38/pocket-id-go-client/v3 v3.0.0-20261125042120-7e4f2e467b7b
 	github.com/go-logr/logr v1.4.4
 	github.com/oapi-codegen/nullable v1.2.0
 	github.com/onsi/ginkgo/v2 v2.34.0
@@ -57,7 +57,7 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/oapi-codegen/runtime v1.9.0 // indirect
+	github.com/oapi-codegen/runtime v1.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_model v0.6.3 // indirect
 	github.com/prometheus/common v0.72.0 // indirect
