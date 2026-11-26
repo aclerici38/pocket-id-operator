@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -351,7 +352,7 @@ func (r *Reconciler) FindExistingUser(ctx context.Context, apiClient *pocketid.C
 		if err != nil {
 			return nil, fmt.Errorf("list users: %w", err)
 		}
-		if existingUser.Username == username {
+		if strings.EqualFold(existingUser.Username, username) {
 			log.Info("Found existing user with matching username", "username", username, "userID", existingUser.ID)
 			return &existingUser, nil
 		}
@@ -363,7 +364,7 @@ func (r *Reconciler) FindExistingUser(ctx context.Context, apiClient *pocketid.C
 			if err != nil {
 				return nil, fmt.Errorf("list users by email: %w", err)
 			}
-			if existingUser.Email == email {
+			if strings.EqualFold(existingUser.Email, email) {
 				log.Info("Found existing user with matching email", "email", email, "userID", existingUser.ID)
 				return &existingUser, nil
 			}
