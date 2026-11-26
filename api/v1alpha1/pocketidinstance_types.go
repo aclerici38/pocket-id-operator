@@ -216,6 +216,11 @@ type LDAPAttributeMappingConfig struct {
 	// +optional
 	UserProfilePicture string `json:"userProfilePicture,omitempty"`
 
+	// Language attribute.
+	// Sets LDAP_ATTRIBUTE_USER_LANGUAGE. See https://pocket-id.org/docs/configuration/environment-variables.
+	// +optional
+	UserLanguage string `json:"userLanguage,omitempty"`
+
 	// Group membership attribute.
 	// Sets LDAP_ATTRIBUTE_GROUP_MEMBER. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
@@ -263,6 +268,11 @@ type LDAPConfig struct {
 	// Sets LDAP_SOFT_DELETE_USERS. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	SoftDeleteUsers *bool `json:"softDeleteUsers,omitempty"`
+
+	// Let LDAP users override their profile picture.
+	// Sets LDAP_ALLOW_PROFILE_PICTURE_OVERRIDE. See https://pocket-id.org/docs/configuration/environment-variables.
+	// +optional
+	AllowProfilePictureOverride *bool `json:"allowProfilePictureOverride,omitempty"`
 
 	// Group that grants admin privileges.
 	// Sets LDAP_ADMIN_GROUP_NAME. See https://pocket-id.org/docs/configuration/environment-variables.
@@ -392,6 +402,16 @@ type WebAuthnConfig struct {
 	// Sets WEBAUTHN_AUTHENTICATOR_ATTACHMENT. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +optional
 	AuthenticatorAttachment string `json:"authenticatorAttachment,omitempty"`
+
+	// Passkey attestation requirement.
+	// Sets WEBAUTHN_ATTESTATION. See https://pocket-id.org/docs/configuration/environment-variables.
+	// +optional
+	Attestation string `json:"attestation,omitempty"`
+
+	// FIDO metadata source for passkey attestation, or disabled.
+	// Sets FIDO_MDS_URL. See https://pocket-id.org/docs/configuration/environment-variables.
+	// +optional
+	FidoMDSURL string `json:"fidoMdsUrl,omitempty"`
 
 	// Origins that may embed Pocket-ID in an iframe and sign in with a passkey there.
 	// Sets ALLOWED_FRAME_ANCESTORS. See https://pocket-id.org/docs/configuration/environment-variables.

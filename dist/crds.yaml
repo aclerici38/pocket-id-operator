@@ -1413,6 +1413,11 @@ spec:
                       Group that grants admin privileges.
                       Sets LDAP_ADMIN_GROUP_NAME. See https://pocket-id.org/docs/configuration/environment-variables.
                     type: string
+                  allowProfilePictureOverride:
+                    description: |-
+                      Let LDAP users override their profile picture.
+                      Sets LDAP_ALLOW_PROFILE_PICTURE_OVERRIDE. See https://pocket-id.org/docs/configuration/environment-variables.
+                    type: boolean
                   attributeMapping:
                     description: LDAP attribute mappings.
                     properties:
@@ -1445,6 +1450,11 @@ spec:
                         description: |-
                           First name attribute.
                           Sets LDAP_ATTRIBUTE_USER_FIRST_NAME. See https://pocket-id.org/docs/configuration/environment-variables.
+                        type: string
+                      userLanguage:
+                        description: |-
+                          Language attribute.
+                          Sets LDAP_ATTRIBUTE_USER_LANGUAGE. See https://pocket-id.org/docs/configuration/environment-variables.
                         type: string
                       userLastName:
                         description: |-
@@ -3494,10 +3504,20 @@ spec:
                     items:
                       type: string
                     type: array
+                  attestation:
+                    description: |-
+                      Passkey attestation requirement.
+                      Sets WEBAUTHN_ATTESTATION. See https://pocket-id.org/docs/configuration/environment-variables.
+                    type: string
                   authenticatorAttachment:
                     description: |-
                       Accepted authenticator type.
                       Sets WEBAUTHN_AUTHENTICATOR_ATTACHMENT. See https://pocket-id.org/docs/configuration/environment-variables.
+                    type: string
+                  fidoMdsUrl:
+                    description: |-
+                      FIDO metadata source for passkey attestation, or disabled.
+                      Sets FIDO_MDS_URL. See https://pocket-id.org/docs/configuration/environment-variables.
                     type: string
                   userVerification:
                     description: |-

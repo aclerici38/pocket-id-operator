@@ -135,6 +135,8 @@ spec:
     userVerification: "preferred"
     allowSyncedPasskeys: false
     authenticatorAttachment: "cross-platform"
+    attestation: "verified"
+    fidoMdsUrl: "disabled"
     allowedFrameAncestors: ["https://dashboard.example.com", "http://portal.example.com:8080"]
   smtp:
     host: "smtp.invalid"
@@ -161,6 +163,7 @@ spec:
     base: "dc=example,dc=com"
     skipCertVerify: true
     softDeleteUsers: true
+    allowProfilePictureOverride: true
     adminGroupName: "pocket-id-admins"
     userSearchFilter: "(objectClass=person)"
     userGroupSearchFilter: "(objectClass=groupOfNames)"
@@ -172,6 +175,7 @@ spec:
       userLastName: "sn"
       userDisplayName: "displayName"
       userProfilePicture: "jpegPhoto"
+      userLanguage: "preferredLanguage"
       groupMember: "member"
       groupUniqueIdentifier: "uuid"
       groupName: "cn"
