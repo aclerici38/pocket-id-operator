@@ -19,6 +19,9 @@ import (
 
 const logoutTimeout = 5 * time.Second
 
+// BuiltInAPIID is the ID of Pocket ID's built-in API, which can't be renamed or deleted.
+const BuiltInAPIID = "00000000-0000-0000-0000-000000000000"
+
 // sessionsBlockedUntil maps a server URL to when Pocket-ID will next accept a session exchange.
 // Clients are built per reconcile, so this outlives them.
 var sessionsBlockedUntil sync.Map

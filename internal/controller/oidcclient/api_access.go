@@ -37,7 +37,8 @@ import (
 )
 
 // ReconcileAPIAccess makes this client's API access in Pocket-ID exactly spec.apiAccess. The
-// operator owns every grant the client holds, so access granted outside the operator is revoked.
+// operator owns every grant the client holds except on the built-in API, so other access granted
+// outside the operator is revoked.
 func (r *Reconciler) ReconcileAPIAccess(ctx context.Context, oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient, apiClient *pocketid.Client) error {
 	log := logf.FromContext(ctx)
 
@@ -67,7 +68,7 @@ func (r *Reconciler) ReconcileAPIAccess(ctx context.Context, oidcClient *pocketi
 		// which the API owns.
 		ownGrant := grant.ClientAccess || grant.UserDelegatedAccess ||
 			len(grant.ClientPermissionIDs) > 0 || len(grant.UserDelegatedPermissionIDs) > 0
-		if _, wanted := desired[grant.API.ID]; wanted || !ownGrant {
+		if _, wanted := desired[grant.API.ID]; wanted || !ownGrant || grant.API.ID == pocketid.BuiltInAPIID {
 			continue
 		}
 		log.Info("Revoking client API access", "name", oidcClient.Name, "apiID", grant.API.ID)
