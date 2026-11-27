@@ -57,6 +57,7 @@ type APIKeySpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
 	// +listType=set
+	// +kubebuilder:validation:items:XValidation:rule="self != 'admin-access:write'",message="admin-access:write requires a passkey; create this key in the Pocket ID UI"
 	Scopes []string `json:"scopes"`
 }
 

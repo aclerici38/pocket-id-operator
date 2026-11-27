@@ -63,7 +63,13 @@
               "scopes": {
                 "description": "Scopes granted to the API key, e.g. \"account:read\". Must be scopes the user holds.",
                 "items": {
-                  "type": "string"
+                  "type": "string",
+                  "x-kubernetes-validations": [
+                    {
+                      "message": "admin-access:write requires a passkey; create this key in the Pocket ID UI",
+                      "rule": "self != 'admin-access:write'"
+                    }
+                  ]
                 },
                 "minItems": 1,
                 "type": "array",
