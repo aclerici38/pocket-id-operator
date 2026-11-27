@@ -528,6 +528,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 					Persistence: pocketidinternalv1alpha1.PersistenceConfig{
 						Enabled: true,
 						Size:    resource.MustParse("2Gi"),
+						Cache:   &pocketidinternalv1alpha1.CacheConfig{Enabled: true, Size: resource.MustParse("1Gi")},
 					},
 				},
 			}
@@ -558,6 +559,12 @@ var _ = Describe("PocketIDInstance Controller", func() {
 			// Verify owner reference
 			Expect(pvc.OwnerReferences).To(HaveLen(1))
 			Expect(pvc.OwnerReferences[0].Name).To(Equal(instanceName))
+
+			cachePVC := &corev1.PersistentVolumeClaim{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{Name: instanceName + "-cache", Namespace: namespace}, cachePVC)
+			}, timeout, interval).Should(Succeed())
+			Expect(cachePVC.Spec.Resources.Requests[corev1.ResourceStorage]).To(Equal(resource.MustParse("1Gi")))
 		})
 
 		It("Should mount the PVC in the Deployment", func() {
@@ -571,16 +578,21 @@ var _ = Describe("PocketIDInstance Controller", func() {
 
 			// Check volume is defined
 			volumes := deployment.Spec.Template.Spec.Volumes
-			Expect(volumes).To(HaveLen(2)) // + tmpfs
+			Expect(volumes).To(HaveLen(3)) // + tmpfs
 			Expect(volumes[0].Name).To(Equal("data"))
 			Expect(volumes[0].VolumeSource.PersistentVolumeClaim).NotTo(BeNil())
 			Expect(volumes[0].VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(instanceName + "-data"))
+			Expect(volumes[1].Name).To(Equal("cache"))
+			Expect(volumes[1].VolumeSource.PersistentVolumeClaim).NotTo(BeNil())
+			Expect(volumes[1].VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(instanceName + "-cache"))
 
 			// Check volume mount
 			volumeMounts := deployment.Spec.Template.Spec.Containers[0].VolumeMounts
-			Expect(volumeMounts).To(HaveLen(2)) // + tmpfs
+			Expect(volumeMounts).To(HaveLen(3)) // + tmpfs
 			Expect(volumeMounts[0].Name).To(Equal("data"))
 			Expect(volumeMounts[0].MountPath).To(Equal("/app/data"))
+			Expect(volumeMounts[2].Name).To(Equal("cache"))
+			Expect(volumeMounts[2].MountPath).To(Equal("/app/cache"))
 		})
 	})
 
@@ -660,7 +672,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 			Expect(volumes[0].VolumeSource.EmptyDir).NotTo(BeNil())
 
 			volumeMounts := deployment.Spec.Template.Spec.Containers[0].VolumeMounts
-			Expect(volumeMounts).To(HaveLen(2)) // + tmpfs
+			Expect(volumeMounts).To(HaveLen(3)) // + tmp and cache on tmpfs
 			Expect(volumeMounts[0].MountPath).To(Equal("/app/data"))
 		})
 	})
@@ -1106,6 +1118,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 						Enabled:     true,
 						Size:        resource.MustParse("3Gi"),
 						AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+						Cache:       &pocketidinternalv1alpha1.CacheConfig{Enabled: true, Size: resource.MustParse("1Gi")},
 					},
 				},
 			}
@@ -1131,21 +1144,36 @@ var _ = Describe("PocketIDInstance Controller", func() {
 			}, timeout, interval).Should(Succeed())
 
 			// Verify volumeClaimTemplates is configured
-			Expect(sts.Spec.VolumeClaimTemplates).To(HaveLen(1))
+			Expect(sts.Spec.VolumeClaimTemplates).To(HaveLen(2))
 			Expect(sts.Spec.VolumeClaimTemplates[0].Name).To(Equal("data"))
 			Expect(sts.Spec.VolumeClaimTemplates[0].Spec.AccessModes).To(Equal([]corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}))
 			Expect(sts.Spec.VolumeClaimTemplates[0].Spec.Resources.Requests[corev1.ResourceStorage]).To(Equal(resource.MustParse("3Gi")))
+			Expect(sts.Spec.VolumeClaimTemplates[1].Name).To(Equal("cache"))
+			Expect(sts.Spec.VolumeClaimTemplates[1].Spec.Resources.Requests[corev1.ResourceStorage]).To(Equal(resource.MustParse("1Gi")))
 
 			// Verify volume mount is configured
 			volumeMounts := sts.Spec.Template.Spec.Containers[0].VolumeMounts
-			Expect(volumeMounts).To(HaveLen(2)) // + tmpfs
+			Expect(volumeMounts).To(HaveLen(3)) // + tmpfs
 			Expect(volumeMounts[0].Name).To(Equal("data"))
 			Expect(volumeMounts[0].MountPath).To(Equal("/app/data"))
+			Expect(volumeMounts[2].Name).To(Equal("cache"))
+			Expect(volumeMounts[2].MountPath).To(Equal("/app/cache"))
 
 			// Verify no data volume in pod template (because volumeClaimTemplates handles it); only tmpfs remains
 			volumes := sts.Spec.Template.Spec.Volumes
 			Expect(volumes).To(HaveLen(1))
 			Expect(volumes[0].Name).To(Equal("tmpfs"))
+		})
+
+		It("Should reject changes to persistence.cache", func() {
+			Eventually(func() error {
+				latest := &pocketidinternalv1alpha1.PocketIDInstance{}
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: instanceName, Namespace: namespace}, latest); err != nil {
+					return err
+				}
+				latest.Spec.Persistence.Cache.Size = resource.MustParse("2Gi")
+				return k8sClient.Update(ctx, latest)
+			}, timeout, interval).Should(MatchError(ContainSubstring("persistence.cache is immutable when deploymentType is StatefulSet")))
 		})
 
 		It("Should NOT create a separate PersistentVolumeClaim", func() {
@@ -1331,7 +1359,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 
 			// Verify volume mount
 			volumeMounts := sts.Spec.Template.Spec.Containers[0].VolumeMounts
-			Expect(volumeMounts).To(HaveLen(2)) // + tmpfs
+			Expect(volumeMounts).To(HaveLen(3)) // + tmp and cache on tmpfs
 			Expect(volumeMounts[0].Name).To(Equal("data"))
 			Expect(volumeMounts[0].MountPath).To(Equal("/app/data"))
 
@@ -2835,7 +2863,7 @@ var _ = Describe("PocketIDInstance Controller", func() {
 
 			// Verify the pocket-id container has data, extra, and tmpfs mounts
 			volumeMounts := deployment.Spec.Template.Spec.Containers[0].VolumeMounts
-			Expect(volumeMounts).To(HaveLen(3)) // + tmpfs
+			Expect(volumeMounts).To(HaveLen(4)) // + tmp and cache on tmpfs
 
 			// Data mount with custom path and subPath
 			Expect(volumeMounts[0].Name).To(Equal("data"))

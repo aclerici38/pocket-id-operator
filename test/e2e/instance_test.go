@@ -122,7 +122,8 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Ordered, func() {
 
 			By("creating a test instance with labels")
 			createInstanceAndWaitReady(InstanceOptions{
-				Name: selectorInstance,
+				Name:         selectorInstance,
+				CacheEnabled: true,
 				Labels: map[string]string{
 					"environment": "test",
 					"team":        "platform",
@@ -177,6 +178,8 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Ordered, func() {
 				Name:          tlsInstance,
 				Labels:        tlsLabels,
 				TLSSecretName: tlsSecret,
+				CacheEnabled:  true,
+				CachePath:     "/var/cache/pocket-id",
 			})
 
 			By("verifying the reported version proves an API call over TLS")

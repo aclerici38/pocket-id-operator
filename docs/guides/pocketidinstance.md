@@ -88,6 +88,19 @@ The table below describes the behavior when each field is set.
 | `path` | `/app/data` | Mount path for the data volume inside the container |
 | `subPath` | — | `subPath` within the volume to mount |
 | `extraVolumeMounts` | — | Additional volume mounts to inject into the pocket-id container |
+| `cache` | — | Persistence and mount path for the cache folder, see [Cache](#cache) |
+
+### Cache
+
+Pocket-ID keeps files it can download or render again (the GeoLite database, FIDO metadata and default profile pictures) in `/app/cache`. By default this is an emptyDir, so the cache is rebuilt after every restart. Set `cache` to persist it on its own volume; it accepts `enabled`, `existingClaim`, `storageClass`, `size`, `accessModes` and `subPath` with the same defaults as the data volume, and the operator-managed PVC is named `<instance>-cache`. `cache.path` moves the mount and sets `CACHE_PATH` to match. With a StatefulSet the cache PVC comes from a volumeClaimTemplate, so `cache` can't be changed after the instance is created.
+
+```yaml
+spec:
+  persistence:
+    cache:
+      enabled: true
+      size: 512Mi
+```
 
 ### Extra Volume Mounts
 

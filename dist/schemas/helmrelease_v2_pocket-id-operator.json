@@ -3855,6 +3855,83 @@
                                   "null"
                                 ]
                               },
+                              "cache": {
+                                "additionalProperties": false,
+                                "description": "Configures persistence for the cache folder, which holds files Pocket-ID can download or render again.\nIf not enabled, an emptyDir is mounted instead.",
+                                "properties": {
+                                  "accessModes": {
+                                    "default": [
+                                      "ReadWriteOnce"
+                                    ],
+                                    "description": "AccessModes for the PVC.",
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "type": [
+                                      "array",
+                                      "null"
+                                    ]
+                                  },
+                                  "enabled": {
+                                    "default": false,
+                                    "description": "Enables mounting a persistent volume.",
+                                    "type": "boolean"
+                                  },
+                                  "existingClaim": {
+                                    "description": "Name of an existing, externally-managed PVC to mount.",
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "path": {
+                                    "description": "Path where the cache volume is mounted in the container, /app/cache if unset.\nSets CACHE_PATH. See https://pocket-id.org/docs/configuration/environment-variables.",
+                                    "pattern": "^/",
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "size": {
+                                    "default": "1Gi",
+                                    "description": "Size of the claim to dynamically provision.",
+                                    "oneOf": [
+                                      {
+                                        "pattern": "^(\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))))?$",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "integer"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "x-kubernetes-int-or-string": true
+                                  },
+                                  "storageClass": {
+                                    "description": "Name of the StorageClass to provision a volume from.",
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "subPath": {
+                                    "description": "SubPath within the volume to mount (volumeMount.subPath).",
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "enabled"
+                                ],
+                                "type": [
+                                  "object",
+                                  "null"
+                                ]
+                              },
                               "enabled": {
                                 "default": false,
                                 "description": "Enables mounting a persistent volume.",
@@ -5814,6 +5891,10 @@
                           {
                             "message": "deploymentType is immutable",
                             "rule": "self.deploymentType == oldSelf.deploymentType"
+                          },
+                          {
+                            "message": "persistence.cache is immutable when deploymentType is StatefulSet",
+                            "rule": "self.deploymentType != 'StatefulSet' || (has(self.persistence) && has(self.persistence.cache) ? has(oldSelf.persistence) && has(oldSelf.persistence.cache) && self.persistence.cache == oldSelf.persistence.cache : !has(oldSelf.persistence) || !has(oldSelf.persistence.cache))"
                           },
                           {
                             "message": "external is immutable; create a new PocketIDInstance to switch modes",
@@ -9968,6 +10049,83 @@
                               "null"
                             ]
                           },
+                          "cache": {
+                            "additionalProperties": false,
+                            "description": "Configures persistence for the cache folder, which holds files Pocket-ID can download or render again.\nIf not enabled, an emptyDir is mounted instead.",
+                            "properties": {
+                              "accessModes": {
+                                "default": [
+                                  "ReadWriteOnce"
+                                ],
+                                "description": "AccessModes for the PVC.",
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": [
+                                  "array",
+                                  "null"
+                                ]
+                              },
+                              "enabled": {
+                                "default": false,
+                                "description": "Enables mounting a persistent volume.",
+                                "type": "boolean"
+                              },
+                              "existingClaim": {
+                                "description": "Name of an existing, externally-managed PVC to mount.",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "path": {
+                                "description": "Path where the cache volume is mounted in the container, /app/cache if unset.\nSets CACHE_PATH. See https://pocket-id.org/docs/configuration/environment-variables.",
+                                "pattern": "^/",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "size": {
+                                "default": "1Gi",
+                                "description": "Size of the claim to dynamically provision.",
+                                "oneOf": [
+                                  {
+                                    "pattern": "^(\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))))?$",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "x-kubernetes-int-or-string": true
+                              },
+                              "storageClass": {
+                                "description": "Name of the StorageClass to provision a volume from.",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "subPath": {
+                                "description": "SubPath within the volume to mount (volumeMount.subPath).",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "enabled"
+                            ],
+                            "type": [
+                              "object",
+                              "null"
+                            ]
+                          },
                           "enabled": {
                             "default": false,
                             "description": "Enables mounting a persistent volume.",
@@ -11927,6 +12085,10 @@
                       {
                         "message": "deploymentType is immutable",
                         "rule": "self.deploymentType == oldSelf.deploymentType"
+                      },
+                      {
+                        "message": "persistence.cache is immutable when deploymentType is StatefulSet",
+                        "rule": "self.deploymentType != 'StatefulSet' || (has(self.persistence) && has(self.persistence.cache) ? has(oldSelf.persistence) && has(oldSelf.persistence.cache) && self.persistence.cache == oldSelf.persistence.cache : !has(oldSelf.persistence) || !has(oldSelf.persistence.cache))"
                       },
                       {
                         "message": "external is immutable; create a new PocketIDInstance to switch modes",

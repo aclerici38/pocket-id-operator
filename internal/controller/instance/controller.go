@@ -17,6 +17,7 @@ limitations under the License.
 package instance
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -45,6 +46,7 @@ import (
 	appsv1apply "k8s.io/client-go/applyconfigurations/apps/v1"
 	corev1apply "k8s.io/client-go/applyconfigurations/core/v1"
 	metav1apply "k8s.io/client-go/applyconfigurations/meta/v1"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -94,10 +96,14 @@ const (
 	tlsVolumeName = "tls"
 	tlsMountPath  = "/etc/pocket-id/tls"
 
-	// tmpfsVolumeName is mounted at /tmp, needed for the v3 upgrade tool.
+	// tmpfsVolumeName is mounted at /tmp, needed for the v3 upgrade tool, and at
+	// the cache folder unless spec.persistence.cache is enabled.
 	tmpfsVolumeName = "tmpfs"
 	tmpSubPath      = "tmp"
 	tmpMountPath    = "/tmp"
+	cacheSubPath    = "cache"
+	// defaultCachePath is where Pocket-ID's default CACHE_PATH resolves to.
+	defaultCachePath = "/app/cache"
 )
 
 // APIClientFactory builds the Pocket-ID API client used to talk to an instance.
@@ -417,12 +423,18 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 	if instance.Spec.TLS != nil {
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{Name: tlsVolumeName, MountPath: tlsMountPath, ReadOnly: true})
 	}
-	// Respect an existing /tmp mount (data or extra) rather than creating a duplicate mountPath.
-	addTmp := !slices.ContainsFunc(volumeMounts, func(m corev1.VolumeMount) bool {
-		return path.Clean(m.MountPath) == tmpMountPath
-	})
-	if addTmp {
-		volumeMounts = append(volumeMounts, corev1.VolumeMount{Name: tmpfsVolumeName, MountPath: tmpMountPath, SubPath: tmpSubPath})
+	cache := ptr.Deref(instance.Spec.Persistence.Cache, pocketidinternalv1alpha1.CacheConfig{})
+	cacheMount := corev1.VolumeMount{Name: tmpfsVolumeName, MountPath: path.Clean(cmp.Or(cache.Path, defaultCachePath)), SubPath: cacheSubPath}
+	if cache.Enabled {
+		cacheMount.Name, cacheMount.SubPath = "cache", cache.SubPath
+	}
+	// Respect existing mounts (data or extra) rather than creating duplicate mountPaths.
+	addTmpfs := false
+	for _, m := range []corev1.VolumeMount{{Name: tmpfsVolumeName, MountPath: tmpMountPath, SubPath: tmpSubPath}, cacheMount} {
+		if !slices.ContainsFunc(volumeMounts, func(v corev1.VolumeMount) bool { return path.Clean(v.MountPath) == m.MountPath }) {
+			volumeMounts = append(volumeMounts, m)
+			addTmpfs = addTmpfs || m.Name == tmpfsVolumeName
+		}
 	}
 
 	container := corev1.Container{
@@ -445,19 +457,19 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 				EmptyDir: &corev1.EmptyDirVolumeSource{},
 			},
 		})
-	} else if instance.Spec.DeploymentType != "StatefulSet" || instance.Spec.Persistence.ExistingClaim != "" {
-		claimName := instance.Spec.Persistence.ExistingClaim
-		if claimName == "" {
-			claimName = instance.Name + "-data"
-		}
-		setVolume(&pt.Spec.Volumes, corev1.Volume{
-			Name: "data",
-			VolumeSource: corev1.VolumeSource{
-				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-					ClaimName: claimName,
+	}
+	// StatefulSets get PVCs without an existingClaim from volumeClaimTemplates instead.
+	for _, v := range persistentVolumes(instance) {
+		if v.cfg.Enabled && (instance.Spec.DeploymentType != "StatefulSet" || v.cfg.ExistingClaim != "") {
+			setVolume(&pt.Spec.Volumes, corev1.Volume{
+				Name: v.name,
+				VolumeSource: corev1.VolumeSource{
+					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+						ClaimName: cmp.Or(v.cfg.ExistingClaim, instance.Name+"-"+v.name),
+					},
 				},
-			},
-		})
+			})
+		}
 	}
 
 	if instance.Spec.TLS != nil {
@@ -469,7 +481,7 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 		})
 	}
 
-	if addTmp {
+	if addTmpfs {
 		setVolume(&pt.Spec.Volumes, corev1.Volume{
 			Name: tmpfsVolumeName,
 			VolumeSource: corev1.VolumeSource{
@@ -482,6 +494,33 @@ func (r *Reconciler) buildPodTemplate(instance *pocketidinternalv1alpha1.PocketI
 	pt.Spec.SecurityContext = buildPodSecurityContext(instance)
 
 	return pt
+}
+
+// namedPVC is a PVC-backed volume of the pocket-id container.
+type namedPVC struct {
+	name string
+	cfg  pocketidinternalv1alpha1.PVCConfig
+}
+
+// persistentVolumes lists the PVC-backed volumes; each one's operator-managed PVC is named <instance>-<name>.
+func persistentVolumes(instance *pocketidinternalv1alpha1.PocketIDInstance) []namedPVC {
+	return []namedPVC{{"data", instance.Spec.Persistence.PVCConfig}, {"cache", ptr.Deref(instance.Spec.Persistence.Cache, pocketidinternalv1alpha1.CacheConfig{}).PVCConfig}}
+}
+
+func pvcSpec(cfg pocketidinternalv1alpha1.PVCConfig) *corev1apply.PersistentVolumeClaimSpecApplyConfiguration {
+	accessModes := cfg.AccessModes
+	if len(accessModes) == 0 {
+		accessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
+	}
+	spec := corev1apply.PersistentVolumeClaimSpec().
+		WithAccessModes(accessModes...).
+		WithResources(corev1apply.VolumeResourceRequirements().WithRequests(corev1.ResourceList{
+			corev1.ResourceStorage: cfg.Size,
+		}))
+	if cfg.StorageClass != "" {
+		spec.WithStorageClassName(cfg.StorageClass)
+	}
+	return spec
 }
 
 func setVolume(volumes *[]corev1.Volume, vol corev1.Volume) {
@@ -629,25 +668,12 @@ func (r *Reconciler) reconcileStatefulSet(ctx context.Context, instance *pocketi
 		WithTemplate(podTemplate)
 
 	// VolumeClaimTemplate when using sts + no existingClaim
-	if instance.Spec.Persistence.Enabled && instance.Spec.Persistence.ExistingClaim == "" {
-		var scn *string
-		if instance.Spec.Persistence.StorageClass != "" {
-			sc := instance.Spec.Persistence.StorageClass
-			scn = &sc
+	for _, v := range persistentVolumes(instance) {
+		if v.cfg.Enabled && v.cfg.ExistingClaim == "" {
+			stsSpec.WithVolumeClaimTemplates(corev1apply.PersistentVolumeClaim(v.name, instance.Namespace).
+				WithLabels(common.ManagedByLabels(instance.Spec.Labels)).
+				WithSpec(pvcSpec(v.cfg)))
 		}
-
-		pvcSpec := corev1apply.PersistentVolumeClaimSpec().
-			WithAccessModes(instance.Spec.Persistence.AccessModes...).
-			WithResources(corev1apply.VolumeResourceRequirements().WithRequests(corev1.ResourceList{
-				corev1.ResourceStorage: instance.Spec.Persistence.Size,
-			}))
-		if scn != nil {
-			pvcSpec.WithStorageClassName(*scn)
-		}
-
-		stsSpec.WithVolumeClaimTemplates(corev1apply.PersistentVolumeClaim("data", instance.Namespace).
-			WithLabels(common.ManagedByLabels(instance.Spec.Labels)).
-			WithSpec(pvcSpec))
 	}
 
 	ownerRef, err := common.ControllerOwnerReference(instance, r.Scheme)
@@ -892,8 +918,17 @@ func (r *Reconciler) deleteIfManaged(ctx context.Context, obj client.Object, rea
 }
 
 func (r *Reconciler) reconcileVolume(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
+	for _, v := range persistentVolumes(instance) {
+		if err := r.reconcilePVC(ctx, instance, v); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *Reconciler) reconcilePVC(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, v namedPVC) error {
 	log := logf.FromContext(ctx)
-	defaultPVCName := instance.Name + "-data"
+	defaultPVCName := instance.Name + "-" + v.name
 	pvc := &corev1.PersistentVolumeClaim{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
@@ -906,14 +941,14 @@ func (r *Reconciler) reconcileVolume(ctx context.Context, instance *pocketidinte
 	}
 
 	// Delete PVC if persistence is disabled or using StatefulSet
-	if !instance.Spec.Persistence.Enabled || instance.Spec.DeploymentType == "StatefulSet" {
+	if !v.cfg.Enabled || instance.Spec.DeploymentType == "StatefulSet" {
 		return r.deleteIfManaged(ctx, pvc, "Deleting default PVC (persistence disabled or StatefulSet)", "pvc", defaultPVCName)
 	}
 
 	// If using an existing claim, delete the default PVC ONLY if its name is different from the existing claim
-	if instance.Spec.Persistence.ExistingClaim != "" {
-		if instance.Spec.Persistence.ExistingClaim != defaultPVCName {
-			return r.deleteIfManaged(ctx, pvc, "Deleting default PVC (using different existingClaim)", "pvc", defaultPVCName, "existingClaim", instance.Spec.Persistence.ExistingClaim)
+	if v.cfg.ExistingClaim != "" {
+		if v.cfg.ExistingClaim != defaultPVCName {
+			return r.deleteIfManaged(ctx, pvc, "Deleting default PVC (using different existingClaim)", "pvc", defaultPVCName, "existingClaim", v.cfg.ExistingClaim)
 		}
 		// If they are the same, we need to ensure it's no longer managed by us
 		// to prevent it from being deleted when the instance is deleted (garbage collection)
@@ -933,13 +968,6 @@ func (r *Reconciler) reconcileVolume(ctx context.Context, instance *pocketidinte
 		return nil
 	}
 
-	// Ensure storageClass gets set to nil if empty
-	var scn *string
-	if instance.Spec.Persistence.StorageClass != "" {
-		sc := instance.Spec.Persistence.StorageClass
-		scn = &sc
-	}
-
 	pvc.Labels = common.ManagedByLabels(instance.Spec.Labels)
 
 	existing := &corev1.PersistentVolumeClaim{}
@@ -949,20 +977,6 @@ func (r *Reconciler) reconcileVolume(ctx context.Context, instance *pocketidinte
 		}
 
 		// PVC doesn't exist
-		accessModes := instance.Spec.Persistence.AccessModes
-		if len(accessModes) == 0 {
-			accessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
-		}
-
-		pvcSpec := corev1apply.PersistentVolumeClaimSpec().
-			WithAccessModes(accessModes...).
-			WithResources(corev1apply.VolumeResourceRequirements().WithRequests(corev1.ResourceList{
-				corev1.ResourceStorage: instance.Spec.Persistence.Size,
-			}))
-		if scn != nil {
-			pvcSpec.WithStorageClassName(*scn)
-		}
-
 		ownerRef, err := common.ControllerOwnerReference(instance, r.Scheme)
 		if err != nil {
 			return err
@@ -971,7 +985,7 @@ func (r *Reconciler) reconcileVolume(ctx context.Context, instance *pocketidinte
 		pvcApply := corev1apply.PersistentVolumeClaim(pvc.Name, pvc.Namespace).
 			WithLabels(pvc.Labels).
 			WithOwnerReferences(ownerRef).
-			WithSpec(pvcSpec)
+			WithSpec(pvcSpec(v.cfg))
 
 		return r.Apply(ctx, pvcApply, client.FieldOwner("pocket-id-operator"))
 	}

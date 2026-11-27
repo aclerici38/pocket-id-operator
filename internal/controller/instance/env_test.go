@@ -190,6 +190,13 @@ func TestBuildEnvVars_EnabledFeaturesAbsentWhenEmpty(t *testing.T) {
 	requireEnvAbsent(t, env, "ENABLED_FEATURES")
 }
 
+func TestBuildEnvVars_CachePathAbsentWhenUnset(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.Persistence.Cache = &pocketidinternalv1alpha1.CacheConfig{Enabled: true}
+
+	requireEnvAbsent(t, buildEnvVars(inst), "CACHE_PATH")
+}
+
 func TestBuildEnvVars_OutboundAllowedHosts(t *testing.T) {
 	inst := minimalInstance()
 	inst.Spec.OutboundAllowedHosts = &pocketidinternalv1alpha1.OutboundAllowedHostsConfig{
