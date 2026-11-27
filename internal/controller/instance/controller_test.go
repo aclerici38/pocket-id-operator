@@ -411,8 +411,8 @@ func TestBuildPodTemplate_CachePath(t *testing.T) {
 			pt := (&Reconciler{}).buildPodTemplate(inst, "")
 
 			c := pt.Spec.Containers[0]
-			if m := c.VolumeMounts[len(c.VolumeMounts)-1]; m.MountPath != "/var/cache/pocket-id" {
-				t.Errorf("cache mount path: got %q, want %q", m.MountPath, "/var/cache/pocket-id")
+			if findMount(c.VolumeMounts, "/var/cache/pocket-id") == nil {
+				t.Errorf("expected cache mount at /var/cache/pocket-id, got %+v", c.VolumeMounts)
 			}
 			requireEnv(t, c.Env, "CACHE_PATH", "/var/cache/pocket-id")
 		})
@@ -438,8 +438,7 @@ func TestBuildPodTemplate_CachePersistence(t *testing.T) {
 
 			pt := (&Reconciler{}).buildPodTemplate(inst, "")
 
-			mounts := pt.Spec.Containers[0].VolumeMounts
-			if m := mounts[len(mounts)-1]; m.Name != "cache" || m.MountPath != "/app/cache" || m.SubPath != "pid" {
+			if m := findMount(pt.Spec.Containers[0].VolumeMounts, "/app/cache"); m == nil || m.Name != "cache" || m.SubPath != "pid" {
 				t.Errorf("cache mount: got %+v", m)
 			}
 			vol := findVolume(pt.Spec.Volumes, "cache")
@@ -451,6 +450,29 @@ func TestBuildPodTemplate_CachePersistence(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBuildPodTemplate_CacheVolumeAtTmpWinsOverTmpfs(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.Persistence.Cache = &pocketidinternalv1alpha1.CacheConfig{Enabled: true, Path: "/tmp"}
+
+	pt := (&Reconciler{}).buildPodTemplate(inst, "")
+
+	if m := findMount(pt.Spec.Containers[0].VolumeMounts, "/tmp"); m == nil || m.Name != "cache" {
+		t.Errorf("expected the cache volume mounted at /tmp, got %+v", m)
+	}
+	if findVolume(pt.Spec.Volumes, "tmpfs") != nil {
+		t.Error("operator tmpfs volume should not be added when the cache volume is at /tmp")
+	}
+}
+
+func findMount(mounts []corev1.VolumeMount, mountPath string) *corev1.VolumeMount {
+	for i := range mounts {
+		if mounts[i].MountPath == mountPath {
+			return &mounts[i]
+		}
+	}
+	return nil
 }
 
 func findVolume(volumes []corev1.Volume, name string) *corev1.Volume {

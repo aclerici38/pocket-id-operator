@@ -591,8 +591,8 @@ var _ = Describe("PocketIDInstance Controller", func() {
 			Expect(volumeMounts).To(HaveLen(3)) // + tmpfs
 			Expect(volumeMounts[0].Name).To(Equal("data"))
 			Expect(volumeMounts[0].MountPath).To(Equal("/app/data"))
-			Expect(volumeMounts[2].Name).To(Equal("cache"))
-			Expect(volumeMounts[2].MountPath).To(Equal("/app/cache"))
+			Expect(volumeMounts[1].Name).To(Equal("cache"))
+			Expect(volumeMounts[1].MountPath).To(Equal("/app/cache"))
 		})
 	})
 
@@ -1156,8 +1156,8 @@ var _ = Describe("PocketIDInstance Controller", func() {
 			Expect(volumeMounts).To(HaveLen(3)) // + tmpfs
 			Expect(volumeMounts[0].Name).To(Equal("data"))
 			Expect(volumeMounts[0].MountPath).To(Equal("/app/data"))
-			Expect(volumeMounts[2].Name).To(Equal("cache"))
-			Expect(volumeMounts[2].MountPath).To(Equal("/app/cache"))
+			Expect(volumeMounts[1].Name).To(Equal("cache"))
+			Expect(volumeMounts[1].MountPath).To(Equal("/app/cache"))
 
 			// Verify no data volume in pod template (because volumeClaimTemplates handles it); only tmpfs remains
 			volumes := sts.Spec.Template.Spec.Volumes
