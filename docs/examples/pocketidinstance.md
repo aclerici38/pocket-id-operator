@@ -44,7 +44,9 @@ spec:
   ui:
     appName: "My SSO"
     sessionDuration: 1440
-    colorTheme: "custom:#3b82f6"
+    appearance:
+      layout: "classic"
+      primary: "#3b82f6"
   userManagement:
     allowOwnAccountEdit: true
     allowUserSignups: "disabled"

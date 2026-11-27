@@ -5671,13 +5671,6 @@
                         "additionalProperties": false,
                         "description": "UI settings.",
                         "properties": {
-                          "accentColor": {
-                            "description": "Deprecated: use colorTheme instead.",
-                            "type": [
-                              "string",
-                              "null"
-                            ]
-                          },
                           "appName": {
                             "description": "Application name.\nSets APP_NAME. See https://pocket-id.org/docs/configuration/environment-variables.",
                             "type": [
@@ -5685,19 +5678,13 @@
                               "null"
                             ]
                           },
-                          "colorTheme": {
-                            "description": "UI color theme. Takes precedence over accentColor.\nSets COLOR_THEME. See https://pocket-id.org/docs/configuration/environment-variables.",
+                          "appearance": {
+                            "description": "UI appearance settings, as a YAML object.\nSets APPEARANCE. See https://pocket-id.org/docs/configuration/environment-variables.",
                             "type": [
-                              "string",
+                              "object",
                               "null"
-                            ]
-                          },
-                          "disableAnimations": {
-                            "description": "Disable UI animations.\nSets DISABLE_ANIMATIONS. See https://pocket-id.org/docs/configuration/environment-variables.",
-                            "type": [
-                              "boolean",
-                              "null"
-                            ]
+                            ],
+                            "x-kubernetes-preserve-unknown-fields": true
                           },
                           "homePageUrl": {
                             "description": "Post-login redirect page.\nSets HOME_PAGE_URL. See https://pocket-id.org/docs/configuration/environment-variables.",

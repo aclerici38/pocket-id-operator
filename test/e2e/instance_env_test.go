@@ -116,12 +116,16 @@ spec:
   geoip:
     dbPath: "/tmp/GeoLite2-City.mmdb"
   ui:
+    appearance:
+      layout: "classic"
+      primary: "#3b82f6"
+      radius: 0.5
+      surfaces:
+        dark:
+          background: "#000000"
     appName: "E2E Maximal"
     sessionDuration: 60
     homePageUrl: "/settings/account"
-    disableAnimations: true
-    accentColor: "default"
-    colorTheme: "mist"
   userManagement:
     emailsVerified: true
     allowOwnAccountEdit: false
