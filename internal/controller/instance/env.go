@@ -473,6 +473,9 @@ func buildStandaloneEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []c
 	if instance.Spec.InternalAppURL != "" {
 		env = append(env, corev1.EnvVar{Name: "INTERNAL_APP_URL", Value: instance.Spec.InternalAppURL})
 	}
+	if c := instance.Spec.Persistence.Cache; c != nil && c.Path != "" {
+		env = append(env, corev1.EnvVar{Name: "CACHE_PATH", Value: c.Path})
+	}
 	if instance.Spec.LocalIPv6Ranges != "" {
 		env = append(env, corev1.EnvVar{Name: "LOCAL_IPV6_RANGES", Value: instance.Spec.LocalIPv6Ranges})
 	}

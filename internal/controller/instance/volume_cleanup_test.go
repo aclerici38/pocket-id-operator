@@ -154,6 +154,26 @@ func TestReconcileVolume_StatefulSetPreservesUserPVC(t *testing.T) {
 	}
 }
 
+func TestReconcileVolume_DisabledCacheKeepsPVCUsedAsDataClaim(t *testing.T) {
+	inst := instanceForVolume(func(s *pocketidinternalv1alpha1.PocketIDInstanceSpec) {
+		s.Persistence.ExistingClaim = volumeTestInstance + "-cache"
+	})
+	cachePVC := dataPVC(true)
+	cachePVC.Name = volumeTestInstance + "-cache"
+	r := volumeTestReconciler(t, inst, cachePVC)
+
+	if err := r.reconcileVolume(context.Background(), inst); err != nil {
+		t.Fatalf("reconcileVolume returned error: %v", err)
+	}
+	got := &corev1.PersistentVolumeClaim{}
+	if err := r.Get(context.Background(), client.ObjectKeyFromObject(cachePVC), got); err != nil {
+		t.Fatalf("expected the cache PVC used as the data existingClaim to be kept: %v", err)
+	}
+	if common.IsManagedByOperator(got) {
+		t.Error("expected the cache PVC used as the data existingClaim to no longer be managed")
+	}
+}
+
 func TestReconcileVolume_DifferentExistingClaimPreservesUserPVC(t *testing.T) {
 	inst := instanceForVolume(func(s *pocketidinternalv1alpha1.PocketIDInstanceSpec) {
 		s.Persistence.ExistingClaim = "some-other-claim"

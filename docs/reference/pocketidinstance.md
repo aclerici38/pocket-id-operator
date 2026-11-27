@@ -11,6 +11,7 @@ PocketIDInstanceSpec defines the desired state of PocketIDInstance.
 **Validation rules:**
 
 - deploymentType is immutable
+- persistence.cache is immutable when deploymentType is StatefulSet
 - external is immutable; create a new PocketIDInstance to switch modes
 - fileBackend must be 's3' (or unset) when s3 config is present
 - encryptionKey value must be at least 16 characters
@@ -111,9 +112,26 @@ PersistenceConfig configures persistence for the pocket-id container.
 | `storageClass` | string |  |  | Name of the StorageClass to provision a volume from. |
 | `size` | [Quantity](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#quantity-resource-api) |  | `1Gi` | Size of the claim to dynamically provision. |
 | `accessModes` | [PersistentVolumeAccessMode](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#persistentvolumeaccessmode-v1-core) array |  | `[ReadWriteOnce]` | AccessModes for the PVC. |
-| `path` | string |  | `/app/data` | Path where the data volume is mounted in the container. |
 | `subPath` | string |  |  | SubPath within the volume to mount (volumeMount.subPath). |
+| `path` | string |  | `/app/data` | Path where the data volume is mounted in the container. |
 | `extraVolumeMounts` | [VolumeMount](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#volumemount-v1-core) array |  |  | Extra volume mounts to add to the pocket-id container. This is useful for mounting volumes defined in spec.podTemplate. |
+| [`cache`](#pocketidinstancespecpersistencecache) | object |  |  | Configures persistence for the cache folder, which holds files Pocket-ID can download or render again.<br />If not enabled, an emptyDir is mounted instead. |
+
+## `PocketIDInstance.spec.persistence.cache`
+
+<sup>[↩ PocketIDInstance.spec.persistence](#pocketidinstancespecpersistence)</sup>
+
+CacheConfig configures the cache folder of the pocket-id container.
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `enabled` | boolean | yes | `false` | Enables mounting a persistent volume. |
+| `existingClaim` | string |  |  | Name of an existing, externally-managed PVC to mount. |
+| `storageClass` | string |  |  | Name of the StorageClass to provision a volume from. |
+| `size` | [Quantity](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#quantity-resource-api) |  | `1Gi` | Size of the claim to dynamically provision. |
+| `accessModes` | [PersistentVolumeAccessMode](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#persistentvolumeaccessmode-v1-core) array |  | `[ReadWriteOnce]` | AccessModes for the PVC. |
+| `subPath` | string |  |  | SubPath within the volume to mount (volumeMount.subPath). |
+| `path` | string |  |  | Path where the cache volume is mounted in the container, /app/cache if unset.<br />Sets CACHE_PATH. See https://pocket-id.org/docs/configuration/environment-variables.<br />_Pattern: `^/`_ |
 
 ## `PocketIDInstance.spec.metrics`
 

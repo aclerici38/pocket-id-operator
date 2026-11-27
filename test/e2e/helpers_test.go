@@ -56,7 +56,10 @@ type InstanceOptions struct {
 	PersistenceEnabled *bool
 	PersistenceSize    string
 	ExistingClaim      string
-	CIMDURLAllowlist   []string
+	// CacheEnabled and CachePath set persistence.cache.enabled and persistence.cache.path.
+	CacheEnabled     bool
+	CachePath        string
+	CIMDURLAllowlist []string
 	// EmailOptional sets userManagement.requireUserEmail to false, so users need no email.
 	EmailOptional bool
 	// RateLimitingDisabled turns off Pocket-ID's rate limits, which every operator request
@@ -107,12 +110,21 @@ func buildInstanceYAML(opts InstanceOptions) string {
 
 	var persistence string
 	if opts.PersistenceEnabled != nil && *opts.PersistenceEnabled {
-		persistence = "  persistence:\n    enabled: true\n"
+		persistence = "    enabled: true\n"
 		if opts.ExistingClaim != "" {
 			persistence += fmt.Sprintf("    existingClaim: %s\n", opts.ExistingClaim)
 		} else if opts.PersistenceSize != "" {
 			persistence += fmt.Sprintf("    size: %s\n", opts.PersistenceSize)
 		}
+	}
+	if opts.CacheEnabled || opts.CachePath != "" {
+		persistence += fmt.Sprintf("    cache:\n      enabled: %t\n", opts.CacheEnabled)
+		if opts.CachePath != "" {
+			persistence += fmt.Sprintf("      path: %s\n", opts.CachePath)
+		}
+	}
+	if persistence != "" {
+		persistence = "  persistence:\n" + persistence
 	}
 
 	var cimd string

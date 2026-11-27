@@ -93,6 +93,9 @@ spec:
         name: pocket-id-encryption
         key: key
   fileBackend: filesystem
+  persistence:
+    cache:
+      path: "/var/cache/pocket-id"
   analyticsDisabled: true
   versionCheckDisabled: true
   rateLimitingDisabled: true

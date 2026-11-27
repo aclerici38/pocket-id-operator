@@ -431,6 +431,36 @@ type GeoIPConfig struct {
 
 // PersistenceConfig configures persistence for the pocket-id container.
 type PersistenceConfig struct {
+	PVCConfig `json:",inline"`
+
+	// Path where the data volume is mounted in the container.
+	// +kubebuilder:default="/app/data"
+	// +optional
+	Path string `json:"path,omitempty"`
+
+	// Extra volume mounts to add to the pocket-id container. This is useful for mounting volumes defined in spec.podTemplate.
+	// +optional
+	ExtraVolumeMounts []corev1.VolumeMount `json:"extraVolumeMounts,omitempty"`
+
+	// Configures persistence for the cache folder, which holds files Pocket-ID can download or render again.
+	// If not enabled, an emptyDir is mounted instead.
+	// +optional
+	Cache *CacheConfig `json:"cache,omitempty"`
+}
+
+// CacheConfig configures the cache folder of the pocket-id container.
+type CacheConfig struct {
+	PVCConfig `json:",inline"`
+
+	// Path where the cache volume is mounted in the container, /app/cache if unset.
+	// Sets CACHE_PATH. See https://pocket-id.org/docs/configuration/environment-variables.
+	// +kubebuilder:validation:Pattern=`^/`
+	// +optional
+	Path string `json:"path,omitempty"`
+}
+
+// PVCConfig configures a volume backed by a PersistentVolumeClaim.
+type PVCConfig struct {
 	// Enables mounting a persistent volume.
 	// +kubebuilder:default=false
 	Enabled bool `json:"enabled"`
@@ -453,18 +483,9 @@ type PersistenceConfig struct {
 	// +optional
 	AccessModes []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
 
-	// Path where the data volume is mounted in the container.
-	// +kubebuilder:default="/app/data"
-	// +optional
-	Path string `json:"path,omitempty"`
-
 	// SubPath within the volume to mount (volumeMount.subPath).
 	// +optional
 	SubPath string `json:"subPath,omitempty"`
-
-	// Extra volume mounts to add to the pocket-id container. This is useful for mounting volumes defined in spec.podTemplate.
-	// +optional
-	ExtraVolumeMounts []corev1.VolumeMount `json:"extraVolumeMounts,omitempty"`
 }
 
 // HTTPRouteConfig configures an HTTPRoute (Gateway API) for the instance. Gateway API CRDs must already be present in the cluster.
@@ -573,6 +594,7 @@ type TLSConfig struct {
 
 // PocketIDInstanceSpec defines the desired state of PocketIDInstance.
 // +kubebuilder:validation:XValidation:rule="self.deploymentType == oldSelf.deploymentType",message="deploymentType is immutable"
+// +kubebuilder:validation:XValidation:rule="self.deploymentType != 'StatefulSet' || (has(self.persistence) && has(self.persistence.cache) ? has(oldSelf.persistence) && has(oldSelf.persistence.cache) && self.persistence.cache == oldSelf.persistence.cache : !has(oldSelf.persistence) || !has(oldSelf.persistence.cache))",message="persistence.cache is immutable when deploymentType is StatefulSet"
 // +kubebuilder:validation:XValidation:rule="has(self.external) == has(oldSelf.external)",message="external is immutable; create a new PocketIDInstance to switch modes"
 // +kubebuilder:validation:XValidation:rule="!has(self.s3) || !has(self.fileBackend) || self.fileBackend == 's3'",message="fileBackend must be 's3' (or unset) when s3 config is present"
 // +kubebuilder:validation:XValidation:rule="!has(self.encryptionKey) || !has(self.encryptionKey.value) || size(self.encryptionKey.value) == 0 || size(self.encryptionKey.value) >= 16",message="encryptionKey value must be at least 16 characters"
