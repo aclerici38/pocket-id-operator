@@ -94,7 +94,7 @@ APIKeySpec defines the desired state of an API key.
 | `name` | string | yes |  | Name of the API key (3-50 characters).<br />_MaxLength: 50_<br />_MinLength: 3_ |
 | `expiresAt` | string |  |  | ExpiresAt is the expiration time in RFC3339 format (e.g., "2030-01-01T00:00:00Z").<br />Defaults to 1 year in the future. |
 | `description` | string |  | `Created by pocket-id-operator` | Description of the API key. |
-| `scopes` | string array | yes |  | Scopes granted to the API key, e.g. "account:read". Must be scopes the user holds.<br />_MinItems: 1_ |
+| `scopes` | string array | yes |  | Scopes granted to the API key, e.g. "account:read". Must be scopes the user holds.<br />_MinItems: 1_<br />_items:XValidation: \{self != 'admin-access:write' admin-access:write requires a passkey; create this key in the Pocket ID UI    <nil>\}_ |
 
 ## `PocketIDUser.spec.customClaims[]`
 
