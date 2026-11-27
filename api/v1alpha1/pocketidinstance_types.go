@@ -143,11 +143,7 @@ type SMTPConfig struct {
 
 // EmailNotificationsConfig controls which email notifications Pocket-ID sends. Requires smtp.
 type EmailNotificationsConfig struct {
-	// Deprecated: use loginNotificationMode instead.
-	// +optional
-	LoginNotification *bool `json:"loginNotification,omitempty"`
-
-	// When users receive a sign-in notification email. Requires Pocket-ID v2.19.0 or newer; takes precedence over loginNotification.
+	// When users receive a sign-in notification email. Requires Pocket-ID v2.19.0 or newer.
 	// Sets EMAIL_LOGIN_NOTIFICATION_MODE. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +kubebuilder:validation:Enum=disabled;always;ipAndUserAgent;browserRecognition
 	// +optional
@@ -168,11 +164,7 @@ type EmailNotificationsConfig struct {
 	// +optional
 	OneTimeAccessAsUnauthenticated *bool `json:"oneTimeAccessAsUnauthenticated,omitempty"`
 
-	// Deprecated: use verificationMode instead.
-	// +optional
-	Verification *bool `json:"verification,omitempty"`
-
-	// Email verification mode. Requires Pocket-ID v2.19.0 or newer; takes precedence over verification.
+	// Email verification mode. Requires Pocket-ID v2.19.0 or newer.
 	// With required, non-admin users (including operator-managed ones) must verify their email before using Pocket-ID.
 	// Sets EMAIL_VERIFICATION. See https://pocket-id.org/docs/configuration/environment-variables.
 	// +kubebuilder:validation:Enum=disabled;optional;required

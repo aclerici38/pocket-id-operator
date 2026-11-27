@@ -713,12 +713,9 @@ spec:
                       API key expiration notifications.
                       Sets EMAIL_API_KEY_EXPIRATION_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables.
                     type: boolean
-                  loginNotification:
-                    description: 'Deprecated: use loginNotificationMode instead.'
-                    type: boolean
                   loginNotificationMode:
                     description: |-
-                      When users receive a sign-in notification email. Requires Pocket-ID v2.19.0 or newer; takes precedence over loginNotification.
+                      When users receive a sign-in notification email. Requires Pocket-ID v2.19.0 or newer.
                       Sets EMAIL_LOGIN_NOTIFICATION_MODE. See https://pocket-id.org/docs/configuration/environment-variables.
                     enum:
                     - disabled
@@ -736,12 +733,9 @@ spec:
                       Email login codes for unauthenticated users.
                       Sets EMAIL_ONE_TIME_ACCESS_AS_UNAUTHENTICATED_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables.
                     type: boolean
-                  verification:
-                    description: 'Deprecated: use verificationMode instead.'
-                    type: boolean
                   verificationMode:
                     description: |-
-                      Email verification mode. Requires Pocket-ID v2.19.0 or newer; takes precedence over verification.
+                      Email verification mode. Requires Pocket-ID v2.19.0 or newer.
                       With required, non-admin users (including operator-managed ones) must verify their email before using Pocket-ID.
                       Sets EMAIL_VERIFICATION. See https://pocket-id.org/docs/configuration/environment-variables.
                     enum:

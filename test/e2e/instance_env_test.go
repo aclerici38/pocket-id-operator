@@ -152,12 +152,10 @@ spec:
     tls: "starttls"
     skipCertVerify: true
   emailNotifications:
-    loginNotification: true
     loginNotificationMode: "browserRecognition"
     oneTimeAccessAsAdmin: true
     apiKeyExpiration: true
     oneTimeAccessAsUnauthenticated: true
-    verification: true
     verificationMode: "optional"
   ldap:
     url: "ldap://ldap.invalid:389"

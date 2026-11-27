@@ -206,9 +206,6 @@ func buildEmailNotificationsEnv(instance *pocketidinternalv1alpha1.PocketIDInsta
 	}
 	en := instance.Spec.EmailNotifications
 	var env []corev1.EnvVar
-	if en.LoginNotification != nil { //nolint:staticcheck // still honored until the field is removed
-		env = append(env, corev1.EnvVar{Name: "EMAIL_LOGIN_NOTIFICATION_ENABLED", Value: fmt.Sprintf("%t", *en.LoginNotification)}) //nolint:staticcheck // still honored until the field is removed
-	}
 	if en.LoginNotificationMode != "" {
 		env = append(env, corev1.EnvVar{Name: "EMAIL_LOGIN_NOTIFICATION_MODE", Value: en.LoginNotificationMode})
 	}
@@ -220,9 +217,6 @@ func buildEmailNotificationsEnv(instance *pocketidinternalv1alpha1.PocketIDInsta
 	}
 	if en.OneTimeAccessAsUnauthenticated != nil {
 		env = append(env, corev1.EnvVar{Name: "EMAIL_ONE_TIME_ACCESS_AS_UNAUTHENTICATED_ENABLED", Value: fmt.Sprintf("%t", *en.OneTimeAccessAsUnauthenticated)})
-	}
-	if en.Verification != nil { //nolint:staticcheck // still honored until the field is removed
-		env = append(env, corev1.EnvVar{Name: "EMAIL_VERIFICATION_ENABLED", Value: fmt.Sprintf("%t", *en.Verification)}) //nolint:staticcheck // still honored until the field is removed
 	}
 	if en.VerificationMode != "" {
 		env = append(env, corev1.EnvVar{Name: "EMAIL_VERIFICATION", Value: en.VerificationMode})

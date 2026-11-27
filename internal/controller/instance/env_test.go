@@ -390,23 +390,18 @@ func TestBuildEnvVars_SMTPMinimal(t *testing.T) {
 func TestBuildEnvVars_EmailNotifications(t *testing.T) {
 	inst := minimalInstance()
 	inst.Spec.EmailNotifications = &pocketidinternalv1alpha1.EmailNotificationsConfig{
-		LoginNotification:              new(true), //nolint:staticcheck // testing the deprecated field
 		LoginNotificationMode:          "ipAndUserAgent",
 		OneTimeAccessAsAdmin:           new(true),
 		APIKeyExpiration:               new(true),
 		OneTimeAccessAsUnauthenticated: new(true),
-		Verification:                   new(true), //nolint:staticcheck // testing the deprecated field
 		VerificationMode:               "required",
 	}
 
-	// Deprecated fields and their replacements pass through untouched; Pocket-ID resolves precedence
 	env := buildEnvVars(inst)
-	requireEnv(t, env, "EMAIL_LOGIN_NOTIFICATION_ENABLED", "true")
 	requireEnv(t, env, "EMAIL_LOGIN_NOTIFICATION_MODE", "ipAndUserAgent")
 	requireEnv(t, env, "EMAIL_ONE_TIME_ACCESS_AS_ADMIN_ENABLED", "true")
 	requireEnv(t, env, "EMAIL_API_KEY_EXPIRATION_ENABLED", "true")
 	requireEnv(t, env, "EMAIL_ONE_TIME_ACCESS_AS_UNAUTHENTICATED_ENABLED", "true")
-	requireEnv(t, env, "EMAIL_VERIFICATION_ENABLED", "true")
 	requireEnv(t, env, "EMAIL_VERIFICATION", "required")
 }
 
@@ -415,7 +410,6 @@ func TestBuildEnvVars_EmailNotificationsAllFalse(t *testing.T) {
 	inst.Spec.EmailNotifications = &pocketidinternalv1alpha1.EmailNotificationsConfig{}
 
 	env := buildEnvVars(inst)
-	requireEnvAbsent(t, env, "EMAIL_LOGIN_NOTIFICATION_ENABLED")
 	requireEnvAbsent(t, env, "EMAIL_LOGIN_NOTIFICATION_MODE")
 	requireEnvAbsent(t, env, "EMAIL_ONE_TIME_ACCESS_AS_ADMIN_ENABLED")
 	requireEnvAbsent(t, env, "EMAIL_VERIFICATION")
@@ -791,9 +785,6 @@ func TestBuildEnvVars_OptionalBools(t *testing.T) {
 		{"SMTP_SKIP_CERT_VERIFY", func(s *spec, v *bool) {
 			s.SMTP = &pocketidinternalv1alpha1.SMTPConfig{SkipCertVerify: v}
 		}},
-		{"EMAIL_LOGIN_NOTIFICATION_ENABLED", func(s *spec, v *bool) {
-			s.EmailNotifications = &pocketidinternalv1alpha1.EmailNotificationsConfig{LoginNotification: v} //nolint:staticcheck // testing the deprecated field
-		}},
 		{"EMAIL_ONE_TIME_ACCESS_AS_ADMIN_ENABLED", func(s *spec, v *bool) {
 			s.EmailNotifications = &pocketidinternalv1alpha1.EmailNotificationsConfig{OneTimeAccessAsAdmin: v}
 		}},
@@ -802,9 +793,6 @@ func TestBuildEnvVars_OptionalBools(t *testing.T) {
 		}},
 		{"EMAIL_ONE_TIME_ACCESS_AS_UNAUTHENTICATED_ENABLED", func(s *spec, v *bool) {
 			s.EmailNotifications = &pocketidinternalv1alpha1.EmailNotificationsConfig{OneTimeAccessAsUnauthenticated: v}
-		}},
-		{"EMAIL_VERIFICATION_ENABLED", func(s *spec, v *bool) {
-			s.EmailNotifications = &pocketidinternalv1alpha1.EmailNotificationsConfig{Verification: v} //nolint:staticcheck // testing the deprecated field
 		}},
 		{"LDAP_SKIP_CERT_VERIFY", func(s *spec, v *bool) {
 			s.LDAP = &pocketidinternalv1alpha1.LDAPConfig{SkipCertVerify: v}

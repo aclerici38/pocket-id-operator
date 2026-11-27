@@ -2179,15 +2179,8 @@
                                   "null"
                                 ]
                               },
-                              "loginNotification": {
-                                "description": "Deprecated: use loginNotificationMode instead.",
-                                "type": [
-                                  "boolean",
-                                  "null"
-                                ]
-                              },
                               "loginNotificationMode": {
-                                "description": "When users receive a sign-in notification email. Requires Pocket-ID v2.19.0 or newer; takes precedence over loginNotification.\nSets EMAIL_LOGIN_NOTIFICATION_MODE. See https://pocket-id.org/docs/configuration/environment-variables.",
+                                "description": "When users receive a sign-in notification email. Requires Pocket-ID v2.19.0 or newer.\nSets EMAIL_LOGIN_NOTIFICATION_MODE. See https://pocket-id.org/docs/configuration/environment-variables.",
                                 "enum": [
                                   "disabled",
                                   "always",
@@ -2213,15 +2206,8 @@
                                   "null"
                                 ]
                               },
-                              "verification": {
-                                "description": "Deprecated: use verificationMode instead.",
-                                "type": [
-                                  "boolean",
-                                  "null"
-                                ]
-                              },
                               "verificationMode": {
-                                "description": "Email verification mode. Requires Pocket-ID v2.19.0 or newer; takes precedence over verification.\nWith required, non-admin users (including operator-managed ones) must verify their email before using Pocket-ID.\nSets EMAIL_VERIFICATION. See https://pocket-id.org/docs/configuration/environment-variables.",
+                                "description": "Email verification mode. Requires Pocket-ID v2.19.0 or newer.\nWith required, non-admin users (including operator-managed ones) must verify their email before using Pocket-ID.\nSets EMAIL_VERIFICATION. See https://pocket-id.org/docs/configuration/environment-variables.",
                                 "enum": [
                                   "disabled",
                                   "optional",
@@ -8328,15 +8314,8 @@
                               "null"
                             ]
                           },
-                          "loginNotification": {
-                            "description": "Deprecated: use loginNotificationMode instead.",
-                            "type": [
-                              "boolean",
-                              "null"
-                            ]
-                          },
                           "loginNotificationMode": {
-                            "description": "When users receive a sign-in notification email. Requires Pocket-ID v2.19.0 or newer; takes precedence over loginNotification.\nSets EMAIL_LOGIN_NOTIFICATION_MODE. See https://pocket-id.org/docs/configuration/environment-variables.",
+                            "description": "When users receive a sign-in notification email. Requires Pocket-ID v2.19.0 or newer.\nSets EMAIL_LOGIN_NOTIFICATION_MODE. See https://pocket-id.org/docs/configuration/environment-variables.",
                             "enum": [
                               "disabled",
                               "always",
@@ -8362,15 +8341,8 @@
                               "null"
                             ]
                           },
-                          "verification": {
-                            "description": "Deprecated: use verificationMode instead.",
-                            "type": [
-                              "boolean",
-                              "null"
-                            ]
-                          },
                           "verificationMode": {
-                            "description": "Email verification mode. Requires Pocket-ID v2.19.0 or newer; takes precedence over verification.\nWith required, non-admin users (including operator-managed ones) must verify their email before using Pocket-ID.\nSets EMAIL_VERIFICATION. See https://pocket-id.org/docs/configuration/environment-variables.",
+                            "description": "Email verification mode. Requires Pocket-ID v2.19.0 or newer.\nWith required, non-admin users (including operator-managed ones) must verify their email before using Pocket-ID.\nSets EMAIL_VERIFICATION. See https://pocket-id.org/docs/configuration/environment-variables.",
                             "enum": [
                               "disabled",
                               "optional",
