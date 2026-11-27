@@ -194,6 +194,23 @@ Configuring `spec.external` allows the operator to manage an instance deployed o
 
 See [example](../examples/pocketidinstance.md#external-instance).
 
+### API Key Scopes
+
+The API key in `spec.external.apiKeySecretRef` only needs the scopes of the resources the operator manages, listed in [API Key Scopes](../reference/api-key-scopes.md). Some scopes are only used by optional fields:
+
+- `PocketIDOIDCClient`: `oidc-clients:read` and `oidc-clients:write` manage the client. `groups:read` resolves `spec.allowedUserGroups`, and `apis:read` and `apis:write` grant `spec.apiAccess`.
+- `PocketIDUser`: `users:login-codes` creates the first login code and opens the user session that manages `spec.apiKeys`.
+- `PocketIDInstance`: `apis:read` and `apis:write` are only used by `spec.builtInAPI`.
+
+The key also needs `admin-access:write` for any change that decides who holds admin access:
+
+- creating, editing, or deleting an admin user, or making a user an admin
+- creating a login code for an admin user, which managing their `spec.apiKeys` also does
+- changing which clients may use Pocket ID's own API, through `spec.builtInAPI` or `spec.apiAccess`
+- changing an OIDC client that may use Pocket ID's own API, including which groups may use it
+
+Creating an API key with `admin-access:write` requires re-authenticating with a passkey, which the operator can't do, so `PocketIDUser` `spec.apiKeys` rejects it. Create it in the Pocket ID UI.
+
 ## Generated Resources And Environment
 
 - Service name: `<instance>`, port 1411.
