@@ -941,11 +941,16 @@ func (r *Reconciler) reconcilePVC(ctx context.Context, instance *pocketidinterna
 		},
 	}
 
-	// If any volume mounts the default PVC as its existingClaim, it belongs to the user: ensure it's
-	// no longer managed by us so neither cleanup nor garbage collection deletes it
-	if slices.ContainsFunc(persistentVolumes(instance), func(o namedPVC) bool {
-		return o.cfg.Enabled && o.cfg.ExistingClaim == defaultPVCName
-	}) {
+	// The volume doesn't use its default PVC when disabled, using StatefulSet or using an existing claim
+	if !v.cfg.Enabled || instance.Spec.DeploymentType == "StatefulSet" || v.cfg.ExistingClaim != "" {
+		// If no volume mounts the default PVC as its existingClaim, delete it
+		if !slices.ContainsFunc(persistentVolumes(instance), func(o namedPVC) bool {
+			return o.cfg.Enabled && o.cfg.ExistingClaim == defaultPVCName
+		}) {
+			return r.deleteIfManaged(ctx, pvc, "Deleting default PVC (persistence disabled, StatefulSet or existingClaim)", "pvc", defaultPVCName)
+		}
+		// Otherwise it belongs to the user: ensure it's no longer managed by us so neither cleanup
+		// nor garbage collection deletes it
 		existing := &corev1.PersistentVolumeClaim{}
 		if err := r.Get(ctx, client.ObjectKeyFromObject(pvc), existing); err == nil {
 			original := existing.DeepCopy()
@@ -960,11 +965,6 @@ func (r *Reconciler) reconcilePVC(ctx context.Context, instance *pocketidinterna
 			}
 		}
 		return nil
-	}
-
-	// Delete PVC if persistence is disabled, using StatefulSet or using a different existing claim
-	if !v.cfg.Enabled || instance.Spec.DeploymentType == "StatefulSet" || v.cfg.ExistingClaim != "" {
-		return r.deleteIfManaged(ctx, pvc, "Deleting default PVC (persistence disabled, StatefulSet or existingClaim)", "pvc", defaultPVCName)
 	}
 
 	pvc.Labels = common.ManagedByLabels(instance.Spec.Labels)

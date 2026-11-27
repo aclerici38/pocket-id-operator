@@ -596,6 +596,56 @@ var _ = Describe("PocketIDInstance Controller", func() {
 		})
 	})
 
+	Context("When the cache uses the data PVC as its existingClaim", func() {
+		const instanceName = "test-shared-claim-instance"
+
+		var instance *pocketidinternalv1alpha1.PocketIDInstance
+		var secret *corev1.Secret
+
+		BeforeEach(func() {
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: instanceName + "-secret", Namespace: namespace},
+				Data:       map[string][]byte{"encryption-key": []byte("test-encryption-key-value")},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			instance = &pocketidinternalv1alpha1.PocketIDInstance{
+				ObjectMeta: metav1.ObjectMeta{Name: instanceName, Namespace: namespace},
+				Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
+					EncryptionKey: &pocketidinternalv1alpha1.SensitiveValue{
+						ValueFrom: &corev1.EnvVarSource{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{Name: secret.Name},
+								Key:                  "encryption-key",
+							},
+						},
+					},
+					Persistence: pocketidinternalv1alpha1.PersistenceConfig{
+						Enabled: true,
+						Size:    resource.MustParse("2Gi"),
+						Cache:   &pocketidinternalv1alpha1.CacheConfig{Enabled: true, ExistingClaim: instanceName + "-data", SubPath: "cache"},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, instance)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			_ = k8sClient.Delete(ctx, instance)
+			_ = k8sClient.Delete(ctx, secret)
+		})
+
+		It("Should still create and manage the data PVC", func() {
+			pvc := &corev1.PersistentVolumeClaim{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{Name: instanceName + "-data", Namespace: namespace}, pvc)
+			}, timeout, interval).Should(Succeed())
+			Expect(common.IsManagedByOperator(pvc)).To(BeTrue())
+			Expect(pvc.OwnerReferences).To(HaveLen(1))
+			Expect(pvc.OwnerReferences[0].Name).To(Equal(instanceName))
+		})
+	})
+
 	Context("When creating a PocketIDInstance with persistence disabled", func() {
 		const instanceName = "test-no-persistence-instance"
 
