@@ -331,13 +331,6 @@
             }
           ]
         },
-        "darkLogoUrl": {
-          "description": "Deprecated: Use spec.logo.darkLogoUrl instead.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "federatedIdentities": {
           "description": "FederatedIdentities configures JWT assertion identities.",
           "items": {
@@ -607,13 +600,6 @@
           },
           "type": [
             "object",
-            "null"
-          ]
-        },
-        "logoUrl": {
-          "description": "Deprecated: Use spec.logo.logoUrl instead.",
-          "type": [
-            "string",
             "null"
           ]
         },

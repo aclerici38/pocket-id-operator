@@ -213,10 +213,9 @@ See examples to [use the default templates](../examples/pocketidoidcclient.md#us
 
 Each side's logo URL is resolved in this order:
 
-1. The deprecated `spec.logoUrl` / `spec.darkLogoUrl`, used as-is. Migrate these to `spec.logo.logoUrl` and `spec.logo.darkLogoUrl`, which also accept a full URL without templating.
-2. `spec.logo.logoUrl` / `spec.logo.darkLogoUrl`.
-3. The operator's default template, when `autoGenerate` is enabled.
-4. No logo.
+1. `spec.logo.logoUrl` / `spec.logo.darkLogoUrl`.
+2. The operator's default template, when `autoGenerate` is enabled.
+3. No logo.
 
 ### Ownership
 

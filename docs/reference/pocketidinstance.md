@@ -28,7 +28,6 @@ PocketIDInstanceSpec defines the desired state of PocketIDInstance.
 | [`persistence`](#pocketidinstancespecpersistence) | object |  |  | Configures persistence for Pocket-ID. Pocket-ID can be run statelessly; see https://pocket-id-operator.pages.dev/examples/pocketidinstance/#stateless-deployment.<br />If not enabled, an emptyDir is mounted instead. |
 | `podSecurityContext` | [PodSecurityContext](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#podsecuritycontext-v1-core) |  |  | Pod security context. |
 | `containerSecurityContext` | [SecurityContext](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#securitycontext-v1-core) |  |  | Container security context. |
-| `hostUsers` | boolean |  | `true` | Deprecated: use spec.podTemplate.hostUsers instead. |
 | `labels` | object (keys:string, values:string) |  |  | Additional labels to add to the workload and pod. |
 | `annotations` | object (keys:string, values:string) |  |  | Additional annotations to add to the workload and pod. |
 | `podTemplate` | [PodTemplateSpec](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#podtemplatespec-v1-core) |  |  | Pod template to merge with the operator-built pod spec. Operator-managed fields including the pocket-id container always take precedence.<br />_Schemaless: \{\}_ |
@@ -230,13 +229,11 @@ EmailNotificationsConfig controls which email notifications Pocket-ID sends. Req
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `loginNotification` | boolean |  |  | Deprecated: use loginNotificationMode instead. |
-| `loginNotificationMode` | string |  |  | When users receive a sign-in notification email. Requires Pocket-ID v2.19.0 or newer; takes precedence over loginNotification.<br />Sets EMAIL_LOGIN_NOTIFICATION_MODE. See https://pocket-id.org/docs/configuration/environment-variables.<br />_Enum: [disabled always ipAndUserAgent browserRecognition]_ |
+| `loginNotificationMode` | string |  |  | When users receive a sign-in notification email. Requires Pocket-ID v2.19.0 or newer.<br />Sets EMAIL_LOGIN_NOTIFICATION_MODE. See https://pocket-id.org/docs/configuration/environment-variables.<br />_Enum: [disabled always ipAndUserAgent browserRecognition]_ |
 | `oneTimeAccessAsAdmin` | boolean |  |  | Admin-sent login codes.<br />Sets EMAIL_ONE_TIME_ACCESS_AS_ADMIN_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `apiKeyExpiration` | boolean |  |  | API key expiration notifications.<br />Sets EMAIL_API_KEY_EXPIRATION_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables. |
 | `oneTimeAccessAsUnauthenticated` | boolean |  |  | Email login codes for unauthenticated users.<br />Sets EMAIL_ONE_TIME_ACCESS_AS_UNAUTHENTICATED_ENABLED. See https://pocket-id.org/docs/configuration/environment-variables. |
-| `verification` | boolean |  |  | Deprecated: use verificationMode instead. |
-| `verificationMode` | string |  |  | Email verification mode. Requires Pocket-ID v2.19.0 or newer; takes precedence over verification.<br />With required, non-admin users (including operator-managed ones) must verify their email before using Pocket-ID.<br />Sets EMAIL_VERIFICATION. See https://pocket-id.org/docs/configuration/environment-variables.<br />_Enum: [disabled optional required]_ |
+| `verificationMode` | string |  |  | Email verification mode. Requires Pocket-ID v2.19.0 or newer.<br />With required, non-admin users (including operator-managed ones) must verify their email before using Pocket-ID.<br />Sets EMAIL_VERIFICATION. See https://pocket-id.org/docs/configuration/environment-variables.<br />_Enum: [disabled optional required]_ |
 
 ## `PocketIDInstance.spec.ldap`
 
