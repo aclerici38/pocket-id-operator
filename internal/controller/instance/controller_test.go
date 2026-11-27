@@ -85,6 +85,7 @@ func TestBuildPodTemplate_PodSpecFieldsPassThrough(t *testing.T) {
 			},
 			NodeSelector:      map[string]string{"kubernetes.io/arch": "amd64"},
 			PriorityClassName: "high-priority",
+			HostUsers:         new(false),
 		},
 	}
 
@@ -98,6 +99,9 @@ func TestBuildPodTemplate_PodSpecFieldsPassThrough(t *testing.T) {
 	}
 	if pt.Spec.PriorityClassName != "high-priority" {
 		t.Errorf("priorityClassName: got %q, want %q", pt.Spec.PriorityClassName, "high-priority")
+	}
+	if pt.Spec.HostUsers == nil || *pt.Spec.HostUsers {
+		t.Errorf("hostUsers not passed through: %v", pt.Spec.HostUsers)
 	}
 }
 

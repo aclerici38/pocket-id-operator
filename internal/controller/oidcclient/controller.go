@@ -857,15 +857,9 @@ func (r *Reconciler) applyLogoStatus(ctx context.Context, oidcClient *pocketidin
 
 // resolveLogoURLs determines the logo URL desired for each side of the OIDC client.
 // The name used for {{name}} substitution is metadata.name, overridable via logo.nameOverride.
-// Precedence: deprecated spec.logoUrl/darkLogoUrl > logo struct template resolution > empty.
 // An empty side means the spec asks for no logo there, which is not the same as asserting
 // the client has none: only reconcileLogos decides what that absence implies.
 func (r *Reconciler) resolveLogoURLs(oidcClient *pocketidinternalv1alpha1.PocketIDOIDCClient) (logoURL, darkLogoURL string) {
-	// Deprecated fields take precedence for backwards compatibility
-	if oidcClient.Spec.LogoURL != "" || oidcClient.Spec.DarkLogoURL != "" { //nolint:staticcheck // still honored until the field is removed
-		return oidcClient.Spec.LogoURL, oidcClient.Spec.DarkLogoURL //nolint:staticcheck // still honored until the field is removed
-	}
-
 	logo := oidcClient.Spec.Logo
 
 	autoGenerate := r.DefaultAutoGenerateLogos

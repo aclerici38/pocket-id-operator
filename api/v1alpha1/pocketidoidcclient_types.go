@@ -351,14 +351,6 @@ type PocketIDOIDCClientSpec struct {
 	// +optional
 	LaunchURL string `json:"launchUrl,omitempty"`
 
-	// Deprecated: Use spec.logo.logoUrl instead.
-	// +optional
-	LogoURL string `json:"logoUrl,omitempty"`
-
-	// Deprecated: Use spec.logo.darkLogoUrl instead.
-	// +optional
-	DarkLogoURL string `json:"darkLogoUrl,omitempty"`
-
 	// Logo configures logo URLs for the OIDC client with template support.
 	// +optional
 	Logo *OIDCClientLogoSpec `json:"logo,omitempty"`

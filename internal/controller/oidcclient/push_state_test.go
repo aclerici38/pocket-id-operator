@@ -150,25 +150,6 @@ func namedClient(name string) *pocketidinternalv1alpha1.PocketIDOIDCClient {
 	}
 }
 
-func TestResolveLogoURLs_DeprecatedFieldsTakePrecedence(t *testing.T) {
-	r := &Reconciler{DefaultLogoTemplate: "https://cdn.example.com/{{name}}.png"}
-	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{
-		ObjectMeta: metav1.ObjectMeta{Name: "my-app", Namespace: testNamespace},
-		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{
-			LogoURL:     "https://explicit.example.com/logo.png",      //nolint:staticcheck // testing the deprecated field
-			DarkLogoURL: "https://explicit.example.com/logo-dark.png", //nolint:staticcheck // testing the deprecated field
-			Logo:        &pocketidinternalv1alpha1.OIDCClientLogoSpec{AutoGenerate: new(true)},
-		},
-	}
-	logoURL, darkLogoURL := r.resolveLogoURLs(oidcClient)
-	if logoURL != "https://explicit.example.com/logo.png" {
-		t.Errorf("expected deprecated logoUrl to win, got %q", logoURL)
-	}
-	if darkLogoURL != "https://explicit.example.com/logo-dark.png" {
-		t.Errorf("expected deprecated darkLogoUrl to win, got %q", darkLogoURL)
-	}
-}
-
 func TestResolveLogoURLs_NameOverride(t *testing.T) {
 	r := &Reconciler{}
 	oidcClient := &pocketidinternalv1alpha1.PocketIDOIDCClient{

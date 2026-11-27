@@ -1474,14 +1474,6 @@
             "null"
           ]
         },
-        "hostUsers": {
-          "default": true,
-          "description": "Deprecated: use spec.podTemplate.hostUsers instead.",
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
         "image": {
           "description": "Container image to run. When unset, the operator uses the latest version tested against this release.",
           "type": [

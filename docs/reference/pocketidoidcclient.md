@@ -32,8 +32,6 @@ PocketIDOIDCClientSpec defines the desired state of PocketIDOIDCClient
 | `logoutCallbackUrls` | string array |  |  | Logout callback URLs for the client. Unset clears any set outside the operator. |
 | `backchannelLogoutUrl` | string |  |  | Back-channel logout URL Pocket-ID notifies when a user's session for the client ends. |
 | `launchUrl` | string |  |  | Launch URL for the client. Used in the "apps" dashboard in the Pocket-ID ui. |
-| `logoUrl` | string |  |  | Deprecated: Use spec.logo.logoUrl instead. |
-| `darkLogoUrl` | string |  |  | Deprecated: Use spec.logo.darkLogoUrl instead. |
 | [`logo`](#pocketidoidcclientspeclogo) | object |  |  | Logo configures logo URLs for the OIDC client with template support. |
 | `isPublic` | boolean |  | `false` | Indicates if the client is public (no client secret). |
 | `pkceEnabled` | boolean |  | `false` | Enables PKCE for the client. |

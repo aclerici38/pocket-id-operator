@@ -1122,10 +1122,6 @@ spec:
                         type: object
                     type: object
                 type: object
-              hostUsers:
-                default: true
-                description: 'Deprecated: use spec.podTemplate.hostUsers instead.'
-                type: boolean
               image:
                 description: Container image to run. When unset, the operator uses
                   the latest version tested against this release.

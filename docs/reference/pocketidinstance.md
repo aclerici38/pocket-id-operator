@@ -28,7 +28,6 @@ PocketIDInstanceSpec defines the desired state of PocketIDInstance.
 | [`persistence`](#pocketidinstancespecpersistence) | object |  |  | Configures persistence for Pocket-ID. Pocket-ID can be run statelessly; see https://pocket-id-operator.pages.dev/examples/pocketidinstance/#stateless-deployment.<br />If not enabled, an emptyDir is mounted instead. |
 | `podSecurityContext` | [PodSecurityContext](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#podsecuritycontext-v1-core) |  |  | Pod security context. |
 | `containerSecurityContext` | [SecurityContext](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#securitycontext-v1-core) |  |  | Container security context. |
-| `hostUsers` | boolean |  | `true` | Deprecated: use spec.podTemplate.hostUsers instead. |
 | `labels` | object (keys:string, values:string) |  |  | Additional labels to add to the workload and pod. |
 | `annotations` | object (keys:string, values:string) |  |  | Additional annotations to add to the workload and pod. |
 | `podTemplate` | [PodTemplateSpec](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#podtemplatespec-v1-core) |  |  | Pod template to merge with the operator-built pod spec. Operator-managed fields including the pocket-id container always take precedence.<br />_Schemaless: \{\}_ |

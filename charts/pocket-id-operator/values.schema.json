@@ -1535,14 +1535,6 @@
                       "null"
                     ]
                   },
-                  "hostUsers": {
-                    "default": true,
-                    "description": "Deprecated: use spec.podTemplate.hostUsers instead.",
-                    "type": [
-                      "boolean",
-                      "null"
-                    ]
-                  },
                   "image": {
                     "description": "Container image to run. When unset, the operator uses the latest version tested against this release.",
                     "type": [
@@ -5332,13 +5324,6 @@
                       }
                     ]
                   },
-                  "darkLogoUrl": {
-                    "description": "Deprecated: Use spec.logo.darkLogoUrl instead.",
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
                   "federatedIdentities": {
                     "description": "FederatedIdentities configures JWT assertion identities.",
                     "items": {
@@ -5608,13 +5593,6 @@
                     },
                     "type": [
                       "object",
-                      "null"
-                    ]
-                  },
-                  "logoUrl": {
-                    "description": "Deprecated: Use spec.logo.logoUrl instead.",
-                    "type": [
-                      "string",
                       "null"
                     ]
                   },
@@ -7667,14 +7645,6 @@
                 },
                 "type": [
                   "object",
-                  "null"
-                ]
-              },
-              "hostUsers": {
-                "default": true,
-                "description": "Deprecated: use spec.podTemplate.hostUsers instead.",
-                "type": [
-                  "boolean",
                   "null"
                 ]
               },

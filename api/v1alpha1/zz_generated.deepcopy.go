@@ -908,11 +908,6 @@ func (in *PocketIDInstanceSpec) DeepCopyInto(out *PocketIDInstanceSpec) {
 		*out = new(corev1.SecurityContext)
 		(*in).DeepCopyInto(*out)
 	}
-	if in.HostUsers != nil {
-		in, out := &in.HostUsers, &out.HostUsers
-		*out = new(bool)
-		**out = **in
-	}
 	if in.Labels != nil {
 		in, out := &in.Labels, &out.Labels
 		*out = make(map[string]string, len(*in))

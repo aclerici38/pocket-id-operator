@@ -630,11 +630,6 @@ type PocketIDInstanceSpec struct {
 	// +optional
 	ContainerSecurityContext *corev1.SecurityContext `json:"containerSecurityContext,omitempty"`
 
-	// Deprecated: use spec.podTemplate.hostUsers instead.
-	// +kubebuilder:default=true
-	// +optional
-	HostUsers *bool `json:"hostUsers,omitempty"`
-
 	// Additional labels to add to the workload and pod.
 	// +optional
 	Labels map[string]string `json:"labels,omitempty"`
