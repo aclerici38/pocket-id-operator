@@ -53,6 +53,7 @@ spec:
   ports:
   - port: 5432
 `, name+"-db", instanceNS))
+		waitForReady("pod", name+"-db", instanceNS)
 
 		applyYAML(buildInstanceYAML(InstanceOptions{Name: name}) + fmt.Sprintf(`  replicas: 1
   fileBackend: database
