@@ -25,7 +25,7 @@ type credentialsKey struct{ baseURL, clientID, secret string }
 // For external instances the URL and credentials come from spec.external; otherwise
 // the operator-managed in-cluster service + static API key Secret are used.
 func GetAPIClient(ctx context.Context, k8sClient client.Client, apiReader client.Reader, instance *pocketidinternalv1alpha1.PocketIDInstance) (*pocketid.Client, error) {
-	baseURL, auth, err := resolveAPIClientAuth(ctx, apiReader, instance)
+	baseURL, clientID, auth, err := resolveAPIClientAuth(ctx, apiReader, instance)
 	if err != nil {
 		return nil, err
 	}
@@ -34,6 +34,7 @@ func GetAPIClient(ctx context.Context, k8sClient client.Client, apiReader client
 	if err != nil {
 		return nil, fmt.Errorf("create pocketid client: %w", err)
 	}
+	apiClient.ClientID = clientID
 
 	return apiClient, nil
 }
@@ -52,26 +53,27 @@ func internalTLSConfig(instance *pocketidinternalv1alpha1.PocketIDInstance) *tls
 }
 
 // resolveAPIClientAuth returns the URL and credential for the instance: an external
-// instance's client credentials, or else the API key from resolveAPIClientCredentials.
-func resolveAPIClientAuth(ctx context.Context, apiReader client.Reader, instance *pocketidinternalv1alpha1.PocketIDInstance) (string, pid.ClientOption, error) {
+// instance's client credentials and their client ID, or else the API key from
+// resolveAPIClientCredentials.
+func resolveAPIClientAuth(ctx context.Context, apiReader client.Reader, instance *pocketidinternalv1alpha1.PocketIDInstance) (string, string, pid.ClientOption, error) {
 	if ext := instance.Spec.External; ext != nil && ext.ClientCredentials != nil {
 		clientID := ext.ClientCredentials.ClientID.Value
 		if ref := ext.ClientCredentials.ClientID.ValueFrom; clientID == "" && ref != nil {
 			var err error
 			if clientID, err = getExternalSecret(ctx, apiReader, instance, *ref); err != nil {
-				return "", nil, err
+				return "", "", nil, err
 			}
 		}
 		secret, err := getExternalSecret(ctx, apiReader, instance, ext.ClientCredentials.ClientSecretRef)
 		if err != nil {
-			return "", nil, err
+			return "", "", nil, err
 		}
 		key := credentialsKey{cmp.Or(ext.APIURL, ext.URL), clientID, secret}
 		cc, _ := externalCredentials.LoadOrStore(key, pocketid.NewClientCredentials(key.baseURL, clientID, secret))
-		return key.baseURL, pid.WithClientCredentials(cc.(*pid.ClientCredentials)), nil
+		return key.baseURL, clientID, pid.WithClientCredentials(cc.(*pid.ClientCredentials)), nil
 	}
 	baseURL, apiKey, err := resolveAPIClientCredentials(ctx, apiReader, instance)
-	return baseURL, pid.WithAPIKey(apiKey), err
+	return baseURL, "", pid.WithAPIKey(apiKey), err
 }
 
 // resolveAPIClientCredentials returns the URL + API key for the instance, branching

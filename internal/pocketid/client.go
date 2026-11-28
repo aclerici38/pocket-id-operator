@@ -30,6 +30,8 @@ var sessionsBlockedUntil sync.Map
 type Client struct {
 	*client.Client
 	httpClient *http.Client
+	// ClientID is the OIDC client it authenticates as, or "" for an API key.
+	ClientID string
 }
 
 // ClientOption customizes the HTTP client a Client sends requests through.

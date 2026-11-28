@@ -210,6 +210,13 @@ The client can be a `PocketIDOIDCClient` on the operator that manages the instan
 - The operator reads the Secret every reconcile, so a rotated secret is picked up once the copy syncs. Until then the copied secret is invalid, unless `spec.clientSecretOverlap` keeps it valid for longer than the sync takes.
 - Deleting the `PocketIDOIDCClient` deletes the client and locks the other operator out of the instance.
 
+#### Managing the Operator's Own Client
+
+A `PocketIDOIDCClient` targeting the external instance can also manage the client that instance authenticates with. Deleting it leaves the client in Pocket ID, so the operator keeps its access. Adopting it rewrites the client's secrets and grants, so the resource must keep them working:
+
+- Set `spec.clientSecretRef` to the Secret key the instance's `clientSecretRef` reads. Otherwise adopting the client generates a new secret and deletes the one the instance uses.
+- Grant every scope the operator needs in a `builtIn: true` entry of `spec.apiAccess`, plus `admin-access:write`, which changing a client with access to Pocket ID's own API requires. Removing a scope the operator needs locks it out, and the grant then has to be restored in the Pocket ID UI.
+
 ### API Key Scopes
 
 The API key in `spec.external.apiKeySecretRef`, or the client in `spec.external.clientCredentials`, only needs the scopes of the resources the operator manages, listed in [API Key Scopes](../reference/api-key-scopes.md). Some scopes are only used by optional fields:

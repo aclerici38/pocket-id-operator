@@ -2653,42 +2653,66 @@ func TestUserGroupAllowsOIDCClient_IgnoresRefsWithoutName(t *testing.T) {
 	}
 }
 
-func TestReconcileDelete_RemoveFinalizerWhenNoInstance(t *testing.T) {
-	ctx := context.Background()
-	scheme := runtime.NewScheme()
-	_ = pocketidinternalv1alpha1.AddToScheme(scheme)
-
-	resource := &pocketidinternalv1alpha1.PocketIDOIDCClient{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:       "delete-oidc-no-instance",
-			Namespace:  testNamespace,
-			Finalizers: []string{oidcClientFinalizer},
-		},
-		Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
-			ClientID: "client-id",
-		},
-		Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{},
+func TestReconcileDelete_RemoveFinalizerWithoutDeleting(t *testing.T) {
+	// Any request fails against this URL, so a delete attempt returns an error.
+	instance := &pocketidinternalv1alpha1.PocketIDInstance{
+		ObjectMeta: metav1.ObjectMeta{Name: "delete-oidc-external", Namespace: testNamespace},
+		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{External: &pocketidinternalv1alpha1.ExternalInstanceConfig{
+			URL: "https://pocket-id.invalid",
+			ClientCredentials: &pocketidinternalv1alpha1.ExternalClientCredentials{
+				ClientID: pocketidinternalv1alpha1.StringValue{Value: "client-id"},
+				ClientSecretRef: corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: "operator-client"}, Key: "client_secret",
+				},
+			},
+		}},
+	}
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "operator-client", Namespace: testNamespace},
+		Data:       map[string][]byte{"client_secret": []byte("a-client-secret")},
 	}
 
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithObjects(resource).
-		Build()
+	for name, objects := range map[string][]client.Object{
+		"no instance": nil,
+		"the client the instance authenticates with": {instance, secret},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			scheme := runtime.NewScheme()
+			_ = pocketidinternalv1alpha1.AddToScheme(scheme)
+			_ = corev1.AddToScheme(scheme)
 
-	reconciler := &Reconciler{Client: fakeClient, Scheme: scheme}
-	_, err := reconciler.ReconcileDelete(ctx, resource)
-	if err != nil {
-		t.Fatalf("ReconcileDelete returned error: %v", err)
-	}
+			resource := &pocketidinternalv1alpha1.PocketIDOIDCClient{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "delete-oidc-no-instance",
+					Namespace:  testNamespace,
+					Finalizers: []string{oidcClientFinalizer},
+				},
+				Status: pocketidinternalv1alpha1.PocketIDOIDCClientStatus{
+					ClientID: "client-id",
+				},
+				Spec: pocketidinternalv1alpha1.PocketIDOIDCClientSpec{},
+			}
 
-	updated := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
-	if err := fakeClient.Get(ctx, types.NamespacedName{Name: resource.Name, Namespace: resource.Namespace}, updated); err != nil {
-		t.Fatalf("failed to get updated resource: %v", err)
-	}
-	for _, f := range updated.Finalizers {
-		if f == oidcClientFinalizer {
-			t.Error("expected finalizer to be removed")
-		}
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(append(objects, resource)...).
+				Build()
+
+			reconciler := &Reconciler{Client: fakeClient, Scheme: scheme, BaseReconciler: common.BaseReconciler{APIReader: fakeClient}}
+			_, err := reconciler.ReconcileDelete(ctx, resource)
+			if err != nil {
+				t.Fatalf("ReconcileDelete returned error: %v", err)
+			}
+
+			updated := &pocketidinternalv1alpha1.PocketIDOIDCClient{}
+			if err := fakeClient.Get(ctx, types.NamespacedName{Name: resource.Name, Namespace: resource.Namespace}, updated); err != nil {
+				t.Fatalf("failed to get updated resource: %v", err)
+			}
+			if slices.Contains(updated.Finalizers, oidcClientFinalizer) {
+				t.Error("expected finalizer to be removed")
+			}
+		})
 	}
 }
 
