@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    {{- include "chart.labels" . | nindent 4 }}
+    {{- include "pocket-id-operator.labels" . | nindent 4 }}
     control-plane: controller-manager
     {{- with .Values.operator.labels }}
     {{- toYaml . | nindent 4 }}
@@ -27,7 +27,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        app.kubernetes.io/name: pocket-id-operator
+        {{- include "pocket-id-operator.labels" . | nindent 8 }}
         control-plane: controller-manager
         {{- with .Values.operator.labels }}
         {{- toYaml . | nindent 8 }}
@@ -75,7 +75,8 @@ spec:
             - name: RESYNC_INTERVAL
               value: {{ .Values.operator.resyncInterval | quote }}
             {{- end }}
-            {{- $tz := .Values.operator.timezone | default (dig "spec" "timezone" "" (.Values.instance | default dict)) }}
+            {{- $instanceSpec := dig "instance" "spec" dict (index .Values "pocket-id-instance" | default dict) | default dict }}
+            {{- $tz := .Values.operator.timezone | default (get $instanceSpec "timezone") }}
             {{- if $tz }}
             - name: TZ
               value: {{ $tz | quote }}

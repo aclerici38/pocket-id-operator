@@ -2,7 +2,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   labels:
-    {{- include "chart.labels" . | nindent 4 }}
+    {{- include "pocket-id-operator.labels" . | nindent 4 }}
   name: pocket-id-operator-leader-election-role
   namespace: {{ .Release.Namespace }}
 rules:

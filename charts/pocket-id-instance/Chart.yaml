@@ -5,6 +5,7 @@ type: application
 version: 0.16.3
 appVersion: v0.16.3
 home: https://github.com/aclerici38/pocket-id-operator
+icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/pocket-id.svg
 sources:
   - https://github.com/aclerici38/pocket-id-operator
   - https://pocket-id.org/

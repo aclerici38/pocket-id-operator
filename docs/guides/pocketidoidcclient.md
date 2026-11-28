@@ -88,7 +88,7 @@ Replacing a client secret invalidates the old one immediately, breaking any cons
 ## Client Secret Rotation
 
 !!! note
-    For an accurate cron schedule, set the `TZ` environment variable on the operator to your local timezone. In the Helm chart this is `operator.timezone`; if an instance is configured **via the operator chart**, it can be derived from `pocket-id-instance.spec.timezone` in the chart values.
+    For an accurate cron schedule, set the `TZ` environment variable on the operator to your local timezone. In the Helm chart this is `operator.timezone`; if an instance is configured **via the operator chart**, it can be derived from `pocket-id-instance.instance.spec.timezone` in the chart values.
 
 When `spec.clientSecretRotation.enabled` is `true`, the operator regenerates the client secret on a schedule. Rotation is mutually exclusive with [`spec.clientSecretRef`](#declarative-client-secret) and [`spec.secret.storeClientSecret: false`](#externally-managed-secret). Pair it with [`spec.clientSecretOverlap`](#client-secret-overlap) if consumers do not pick up the new value immediately or take time to rollout.
 

@@ -446,15 +446,16 @@ spec:
 
 ```yaml
 # values.yaml
-instance:
-  enabled: true
-  spec:
-    metrics:
-      enabled: true
-  serviceMonitor:
+pocket-id-instance:
+  instance:
     enabled: true
-    # interval: 30s
-    # labels: {}
+    spec:
+      metrics:
+        enabled: true
+    serviceMonitor:
+      enabled: true
+      # interval: 30s
+      # labels: {}
 ```
 
 ### Standalone ServiceMonitor

@@ -1,81 +1,87 @@
 # yaml-language-server: $schema=./values.schema.json
 
-# Operator deployment configuration
+# operator configures the operator Deployment.
 operator:
-  # Leader election is enabled
+  # replicas is the number of operator pods. Leader election keeps one active.
   replicas: 1
 
+  # image is the operator container image.
   image:
-    repository: ghcr.io/aclerici38/pocket-id-operator
-    tag: "v0.16.3@sha256:06f99af4fdbdb689227c86db25f6befd8fb116b2fb5791b4d43de14715a391de" # Pinned by the release; empty falls back to Chart.appVersion
-    pullPolicy: IfNotPresent
+    # repository is the image repository.
+    repository: "ghcr.io/aclerici38/pocket-id-operator"
+    # tag is pinned by the release. Empty falls back to Chart.appVersion.
+    tag: "v0.16.3@sha256:06f99af4fdbdb689227c86db25f6befd8fb116b2fb5791b4d43de14715a391de"
+    # pullPolicy is the image pull policy.
+    pullPolicy: "IfNotPresent"
 
+  # args are extra operator arguments.
   args:
-    - --zap-log-level=info
+    - "--zap-log-level=info"
+  # env is extra environment variables. An entry here replaces an operator-set variable of the same name.
   env: []
 
-  # Additional labels and annotations applied to the operator Deployment and its pod template
+  # labels are added to the operator Deployment and its pods.
   labels: {}
+  # annotations are added to the operator Deployment and its pods.
   annotations: {}
 
-  # Auto-generate logo URLs for OIDC clients from templates (set to false to make it opt-in per client)
+  # autoGenerateLogos sets OIDC client logos from the URL templates below. Set to false to make it opt-in per client.
   autoGenerateLogos: true
 
-  # timezone sets the TZ env var on the operator container, which determines the
-  # local timezone used for clientSecretRotation.window cron expressions.
-  # When unset, falls back to instance.spec.timezone; if neither is set the TZ
-  # env var is left unset.
+  # timezone sets TZ, used for clientSecretRotation.window cron expressions. Falls back to pocket-id-instance.instance.spec.timezone.
   timezone: ""
 
-  # Periodic resync interval (Go duration). Referenced Secrets/ConfigMaps are not
-  # watched, so edits to them are picked up on the next resync.
+  # resyncInterval is how often every resource is reconciled (Go duration). Referenced Secrets and ConfigMaps are only re-read then.
   resyncInterval: "10m"
 
-  # URL templates for auto-generated logos, {{name}} is replaced with the client name.
-  # The two sides are independent: set one to "" to stop generating it and the other keeps
-  # working, e.g. defaultDarkLogoUrl: "" for light logos only.
+  # defaultLogoUrl is the light logo URL template; {{name}} is the client name. Set to "" to disable.
   defaultLogoUrl: "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/{{name}}.webp"
 
-  # Only about a sixth of dashboard-icons publish a -light variant. The rest 404, which costs
-  # one rejected request a day per client and leaves status.darkLogoReachable false, and
-  # pocket-id falls back to the light logo.
+  # defaultDarkLogoUrl is the dark logo URL template. Most icons have no -light variant, so pocket-id falls back to the light logo. Set to "" to disable.
   defaultDarkLogoUrl: "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/{{name}}-light.webp"
 
+  # podSecurityContext is the operator pod security context.
   podSecurityContext:
     runAsNonRoot: true
     seccompProfile:
-      type: RuntimeDefault
+      type: "RuntimeDefault"
 
+  # securityContext is the operator container security context.
   securityContext:
     allowPrivilegeEscalation: false
     capabilities:
       drop:
-        - ALL
+        - "ALL"
     readOnlyRootFilesystem: true
 
+  # resources are the operator container resources.
   resources:
     limits:
-      cpu: 500m
-      memory: 128Mi
+      cpu: "500m"
+      memory: "128Mi"
     requests:
-      cpu: 10m
-      memory: 64Mi
+      cpu: "10m"
+      memory: "64Mi"
 
-# Operator metrics configuration
-# See https://pocket-id-operator.pages.dev/guides/metrics/
+# metrics configures operator metrics. See https://pocket-id-operator.pages.dev/guides/metrics/
 metrics:
+  # enabled serves metrics and creates the metrics Service.
   enabled: false
+  # port is the metrics port.
   port: 8080
+  # serviceMonitor configures a ServiceMonitor for the operator.
   serviceMonitor:
+    # enabled creates the ServiceMonitor.
     enabled: false
+    # labels are added to the ServiceMonitor.
     labels: {}
+  # prometheusRule configures the operator alerts.
   prometheusRule:
-    # Enabled by default when the PrometheusRule CRD is available on the cluster.
-    # Set to false to explicitly disable.
+    # enabled creates the PrometheusRule when its CRD is installed.
     enabled: true
+    # labels are added to the PrometheusRule.
     labels: {}
-    # Toggle individual default alerting rules on or off. Each rule defaults to
-    # enabled; set enabled: false to omit it from the generated PrometheusRule.
+    # rules toggles each default alert. Set enabled: false to drop one.
     rules:
       PocketIDInstanceNotReady:
         enabled: true
@@ -101,48 +107,47 @@ metrics:
         enabled: true
       PocketIDOIDCClientRotationDeferrals:
         enabled: true
-    # Additional custom alerting rules appended to the default set
+    # additionalRules are appended to the default alerts.
     additionalRules: []
-  # Setting dashboard.enabled creates a configmap with the dashboard json.
-  # When enabled, the GrafanaDashboard CRD is also created automatically
-  # if the grafana-operator CRD is available on the cluster.
-  # Set grafanaDashboard.enabled to false to explicitly disable it.
+  # dashboard configures the Grafana dashboard.
   dashboard:
+    # enabled creates a ConfigMap holding the dashboard.
     enabled: false
+    # labels are added to the ConfigMap, for the Grafana sidecar.
     labels:
       grafana_dashboard: "1"
+    # grafanaDashboard configures a GrafanaDashboard, created when its CRD is installed.
     grafanaDashboard:
+      # enabled creates the GrafanaDashboard.
       enabled: true
+      # allowCrossNamespaceImport lets Grafana instances in other namespaces import it.
       allowCrossNamespaceImport: true
+      # instanceSelector selects the Grafana instances.
       instanceSelector:
-        # Defaults to {grafana.internal/instance: grafana} when left empty.
+        # matchLabels defaults to grafana.internal/instance: grafana when empty.
         matchLabels: {}
 
-# pocket-id-instance subchart
-# Configure your Pocket ID instance, users, groups, and OIDC clients here, then set
-# instance.enabled: true. The deprecated root `instance` block below then steps aside
-# automatically (the existing instance is patched in place, not recreated).
-# Full schema: charts/pocket-id-instance/values.yaml
+# pocket-id-instance configures the bundled pocket-id-instance chart. See charts/pocket-id-instance/values.yaml.
 pocket-id-instance:
-  # A single PocketIDInstance.
+  # instance configures a PocketIDInstance.
   instance:
-    # Set to false to manage only users/groups/clients (e.g. the instance lives
-    # in another release or namespace).
+    # enabled creates the PocketIDInstance. Leave false to manage only users, groups and clients.
     enabled: false
 
-    # Name of the PocketIDInstance resource. Users/groups/clients in this release
-    # auto-bind to it via a pocketid.internal/instance: <name> label selector.
-    name: pocket-id
+    # name is the PocketIDInstance name. This release's users, groups and clients bind to it.
+    name: "pocket-id"
 
+    # labels are added to the PocketIDInstance.
     labels: {}
+    # annotations are added to the PocketIDInstance.
     annotations: {}
 
-    # ServiceMonitor for the instance (requires the instance's spec.metrics.enabled
-    # and the Prometheus Operator's ServiceMonitor CRD).
+    # serviceMonitor configures a ServiceMonitor, created when spec.metrics.enabled is set and its CRD is installed.
     serviceMonitor:
+      # enabled set to false skips the ServiceMonitor.
       enabled: true
 
-    # PocketIDInstance spec. See https://pocket-id-operator.pages.dev/reference/pocketidinstance/ for the full field list.
+    # spec is the PocketIDInstance spec. See https://pocket-id-operator.pages.dev/reference/pocketidinstance/
     spec:
       # REQUIRED for a deployed instance; omit for external instances.
       # encryptionKey:
@@ -165,7 +170,7 @@ pocket-id-instance:
       # metrics:
       #   enabled: true
 
-  # PocketIDUser resources.
+  # users are PocketIDUser resources.
   users: []
     # - name: admin
     #   spec:
@@ -175,7 +180,7 @@ pocket-id-instance:
     #     firstName:
     #       value: Admin
 
-  # PocketIDUserGroup resources.
+  # userGroups are PocketIDUserGroup resources.
   userGroups: []
     # - name: admins
     #   spec:
@@ -184,7 +189,7 @@ pocket-id-instance:
     #       userRefs:
     #         - name: admin
 
-  # PocketIDOIDCClient resources.
+  # oidcClients are PocketIDOIDCClient resources.
   oidcClients: []
     # - name: grafana
     #   spec:
@@ -193,24 +198,3 @@ pocket-id-instance:
     #     pkceEnabled: true
     #     allowedUserGroups:
     #       - name: admins
-
-# DEPRECATED: the `instance`, `users`, and `userGroups` keys below are deprecated
-# and will be removed in a future release. Move your config under the
-# `pocket-id-instance` key above and set its `instance.enabled: true`; this block
-# then steps aside and the existing instance is patched in place.
-# https://github.com/aclerici38/pocket-id-operator/tree/main/charts/pocket-id-instance
-instance:
-  enabled: true
-  name: pocket-id
-  labels: {}
-  annotations: {}
-  serviceMonitor:
-    enabled: false
-  # PocketIDInstance spec. See the `pocket-id-instance` block above for examples.
-  spec: {}
-
-# DEPRECATED: configure users under `pocket-id-instance.users` above instead.
-users: []
-
-# DEPRECATED: configure groups under `pocket-id-instance.userGroups` above instead.
-userGroups: []

@@ -1,42 +1,31 @@
 # yaml-language-server: $schema=./values.schema.json
 
-# pocket-id-instance
-#
-# Packages the custom resources reconciled by pocket-id-operator. Install the
-# operator and CRDs first, then use this chart to declare a
-# Pocket ID instance and the users, groups, and OIDC clients on it.
-#
-# Every `spec:` below is passed straight through to the matching CRD, so any
-# field the operator understands can be set here even if it is not shown.
+# Every spec below is passed straight through to its CRD, so any operator field can be set.
+# The pocket-id-operator chart provides the CRDs and the operator.
 
-# -- A single PocketIDInstance.
+# instance configures a PocketIDInstance.
 instance:
-  # Set to false to manage only users/groups/clients (e.g. the instance lives
-  # in another release or namespace).
+  # enabled creates the PocketIDInstance. Set to false to manage only users, groups and clients.
   enabled: true
 
-  # Name of the PocketIDInstance resource. Defaults to the chart name
-  # (pocket-id-instance) when left empty. Users/groups/clients in this release
-  # auto-bind to it via a pocketid.internal/instance: <name> label selector, so
-  # deploying the chart multiple times with different names keeps instances
-  # isolated. A resource that sets its own spec.instanceSelector overrides this.
+  # name is the PocketIDInstance name, defaulting to the chart name. This release's resources bind to it unless they set spec.instanceSelector.
   name: ""
 
-  # Extra labels/annotations for the PocketIDInstance resource.
+  # labels are added to the PocketIDInstance.
   labels: {}
+  # annotations are added to the PocketIDInstance.
   annotations: {}
 
-  # ServiceMonitor for the instance. Off unless the instance is deployed here
-  # with spec.metrics.enabled=true and the Prometheus Operator's ServiceMonitor
-  # CRD is present, in which case it is created automatically. Set enabled: false
-  # to hard-disable it even when metrics are on.
-  # NOTE: pocket-id does not expose many meaningful metrics
+  # serviceMonitor configures a ServiceMonitor, created when spec.metrics.enabled is set and its CRD is installed.
   serviceMonitor:
+    # enabled set to false skips the ServiceMonitor.
     enabled: true
+    # labels are added to the ServiceMonitor.
     labels: {}
+    # interval is the scrape interval.
     interval: ""
 
-  # PocketIDInstance spec. See https://pocket-id-operator.pages.dev/reference/pocketidinstance/ for the full field list.
+  # spec is the PocketIDInstance spec. See https://pocket-id-operator.pages.dev/reference/pocketidinstance/
   spec:
     # REQUIRED for a deployed instance; omit for external instances.
     # encryptionKey:
@@ -72,8 +61,7 @@ instance:
     # metrics:
     #   enabled: true
 
-# -- PocketIDUser resources. Each entry: name, optional labels/annotations, and
-# a spec passed through to the PocketIDUser CRD.
+# users are PocketIDUser resources, each with a name, a spec and optional labels and annotations.
 users: []
   # - name: admin
   #   spec:
@@ -83,7 +71,7 @@ users: []
   #     firstName:
   #       value: Admin
 
-# -- PocketIDUserGroup resources.
+# userGroups are PocketIDUserGroup resources.
 userGroups: []
   # - name: admins
   #   spec:
@@ -92,7 +80,7 @@ userGroups: []
   #       userRefs:
   #         - name: admin
 
-# -- PocketIDOIDCClient resources.
+# oidcClients are PocketIDOIDCClient resources.
 oidcClients: []
   # - name: grafana
   #   spec:
@@ -102,7 +90,7 @@ oidcClients: []
   #     allowedUserGroups:
   #       - name: admins
 
-# -- PocketIDAPI resources.
+# apis are PocketIDAPI resources.
 apis: []
   # - name: orders-api
   #   spec:
