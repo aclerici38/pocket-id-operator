@@ -38,9 +38,10 @@ spec:
     env:
     - name: POSTGRES_PASSWORD
       value: postgres
+    # Over TCP: the entrypoint's init server listens only on the unix socket, and would pass a socket probe.
     readinessProbe:
       exec:
-        command: ["pg_isready", "-U", "postgres"]
+        command: ["pg_isready", "-U", "postgres", "-h", "127.0.0.1"]
 ---
 apiVersion: v1
 kind: Service
