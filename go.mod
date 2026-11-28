@@ -3,7 +3,7 @@ module github.com/aclerici38/pocket-id-operator
 go 1.27.4
 
 require (
-	github.com/aclerici38/pocket-id-go-client/v3 v3.0.0-20261127200848-c5f49b7eaaa2
+	github.com/aclerici38/pocket-id-go-client/v3 v3.0.0-20261128073745-ea1518b6fa9d
 	github.com/go-logr/logr v1.4.4
 	github.com/oapi-codegen/nullable v1.2.0
 	github.com/onsi/ginkgo/v2 v2.34.0
@@ -69,7 +69,7 @@ require (
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/net v0.63.0 // indirect
-	golang.org/x/oauth2 v0.37.0 // indirect
+	golang.org/x/oauth2 v0.38.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/term v0.48.0 // indirect

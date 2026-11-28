@@ -29,7 +29,7 @@ nav = [
     "reference/pocketidusergroup.md",
     "reference/pocketidoidcclient.md",
     "reference/pocketidapi.md",
-    "reference/api-key-scopes.md",
+    "reference/api-scopes.md",
   ] },
 ]
 

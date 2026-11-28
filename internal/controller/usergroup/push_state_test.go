@@ -138,7 +138,7 @@ func externalInstance(t *testing.T, handler http.Handler) []client.Object {
 			ObjectMeta: metav1.ObjectMeta{Name: "instance", Namespace: testNamespace},
 			Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{External: &pocketidinternalv1alpha1.ExternalInstanceConfig{
 				URL: ts.URL,
-				APIKeySecretRef: corev1.SecretKeySelector{
+				APIKeySecretRef: &corev1.SecretKeySelector{
 					LocalObjectReference: corev1.LocalObjectReference{Name: "admin-token"}, Key: "token",
 				},
 			}},

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	pid "github.com/aclerici38/pocket-id-go-client/v3/client"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -73,7 +74,7 @@ func newManagedReconciler(t *testing.T, inst *pocketidinternalv1alpha1.PocketIDI
 		APIReader: fc,
 		Scheme:    s,
 		NewAPIClient: func(context.Context, client.Client, client.Reader, *pocketidinternalv1alpha1.PocketIDInstance) (*pocketid.Client, error) {
-			return pocketid.NewClient(srv.URL, "test-api-key")
+			return pocketid.NewClient(srv.URL, pid.WithAPIKey("test-api-key"))
 		},
 		Exit: func(int) { panic(errHalted) },
 	}

@@ -22,7 +22,7 @@ func newTestClient(t *testing.T, handler http.Handler) *Client {
 	ts := httptest.NewTestServer(t, handler)
 	// Server.URL is only populated by the first Client call.
 	hc := ts.Client()
-	c, err := NewClient(ts.URL, "", WithHTTPClient(hc))
+	c, err := NewClient(ts.URL, client.WithAPIKey(""), WithHTTPClient(hc))
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestWithTLSConfig(t *testing.T) {
 		"nil keeps the system trust store": {wantErr: true},
 	} {
 		t.Run(name, func(t *testing.T) {
-			c, err := NewClient(ts.URL, "", WithTLSConfig(tt.cfg))
+			c, err := NewClient(ts.URL, client.WithAPIKey(""), WithTLSConfig(tt.cfg))
 			if err != nil {
 				t.Fatalf("NewClient: %v", err)
 			}

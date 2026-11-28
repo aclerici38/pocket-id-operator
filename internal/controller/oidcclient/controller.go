@@ -1126,6 +1126,11 @@ func (r *Reconciler) ReconcileDelete(ctx context.Context, oidcClient *pocketidin
 		oidcClient.Spec.InstanceSelector,
 		oidcClientFinalizer,
 		func(ctx context.Context, apiClient *pocketid.Client, id string) error {
+			// Deleting the client the instance authenticates with would lock the operator out of it.
+			if id == apiClient.ClientID {
+				logf.FromContext(ctx).Info("Leaving the client its instance authenticates with in Pocket-ID", "clientID", id)
+				return nil
+			}
 			if err := pid.Check(apiClient.DeleteOIDCClient(ctx, pid.OIDCClientID(id))); err != nil {
 				return err
 			}

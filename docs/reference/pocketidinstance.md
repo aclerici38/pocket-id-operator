@@ -82,11 +82,38 @@ SensitiveValue holds a value that can be provided as plain text or from a Kubern
 
 ExternalInstanceConfig points the operator at an existing, externally-managed Pocket-ID instead of deploying one. When set, the operator creates no workload and manages OIDC clients, users, and groups on that instance via its API.
 
+**Validation rules:**
+
+- set exactly one of apiKeySecretRef or clientCredentials
+
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `url` | string | yes |  | URL is the base URL of the existing Pocket-ID instance (e.g. https://auth.example.com).<br />_Pattern: `^https?://`_ |
 | `apiUrl` | string |  |  | APIURL is the base URL the operator calls for the Pocket-ID API, e.g. an in-cluster Service (http://pocket-id.pocket-id.svc:1411). Defaults to url. Issuer, endpoint, and login URLs the operator publishes always use url. TLS is verified against the operator's system trust store.<br />_Pattern: `^https?://`_ |
-| `apiKeySecretRef` | [SecretKeySelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#secretkeyselector-v1-core) | yes |  | APIKeySecretRef references a Secret key holding a Pocket-ID API key with permission to manage clients, users, and groups on the instance. |
+| `apiKeySecretRef` | [SecretKeySelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#secretkeyselector-v1-core) |  |  | APIKeySecretRef references a Secret key holding a Pocket-ID API key with permission to manage clients, users, and groups on the instance. |
+| [`clientCredentials`](#pocketidinstancespecexternalclientcredentials) | object |  |  | ClientCredentials authenticates as an OIDC client granted access to the built-in Pocket ID API, instead of with an API key. |
+
+## `PocketIDInstance.spec.external.clientCredentials`
+
+<sup>[↩ PocketIDInstance.spec.external](#pocketidinstancespecexternal)</sup>
+
+ExternalClientCredentials authenticates the operator as an OIDC client with the client credentials grant.
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| [`clientID`](#pocketidinstancespecexternalclientcredentialsclientid) | object | yes |  | ClientID is the ID of a confidential OIDC client granted client permissions on the built-in Pocket ID API. Can be a plain value or reference a secret. |
+| `clientSecretRef` | [SecretKeySelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#secretkeyselector-v1-core) | yes |  | ClientSecretRef references a Secret key holding the client's secret. |
+
+## `PocketIDInstance.spec.external.clientCredentials.clientID`
+
+<sup>[↩ PocketIDInstance.spec.external.clientCredentials](#pocketidinstancespecexternalclientcredentials)</sup>
+
+StringValue represents a value that can be either a plain string or from a secret.
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `value` | string |  |  | Plain text value. |
+| `valueFrom` | [SecretKeySelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#secretkeyselector-v1-core) |  |  | Source for the value from a secret. |
 
 ## `PocketIDInstance.spec.databaseUrl`
 

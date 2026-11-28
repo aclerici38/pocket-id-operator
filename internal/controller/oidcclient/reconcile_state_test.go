@@ -61,7 +61,7 @@ func reconcilerAgainst(t *testing.T, url string, oidcClient *pocketidinternalv1a
 		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 			External: &pocketidinternalv1alpha1.ExternalInstanceConfig{
 				URL: url,
-				APIKeySecretRef: corev1.SecretKeySelector{
+				APIKeySecretRef: &corev1.SecretKeySelector{
 					LocalObjectReference: corev1.LocalObjectReference{Name: "pid-api-key"},
 					Key:                  "api-key",
 				},

@@ -35,7 +35,7 @@ func externalInstance(secretName, secretKey string) *pocketidinternalv1alpha1.Po
 	inst.Namespace = "pocket-id"
 	inst.Spec.External = &pocketidinternalv1alpha1.ExternalInstanceConfig{
 		URL: "https://auth.example.com",
-		APIKeySecretRef: corev1.SecretKeySelector{
+		APIKeySecretRef: &corev1.SecretKeySelector{
 			LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
 			Key:                  secretKey,
 		},
@@ -50,7 +50,7 @@ func apiKeySecret(namespace, name, key, value string) *corev1.Secret {
 	}
 }
 
-// --- getExternalAPIKey ---
+// --- getExternalSecret ---
 
 func TestGetExternalAPIKey_Success(t *testing.T) {
 	ctx := context.Background()
@@ -58,7 +58,7 @@ func TestGetExternalAPIKey_Success(t *testing.T) {
 	reader := fakeReader(t, secret)
 	inst := externalInstance("admin-token", "token")
 
-	key, err := getExternalAPIKey(ctx, reader, inst)
+	key, err := getExternalSecret(ctx, reader, inst, *inst.Spec.External.APIKeySecretRef)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestGetExternalAPIKey_CustomKeyName(t *testing.T) {
 	reader := fakeReader(t, secret)
 	inst := externalInstance("admin-token", "api-key")
 
-	key, err := getExternalAPIKey(ctx, reader, inst)
+	key, err := getExternalSecret(ctx, reader, inst, *inst.Spec.External.APIKeySecretRef)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestGetExternalAPIKey_NilReader(t *testing.T) {
 	ctx := context.Background()
 	inst := externalInstance("admin-token", "token")
 
-	_, err := getExternalAPIKey(ctx, nil, inst)
+	_, err := getExternalSecret(ctx, nil, inst, *inst.Spec.External.APIKeySecretRef)
 	if !errors.Is(err, ErrAPIClientNotReady) {
 		t.Fatalf("expected ErrAPIClientNotReady, got %v", err)
 	}
@@ -98,7 +98,7 @@ func TestGetExternalAPIKey_SecretNotFound(t *testing.T) {
 	reader := fakeReader(t) // no secrets
 	inst := externalInstance("missing-secret", "token")
 
-	_, err := getExternalAPIKey(ctx, reader, inst)
+	_, err := getExternalSecret(ctx, reader, inst, *inst.Spec.External.APIKeySecretRef)
 	if !errors.Is(err, ErrAPIClientNotReady) {
 		t.Fatalf("expected ErrAPIClientNotReady, got %v", err)
 	}
@@ -111,7 +111,7 @@ func TestGetExternalAPIKey_KeyMissingInSecret(t *testing.T) {
 	reader := fakeReader(t, secret)
 	inst := externalInstance("admin-token", "token")
 
-	_, err := getExternalAPIKey(ctx, reader, inst)
+	_, err := getExternalSecret(ctx, reader, inst, *inst.Spec.External.APIKeySecretRef)
 	if !errors.Is(err, ErrAPIClientNotReady) {
 		t.Fatalf("expected ErrAPIClientNotReady, got %v", err)
 	}
@@ -124,7 +124,7 @@ func TestGetExternalAPIKey_EmptyValue(t *testing.T) {
 	reader := fakeReader(t, secret)
 	inst := externalInstance("admin-token", "token")
 
-	_, err := getExternalAPIKey(ctx, reader, inst)
+	_, err := getExternalSecret(ctx, reader, inst, *inst.Spec.External.APIKeySecretRef)
 	if !errors.Is(err, ErrAPIClientNotReady) {
 		t.Fatalf("expected ErrAPIClientNotReady, got %v", err)
 	}
@@ -138,7 +138,7 @@ func TestGetExternalAPIKey_ReadsFromInstanceNamespace(t *testing.T) {
 	reader := fakeReader(t, wrong, right)
 	inst := externalInstance("admin-token", "token")
 
-	key, err := getExternalAPIKey(ctx, reader, inst)
+	key, err := getExternalSecret(ctx, reader, inst, *inst.Spec.External.APIKeySecretRef)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
