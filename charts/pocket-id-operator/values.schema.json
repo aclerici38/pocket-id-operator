@@ -1227,6 +1227,423 @@
                       "null"
                     ]
                   },
+                  "francis": {
+                    "additionalProperties": false,
+                    "description": "Francis connects Pocket-ID to a standalone Francis actor runtime instead of the embedded one.",
+                    "properties": {
+                      "addresses": {
+                        "description": "Addresses (host:port) of the runtime.\nSets FRANCIS_RUNTIME_ADDRESS. See https://pocket-id.org/docs/configuration/environment-variables.",
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "ca": {
+                        "additionalProperties": false,
+                        "description": "PEM-encoded cluster CA of the runtime. When unset, Pocket-ID trusts the certificate it sees on the first connection.\nSets FRANCIS_CA. See https://pocket-id.org/docs/configuration/environment-variables.",
+                        "properties": {
+                          "value": {
+                            "description": "Plain text value.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "valueFrom": {
+                            "additionalProperties": false,
+                            "description": "Source for the value (e.g. secretKeyRef, configMapKeyRef).",
+                            "properties": {
+                              "configMapKeyRef": {
+                                "additionalProperties": false,
+                                "description": "Selects a key of a ConfigMap.",
+                                "properties": {
+                                  "key": {
+                                    "description": "The key to select from the ConfigMap's Data field.\nKeys in the BinaryData field are not currently propagated to container env vars.",
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "default": "",
+                                    "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "optional": {
+                                    "description": "Specify whether the ConfigMap or its key must be defined",
+                                    "type": [
+                                      "boolean",
+                                      "null"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "key"
+                                ],
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "x-kubernetes-map-type": "atomic"
+                              },
+                              "fieldRef": {
+                                "additionalProperties": false,
+                                "description": "Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`,\nspec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.",
+                                "properties": {
+                                  "apiVersion": {
+                                    "description": "Version of the schema the FieldPath is written in terms of, defaults to \"v1\".",
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "fieldPath": {
+                                    "description": "Path of the field to select in the specified API version.",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "fieldPath"
+                                ],
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "x-kubernetes-map-type": "atomic"
+                              },
+                              "fileKeyRef": {
+                                "additionalProperties": false,
+                                "description": "FileKeyRef selects a key of the env file.\nRequires the EnvFiles feature gate to be enabled.",
+                                "properties": {
+                                  "key": {
+                                    "description": "The key within the env file. An invalid key will prevent the pod from starting.\nThe keys defined within a source may consist of any printable ASCII characters except '='.\nDuring Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.",
+                                    "type": "string"
+                                  },
+                                  "optional": {
+                                    "default": false,
+                                    "description": "Specify whether the file or its key must be defined. If the file or key\ndoes not exist, then the env var is not published.\nIf optional is set to true and the specified key does not exist,\nthe environment variable will not be set in the Pod's containers.\n\nIf optional is set to false and the specified key does not exist,\nan error will be returned during Pod creation.",
+                                    "type": [
+                                      "boolean",
+                                      "null"
+                                    ]
+                                  },
+                                  "path": {
+                                    "description": "The path within the volume from which to select the file.\nMust be relative and may not contain the '..' path or start with '..'.",
+                                    "type": "string"
+                                  },
+                                  "volumeName": {
+                                    "description": "The name of the volume mount containing the env file.",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "key",
+                                  "path",
+                                  "volumeName"
+                                ],
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "x-kubernetes-map-type": "atomic"
+                              },
+                              "resourceFieldRef": {
+                                "additionalProperties": false,
+                                "description": "Selects a resource of the container: only resources limits and requests\n(limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.",
+                                "properties": {
+                                  "containerName": {
+                                    "description": "Container name: required for volumes, optional for env vars",
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "divisor": {
+                                    "description": "Specifies the output format of the exposed resources, defaults to \"1\"",
+                                    "oneOf": [
+                                      {
+                                        "pattern": "^(\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))))?$",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "integer"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "x-kubernetes-int-or-string": true
+                                  },
+                                  "resource": {
+                                    "description": "Required: resource to select",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "resource"
+                                ],
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "x-kubernetes-map-type": "atomic"
+                              },
+                              "secretKeyRef": {
+                                "additionalProperties": false,
+                                "description": "Selects a key of a secret in the pod's namespace",
+                                "properties": {
+                                  "key": {
+                                    "description": "The key of the secret to select from.  Must be a valid secret key.",
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "default": "",
+                                    "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "optional": {
+                                    "description": "Specify whether the Secret or its key must be defined",
+                                    "type": [
+                                      "boolean",
+                                      "null"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "key"
+                                ],
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "x-kubernetes-map-type": "atomic"
+                              }
+                            },
+                            "type": [
+                              "object",
+                              "null"
+                            ]
+                          }
+                        },
+                        "type": [
+                          "object",
+                          "null"
+                        ]
+                      },
+                      "hostJWTFile": {
+                        "description": "Path of a token file the runtime accepts, e.g. a projected service account token mounted through podTemplate and persistence.extraVolumeMounts.\nSets FRANCIS_HOST_JWT_FILE. See https://pocket-id.org/docs/configuration/environment-variables.",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "hostPSK": {
+                        "additionalProperties": false,
+                        "description": "Pre-shared key matching the runtime's bootstrap.hostPSK.\nSets FRANCIS_HOST_PSK. See https://pocket-id.org/docs/configuration/environment-variables.",
+                        "properties": {
+                          "value": {
+                            "description": "Plain text value.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "valueFrom": {
+                            "additionalProperties": false,
+                            "description": "Source for the value (e.g. secretKeyRef, configMapKeyRef).",
+                            "properties": {
+                              "configMapKeyRef": {
+                                "additionalProperties": false,
+                                "description": "Selects a key of a ConfigMap.",
+                                "properties": {
+                                  "key": {
+                                    "description": "The key to select from the ConfigMap's Data field.\nKeys in the BinaryData field are not currently propagated to container env vars.",
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "default": "",
+                                    "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "optional": {
+                                    "description": "Specify whether the ConfigMap or its key must be defined",
+                                    "type": [
+                                      "boolean",
+                                      "null"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "key"
+                                ],
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "x-kubernetes-map-type": "atomic"
+                              },
+                              "fieldRef": {
+                                "additionalProperties": false,
+                                "description": "Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`,\nspec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.",
+                                "properties": {
+                                  "apiVersion": {
+                                    "description": "Version of the schema the FieldPath is written in terms of, defaults to \"v1\".",
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "fieldPath": {
+                                    "description": "Path of the field to select in the specified API version.",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "fieldPath"
+                                ],
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "x-kubernetes-map-type": "atomic"
+                              },
+                              "fileKeyRef": {
+                                "additionalProperties": false,
+                                "description": "FileKeyRef selects a key of the env file.\nRequires the EnvFiles feature gate to be enabled.",
+                                "properties": {
+                                  "key": {
+                                    "description": "The key within the env file. An invalid key will prevent the pod from starting.\nThe keys defined within a source may consist of any printable ASCII characters except '='.\nDuring Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.",
+                                    "type": "string"
+                                  },
+                                  "optional": {
+                                    "default": false,
+                                    "description": "Specify whether the file or its key must be defined. If the file or key\ndoes not exist, then the env var is not published.\nIf optional is set to true and the specified key does not exist,\nthe environment variable will not be set in the Pod's containers.\n\nIf optional is set to false and the specified key does not exist,\nan error will be returned during Pod creation.",
+                                    "type": [
+                                      "boolean",
+                                      "null"
+                                    ]
+                                  },
+                                  "path": {
+                                    "description": "The path within the volume from which to select the file.\nMust be relative and may not contain the '..' path or start with '..'.",
+                                    "type": "string"
+                                  },
+                                  "volumeName": {
+                                    "description": "The name of the volume mount containing the env file.",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "key",
+                                  "path",
+                                  "volumeName"
+                                ],
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "x-kubernetes-map-type": "atomic"
+                              },
+                              "resourceFieldRef": {
+                                "additionalProperties": false,
+                                "description": "Selects a resource of the container: only resources limits and requests\n(limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.",
+                                "properties": {
+                                  "containerName": {
+                                    "description": "Container name: required for volumes, optional for env vars",
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "divisor": {
+                                    "description": "Specifies the output format of the exposed resources, defaults to \"1\"",
+                                    "oneOf": [
+                                      {
+                                        "pattern": "^(\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))))?$",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "integer"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "x-kubernetes-int-or-string": true
+                                  },
+                                  "resource": {
+                                    "description": "Required: resource to select",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "resource"
+                                ],
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "x-kubernetes-map-type": "atomic"
+                              },
+                              "secretKeyRef": {
+                                "additionalProperties": false,
+                                "description": "Selects a key of a secret in the pod's namespace",
+                                "properties": {
+                                  "key": {
+                                    "description": "The key of the secret to select from.  Must be a valid secret key.",
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "default": "",
+                                    "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "optional": {
+                                    "description": "Specify whether the Secret or its key must be defined",
+                                    "type": [
+                                      "boolean",
+                                      "null"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "key"
+                                ],
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "x-kubernetes-map-type": "atomic"
+                              }
+                            },
+                            "type": [
+                              "object",
+                              "null"
+                            ]
+                          }
+                        },
+                        "type": [
+                          "object",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "addresses"
+                    ],
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
                   "geoip": {
                     "additionalProperties": false,
                     "description": "GeoIP/MaxMind integration for audit log geolocation.",
@@ -3052,6 +3469,16 @@
                       "null"
                     ]
                   },
+                  "replicas": {
+                    "default": 1,
+                    "description": "Number of Pocket-ID pods. Above 1, the operator sets HA_ENABLED=true, which needs a PostgreSQL databaseUrl and the database or s3 fileBackend.\nTurning HA_ENABLED on or off stops every pod first, since pods with and without it can't run side by side.",
+                    "format": "int32",
+                    "minimum": 1,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
                   "resources": {
                     "additionalProperties": false,
                     "description": "Resource requests and limits for the container.",
@@ -4293,6 +4720,17 @@
                     },
                     "type": [
                       "object",
+                      "null"
+                    ]
+                  },
+                  "updateStrategy": {
+                    "description": "How the Deployment replaces its pods: Recreate at 1 replica and RollingUpdate above, unless set.\nRollingUpdate also sets HA_ENABLED=true at 1 replica, so the new pod joins before the old one stops, with the same requirements as more replicas.",
+                    "enum": [
+                      "Recreate",
+                      "RollingUpdate"
+                    ],
+                    "type": [
+                      "string",
                       "null"
                     ]
                   },
@@ -7526,6 +7964,423 @@
                   "null"
                 ]
               },
+              "francis": {
+                "additionalProperties": false,
+                "description": "Francis connects Pocket-ID to a standalone Francis actor runtime instead of the embedded one.",
+                "properties": {
+                  "addresses": {
+                    "description": "Addresses (host:port) of the runtime.\nSets FRANCIS_RUNTIME_ADDRESS. See https://pocket-id.org/docs/configuration/environment-variables.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "ca": {
+                    "additionalProperties": false,
+                    "description": "PEM-encoded cluster CA of the runtime. When unset, Pocket-ID trusts the certificate it sees on the first connection.\nSets FRANCIS_CA. See https://pocket-id.org/docs/configuration/environment-variables.",
+                    "properties": {
+                      "value": {
+                        "description": "Plain text value.",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "valueFrom": {
+                        "additionalProperties": false,
+                        "description": "Source for the value (e.g. secretKeyRef, configMapKeyRef).",
+                        "properties": {
+                          "configMapKeyRef": {
+                            "additionalProperties": false,
+                            "description": "Selects a key of a ConfigMap.",
+                            "properties": {
+                              "key": {
+                                "description": "The key to select from the ConfigMap's Data field.\nKeys in the BinaryData field are not currently propagated to container env vars.",
+                                "type": "string"
+                              },
+                              "name": {
+                                "default": "",
+                                "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "optional": {
+                                "description": "Specify whether the ConfigMap or its key must be defined",
+                                "type": [
+                                  "boolean",
+                                  "null"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "key"
+                            ],
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "x-kubernetes-map-type": "atomic"
+                          },
+                          "fieldRef": {
+                            "additionalProperties": false,
+                            "description": "Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`,\nspec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.",
+                            "properties": {
+                              "apiVersion": {
+                                "description": "Version of the schema the FieldPath is written in terms of, defaults to \"v1\".",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "fieldPath": {
+                                "description": "Path of the field to select in the specified API version.",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "fieldPath"
+                            ],
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "x-kubernetes-map-type": "atomic"
+                          },
+                          "fileKeyRef": {
+                            "additionalProperties": false,
+                            "description": "FileKeyRef selects a key of the env file.\nRequires the EnvFiles feature gate to be enabled.",
+                            "properties": {
+                              "key": {
+                                "description": "The key within the env file. An invalid key will prevent the pod from starting.\nThe keys defined within a source may consist of any printable ASCII characters except '='.\nDuring Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.",
+                                "type": "string"
+                              },
+                              "optional": {
+                                "default": false,
+                                "description": "Specify whether the file or its key must be defined. If the file or key\ndoes not exist, then the env var is not published.\nIf optional is set to true and the specified key does not exist,\nthe environment variable will not be set in the Pod's containers.\n\nIf optional is set to false and the specified key does not exist,\nan error will be returned during Pod creation.",
+                                "type": [
+                                  "boolean",
+                                  "null"
+                                ]
+                              },
+                              "path": {
+                                "description": "The path within the volume from which to select the file.\nMust be relative and may not contain the '..' path or start with '..'.",
+                                "type": "string"
+                              },
+                              "volumeName": {
+                                "description": "The name of the volume mount containing the env file.",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "key",
+                              "path",
+                              "volumeName"
+                            ],
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "x-kubernetes-map-type": "atomic"
+                          },
+                          "resourceFieldRef": {
+                            "additionalProperties": false,
+                            "description": "Selects a resource of the container: only resources limits and requests\n(limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.",
+                            "properties": {
+                              "containerName": {
+                                "description": "Container name: required for volumes, optional for env vars",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "divisor": {
+                                "description": "Specifies the output format of the exposed resources, defaults to \"1\"",
+                                "oneOf": [
+                                  {
+                                    "pattern": "^(\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))))?$",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "x-kubernetes-int-or-string": true
+                              },
+                              "resource": {
+                                "description": "Required: resource to select",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "resource"
+                            ],
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "x-kubernetes-map-type": "atomic"
+                          },
+                          "secretKeyRef": {
+                            "additionalProperties": false,
+                            "description": "Selects a key of a secret in the pod's namespace",
+                            "properties": {
+                              "key": {
+                                "description": "The key of the secret to select from.  Must be a valid secret key.",
+                                "type": "string"
+                              },
+                              "name": {
+                                "default": "",
+                                "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "optional": {
+                                "description": "Specify whether the Secret or its key must be defined",
+                                "type": [
+                                  "boolean",
+                                  "null"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "key"
+                            ],
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "x-kubernetes-map-type": "atomic"
+                          }
+                        },
+                        "type": [
+                          "object",
+                          "null"
+                        ]
+                      }
+                    },
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "hostJWTFile": {
+                    "description": "Path of a token file the runtime accepts, e.g. a projected service account token mounted through podTemplate and persistence.extraVolumeMounts.\nSets FRANCIS_HOST_JWT_FILE. See https://pocket-id.org/docs/configuration/environment-variables.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "hostPSK": {
+                    "additionalProperties": false,
+                    "description": "Pre-shared key matching the runtime's bootstrap.hostPSK.\nSets FRANCIS_HOST_PSK. See https://pocket-id.org/docs/configuration/environment-variables.",
+                    "properties": {
+                      "value": {
+                        "description": "Plain text value.",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "valueFrom": {
+                        "additionalProperties": false,
+                        "description": "Source for the value (e.g. secretKeyRef, configMapKeyRef).",
+                        "properties": {
+                          "configMapKeyRef": {
+                            "additionalProperties": false,
+                            "description": "Selects a key of a ConfigMap.",
+                            "properties": {
+                              "key": {
+                                "description": "The key to select from the ConfigMap's Data field.\nKeys in the BinaryData field are not currently propagated to container env vars.",
+                                "type": "string"
+                              },
+                              "name": {
+                                "default": "",
+                                "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "optional": {
+                                "description": "Specify whether the ConfigMap or its key must be defined",
+                                "type": [
+                                  "boolean",
+                                  "null"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "key"
+                            ],
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "x-kubernetes-map-type": "atomic"
+                          },
+                          "fieldRef": {
+                            "additionalProperties": false,
+                            "description": "Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`,\nspec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.",
+                            "properties": {
+                              "apiVersion": {
+                                "description": "Version of the schema the FieldPath is written in terms of, defaults to \"v1\".",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "fieldPath": {
+                                "description": "Path of the field to select in the specified API version.",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "fieldPath"
+                            ],
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "x-kubernetes-map-type": "atomic"
+                          },
+                          "fileKeyRef": {
+                            "additionalProperties": false,
+                            "description": "FileKeyRef selects a key of the env file.\nRequires the EnvFiles feature gate to be enabled.",
+                            "properties": {
+                              "key": {
+                                "description": "The key within the env file. An invalid key will prevent the pod from starting.\nThe keys defined within a source may consist of any printable ASCII characters except '='.\nDuring Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.",
+                                "type": "string"
+                              },
+                              "optional": {
+                                "default": false,
+                                "description": "Specify whether the file or its key must be defined. If the file or key\ndoes not exist, then the env var is not published.\nIf optional is set to true and the specified key does not exist,\nthe environment variable will not be set in the Pod's containers.\n\nIf optional is set to false and the specified key does not exist,\nan error will be returned during Pod creation.",
+                                "type": [
+                                  "boolean",
+                                  "null"
+                                ]
+                              },
+                              "path": {
+                                "description": "The path within the volume from which to select the file.\nMust be relative and may not contain the '..' path or start with '..'.",
+                                "type": "string"
+                              },
+                              "volumeName": {
+                                "description": "The name of the volume mount containing the env file.",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "key",
+                              "path",
+                              "volumeName"
+                            ],
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "x-kubernetes-map-type": "atomic"
+                          },
+                          "resourceFieldRef": {
+                            "additionalProperties": false,
+                            "description": "Selects a resource of the container: only resources limits and requests\n(limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.",
+                            "properties": {
+                              "containerName": {
+                                "description": "Container name: required for volumes, optional for env vars",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "divisor": {
+                                "description": "Specifies the output format of the exposed resources, defaults to \"1\"",
+                                "oneOf": [
+                                  {
+                                    "pattern": "^(\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))))?$",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "x-kubernetes-int-or-string": true
+                              },
+                              "resource": {
+                                "description": "Required: resource to select",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "resource"
+                            ],
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "x-kubernetes-map-type": "atomic"
+                          },
+                          "secretKeyRef": {
+                            "additionalProperties": false,
+                            "description": "Selects a key of a secret in the pod's namespace",
+                            "properties": {
+                              "key": {
+                                "description": "The key of the secret to select from.  Must be a valid secret key.",
+                                "type": "string"
+                              },
+                              "name": {
+                                "default": "",
+                                "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "optional": {
+                                "description": "Specify whether the Secret or its key must be defined",
+                                "type": [
+                                  "boolean",
+                                  "null"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "key"
+                            ],
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "x-kubernetes-map-type": "atomic"
+                          }
+                        },
+                        "type": [
+                          "object",
+                          "null"
+                        ]
+                      }
+                    },
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "addresses"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
               "geoip": {
                 "additionalProperties": false,
                 "description": "GeoIP/MaxMind integration for audit log geolocation.",
@@ -9351,6 +10206,16 @@
                   "null"
                 ]
               },
+              "replicas": {
+                "default": 1,
+                "description": "Number of Pocket-ID pods. Above 1, the operator sets HA_ENABLED=true, which needs a PostgreSQL databaseUrl and the database or s3 fileBackend.\nTurning HA_ENABLED on or off stops every pod first, since pods with and without it can't run side by side.",
+                "format": "int32",
+                "minimum": 1,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "resources": {
                 "additionalProperties": false,
                 "description": "Resource requests and limits for the container.",
@@ -10592,6 +11457,17 @@
                 },
                 "type": [
                   "object",
+                  "null"
+                ]
+              },
+              "updateStrategy": {
+                "description": "How the Deployment replaces its pods: Recreate at 1 replica and RollingUpdate above, unless set.\nRollingUpdate also sets HA_ENABLED=true at 1 replica, so the new pod joins before the old one stops, with the same requirements as more replicas.",
+                "enum": [
+                  "Recreate",
+                  "RollingUpdate"
+                ],
+                "type": [
+                  "string",
                   "null"
                 ]
               },

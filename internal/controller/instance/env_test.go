@@ -80,6 +80,43 @@ func TestBuildEnvVars_CoreAlwaysSet(t *testing.T) {
 	requireEnvAbsent(t, env, "DISABLE_RATE_LIMITING")
 	requireEnv(t, env, "APP_URL", "https://id.example.com")
 	requireEnvFromSecret(t, env, "STATIC_API_KEY", "test-instance-static-api-key", "token")
+	requireEnvAbsent(t, env, "HA_ENABLED")
+	requireEnvAbsent(t, env, "CLUSTER_ADDRESS")
+	requireEnvAbsent(t, env, "FRANCIS_RUNTIME_ADDRESS")
+}
+
+func TestBuildEnvVars_Cluster(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.Francis = &pocketidinternalv1alpha1.FrancisConfig{
+		Addresses: []string{"francis-0.francis-headless:7400", "francis-1.francis-headless:7400"},
+		HostPSK: &pocketidinternalv1alpha1.SensitiveValue{ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+			LocalObjectReference: corev1.LocalObjectReference{Name: "francis"}, Key: "psk",
+		}}},
+		HostJWTFile: "/var/run/secrets/francis/token",
+		CA:          &pocketidinternalv1alpha1.SensitiveValue{Value: "ca-pem"},
+	}
+
+	env := buildEnvVars(inst)
+	requireEnvAbsent(t, env, "HA_ENABLED")
+	requireEnv(t, env, "FRANCIS_RUNTIME_ADDRESS", "francis-0.francis-headless:7400,francis-1.francis-headless:7400")
+	requireEnvFromSecret(t, env, "FRANCIS_HOST_PSK", "francis", "psk")
+	requireEnv(t, env, "FRANCIS_HOST_JWT_FILE", "/var/run/secrets/francis/token")
+	requireEnv(t, env, "FRANCIS_CA", "ca-pem")
+	if e := findEnv(env, "CLUSTER_ADDRESS"); e == nil || e.ValueFrom == nil || e.ValueFrom.FieldRef.FieldPath != "status.podIP" {
+		t.Errorf("CLUSTER_ADDRESS: got %+v, want the pod IP", e)
+	}
+
+	inst.Spec.Francis = nil
+	inst.Spec.UpdateStrategy = "RollingUpdate"
+	requireEnv(t, buildEnvVars(inst), "HA_ENABLED", "true")
+	inst.Spec.UpdateStrategy = ""
+	inst.Spec.Replicas = new(int32(3))
+	env = buildEnvVars(inst)
+	requireEnv(t, env, "HA_ENABLED", "true")
+	requireEnvAbsent(t, env, "FRANCIS_RUNTIME_ADDRESS")
+	if findEnv(env, "CLUSTER_ADDRESS") == nil {
+		t.Error("expected CLUSTER_ADDRESS to be set")
+	}
 }
 
 func TestBuildEnvVars_TrustProxyDefaultsToPrivateRangesWithRoute(t *testing.T) {

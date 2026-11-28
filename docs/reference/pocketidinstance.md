@@ -20,6 +20,9 @@ PocketIDInstanceSpec defines the desired state of PocketIDInstance.
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `deploymentType` | string |  | `Deployment` | Kind of workload to create: Deployment or StatefulSet. Defaults to Deployment and is immutable after creation.<br />_Enum: [Deployment StatefulSet]_ |
+| `replicas` | integer |  | `1` | Number of Pocket-ID pods. Above 1, the operator sets HA_ENABLED=true, which needs a PostgreSQL databaseUrl and the database or s3 fileBackend.<br />Turning HA_ENABLED on or off stops every pod first, since pods with and without it can't run side by side.<br />_Minimum: 1_ |
+| `updateStrategy` | string |  |  | How the Deployment replaces its pods: Recreate at 1 replica and RollingUpdate above, unless set.<br />RollingUpdate also sets HA_ENABLED=true at 1 replica, so the new pod joins before the old one stops, with the same requirements as more replicas.<br />_Enum: [Recreate RollingUpdate]_ |
+| [`francis`](#pocketidinstancespecfrancis) | object |  |  | Francis connects Pocket-ID to a standalone Francis actor runtime instead of the embedded one. |
 | `image` | string |  |  | Container image to run. When unset, the operator uses the latest version tested against this release. |
 | [`encryptionKey`](#pocketidinstancespecencryptionkey) | object |  |  | Encryption key. Required when deploying an instance; omit for external instances.<br />Sets ENCRYPTION_KEY. See https://pocket-id.org/docs/configuration/environment-variables. |
 | [`external`](#pocketidinstancespecexternal) | object |  |  | External adopts an existing Pocket-ID instead of deploying one. When set, no workload/service/PVC is created and the operator manages OIDC clients, users, and groups on that instance via its API.<br />Mutually exclusive with encryptionKey and the other deployment fields. |
@@ -64,6 +67,41 @@ PocketIDInstanceSpec defines the desired state of PocketIDInstance.
 | `enabledFeatures` | string array |  |  | Optional features to show in the admin UI.<br />JSON-encoded into ENABLED_FEATURES. Requires a Pocket-ID release that supports it. See https://pocket-id.org/docs/configuration/environment-variables. |
 | [`outboundAllowedHosts`](#pocketidinstancespecoutboundallowedhosts) | object |  |  | Private or reserved destinations Pocket-ID may reach when fetching URLs, per feature. |
 | [`OIDCClientRotation`](#pocketidinstancespecoidcclientrotation) | object |  |  | OIDCClientRotation configures instance-wide throttling of OIDC client secret rotations. |
+
+## `PocketIDInstance.spec.francis`
+
+<sup>[↩ PocketIDInstance.spec](#pocketidinstancespec)</sup>
+
+FrancisConfig connects Pocket-ID to a standalone Francis actor runtime. Set one of hostPSK or hostJWTFile.
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `addresses` | string array | yes |  | Addresses (host:port) of the runtime.<br />Sets FRANCIS_RUNTIME_ADDRESS. See https://pocket-id.org/docs/configuration/environment-variables. |
+| [`hostPSK`](#pocketidinstancespecfrancishostpsk) | object |  |  | Pre-shared key matching the runtime's bootstrap.hostPSK.<br />Sets FRANCIS_HOST_PSK. See https://pocket-id.org/docs/configuration/environment-variables. |
+| `hostJWTFile` | string |  |  | Path of a token file the runtime accepts, e.g. a projected service account token mounted through podTemplate and persistence.extraVolumeMounts.<br />Sets FRANCIS_HOST_JWT_FILE. See https://pocket-id.org/docs/configuration/environment-variables. |
+| [`ca`](#pocketidinstancespecfrancisca) | object |  |  | PEM-encoded cluster CA of the runtime. When unset, Pocket-ID trusts the certificate it sees on the first connection.<br />Sets FRANCIS_CA. See https://pocket-id.org/docs/configuration/environment-variables. |
+
+## `PocketIDInstance.spec.francis.hostPSK`
+
+<sup>[↩ PocketIDInstance.spec.francis](#pocketidinstancespecfrancis)</sup>
+
+SensitiveValue holds a value that can be provided as plain text or from a Kubernetes secret/configmap.
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `value` | string |  |  | Plain text value. |
+| `valueFrom` | [EnvVarSource](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#envvarsource-v1-core) |  |  | Source for the value (e.g. secretKeyRef, configMapKeyRef). |
+
+## `PocketIDInstance.spec.francis.ca`
+
+<sup>[↩ PocketIDInstance.spec.francis](#pocketidinstancespecfrancis)</sup>
+
+SensitiveValue holds a value that can be provided as plain text or from a Kubernetes secret/configmap.
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `value` | string |  |  | Plain text value. |
+| `valueFrom` | [EnvVarSource](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#envvarsource-v1-core) |  |  | Source for the value (e.g. secretKeyRef, configMapKeyRef). |
 
 ## `PocketIDInstance.spec.encryptionKey`
 

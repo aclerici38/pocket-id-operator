@@ -6,7 +6,9 @@ import (
 	"path"
 	"strings"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/utils/ptr"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 	"github.com/aclerici38/pocket-id-operator/internal/controller/common"
@@ -66,6 +68,7 @@ func buildEnvVars(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.
 	env = append(env, buildOutboundAllowedHostsEnv(instance)...)
 	env = append(env, buildGeoIPEnv(instance)...)
 	env = append(env, buildStandaloneEnv(instance)...)
+	env = append(env, buildClusterEnv(instance)...)
 
 	// User-provided env vars applied last so they can override anything above
 	env = append(env, instance.Spec.Env...)
@@ -488,6 +491,36 @@ func buildStandaloneEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []c
 		env = append(env, corev1.EnvVar{Name: "ENABLED_FEATURES", Value: string(features)})
 	}
 	return env
+}
+
+// haEnabled reports whether pods run side by side: more than one replica, or one rolling to its replacement.
+func haEnabled(instance *pocketidinternalv1alpha1.PocketIDInstance) bool {
+	return ptr.Deref(instance.Spec.Replicas, 1) > 1 || instance.Spec.UpdateStrategy == string(appsv1.RollingUpdateDeploymentStrategyType)
+}
+
+// buildClusterEnv sets HA_ENABLED and the standalone Francis runtime. Either way other hosts dial this pod,
+// so CLUSTER_ADDRESS is the pod IP instead of Pocket-ID's guess from the network interfaces.
+func buildClusterEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.EnvVar {
+	var env []corev1.EnvVar
+	if haEnabled(instance) {
+		env = append(env, corev1.EnvVar{Name: "HA_ENABLED", Value: "true"})
+	}
+	if f := instance.Spec.Francis; f != nil {
+		env = append(env, corev1.EnvVar{Name: "FRANCIS_RUNTIME_ADDRESS", Value: strings.Join(f.Addresses, ",")})
+		if f.HostPSK != nil {
+			env = append(env, sensitiveValueToEnvVar("FRANCIS_HOST_PSK", f.HostPSK))
+		}
+		if f.HostJWTFile != "" {
+			env = append(env, corev1.EnvVar{Name: "FRANCIS_HOST_JWT_FILE", Value: f.HostJWTFile})
+		}
+		if f.CA != nil {
+			env = append(env, sensitiveValueToEnvVar("FRANCIS_CA", f.CA))
+		}
+	}
+	if len(env) == 0 {
+		return nil
+	}
+	return append(env, corev1.EnvVar{Name: "CLUSTER_ADDRESS", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "status.podIP"}}})
 }
 
 // sensitiveValueToEnvVar converts a SensitiveValue to a corev1.EnvVar.
