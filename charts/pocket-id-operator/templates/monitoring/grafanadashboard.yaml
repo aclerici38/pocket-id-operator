@@ -3,7 +3,7 @@ apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:
   labels:
-    {{- include "chart.labels" . | nindent 4 }}
+    {{- include "pocket-id-operator.labels" . | nindent 4 }}
   name: pocket-id-operator
   namespace: {{ .Release.Namespace }}
 spec:

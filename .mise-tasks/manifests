@@ -12,6 +12,6 @@ cp config/crd/bases/*.yaml charts/pocket-id-operator/crds/
 awk '/^metadata:$/ {
   print
   print "  labels:"
-  print "    {{- include \"chart.labels\" . | nindent 4 }}"
+  print "    {{- include \"pocket-id-operator.labels\" . | nindent 4 }}"
   next
 } 1' config/rbac/role.yaml > charts/pocket-id-operator/templates/rbac/manager-role.yaml

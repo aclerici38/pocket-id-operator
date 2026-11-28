@@ -1,18 +1,12 @@
 # Helm Chart
 
-## Deprecations
+## Removed values
 
-Declaring Pocket ID resources via the top-level `instance`, `users`, and `userGroups`
-keys is **deprecated** and will be removed in a future release. Two migration options:
-
-1. **In place (recommended, no resource recreation).** Move your config under the bundled
-   [`pocket-id-instance`](../pocket-id-instance) subchart's `pocket-id-instance` key and set
-   its `instance.enabled: true`. The deprecated top-level block then steps aside
-   automatically, so resources stay in the same release and are patched in place rather than
-   recreated.
-2. **Separate release.** Install the standalone [`pocket-id-instance`](../pocket-id-instance)
-   chart, or apply the `PocketID*` custom resources directly. Take care to avoid
-   recreating an existing instance (Helm ownership moves to the new release).
+The top-level `instance`, `users`, and `userGroups` values were removed. Move them under
+`pocket-id-instance` with the same names so Helm updates the existing resources in place.
+The chart fails to render while the old values are still set, or while the release still
+owns resources they created. `instance.enabled: false` is still accepted, but it does nothing
+and can be removed.
 
 ## Values Schema
 

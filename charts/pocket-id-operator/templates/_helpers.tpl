@@ -1,73 +1,25 @@
-{{/*
-Chart name based on project name.
-Truncated to 63 characters for Kubernetes compatibility.
-*/}}
-{{- define "chart.name" -}}
+{{/* Chart name, truncated to the 63-character label limit */}}
+{{- define "pocket-id-operator.name" -}}
 {{- .Chart.Name | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
-{{/*
-Full name of the chart (with release name prefix).
-Combines release name with chart name.
-Truncated to 63 characters for Kubernetes compatibility.
-*/}}
-{{- define "chart.fullname" -}}
-{{- $name := include "chart.name" . }}
-{{- if contains $name .Release.Name }}
-{{- .Release.Name | trunc 63 | trimSuffix "-" }}
-{{- else }}
-{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
-{{- end }}
-{{- end }}
-
-{{/*
-Namespace for generated references.
-Always uses the Helm release namespace.
-*/}}
-{{- define "chart.namespaceName" -}}
-{{ .Release.Namespace }}
-{{- end }}
-
-
-
-{{/*
-Service name with proper truncation for Kubernetes 63-character limit.
-Takes a context with .suffix for the service type (e.g., "webhook-service").
-If fullname + suffix exceeds 63 chars, truncates fullname to 45 chars.
-*/}}
-{{- define "chart.serviceName" -}}
-{{- $fullname := include "chart.fullname" .context -}}
-{{- if gt (len $fullname) 45 -}}
-{{- printf "%s-%s" (trunc 45 $fullname | trimSuffix "-") .suffix | trunc 63 | trimSuffix "-" -}}
-{{- else -}}
-{{- printf "%s-%s" $fullname .suffix | trunc 63 | trimSuffix "-" -}}
-{{- end -}}
-{{- end }}
-
-{{/*
-Create chart name and version as used by the chart label.
-*/}}
-{{- define "chart.chart" -}}
+{{/* Chart name and version for the helm.sh/chart label */}}
+{{- define "pocket-id-operator.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
-{{/*
-Common labels for Helm charts.
-*/}}
-{{- define "chart.labels" -}}
-helm.sh/chart: {{ include "chart.chart" . }}
-{{ include "chart.selectorLabels" . }}
+{{/* Common labels */}}
+{{- define "pocket-id-operator.labels" -}}
+helm.sh/chart: {{ include "pocket-id-operator.chart" . }}
+{{ include "pocket-id-operator.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
-{{/*
-Selector labels for matching pods and services.
-Only includes name and instance for consistent selection.
-*/}}
-{{- define "chart.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "chart.name" . }}
+{{/* Name and instance labels */}}
+{{- define "pocket-id-operator.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "pocket-id-operator.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}

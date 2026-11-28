@@ -3,7 +3,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   labels:
-    {{- include "chart.labels" . | nindent 4 }}
+    {{- include "pocket-id-operator.labels" . | nindent 4 }}
     control-plane: controller-manager
     {{- with .Values.metrics.serviceMonitor.labels }}
     {{- toYaml . | nindent 4 }}
