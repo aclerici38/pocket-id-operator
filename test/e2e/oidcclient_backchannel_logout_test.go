@@ -27,7 +27,7 @@ var _ = Describe("OIDC Client Back-Channel Logout", Ordered, func() {
 
 	var clientID string
 
-	AfterAll(func() {
+	cleanupAfterAll(func() {
 		deleteObject("pocketidoidcclient", clientName, userNS)
 		waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 	})
@@ -99,7 +99,7 @@ var _ = Describe("OIDC Client Group Restriction Back-Channel Logout", Ordered, f
 		}
 	})
 
-	AfterAll(func() {
+	cleanupAfterAll(func() {
 		deleteObject("pocketidoidcclient", clientName, userNS)
 		waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		deleteObject("pocketidusergroup", groupName, userNS)

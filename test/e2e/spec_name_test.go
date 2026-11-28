@@ -31,7 +31,7 @@ var _ = Describe("OIDC Client spec.name", Ordered, func() {
 			waitForStatusField("pocketidoidcclient", clientName, userNS, ".status.name", "My Display Name")
 		})
 
-		AfterAll(func() {
+		cleanupAfterAll(func() {
 			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
@@ -68,7 +68,7 @@ var _ = Describe("OIDC Client spec.name", Ordered, func() {
 				"operator should adopt the existing Pocket-ID client found by spec.name, not create a new one")
 		})
 
-		AfterAll(func() {
+		cleanupAfterAll(func() {
 			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
@@ -107,7 +107,7 @@ var _ = Describe("OIDC Client spec.name", Ordered, func() {
 				"status.clientID should not change when spec.name is added to an existing resource")
 		})
 
-		AfterAll(func() {
+		cleanupAfterAll(func() {
 			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})

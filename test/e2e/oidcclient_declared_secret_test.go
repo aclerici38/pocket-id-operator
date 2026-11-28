@@ -73,7 +73,7 @@ spec:
 		Expect(err).NotTo(HaveOccurred())
 	})
 
-	AfterAll(func() {
+	cleanupAfterAll(func() {
 		deleteObject("secret", sourceSecretName, userNS)
 	})
 
@@ -171,7 +171,7 @@ spec:
 				"the previously declared secret should be left untouched")
 		})
 
-		AfterAll(func() {
+		cleanupAfterAll(func() {
 			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})

@@ -34,7 +34,7 @@ var _ = Describe("OIDC Client Notes", Ordered, func() {
 			"Pocket-ID should persist and return the client notes")
 	})
 
-	AfterAll(func() {
+	cleanupAfterAll(func() {
 		deleteObject("pocketidoidcclient", clientName, userNS)
 		waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 	})

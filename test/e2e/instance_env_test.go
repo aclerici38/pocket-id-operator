@@ -30,7 +30,7 @@ var _ = Describe("PocketIDInstance Maximal Environment", Ordered, func() {
 		// Every resource names its instance explicitly, so this one existing alongside
 		// the shared instance is harmless; it is still cleaned up on failure so the
 		// cluster does not accumulate pods across specs.
-		DeferCleanup(func() {
+		cleanupDeferred(func() {
 			_ = deleteObjectAndWait("pocketidinstance", maximalInstance, instanceNS, 60*time.Second)
 		})
 

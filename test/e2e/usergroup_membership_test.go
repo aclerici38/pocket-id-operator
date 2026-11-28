@@ -95,7 +95,7 @@ var _ = Describe("UserGroup Membership Ownership", Ordered, func() {
 		}).Should(Equal(managedUserID))
 	})
 
-	AfterAll(func() {
+	cleanupAfterAll(func() {
 		for _, name := range []string{"membership-owned-group", "membership-unowned-group", "membership-adopt-group"} {
 			deleteObject("pocketidusergroup", name, userNS)
 			waitForResourceDeleted("pocketidusergroup", name, userNS)

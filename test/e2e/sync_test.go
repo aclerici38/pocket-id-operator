@@ -329,7 +329,7 @@ var _ = Describe("EmailVerified Preservation", Ordered, func() {
 		Expect(getUserEmailVerified(userID)).To(Equal("true"))
 	})
 
-	AfterAll(func() {
+	cleanupAfterAll(func() {
 		deleteObject("pocketiduser", crName, userNS)
 		waitForResourceDeleted("pocketiduser", crName, userNS)
 		deleteObject("pod", "create-verified-user", userNS)

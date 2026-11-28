@@ -17,7 +17,7 @@ var _ = Describe("PocketIDInstance High Availability", Ordered, func() {
 	const name = "ha-instance"
 
 	BeforeAll(func() {
-		DeferCleanup(func() {
+		cleanupDeferred(func() {
 			_ = deleteObjectAndWait("pocketidinstance", name, instanceNS, 60*time.Second)
 			deleteObject("pod", name+"-db", instanceNS)
 			deleteObject("service", name+"-db", instanceNS)

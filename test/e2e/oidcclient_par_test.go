@@ -35,7 +35,7 @@ var _ = Describe("OIDC Client Pushed Authorization Requests", Ordered, func() {
 			"Pocket-ID should persist and return requiresPushedAuthorizationRequests: true")
 	})
 
-	AfterAll(func() {
+	cleanupAfterAll(func() {
 		deleteObject("pocketidoidcclient", clientName, userNS)
 		waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 	})

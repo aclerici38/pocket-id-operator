@@ -77,7 +77,7 @@ var _ = Describe("HTTPRoute", Ordered, func() {
 		waitForResourceDeleted("httproute", routeName, instanceNS)
 	})
 
-	AfterAll(func() {
+	cleanupAfterAll(func() {
 		uninstallGatewayHTTPRouteCRD()
 		_ = deleteObjectAndWait("pocketidinstance", routeInstance, instanceNS, 2*time.Minute)
 	})

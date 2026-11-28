@@ -24,7 +24,7 @@ var _ = Describe("UserGroup Notes", Ordered, func() {
 		Expect(groupBody()).To(ContainSubstring(`"notes":""`), "notes should be cleared once spec.notes is unset")
 	})
 
-	AfterAll(func() {
+	cleanupAfterAll(func() {
 		deleteObject("pocketidusergroup", groupName, userNS)
 		waitForResourceDeleted("pocketidusergroup", groupName, userNS)
 	})

@@ -40,7 +40,7 @@ var _ = Describe("Resource Adoption", Ordered, func() {
 			Expect(adoptedUserID).To(Equal(userID), "operator should adopt the existing user, not create a new one")
 		})
 
-		AfterAll(func() {
+		cleanupAfterAll(func() {
 			deleteObject("pocketiduser", userName, userNS)
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 		})
@@ -67,7 +67,7 @@ var _ = Describe("Resource Adoption", Ordered, func() {
 			Expect(waitForStatusFieldNotEmpty("pocketiduser", userName, userNS, ".status.userID")).To(Equal(userID))
 		})
 
-		AfterAll(func() {
+		cleanupAfterAll(func() {
 			deleteObject("pocketiduser", userName, userNS)
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 		})
@@ -96,7 +96,7 @@ var _ = Describe("Resource Adoption", Ordered, func() {
 			Expect(adoptedGroupID).To(Equal(groupID), "operator should adopt the existing group, not create a new one")
 		})
 
-		AfterAll(func() {
+		cleanupAfterAll(func() {
 			deleteObject("pocketidusergroup", groupName, userNS)
 			waitForResourceDeleted("pocketidusergroup", groupName, userNS)
 		})
@@ -125,7 +125,7 @@ var _ = Describe("Resource Adoption", Ordered, func() {
 			Expect(adoptedClientID).To(Equal(pocketIDClientID), "operator should adopt the existing client, not create a new one")
 		})
 
-		AfterAll(func() {
+		cleanupAfterAll(func() {
 			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
@@ -157,7 +157,7 @@ var _ = Describe("Resource Adoption", Ordered, func() {
 			Expect(adoptedClientID).To(Equal(externalClientID), "operator should adopt the existing client, not create a new one")
 		})
 
-		AfterAll(func() {
+		cleanupAfterAll(func() {
 			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})

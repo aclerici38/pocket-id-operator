@@ -62,7 +62,7 @@ var _ = Describe("PocketIDUser", Ordered, func() {
 		labels := map[string]string{"e2e-instance": "require-email"}
 
 		It("should reject a user without an email until one is set", func() {
-			DeferCleanup(func() {
+			cleanupDeferred(func() {
 				_ = deleteObjectAndWait("pocketiduser", userName, userNS, time.Minute)
 				_ = deleteObjectAndWait("pocketidinstance", instance, instanceNS, 2*time.Minute)
 			})
