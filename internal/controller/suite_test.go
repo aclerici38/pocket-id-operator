@@ -118,7 +118,7 @@ var _ = BeforeSuite(func() {
 	// reconciler is pointed here instead so version reconciliation stays hermetic and fast.
 	pocketIDClient := pocketidtest.NewClient(GinkgoTB(), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"currentVersion":"2.14.0"}`))
+		_, _ = w.Write([]byte(`{"currentVersion":"3.0.0"}`))
 	}))
 
 	err = (&instance.Reconciler{

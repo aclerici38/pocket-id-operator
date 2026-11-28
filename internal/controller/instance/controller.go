@@ -71,12 +71,12 @@ const (
 	latestTestedPocketIDVersion = "v2.19.3"
 
 	// minimumSupportedPocketIDVersion is the oldest pocket-id version this operator can manage. Detecting anything older on an instance crashloops the operator to prevent unwanted changes via an incompatible api.
-	minimumSupportedPocketIDVersion = "v2.14.0"
+	minimumSupportedPocketIDVersion = "v3.0.0"
 
 	// firstUnsupportedPocketIDVersion is the lowest pocket-id version that introduces
 	// breaking changes this operator cannot manage. Detecting this version or newer
 	// on an instance crashloops the operator to prevent unwanted changes via an incompatible api
-	firstUnsupportedPocketIDVersion = "v3.0.0"
+	firstUnsupportedPocketIDVersion = "v4.0.0"
 
 	// DefaultPocketIDImage is the image used when spec.image is empty.
 	DefaultPocketIDImage = "ghcr.io/pocket-id/pocket-id:v2.19.3@sha256:189e03bb73bb86d7108fe81cbe2237c408cff2176b14cd7a39cc12a2ee8b2762"
@@ -1090,6 +1090,9 @@ func normalizeVersion(version string) string {
 // (v2.14.0-beta.1, and the rolling `next` builds that carry a pre-release suffix) land
 // on the same side as the release itself: plain semver ordering sorts them below
 // v2.14.0 even though they already carry that release's API changes.
+//
+// `next` builds report the last tagged release from upstream's .version file (v2.19.2-next
+// while main carries v3), so they say nothing about the API they serve and skip the minimum.
 
 // isUnsupportedVersion reports whether the given pocket-id version is at or above
 // firstUnsupportedPocketIDVersion. Invalid/empty versions are treated as supported.
@@ -1105,7 +1108,7 @@ func isUnsupportedVersion(version string) bool {
 // minimumSupportedPocketIDVersion. Invalid/empty versions are treated as supported.
 func isBelowMinimumVersion(version string) bool {
 	v := normalizeVersion(version)
-	if !semver.IsValid(v) {
+	if !semver.IsValid(v) || semver.Prerelease(v) == "-next" {
 		return false
 	}
 	return semver.Compare(semver.MajorMinor(v), semver.MajorMinor(minimumSupportedPocketIDVersion)) < 0
