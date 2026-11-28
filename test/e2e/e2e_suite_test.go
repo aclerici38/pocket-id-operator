@@ -221,7 +221,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 
 	// The NodePort is a fixed address, so each parallel process builds an identical
 	// client and there is nothing to hand across from process 1.
-	pocketID, err = pocketid.NewClient(pocketIDBaseURL(), staticAPIKey())
+	pocketID, err = pocketid.NewClient(pocketIDBaseURL(), pid.WithAPIKey(staticAPIKey()))
 	Expect(err).NotTo(HaveOccurred(), "Failed to build Pocket-ID client")
 
 	Eventually(func() error {

@@ -41,6 +41,7 @@ type SensitiveValue struct {
 }
 
 // ExternalInstanceConfig points the operator at an existing, externally-managed Pocket-ID instead of deploying one. When set, the operator creates no workload and manages OIDC clients, users, and groups on that instance via its API.
+// +kubebuilder:validation:XValidation:rule="has(self.apiKeySecretRef) != has(self.clientCredentials)",message="set exactly one of apiKeySecretRef or clientCredentials"
 type ExternalInstanceConfig struct {
 	// URL is the base URL of the existing Pocket-ID instance (e.g. https://auth.example.com).
 	// +kubebuilder:validation:Required
@@ -53,8 +54,23 @@ type ExternalInstanceConfig struct {
 	APIURL string `json:"apiUrl,omitempty"`
 
 	// APIKeySecretRef references a Secret key holding a Pocket-ID API key with permission to manage clients, users, and groups on the instance.
+	// +optional
+	APIKeySecretRef *corev1.SecretKeySelector `json:"apiKeySecretRef,omitempty"`
+
+	// ClientCredentials authenticates as an OIDC client granted access to the built-in Pocket ID API, instead of with an API key.
+	// +optional
+	ClientCredentials *ExternalClientCredentials `json:"clientCredentials,omitempty"`
+}
+
+// ExternalClientCredentials authenticates the operator as an OIDC client with the client credentials grant.
+type ExternalClientCredentials struct {
+	// ClientID is the ID of a confidential OIDC client granted client permissions on the built-in Pocket ID API. Can be a plain value or reference a secret.
 	// +kubebuilder:validation:Required
-	APIKeySecretRef corev1.SecretKeySelector `json:"apiKeySecretRef"`
+	ClientID StringValue `json:"clientID"`
+
+	// ClientSecretRef references a Secret key holding the client's secret.
+	// +kubebuilder:validation:Required
+	ClientSecretRef corev1.SecretKeySelector `json:"clientSecretRef"`
 }
 
 // EffectiveAppURL returns the externally-reachable URL of the Pocket-ID instance. This can be the external URL for adopted instances, otherwise the deployed instance's appUrl.

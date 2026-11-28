@@ -2660,7 +2660,10 @@
                             "required": [
                               "key"
                             ],
-                            "type": "object",
+                            "type": [
+                              "object",
+                              "null"
+                            ],
                             "x-kubernetes-map-type": "atomic"
                           },
                           "apiUrl": {
@@ -2671,6 +2674,97 @@
                               "null"
                             ]
                           },
+                          "clientCredentials": {
+                            "additionalProperties": false,
+                            "description": "ClientCredentials authenticates as an OIDC client granted access to the built-in Pocket ID API, instead of with an API key.",
+                            "properties": {
+                              "clientID": {
+                                "additionalProperties": false,
+                                "description": "ClientID is the ID of a confidential OIDC client granted client permissions on the built-in Pocket ID API. Can be a plain value or reference a secret.",
+                                "properties": {
+                                  "value": {
+                                    "description": "Plain text value.",
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "valueFrom": {
+                                    "additionalProperties": false,
+                                    "description": "Source for the value from a secret.",
+                                    "properties": {
+                                      "key": {
+                                        "description": "The key of the secret to select from.  Must be a valid secret key.",
+                                        "type": "string"
+                                      },
+                                      "name": {
+                                        "default": "",
+                                        "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "optional": {
+                                        "description": "Specify whether the Secret or its key must be defined",
+                                        "type": [
+                                          "boolean",
+                                          "null"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "key"
+                                    ],
+                                    "type": [
+                                      "object",
+                                      "null"
+                                    ],
+                                    "x-kubernetes-map-type": "atomic"
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              "clientSecretRef": {
+                                "additionalProperties": false,
+                                "description": "ClientSecretRef references a Secret key holding the client's secret.",
+                                "properties": {
+                                  "key": {
+                                    "description": "The key of the secret to select from.  Must be a valid secret key.",
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "default": "",
+                                    "description": "Name of the referent.\nThis field is effectively required, but due to backwards compatibility is\nallowed to be empty. Instances of this type with an empty value here are\nalmost certainly wrong.\nMore info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "optional": {
+                                    "description": "Specify whether the Secret or its key must be defined",
+                                    "type": [
+                                      "boolean",
+                                      "null"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "key"
+                                ],
+                                "type": "object",
+                                "x-kubernetes-map-type": "atomic"
+                              }
+                            },
+                            "required": [
+                              "clientID",
+                              "clientSecretRef"
+                            ],
+                            "type": [
+                              "object",
+                              "null"
+                            ]
+                          },
                           "url": {
                             "description": "URL is the base URL of the existing Pocket-ID instance (e.g. https://auth.example.com).",
                             "pattern": "^https?://",
@@ -2678,12 +2772,17 @@
                           }
                         },
                         "required": [
-                          "apiKeySecretRef",
                           "url"
                         ],
                         "type": [
                           "object",
                           "null"
+                        ],
+                        "x-kubernetes-validations": [
+                          {
+                            "message": "set exactly one of apiKeySecretRef or clientCredentials",
+                            "rule": "has(self.apiKeySecretRef) != has(self.clientCredentials)"
+                          }
                         ]
                       },
                       "fileBackend": {

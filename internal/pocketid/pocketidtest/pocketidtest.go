@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/aclerici38/pocket-id-go-client/v3/client"
+
 	"github.com/aclerici38/pocket-id-operator/internal/pocketid"
 )
 
@@ -16,7 +18,7 @@ func NewClient(t testing.TB, handler http.Handler) *pocketid.Client {
 	ts := httptest.NewTestServer(t, handler)
 	// Server.URL is only populated by the first Client call.
 	hc := ts.Client()
-	c, err := pocketid.NewClient(ts.URL, "", pocketid.WithHTTPClient(hc))
+	c, err := pocketid.NewClient(ts.URL, client.WithAPIKey(""), pocketid.WithHTTPClient(hc))
 	if err != nil {
 		t.Fatalf("pocketid.NewClient: %v", err)
 	}

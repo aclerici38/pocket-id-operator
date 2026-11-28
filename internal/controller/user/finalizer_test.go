@@ -501,7 +501,7 @@ func TestReconcileDelete_UserAlreadyDeletedInPocketID(t *testing.T) {
 		Spec: pocketidinternalv1alpha1.PocketIDInstanceSpec{
 			External: &pocketidinternalv1alpha1.ExternalInstanceConfig{
 				URL: ts.URL,
-				APIKeySecretRef: corev1.SecretKeySelector{
+				APIKeySecretRef: &corev1.SecretKeySelector{
 					LocalObjectReference: corev1.LocalObjectReference{Name: "admin-token"},
 					Key:                  "token",
 				},

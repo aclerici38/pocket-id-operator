@@ -519,3 +519,87 @@ spec:
       name: pocket-id-api-key
       key: key
 ```
+
+### Client From Another Cluster
+
+A home cluster's operator deploys Pocket ID, and a cloud cluster's operator adopts it as an external instance with a client the home operator manages. External Secrets copies the client's credentials between the clusters through a store both can reach.
+
+On the home cluster, granting the [scopes](../reference/api-key-scopes.md) of the resources the cloud operator manages, here OIDC clients:
+
+```yaml
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDOIDCClient
+metadata:
+  name: cloud-operator
+  namespace: pocket-id
+spec:
+  # Keeps a rotated secret's predecessor valid until the new one reaches the cloud cluster.
+  clientSecretOverlap: "1h"
+  apiAccess:
+    - builtIn: true
+      clientPermissions:
+        - oidc-clients:read
+        - oidc-clients:write
+        - groups:read
+---
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: cloud-operator
+  namespace: pocket-id
+spec:
+  refreshInterval: 15m
+  secretStoreRefs:
+    - name: my-store
+      kind: ClusterSecretStore
+  selector:
+    secret:
+      name: cloud-operator-oidc-credentials
+  data:
+    - match:
+        secretKey: client_id
+        remoteRef:
+          remoteKey: pocket-id-cloud-operator
+          property: client_id
+    - match:
+        secretKey: client_secret
+        remoteRef:
+          remoteKey: pocket-id-cloud-operator
+          property: client_secret
+```
+
+On the cloud cluster:
+
+```yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pocket-id-operator-client
+  namespace: pocket-id
+spec:
+  refreshInterval: 15m
+  secretStoreRef:
+    name: my-store
+    kind: ClusterSecretStore
+  dataFrom:
+    - extract:
+        key: pocket-id-cloud-operator
+---
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDInstance
+metadata:
+  name: pocket-id
+  namespace: pocket-id
+spec:
+  external:
+    url: "https://auth.example.com"
+    clientCredentials:
+      # Or a plain value: clientID: {value: "your-client-id-here"}
+      clientID:
+        valueFrom:
+          name: pocket-id-operator-client
+          key: client_id
+      clientSecretRef:
+        name: pocket-id-operator-client
+        key: client_secret
+```

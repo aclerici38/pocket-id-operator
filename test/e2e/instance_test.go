@@ -201,6 +201,68 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Ordered, func() {
 		})
 	})
 
+	Context("External Instance With Client Credentials", func() {
+		It("should manage an external instance as an OIDC client", func() {
+			const extInstance = "external-cc-instance"
+			const extClient = "external-cc-operator"
+			const extUser = "external-cc-user"
+			extLabels := map[string]string{"external": "client-credentials"}
+
+			DeferCleanup(func() {
+				deleteObject("pocketiduser", extUser, userNS)
+				_ = deleteObjectAndWait("pocketidinstance", extInstance, instanceNS, 60*time.Second)
+				deleteObject("pocketidoidcclient", extClient, instanceNS)
+			})
+
+			By("creating a client granted the built-in API on the shared instance")
+			createOIDCClientAndWaitReady(OIDCClientOptions{
+				Name:      extClient,
+				Namespace: instanceNS,
+				APIAccess: []APIAccessGrant{{
+					BuiltIn:           true,
+					ClientPermissions: []string{"users:read", "users:write", "users:login-codes"},
+				}},
+			})
+			appURL := getField("pocketidinstance", instanceName, instanceNS, ".spec.appUrl")
+
+			// The version check the instance reports Ready on is an authenticated call.
+			By("adopting the shared instance as an external one authenticated with the client")
+			applyYAML(fmt.Sprintf(`apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDInstance
+metadata:
+  name: %s
+  namespace: %s
+  labels:
+    external: client-credentials
+spec:
+  external:
+    url: %q
+    clientCredentials:
+      clientID:
+        valueFrom:
+          name: %[4]s-oidc-credentials
+          key: client_id
+      clientSecretRef:
+        name: %[4]s-oidc-credentials
+        key: client_secret`, extInstance, instanceNS, appURL, extClient))
+			waitForReady("pocketidinstance", extInstance, instanceNS)
+
+			// An API key is created in a user session, which must not inherit the client's token.
+			By("provisioning a user with an API key through the external instance")
+			createUserAndWaitReady(UserOptions{
+				Name:             extUser,
+				Email:            extUser + "@example.com",
+				InstanceSelector: extLabels,
+				APIKeys: []APIKeySpec{
+					{Name: "cc-key", Description: "via client credentials", Scopes: []string{"account:read"}},
+				},
+			})
+			secretName := getField("pocketiduser", extUser, userNS, ".status.apiKeys[0].secretName")
+			Expect(secretName).NotTo(BeEmpty())
+			waitForSecretKey(secretName, userNS, "token")
+		})
+	})
+
 	Context("Instance Deletion Cascades Secret Deletion", func() {
 		It("should delete static API key secret when instance is deleted", func() {
 			const testInstance = "static-key-deletion-test"

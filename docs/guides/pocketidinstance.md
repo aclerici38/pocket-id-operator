@@ -192,11 +192,27 @@ Configuring `spec.external` allows the operator to manage an instance deployed o
 
 `spec.external.url` is the instance's public URL: the operator publishes issuer, endpoint, and login URLs from it. When the operator should reach the API another way, such as through an in-cluster Service rather than a public gateway, set `spec.external.apiUrl`. The operator then sends API requests there and still publishes URLs from `url`. It verifies TLS against its system trust store, so a certificate from a private CA requires that CA in the operator's trust store.
 
-See [example](../examples/pocketidinstance.md#external-instance).
+The operator authenticates with either an API key in `spec.external.apiKeySecretRef` or an OIDC client in `spec.external.clientCredentials`. An API key acts as the user who created it and always expires, so the operator stops working when that user is deleted, disabled, or demoted. A client has no owner, and its secret needs no expiry. See [example](../examples/pocketidinstance.md#external-instance).
+
+### Client Credentials
+
+`spec.external.clientCredentials` authenticates with the client credentials grant of a confidential OIDC client:
+
+- Grant the client client permissions on the built-in Pocket ID API, with the scopes below. Its token carries every scope it is granted.
+- The token's resource is `<APP_URL>/api`, read from the instance's issuer, so `url` doesn't have to match `APP_URL`.
+- The operator caches the token and requests a new one when it expires or the Secret changes. Removing a scope makes Pocket ID reject the token, and the operator requests a new one on its next request. Added scopes apply once the current token expires.
+
+#### Client From Another Operator
+
+The client can be a `PocketIDOIDCClient` on the operator that manages the instance, such as one deploying Pocket ID in a home cluster for an operator in a cloud cluster to adopt. Grant the scopes in a `builtIn: true` entry of its `spec.apiAccess`, and give the other operator the `client_id` and `client_secret` of its [credentials Secret](pocketidoidcclient.md#credentials-secret). See [example](../examples/pocketidinstance.md#client-from-another-cluster).
+
+- In the same namespace, point `clientCredentials` at the credentials Secret. Across clusters, copy it, e.g. with External Secrets through a store both clusters can reach.
+- The operator reads the Secret every reconcile, so a rotated secret is picked up once the copy syncs. Until then the copied secret is invalid, unless `spec.clientSecretOverlap` keeps it valid for longer than the sync takes.
+- Deleting the `PocketIDOIDCClient` deletes the client and locks the other operator out of the instance.
 
 ### API Key Scopes
 
-The API key in `spec.external.apiKeySecretRef` only needs the scopes of the resources the operator manages, listed in [API Key Scopes](../reference/api-key-scopes.md). Some scopes are only used by optional fields:
+The API key in `spec.external.apiKeySecretRef`, or the client in `spec.external.clientCredentials`, only needs the scopes of the resources the operator manages, listed in [API Key Scopes](../reference/api-key-scopes.md). Some scopes are only used by optional fields:
 
 - `PocketIDOIDCClient`: `oidc-clients:read` and `oidc-clients:write` manage the client. `groups:read` resolves `spec.allowedUserGroups`, and `apis:read` and `apis:write` grant `spec.apiAccess`.
 - `PocketIDUser`: `users:login-codes` creates the first login code and opens the user session that manages `spec.apiKeys`.

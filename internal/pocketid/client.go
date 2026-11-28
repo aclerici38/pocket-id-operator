@@ -53,19 +53,25 @@ func WithHTTPClient(base *http.Client) ClientOption {
 	return func(hc *http.Client) { *hc = *base }
 }
 
-// NewClient creates a client for the Pocket-ID instance at baseURL, authenticated with apiKey.
-func NewClient(baseURL, apiKey string, opts ...ClientOption) (*Client, error) {
+// NewClient creates a client for the Pocket-ID instance at baseURL, authenticated with auth,
+// such as client.WithAPIKey. A user session never inherits it.
+func NewClient(baseURL string, auth client.ClientOption, opts ...ClientOption) (*Client, error) {
 	hc := &http.Client{}
 	for _, opt := range opts {
 		opt(hc)
 	}
 	hc.Transport = metricsTransport{next: cmp.Or[http.RoundTripper](hc.Transport, http.DefaultTransport)}
 
-	c, err := client.NewClient(baseURL, client.WithHTTPClient(hc), client.WithAPIKey(apiKey))
+	c, err := client.NewClient(baseURL, client.WithHTTPClient(hc), auth)
 	if err != nil {
 		return nil, fmt.Errorf("create pocket-id client: %w", err)
 	}
 	return &Client{Client: c, httpClient: hc}, nil
+}
+
+// NewClientCredentials is client.NewClientCredentials with its token requests recorded in metrics.
+func NewClientCredentials(baseURL, clientID, secret string) *client.ClientCredentials {
+	return client.NewClientCredentials(baseURL, clientID, secret, &http.Client{Transport: metricsTransport{next: http.DefaultTransport}})
 }
 
 // WithUserSession runs fn in a session for the user, the only credential that can manage keys
