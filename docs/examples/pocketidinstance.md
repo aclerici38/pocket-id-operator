@@ -524,7 +524,7 @@ spec:
 
 A home cluster's operator deploys Pocket ID, and a cloud cluster's operator adopts it as an external instance with a client the home operator manages. External Secrets copies the client's credentials between the clusters through a store both can reach.
 
-On the home cluster, granting the [scopes](../reference/api-key-scopes.md) of the resources the cloud operator manages, here OIDC clients:
+On the home cluster, granting the [scopes](../reference/api-scopes.md) of the resources the cloud operator manages, here OIDC clients:
 
 ```yaml
 apiVersion: pocketid.internal/v1alpha1

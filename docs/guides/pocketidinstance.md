@@ -217,15 +217,15 @@ A `PocketIDOIDCClient` targeting the external instance can also manage the clien
 - Set `spec.clientSecretRef` to the Secret key the instance's `clientSecretRef` reads. Otherwise adopting the client generates a new secret and deletes the one the instance uses.
 - Grant every scope the operator needs in a `builtIn: true` entry of `spec.apiAccess`, plus `admin-access:write`, which changing a client with access to Pocket ID's own API requires. Removing a scope the operator needs locks it out, and the grant then has to be restored in the Pocket ID UI.
 
-### API Key Scopes
+### API Scopes
 
-The API key in `spec.external.apiKeySecretRef`, or the client in `spec.external.clientCredentials`, only needs the scopes of the resources the operator manages, listed in [API Key Scopes](../reference/api-key-scopes.md). Some scopes are only used by optional fields:
+The API key in `spec.external.apiKeySecretRef`, or the client in `spec.external.clientCredentials`, only needs the scopes of the resources the operator manages, listed in [API Scopes](../reference/api-scopes.md). Some scopes are only used by optional fields:
 
 - `PocketIDOIDCClient`: `oidc-clients:read` and `oidc-clients:write` manage the client. `groups:read` resolves `spec.allowedUserGroups`, and `apis:read` and `apis:write` grant `spec.apiAccess`.
 - `PocketIDUser`: `users:login-codes` creates the first login code and opens the user session that manages `spec.apiKeys`.
 - `PocketIDInstance`: `apis:read` and `apis:write` are only used by `spec.builtInAPI`.
 
-The key also needs `admin-access:write` for any change that decides who holds admin access:
+The credential also needs `admin-access:write` for any change that decides who holds admin access:
 
 - creating, editing, or deleting an admin user, or making a user an admin
 - creating a login code for an admin user, which managing their `spec.apiKeys` also does
