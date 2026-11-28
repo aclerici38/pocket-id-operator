@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -13,8 +14,18 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var _ = Describe("PocketIDInstance High Availability", Ordered, func() {
-	const name = "ha-instance"
+// Each workload type gets its own container, instance and database, so the two run in parallel.
+var _ = Describe("PocketIDInstance High Availability with a Deployment", Ordered, func() {
+	describeHA("Deployment")
+})
+
+var _ = Describe("PocketIDInstance High Availability with a StatefulSet", Ordered, func() {
+	describeHA("StatefulSet")
+})
+
+func describeHA(workload string) {
+	kind := strings.ToLower(workload)
+	name := "ha-" + kind
 
 	BeforeAll(func() {
 		cleanupDeferred(func() {
@@ -56,11 +67,12 @@ spec:
 `, name+"-db", instanceNS))
 		waitForReady("pod", name+"-db", instanceNS)
 
-		applyYAML(buildInstanceYAML(InstanceOptions{Name: name}) + fmt.Sprintf(`  replicas: 1
+		applyYAML(buildInstanceYAML(InstanceOptions{Name: name}) + fmt.Sprintf(`  deploymentType: %s
+  replicas: 1
   fileBackend: database
   databaseUrl:
     value: postgres://postgres:postgres@%s-db:5432/postgres?sslmode=disable
-`, name))
+`, workload, name))
 		waitForReady("pocketidinstance", name, instanceNS)
 	})
 
@@ -77,7 +89,10 @@ spec:
 
 	It("should start a single pod without HA_ENABLED", func() {
 		pods = waitForHAPods(name, 1, false, nil)
-		Expect(getField("deployment", name, instanceNS, ".spec.strategy.type")).To(Equal("Recreate"))
+		Expect(getField(kind, name, instanceNS, ".spec.replicas")).To(Equal("1"))
+		if workload == "Deployment" {
+			Expect(getField(kind, name, instanceNS, ".spec.strategy.type")).To(Equal("Recreate"))
+		}
 	})
 
 	It("should stop the single pod before starting 3 HA replicas", func() {
@@ -96,15 +111,18 @@ spec:
 		step(`{"replicas":1,"updateStrategy":"RollingUpdate"}`, 1, true)
 	})
 
-	It("should start a single HA pod's replacement before stopping it", func() {
+	// A StatefulSet can't surge, so it stops the pod before starting its replacement.
+	It("should replace a single HA pod", func() {
 		step(`{"annotations":{"e2e/rollout":"2"}}`, 1, false)
 	})
 
-	It("should stop the HA pod before going back to the default Recreate", func() {
+	It("should stop the HA pod before turning HA_ENABLED off again", func() {
 		step(`{"updateStrategy":null}`, 1, false)
-		Expect(getField("deployment", name, instanceNS, ".spec.strategy.type")).To(Equal("Recreate"))
+		if workload == "Deployment" {
+			Expect(getField(kind, name, instanceNS, ".spec.strategy.type")).To(Equal("Recreate"))
+		}
 	})
-})
+}
 
 // waitForHAPods waits for exactly n pods of the instance, all Ready without a restart, and returns
 // their UIDs. With kept they must all be among prev, otherwise none of them may be.
