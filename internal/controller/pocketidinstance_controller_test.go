@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -1679,6 +1680,52 @@ var _ = Describe("PocketIDInstance Controller", func() {
 				}
 				return deployment.Spec.Template.Spec.Containers[0].Image
 			}, timeout, interval).Should(Equal("ghcr.io/pocket-id/pocket-id:v2.19.3@sha256:189e03bb73bb86d7108fe81cbe2237c408cff2176b14cd7a39cc12a2ee8b2762"))
+		})
+
+		It("Should stop every pod before HA_ENABLED changes", func() {
+			oldPod := func() *corev1.Pod {
+				return &corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{Name: instanceName + "-old", Namespace: namespace, Labels: map[string]string{
+						"app.kubernetes.io/name": "pocket-id", "app.kubernetes.io/instance": instanceName,
+					}},
+					Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "pocket-id", Image: "pocket-id"}}},
+				}
+			}
+			update := func(replicas int32, strategy string) {
+				Eventually(func() error {
+					if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(instance), instance); err != nil {
+						return err
+					}
+					instance.Spec.Replicas, instance.Spec.UpdateStrategy = &replicas, strategy
+					return k8sClient.Update(ctx, instance)
+				}, timeout, interval).Should(Succeed())
+			}
+			deployment := &appsv1.Deployment{}
+			workload := func() string {
+				if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(instance), deployment); err != nil {
+					return err.Error()
+				}
+				return fmt.Sprintf("%d %s", *deployment.Spec.Replicas, deployment.Spec.Strategy.Type)
+			}
+
+			By("scaling a single pod to 3 replicas")
+			Expect(k8sClient.Create(ctx, oldPod())).To(Succeed())
+			update(3, "")
+			Eventually(workload, timeout, interval).Should(Equal("0 RollingUpdate"))
+			Consistently(workload, "1s", interval).Should(Equal("0 RollingUpdate"))
+			Expect(k8sClient.Delete(ctx, oldPod())).To(Succeed())
+			Eventually(workload, timeout, interval).Should(Equal("3 RollingUpdate"))
+
+			By("scaling down to 1 replica that keeps rolling")
+			Expect(k8sClient.Create(ctx, oldPod())).To(Succeed())
+			update(1, "RollingUpdate")
+			Eventually(workload, timeout, interval).Should(Equal("1 RollingUpdate"))
+
+			By("going back to the default Recreate")
+			update(1, "")
+			Eventually(workload, timeout, interval).Should(Equal("0 Recreate"))
+			Expect(k8sClient.Delete(ctx, oldPod())).To(Succeed())
+			Eventually(workload, timeout, interval).Should(Equal("1 Recreate"))
 		})
 
 		It("Should reject changes to deploymentType", func() {

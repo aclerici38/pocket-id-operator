@@ -6,6 +6,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/utils/ptr"
 
 	pocketidinternalv1alpha1 "github.com/aclerici38/pocket-id-operator/api/v1alpha1"
 )
@@ -80,6 +81,43 @@ func TestBuildEnvVars_CoreAlwaysSet(t *testing.T) {
 	requireEnvAbsent(t, env, "DISABLE_RATE_LIMITING")
 	requireEnv(t, env, "APP_URL", "https://id.example.com")
 	requireEnvFromSecret(t, env, "STATIC_API_KEY", "test-instance-static-api-key", "token")
+	requireEnvAbsent(t, env, "HA_ENABLED")
+	requireEnvAbsent(t, env, "CLUSTER_ADDRESS")
+	requireEnvAbsent(t, env, "FRANCIS_RUNTIME_ADDRESS")
+}
+
+func TestBuildEnvVars_Cluster(t *testing.T) {
+	inst := minimalInstance()
+	inst.Spec.Francis = &pocketidinternalv1alpha1.FrancisConfig{
+		Addresses: []string{"francis-0.francis-headless:7400", "francis-1.francis-headless:7400"},
+		HostPSK: &pocketidinternalv1alpha1.SensitiveValue{ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+			LocalObjectReference: corev1.LocalObjectReference{Name: "francis"}, Key: "psk",
+		}}},
+		HostJWTFile: "/var/run/secrets/francis/token",
+		CA:          &pocketidinternalv1alpha1.SensitiveValue{Value: "ca-pem"},
+	}
+
+	env := buildEnvVars(inst)
+	requireEnvAbsent(t, env, "HA_ENABLED")
+	requireEnv(t, env, "FRANCIS_RUNTIME_ADDRESS", "francis-0.francis-headless:7400,francis-1.francis-headless:7400")
+	requireEnvFromSecret(t, env, "FRANCIS_HOST_PSK", "francis", "psk")
+	requireEnv(t, env, "FRANCIS_HOST_JWT_FILE", "/var/run/secrets/francis/token")
+	requireEnv(t, env, "FRANCIS_CA", "ca-pem")
+	if e := findEnv(env, "CLUSTER_ADDRESS"); e == nil || e.ValueFrom == nil || e.ValueFrom.FieldRef.FieldPath != "status.podIP" {
+		t.Errorf("CLUSTER_ADDRESS: got %+v, want the pod IP", e)
+	}
+
+	inst.Spec.Francis = nil
+	inst.Spec.UpdateStrategy = "RollingUpdate"
+	requireEnv(t, buildEnvVars(inst), "HA_ENABLED", "true")
+	inst.Spec.UpdateStrategy = ""
+	inst.Spec.Replicas = new(int32(3))
+	env = buildEnvVars(inst)
+	requireEnv(t, env, "HA_ENABLED", "true")
+	requireEnvAbsent(t, env, "FRANCIS_RUNTIME_ADDRESS")
+	if findEnv(env, "CLUSTER_ADDRESS") == nil {
+		t.Error("expected CLUSTER_ADDRESS to be set")
+	}
 }
 
 func TestBuildEnvVars_TrustProxyDefaultsToPrivateRangesWithRoute(t *testing.T) {
@@ -712,31 +750,32 @@ func TestBuildEnvVars_StandaloneSettingsAbsentByDefault(t *testing.T) {
 func TestBuildEnvVars_UserEnvOverrides(t *testing.T) {
 	inst := minimalInstance()
 	inst.Spec.Logging = &pocketidinternalv1alpha1.LoggingConfig{Level: "info"}
-	// User overrides LOG_LEVEL via spec.env
+	inst.Spec.Replicas = ptr.To(int32(2))
+	// User overrides operator-set vars via spec.env
 	inst.Spec.Env = []corev1.EnvVar{
 		{Name: "LOG_LEVEL", Value: "debug"},
+		{Name: "HA_ENABLED", Value: "false"},
+		{Name: "CLUSTER_ADDRESS", Value: "10.0.0.1"},
 		{Name: "CUSTOM_VAR", Value: "custom-value"},
 	}
 
 	env := buildEnvVars(inst)
 
-	// The user's override should appear after the operator-set value
-	// (last writer wins for k8s env vars)
 	requireEnv(t, env, "CUSTOM_VAR", "custom-value")
-
-	// Both should be present; k8s uses the last one
-	count := 0
-	for _, e := range env {
-		if e.Name == "LOG_LEVEL" {
-			count++
+	// Server-side apply rejects duplicate names, so the user's value must replace the operator's
+	for _, want := range inst.Spec.Env {
+		count := 0
+		for _, e := range env {
+			if e.Name == want.Name {
+				count++
+				if e.Value != want.Value || e.ValueFrom != nil {
+					t.Errorf("expected %s=%q from spec.env, got %+v", want.Name, want.Value, e)
+				}
+			}
 		}
-	}
-	if count != 2 {
-		t.Errorf("expected LOG_LEVEL to appear twice (operator + user override), got %d", count)
-	}
-	// Last one should be the user's override
-	if env[len(env)-2].Name == "LOG_LEVEL" && env[len(env)-2].Value != "debug" {
-		t.Errorf("expected user override to be last LOG_LEVEL")
+		if count != 1 {
+			t.Errorf("expected %s exactly once, got %d", want.Name, count)
+		}
 	}
 }
 

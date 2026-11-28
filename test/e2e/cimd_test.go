@@ -46,7 +46,7 @@ var _ = Describe("Client ID Metadata Documents", Ordered, func() {
 			Name:     clientName,
 			ClientID: "https://apps.example.com/never-authorized/client-metadata.json",
 		})
-		DeferCleanup(func() {
+		cleanupDeferred(func() {
 			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
@@ -170,12 +170,12 @@ var _ = Describe("Client ID Metadata Documents", Ordered, func() {
 				}).Should(Succeed())
 			})
 
-			AfterAll(func() {
+			cleanupAfterAll(func() {
 				_ = deleteObjectAndWait("pocketidapi", apiName, userNS, time.Minute)
 			})
 		})
 
-		AfterAll(func() {
+		cleanupAfterAll(func() {
 			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})

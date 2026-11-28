@@ -144,6 +144,49 @@ spec:
           key: secret-key
 ```
 
+## High Availability
+
+Three active-active replicas sharing Postgres for both the database and the files.
+
+```yaml
+apiVersion: pocketid.internal/v1alpha1
+kind: PocketIDInstance
+metadata:
+  name: pocket-id
+  namespace: pocket-id
+spec:
+  replicas: 3
+  encryptionKey:
+    valueFrom:
+      secretKeyRef:
+        name: pocket-id-encryption
+        key: key
+  appUrl: "https://pocket-id.example.com"
+  databaseUrl:
+    valueFrom:
+      secretKeyRef:
+        name: pocket-id-db
+        key: uri
+  fileBackend: database
+```
+
+### Standalone Francis Runtime
+
+The same replicas joining a standalone Francis runtime instead of the embedded one.
+
+```yaml
+spec:
+  replicas: 3
+  francis:
+    addresses:
+      - francis-0.francis-headless.francis.svc.cluster.local:7400
+    hostPSK:
+      valueFrom:
+        secretKeyRef:
+          name: francis-host-psk
+          key: psk
+```
+
 ## Persistence
 
 ### Custom Mount Path and SubPath

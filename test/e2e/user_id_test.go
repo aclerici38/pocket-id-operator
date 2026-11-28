@@ -128,7 +128,7 @@ var _ = Describe("PocketIDUser Declarative User ID", Ordered, func() {
 			Expect(user.Username).To(Equal(userName + "-readopted"))
 		})
 
-		AfterAll(func() {
+		cleanupAfterAll(func() {
 			deleteObject("pocketiduser", userName, userNS)
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 		})
@@ -151,7 +151,7 @@ var _ = Describe("PocketIDUser Declarative User ID", Ordered, func() {
 			Expect(user.Username).To(Equal(userName))
 		})
 
-		AfterAll(func() {
+		cleanupAfterAll(func() {
 			deleteObject("pocketiduser", userName, userNS)
 			waitForResourceDeleted("pocketiduser", userName, userNS)
 		})

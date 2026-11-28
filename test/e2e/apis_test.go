@@ -295,7 +295,7 @@ var _ = Describe("PocketIDAPI Client Access", Ordered, func() {
 		}).Should(Succeed())
 	})
 
-	AfterAll(func() {
+	cleanupAfterAll(func() {
 		deleteObject("pocketidoidcclient", clientName, userNS)
 		_ = deleteObjectAndWait("pocketidapi", apiName, userNS, time.Minute)
 	})
@@ -430,7 +430,7 @@ var _ = Describe("PocketIDAPI CIMD Access", Ordered, func() {
 		}).Should(Succeed())
 	})
 
-	AfterAll(func() {
+	cleanupAfterAll(func() {
 		_ = deleteObjectAndWait("pocketidapi", apiName, userNS, time.Minute)
 	})
 })
@@ -514,7 +514,7 @@ var _ = Describe("PocketIDAPI Scopeless Client Grant", Ordered, func() {
 		}).Should(Succeed())
 	})
 
-	AfterAll(func() {
+	cleanupAfterAll(func() {
 		deleteObject("pocketidoidcclient", clientName, userNS)
 		_ = deleteObjectAndWait("pocketidapi", apiName, userNS, time.Minute)
 	})
@@ -686,7 +686,7 @@ var _ = Describe("PocketIDAPI Multi-API Grants", Ordered, func() {
 		}).Should(Succeed())
 	})
 
-	AfterAll(func() {
+	cleanupAfterAll(func() {
 		deleteObject("pocketidoidcclient", clientName, userNS)
 		_ = deleteObjectAndWait("pocketidapi", ordersName, userNS, time.Minute)
 		_ = deleteObjectAndWait("pocketidapi", billingName, userNS, time.Minute)
@@ -738,7 +738,7 @@ var _ = Describe("PocketIDAPI Reference Finalizer", Ordered, func() {
 		waitForResourceDeleted("pocketidapi", apiName, userNS)
 	})
 
-	AfterAll(func() {
+	cleanupAfterAll(func() {
 		deleteObject("pocketidoidcclient", clientName, userNS)
 	})
 })
@@ -771,7 +771,7 @@ var _ = Describe("PocketIDAPI External Deletion Recovery", Ordered, func() {
 		Expect(permIDFromStatus(apiName, "read:ext")).NotTo(BeEmpty())
 	})
 
-	AfterAll(func() {
+	cleanupAfterAll(func() {
 		_ = deleteObjectAndWait("pocketidapi", apiName, userNS, time.Minute)
 	})
 })
@@ -817,7 +817,7 @@ var _ = Describe("PocketIDAPI Adoption", Ordered, func() {
 		Expect(deleteObjectAndWait("pocketidapi", builtInName, userNS, time.Minute)).To(Succeed())
 	})
 
-	AfterAll(func() {
+	cleanupAfterAll(func() {
 		_ = deleteObjectAndWait("pocketidapi", apiName, userNS, time.Minute)
 	})
 })
@@ -917,8 +917,12 @@ var _ = Describe("Built-in Pocket ID API CIMD Access", Serial, Ordered, func() {
 		}).Should(Succeed())
 	})
 
+	// Restores the shared instance even after a failure, so specs on it elsewhere don't fail too.
 	AfterAll(func() {
 		_ = patchObject("pocketidinstance", instanceName, instanceNS, `{"spec":{"builtInAPI":null}}`)
+	})
+
+	cleanupAfterAll(func() {
 		deleteObject("pocketidoidcclient", clientName, userNS)
 		waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 	})

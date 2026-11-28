@@ -42,7 +42,7 @@ var _ = Describe("OIDC Client ID Handling", Ordered, func() {
 				"secret client_id should match status.clientID")
 		})
 
-		AfterAll(func() {
+		cleanupAfterAll(func() {
 			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})

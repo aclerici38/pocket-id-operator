@@ -22,7 +22,7 @@ var _ = Describe("OIDC Client Federated Identity", Ordered, func() {
 
 	federatedIdentities := federatedIdentitiesFromPocketID
 
-	AfterAll(func() {
+	cleanupAfterAll(func() {
 		deleteObject("pocketidoidcclient", clientName, userNS)
 		waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 	})
@@ -72,7 +72,7 @@ var _ = Describe("OIDC Client Federated Identity", Ordered, func() {
 			adoptClientID = "federated-identity-adopt"
 		)
 
-		AfterAll(func() {
+		cleanupAfterAll(func() {
 			deleteObject("pocketidoidcclient", adoptName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", adoptName, userNS)
 		})

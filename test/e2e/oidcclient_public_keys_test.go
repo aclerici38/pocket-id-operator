@@ -53,7 +53,7 @@ data:
 		applyJWKS(rsaKey1)
 	})
 
-	AfterAll(func() {
+	cleanupAfterAll(func() {
 		deleteObject("pocketidoidcclient", clientName, userNS)
 		waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		deleteObject("configmap", configMapName, userNS)

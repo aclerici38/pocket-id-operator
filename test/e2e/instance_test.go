@@ -31,7 +31,7 @@ var _ = Describe("PocketIDInstance", Ordered, func() {
 			keyInstanceLabels := map[string]string{"e2e-instance": "static-key"}
 			staticSecretName := keyInstance + "-static-api-key"
 
-			DeferCleanup(func() {
+			cleanupDeferred(func() {
 				_ = deleteObjectAndWait("pocketidinstance", keyInstance, instanceNS, 2*time.Minute)
 			})
 
@@ -162,7 +162,7 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Ordered, func() {
 
 			// A leftover second instance would break every later spec that selects the
 			// shared instance without a selector, so clean up even on failure.
-			DeferCleanup(func() {
+			cleanupDeferred(func() {
 				deleteObject("pocketiduser", tlsUser, userNS)
 				_ = deleteObjectAndWait("pocketidinstance", tlsInstance, instanceNS, 60*time.Second)
 				deleteObject("secret", tlsSecret, instanceNS)
@@ -208,7 +208,7 @@ var _ = Describe("PocketIDInstance Multi-Instance Features", Ordered, func() {
 			const extUser = "external-cc-user"
 			extLabels := map[string]string{"external": "client-credentials"}
 
-			DeferCleanup(func() {
+			cleanupDeferred(func() {
 				deleteObject("pocketiduser", extUser, userNS)
 				_ = deleteObjectAndWait("pocketidinstance", extInstance, instanceNS, 60*time.Second)
 				deleteObject("pocketidoidcclient", extClient, instanceNS)
@@ -302,7 +302,7 @@ var _ = Describe("PocketIDInstance Default Selection", Serial, func() {
 	It("should reconcile a resource that names no instance when only one exists", func() {
 		const defaultUser = "default-selection-user"
 
-		DeferCleanup(func() {
+		cleanupDeferred(func() {
 			_ = deleteObjectAndWait("pocketiduser", defaultUser, userNS, time.Minute)
 		})
 

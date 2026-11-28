@@ -62,7 +62,7 @@ var _ = Describe("OIDC Client Token Lifetimes", Ordered, func() {
 		}
 	})
 
-	AfterAll(func() {
+	cleanupAfterAll(func() {
 		deleteObject("pocketidoidcclient", clientName, userNS)
 		waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 	})

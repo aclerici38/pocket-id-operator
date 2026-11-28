@@ -34,7 +34,7 @@ var _ = Describe("OIDC Client Skip Consent", Ordered, func() {
 			"Pocket-ID should persist and return skipConsent: true")
 	})
 
-	AfterAll(func() {
+	cleanupAfterAll(func() {
 		deleteObject("pocketidoidcclient", clientName, userNS)
 		waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 	})

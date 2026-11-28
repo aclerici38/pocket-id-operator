@@ -106,6 +106,16 @@ spec:
 
 `extraVolumeMounts` lets you mount volumes that are defined in `spec.podTemplate` directly into the pocket-id container. This is useful for config maps, secrets, or other volumes that need to be visible to the pod. See [example](../examples/pocketidinstance.md#extra-volume-mounts).
 
+## High Availability
+
+`spec.replicas` above 1 runs Pocket-ID active-active and sets `HA_ENABLED=true`. So does `spec.updateStrategy: RollingUpdate` at 1 replica, which starts the new pod before stopping the old one. Every replica must share the database and files, so it needs a Postgres `databaseUrl` and `fileBackend: database` or [S3](#s3-file-backend). See [example](../examples/pocketidinstance.md#high-availability).
+
+Behavior:
+- The replicas reach each other directly on UDP port 1414 of their pod IPs, so NetworkPolicies must allow that between them. No extra Service is needed.
+- Deployments roll one pod at a time with `HA_ENABLED`, and use `Recreate` without it (the default at 1 replica).
+- Turning `HA_ENABLED` on or off stops every pod before starting the new ones, because Pocket-ID refuses to join replicas running with a different `HA_ENABLED`.
+- `spec.francis` connects the replicas to a [standalone Francis runtime](https://gofrancis.dev) instead of the one embedded in each pod.
+
 ## HTTPRoute (Gateway API)
 
 You can optionally have the operator manage a `HTTPRoute` for the instance. See [example](../examples/pocketidinstance.md#httproute-gateway-api).
@@ -266,6 +276,9 @@ Creating an API key with `admin-access:write` requires re-authenticating with a 
   - `TRUST_PROXY` (from `spec.trustedProxies`; when unset, defaults to the private/loopback ranges if `spec.route.enabled` is set, otherwise left unset)
   - `S3_DISABLE_DEFAULT_INTEGRITY_CHECKS` (from `spec.s3.disableDefaultIntegrityChecks`)
   - `AUDIT_LOG_RETENTION_DAYS`, `ANALYTICS_DISABLED`, `VERSION_CHECK_DISABLED`
+  - `HA_ENABLED=true` (when `spec.replicas` is above 1 or `spec.updateStrategy` is `RollingUpdate`)
+  - `FRANCIS_RUNTIME_ADDRESS`, `FRANCIS_HOST_PSK`, `FRANCIS_HOST_JWT_FILE`, `FRANCIS_CA` (from `spec.francis`)
+  - `CLUSTER_ADDRESS` (the pod IP, with either of the above)
   - `DISABLE_RATE_LIMITING=true` (set only when `spec.rateLimitingDisabled` is enabled)
   - Any additional values from `spec.env` (applied last, can override anything above)
 

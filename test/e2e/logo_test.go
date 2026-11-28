@@ -65,7 +65,7 @@ var _ = Describe("Logo Auto-Generation", Ordered, func() {
 			}).Should(Succeed())
 		})
 
-		AfterAll(func() {
+		cleanupAfterAll(func() {
 			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
@@ -92,7 +92,7 @@ var _ = Describe("Logo Auto-Generation", Ordered, func() {
 			Expect(hasLogo).To(Equal("false"))
 		})
 
-		AfterAll(func() {
+		cleanupAfterAll(func() {
 			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
@@ -124,7 +124,7 @@ var _ = Describe("Logo Auto-Generation", Ordered, func() {
 			}, 20*time.Second, 4*time.Second).Should(Succeed())
 		})
 
-		AfterAll(func() {
+		cleanupAfterAll(func() {
 			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})

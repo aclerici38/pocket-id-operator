@@ -119,6 +119,29 @@ type S3Config struct {
 	DisableDefaultIntegrityChecks *bool `json:"disableDefaultIntegrityChecks,omitempty"`
 }
 
+// FrancisConfig connects Pocket-ID to a standalone Francis actor runtime. Set one of hostPSK or hostJWTFile.
+type FrancisConfig struct {
+	// Addresses (host:port) of the runtime.
+	// Sets FRANCIS_RUNTIME_ADDRESS. See https://pocket-id.org/docs/configuration/environment-variables.
+	// +kubebuilder:validation:Required
+	Addresses []string `json:"addresses"`
+
+	// Pre-shared key matching the runtime's bootstrap.hostPSK.
+	// Sets FRANCIS_HOST_PSK. See https://pocket-id.org/docs/configuration/environment-variables.
+	// +optional
+	HostPSK *SensitiveValue `json:"hostPSK,omitempty"`
+
+	// Path of a token file the runtime accepts, e.g. a projected service account token mounted through podTemplate and persistence.extraVolumeMounts.
+	// Sets FRANCIS_HOST_JWT_FILE. See https://pocket-id.org/docs/configuration/environment-variables.
+	// +optional
+	HostJWTFile string `json:"hostJWTFile,omitempty"`
+
+	// PEM-encoded cluster CA of the runtime. When unset, Pocket-ID trusts the certificate it sees on the first connection.
+	// Sets FRANCIS_CA. See https://pocket-id.org/docs/configuration/environment-variables.
+	// +optional
+	CA *SensitiveValue `json:"ca,omitempty"`
+}
+
 // SMTPConfig configures SMTP email transport.
 type SMTPConfig struct {
 	// SMTP server hostname.
@@ -626,6 +649,23 @@ type PocketIDInstanceSpec struct {
 	// +kubebuilder:default=Deployment
 	// +optional
 	DeploymentType string `json:"deploymentType,omitempty"`
+
+	// Number of Pocket-ID pods. Above 1, the operator sets HA_ENABLED=true, which needs a PostgreSQL databaseUrl and the database or s3 fileBackend.
+	// Turning HA_ENABLED on or off stops every pod first, since pods with and without it can't run side by side.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:default=1
+	// +optional
+	Replicas *int32 `json:"replicas,omitempty"`
+
+	// How the Deployment replaces its pods: Recreate at 1 replica and RollingUpdate above, unless set.
+	// RollingUpdate also sets HA_ENABLED=true at 1 replica, so the new pod joins before the old one stops, with the same requirements as more replicas.
+	// +kubebuilder:validation:Enum=Recreate;RollingUpdate
+	// +optional
+	UpdateStrategy string `json:"updateStrategy,omitempty"`
+
+	// Francis connects Pocket-ID to a standalone Francis actor runtime instead of the embedded one.
+	// +optional
+	Francis *FrancisConfig `json:"francis,omitempty"`
 
 	// Container image to run. When unset, the operator uses the latest version tested against this release.
 	// +optional

@@ -123,6 +123,17 @@ func TestE2E(t *testing.T) {
 
 var _ = SynchronizedBeforeSuite(func() []byte {
 	// This runs only on process 1
+	var err error
+	failureDir, err = os.MkdirTemp("", "pocket-id-e2e-failures-")
+	Expect(err).NotTo(HaveOccurred(), "Failed to create the failure marker directory")
+	// A setup that stops partway runs no spec to report it, so it marks the run failed itself.
+	setupDone := false
+	defer func() {
+		if !setupDone {
+			recordFailure()
+		}
+	}()
+
 	projectImage = resolveProjectImage()
 	imgProvided := os.Getenv("IMG") != ""
 	// Subprocess mise tasks (docker-build, deploy-e2e) read the image from IMG.
@@ -160,7 +171,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 
 	By("installing CRDs")
 	cmd := exec.Command("mise", "run", "install")
-	_, err := utils.Run(cmd)
+	_, err = utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
 
 	By("deploying the operator with e2e config (faster resync)")
@@ -210,9 +221,11 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	actualImage := getFieldBySelector("pod", instanceNS, "app.kubernetes.io/name=pocket-id", ".spec.containers[0].image")
 	By(fmt.Sprintf("pocket-id pod is running image: %s", actualImage))
 
-	return nil
-}, func(_ []byte) {
+	setupDone = true
+	return []byte(failureDir)
+}, func(data []byte) {
 	// This runs on all processes
+	failureDir = string(data)
 	projectImage = resolveProjectImage()
 
 	var err error
@@ -241,9 +254,15 @@ func staticAPIKey() string {
 var _ = SynchronizedAfterSuite(func() {
 	// This runs on all processes
 }, func() {
-	// This runs only on process 1
+	// This runs only on process 1, after every process has finished its specs.
+	failed := runFailed()
+	_ = os.RemoveAll(failureDir)
 	if os.Getenv("SKIP_CLEANUP") != "" {
 		By("skipping cleanup because SKIP_CLEANUP is set")
+		return
+	}
+	if failed {
+		By("skipping cleanup because the run failed; the next run's setup clears what is left")
 		return
 	}
 
@@ -326,7 +345,62 @@ func cleanupAllResources() {
 		}
 	}
 
-	// Delete test namespaces
+	// Delete test namespaces, and wait for them to go: createNamespace takes an existing one as
+	// created, and a namespace that is still terminating rejects everything created in it.
 	deleteNamespace(instanceNS)
 	deleteNamespace(userNS)
+	Eventually(func(g Gomega) {
+		for _, ns := range []string{instanceNS, userNS} {
+			err := k8sClient.Get(context.Background(), client.ObjectKey{Name: ns}, &corev1.Namespace{})
+			g.Expect(apierrors.IsNotFound(err)).To(BeTrue(), "namespace %s should be gone, got %v", ns, err)
+		}
+	}).Should(Succeed())
+}
+
+// A failed run keeps what it made: the specs that failed skip their cleanup, and the suite
+// skips its teardown. Their pods, including a crashed container's previous logs, are then
+// still there for print-e2e-diagnostics.sh in CI, or kubectl locally. The next run's setup
+// clears whatever is left, unless SKIP_CLEANUP is set.
+
+// failureDir collects a marker per process that saw a failure, since process 1 decides on
+// the teardown after the other processes are done. Process 1 creates it during setup.
+var failureDir string
+
+var _ = ReportAfterEach(func(report SpecReport) {
+	if report.Failed() {
+		recordFailure()
+	}
+})
+
+func recordFailure() {
+	if failureDir == "" {
+		return
+	}
+	marker := filepath.Join(failureDir, strconv.Itoa(GinkgoParallelProcess()))
+	_ = os.WriteFile(marker, nil, 0o600)
+}
+
+func runFailed() bool {
+	entries, _ := os.ReadDir(failureDir)
+	return len(entries) > 0
+}
+
+// cleanupAfterAll is AfterAll for cleanup, skipped when a spec in the container failed.
+func cleanupAfterAll(fn func()) {
+	AfterAll(Offset(1), unlessFailed(fn))
+}
+
+// cleanupDeferred is DeferCleanup for cleanup, skipped when the spec failed.
+func cleanupDeferred(fn func()) {
+	DeferCleanup(Offset(1), unlessFailed(fn))
+}
+
+func unlessFailed(fn func()) func() {
+	return func() {
+		if CurrentSpecReport().Failed() {
+			By("skipping cleanup because the spec failed")
+			return
+		}
+		fn()
+	}
 }

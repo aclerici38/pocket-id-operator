@@ -31,6 +31,7 @@ import (
 	"path"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -158,6 +159,7 @@ func (r *Reconciler) apiClientFor(ctx context.Context, instance *pocketidinterna
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=pods,verbs=list
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -186,7 +188,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, fmt.Errorf("ensure static API key secret: %w", err)
 	}
 
-	if err := r.reconcileWorkload(ctx, instance); err != nil {
+	draining, err := r.reconcileWorkload(ctx, instance)
+	if err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -224,6 +227,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		metrics.RecordInstanceInfo(instance.Namespace, instance.Name, instance.Status.Version, instance.Status.Version, deploymentType, instance.Spec.AppURL)
 	}
 
+	// Pod deletions don't trigger a reconcile, so poll until the old pods are gone.
+	if draining {
+		return ctrl.Result{RequeueAfter: common.Requeue}, nil
+	}
 	return common.ApplyResync(ctrl.Result{}), nil
 }
 
@@ -282,24 +289,70 @@ func (r *Reconciler) reconcileExternal(ctx context.Context, instance *pocketidin
 }
 
 // Helpers
-func (r *Reconciler) reconcileWorkload(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) error {
+
+// reconcileWorkload applies the Deployment or StatefulSet, and reports whether it's stopping every pod first.
+func (r *Reconciler) reconcileWorkload(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance) (bool, error) {
 	// Compute hash of static API key secret to trigger rollout when it changes
 	secretHash, err := r.computeStaticAPIKeyHash(ctx, instance)
 	if err != nil {
-		return fmt.Errorf("compute static API key hash: %w", err)
+		return false, fmt.Errorf("compute static API key hash: %w", err)
 	}
 
 	pt := r.buildPodTemplate(instance, secretHash)
 
 	podTemplate, err := podTemplateToApplyConfiguration(pt)
 	if err != nil {
-		return fmt.Errorf("convert pod template: %w", err)
+		return false, fmt.Errorf("convert pod template: %w", err)
 	}
 
-	if instance.Spec.DeploymentType == "StatefulSet" {
-		return r.reconcileStatefulSet(ctx, instance, podTemplate)
+	replicas, err := r.workloadReplicas(ctx, instance, pt)
+	if err != nil {
+		return false, fmt.Errorf("count workload pods: %w", err)
 	}
-	return r.reconcileDeployment(ctx, instance, podTemplate)
+	if instance.Spec.DeploymentType == "StatefulSet" {
+		return replicas == 0, r.reconcileStatefulSet(ctx, instance, podTemplate, replicas)
+	}
+	return replicas == 0, r.reconcileDeployment(ctx, instance, podTemplate, replicas)
+}
+
+// workloadReplicas returns spec.replicas, or 0 to stop every pod while HA_ENABLED changes:
+// Francis turns a host away while a healthy one runs with a different HA_ENABLED.
+func (r *Reconciler) workloadReplicas(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, pt corev1.PodTemplateSpec) (int32, error) {
+	want := ptr.Deref(instance.Spec.Replicas, 1)
+	deployment, sts := &appsv1.Deployment{}, &appsv1.StatefulSet{}
+	obj, current, template := client.Object(deployment), &deployment.Spec.Replicas, &deployment.Spec.Template
+	if instance.Spec.DeploymentType == "StatefulSet" {
+		obj, current, template = sts, &sts.Spec.Replicas, &sts.Spec.Template
+	}
+	if err := r.Get(ctx, client.ObjectKeyFromObject(instance), obj); err != nil {
+		return want, client.IgnoreNotFound(err)
+	}
+	// Spec replicas of 0 means a switch is still waiting for the old pods to stop.
+	if ptr.Deref(*current, 1) != 0 && templateHAEnabled(*template) == templateHAEnabled(pt) {
+		return want, nil
+	}
+	pods := &corev1.PodList{}
+	if err := r.APIReader.List(ctx, pods, client.InNamespace(instance.Namespace), client.MatchingLabels(selectorLabels(instance)), client.Limit(1)); err != nil || len(pods.Items) > 0 {
+		return 0, err
+	}
+	return want, nil
+}
+
+// templateHAEnabled reads the HA_ENABLED the pocket-id container starts with, where the last entry wins as in Kubernetes.
+func templateHAEnabled(pt corev1.PodTemplateSpec) (ha bool) {
+	for _, c := range pt.Spec.Containers {
+		for _, e := range c.Env {
+			if c.Name == appName && e.Name == "HA_ENABLED" {
+				ha, _ = strconv.ParseBool(e.Value)
+			}
+		}
+	}
+	return ha
+}
+
+// selectorLabels returns the labels that select the instance's pods.
+func selectorLabels(instance *pocketidinternalv1alpha1.PocketIDInstance) map[string]string {
+	return map[string]string{"app.kubernetes.io/name": appName, "app.kubernetes.io/instance": instance.Name}
 }
 
 func podTemplateToApplyConfiguration(pt corev1.PodTemplateSpec) (*corev1apply.PodTemplateSpecApplyConfiguration, error) {
@@ -631,15 +684,18 @@ func buildContainerSecurityContext(instance *pocketidinternalv1alpha1.PocketIDIn
 	return merged
 }
 
-func (r *Reconciler) reconcileDeployment(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, podTemplate *corev1apply.PodTemplateSpecApplyConfiguration) error {
-	selector := map[string]string{
-		"app.kubernetes.io/name":     appName,
-		"app.kubernetes.io/instance": instance.Name,
-	}
-
+func (r *Reconciler) reconcileDeployment(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, podTemplate *corev1apply.PodTemplateSpecApplyConfiguration, replicas int32) error {
 	ownerRef, err := common.ControllerOwnerReference(instance, r.Scheme)
 	if err != nil {
 		return err
+	}
+
+	// Without HA_ENABLED a host can't share the cluster with its replacement, while HA pods roll one at a time.
+	// Owning rollingUpdate lets the apply drop it again for Recreate, which rejects it.
+	strategy := appsv1apply.DeploymentStrategy().WithType(appsv1.RecreateDeploymentStrategyType)
+	if haEnabled(instance) && instance.Spec.UpdateStrategy != string(appsv1.RecreateDeploymentStrategyType) {
+		strategy.WithType(appsv1.RollingUpdateDeploymentStrategyType).
+			WithRollingUpdate(appsv1apply.RollingUpdateDeployment().WithMaxSurge(intstr.FromInt(1)).WithMaxUnavailable(intstr.FromInt(0)))
 	}
 
 	deployment := appsv1apply.Deployment(instance.Name, instance.Namespace).
@@ -647,25 +703,20 @@ func (r *Reconciler) reconcileDeployment(ctx context.Context, instance *pocketid
 		WithAnnotations(instance.Spec.Annotations).
 		WithOwnerReferences(ownerRef).
 		WithSpec(appsv1apply.DeploymentSpec().
-			WithReplicas(1).
-			WithSelector(metav1apply.LabelSelector().WithMatchLabels(selector)).
-			WithStrategy(appsv1apply.DeploymentStrategy().WithType(appsv1.RecreateDeploymentStrategyType)).
+			WithReplicas(replicas).
+			WithSelector(metav1apply.LabelSelector().WithMatchLabels(selectorLabels(instance))).
+			WithStrategy(strategy).
 			WithTemplate(podTemplate),
 		)
 
 	return r.Apply(ctx, deployment, client.FieldOwner("pocket-id-operator"))
 }
 
-func (r *Reconciler) reconcileStatefulSet(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, podTemplate *corev1apply.PodTemplateSpecApplyConfiguration) error {
-	selector := map[string]string{
-		"app.kubernetes.io/name":     appName,
-		"app.kubernetes.io/instance": instance.Name,
-	}
-
+func (r *Reconciler) reconcileStatefulSet(ctx context.Context, instance *pocketidinternalv1alpha1.PocketIDInstance, podTemplate *corev1apply.PodTemplateSpecApplyConfiguration, replicas int32) error {
 	stsSpec := appsv1apply.StatefulSetSpec().
-		WithReplicas(1).
+		WithReplicas(replicas).
 		WithServiceName(instance.Name).
-		WithSelector(metav1apply.LabelSelector().WithMatchLabels(selector)).
+		WithSelector(metav1apply.LabelSelector().WithMatchLabels(selectorLabels(instance))).
 		WithTemplate(podTemplate)
 
 	// VolumeClaimTemplate when using sts + no existingClaim
@@ -721,10 +772,7 @@ func buildServiceSpec(instance *pocketidinternalv1alpha1.PocketIDInstance) corev
 		spec = *instance.Spec.ServiceTemplate.DeepCopy()
 	}
 
-	spec.Selector = map[string]string{
-		"app.kubernetes.io/name":     appName,
-		"app.kubernetes.io/instance": instance.Name,
-	}
+	spec.Selector = selectorLabels(instance)
 
 	httpPort := corev1.ServicePort{
 		Name:       "http",

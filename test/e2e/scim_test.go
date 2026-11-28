@@ -24,7 +24,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 		deploySCIMStub(stubName)
 	})
 
-	AfterAll(func() {
+	cleanupAfterAll(func() {
 		deleteObject("pod", stubName, userNS)
 		deleteObject("service", stubName, userNS)
 	})
@@ -99,7 +99,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			Expect(scimExists).To(BeFalse())
 		})
 
-		AfterAll(func() {
+		cleanupAfterAll(func() {
 			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
@@ -160,7 +160,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			waitForReady("pocketidoidcclient", clientName, userNS)
 		})
 
-		AfterAll(func() {
+		cleanupAfterAll(func() {
 			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 			deleteObject("secret", secretName, userNS)
@@ -199,7 +199,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			}).Should(Succeed())
 		})
 
-		AfterAll(func() {
+		cleanupAfterAll(func() {
 			deleteObject("pocketidoidcclient", clientName, userNS)
 		})
 	})
@@ -231,7 +231,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			Expect(adoptedSCIMID).To(Equal(scimID), "operator should adopt the pre-existing SCIM provider")
 		})
 
-		AfterAll(func() {
+		cleanupAfterAll(func() {
 			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
@@ -264,7 +264,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			Expect(getSCIMProvider(oidcClientID).Endpoint).To(Equal(scimURL("/resync")))
 		})
 
-		AfterAll(func() {
+		cleanupAfterAll(func() {
 			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
@@ -283,7 +283,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			waitForConditionReason("pocketidoidcclient", clientName, userNS, "Ready", "SCIMSyncError")
 		})
 
-		AfterAll(func() {
+		cleanupAfterAll(func() {
 			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
@@ -323,7 +323,7 @@ var _ = Describe("SCIM Service Provider", Ordered, func() {
 			Expect(id).To(BeEmpty())
 		})
 
-		AfterAll(func() {
+		cleanupAfterAll(func() {
 			deleteObject("pocketidoidcclient", clientName, userNS)
 			waitForResourceDeleted("pocketidoidcclient", clientName, userNS)
 		})
