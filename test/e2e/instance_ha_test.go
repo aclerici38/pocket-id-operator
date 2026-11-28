@@ -31,17 +31,14 @@ func describeHA(workload string) {
 		cleanupDeferred(func() {
 			_ = deleteObjectAndWait("pocketidinstance", name, instanceNS, 60*time.Second)
 			deleteObject("pod", name+"-db", instanceNS)
-			deleteObject("service", name+"-db", instanceNS)
 		})
 
 		By("deploying the Postgres database the replicas share")
 		applyYAML(fmt.Sprintf(`apiVersion: v1
 kind: Pod
 metadata:
-  name: %[1]s
-  namespace: %[2]s
-  labels:
-    app: %[1]s
+  name: %s
+  namespace: %s
 spec:
   containers:
   - name: postgres
@@ -53,26 +50,19 @@ spec:
     readinessProbe:
       exec:
         command: ["pg_isready", "-U", "postgres", "-h", "127.0.0.1"]
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: %[1]s
-  namespace: %[2]s
-spec:
-  selector:
-    app: %[1]s
-  ports:
-  - port: 5432
 `, name+"-db", instanceNS))
 		waitForReady("pod", name+"-db", instanceNS)
+		// The pod IP is reachable as soon as Postgres is Ready, while a Service can still refuse
+		// connections until kube-proxy picks up the endpoint, which restarts the first pod.
+		dbIP := getField("pod", name+"-db", instanceNS, ".status.podIP")
+		Expect(dbIP).NotTo(BeEmpty())
 
 		applyYAML(buildInstanceYAML(InstanceOptions{Name: name}) + fmt.Sprintf(`  deploymentType: %s
   replicas: 1
   fileBackend: database
   databaseUrl:
-    value: postgres://postgres:postgres@%s-db:5432/postgres?sslmode=disable
-`, workload, name))
+    value: postgres://postgres:postgres@%s:5432/postgres?sslmode=disable
+`, workload, dbIP))
 		waitForReady("pocketidinstance", name, instanceNS)
 	})
 
