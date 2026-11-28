@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"slices"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -70,10 +71,12 @@ func buildEnvVars(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.
 	env = append(env, buildStandaloneEnv(instance)...)
 	env = append(env, buildClusterEnv(instance)...)
 
-	// User-provided env vars applied last so they can override anything above
-	env = append(env, instance.Spec.Env...)
-
-	return env
+	// User-provided env vars replace any operator-set var of the same name. Server-side apply
+	// rejects duplicate names, and appending them last keeps $(VAR) references to operator vars working.
+	env = slices.DeleteFunc(env, func(e corev1.EnvVar) bool {
+		return slices.ContainsFunc(instance.Spec.Env, func(u corev1.EnvVar) bool { return u.Name == e.Name })
+	})
+	return append(env, instance.Spec.Env...)
 }
 
 func buildCoreEnv(instance *pocketidinternalv1alpha1.PocketIDInstance) []corev1.EnvVar {
